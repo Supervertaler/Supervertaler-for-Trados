@@ -30,6 +30,7 @@ project.fragment.lock.json
 artifacts/
 
 ## Plugin output
+dist/
 *.sdlplugin
 
 ## OS

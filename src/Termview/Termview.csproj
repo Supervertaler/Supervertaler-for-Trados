@@ -55,11 +55,28 @@
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
   </ItemGroup>
 
-  <!-- Plugin package manifest -->
+  <!-- Plugin package manifest and extension manifest -->
   <ItemGroup>
     <None Include="pluginpackage.manifest.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Include="Termview.plugin.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
+
+  <!-- Plugin resources — rename to Termview.plugin.resources for Trados plugin framework -->
+  <ItemGroup>
+    <EmbeddedResource Update="PluginResources.resx">
+      <ManifestResourceName>Termview.plugin</ManifestResourceName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Copy compiled .plugin.resources sidecar to output (needed by Trados plugin framework) -->
+  <Target Name="CopyPluginResources" AfterTargets="Build">
+    <Copy SourceFiles="$(IntermediateOutputPath)Termview.plugin.resources"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
