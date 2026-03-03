@@ -1,8 +1,8 @@
 using System;
 using System.Linq;
-using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
+using Sdl.Desktop.IntegrationApi.Interfaces;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 using Termview.Controls;
 
@@ -27,7 +27,7 @@ namespace Termview
         private EditorController _editorController;
         private IStudioDocument _activeDocument;
 
-        protected override Control GetContentControl()
+        protected override IUIControl GetContentControl()
         {
             return _control.Value;
         }
@@ -106,7 +106,7 @@ namespace Termview
             try
             {
                 // Insert the translation at the current cursor position in the target segment
-                _activeDocument.Selection.Target.Replace(e.TargetTerm);
+                _activeDocument.Selection.Target.Replace(e.TargetTerm, "Termview");
             }
             catch (Exception)
             {

@@ -14,18 +14,44 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
-  <!-- Trados Studio SDK packages -->
-  <!-- NOTE: These require the Trados Studio SDK to be installed.
-       Install from: https://developers.rws.com/
-       You may need to add the Trados NuGet feed:
-       https://nuget.rws.com/v3/index.json -->
-  <ItemGroup>
-    <PackageReference Include="Sdl.Core.PluginFramework" Version="2.*" />
-    <PackageReference Include="Sdl.Core.PluginFramework.Build" Version="18.*" PrivateAssets="all" />
-    <PackageReference Include="Sdl.Desktop.IntegrationApi" Version="18.*" />
-    <PackageReference Include="Sdl.TranslationStudioAutomation.IntegrationApi" Version="18.*" />
+  <!-- Trados Studio 2024 (Studio18) DLL references from local installation -->
+  <PropertyGroup>
+    <TradosStudioPath>C:\Program Files (x86)\Trados\Trados Studio\Studio18</TradosStudioPath>
+  </PropertyGroup>
 
-    <!-- SQLite for reading Supervertaler termbases -->
+  <ItemGroup>
+    <Reference Include="Sdl.Core.PluginFramework">
+      <HintPath>$(TradosStudioPath)\Sdl.Core.PluginFramework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.Desktop.IntegrationApi">
+      <HintPath>$(TradosStudioPath)\Sdl.Desktop.IntegrationApi.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.Desktop.IntegrationApi.Extensions">
+      <HintPath>$(TradosStudioPath)\Sdl.Desktop.IntegrationApi.Extensions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.TranslationStudioAutomation.IntegrationApi">
+      <HintPath>$(TradosStudioPath)\Sdl.TranslationStudioAutomation.IntegrationApi.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.Desktop.Platform">
+      <HintPath>$(TradosStudioPath)\Sdl.Desktop.Platform.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.Core.Globalization">
+      <HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.FileTypeSupport.Framework.Core">
+      <HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Framework.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- SQLite for reading Supervertaler termbases -->
+  <ItemGroup>
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.118" />
   </ItemGroup>
 

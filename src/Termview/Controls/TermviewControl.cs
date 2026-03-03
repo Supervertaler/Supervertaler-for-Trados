@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using Sdl.Desktop.IntegrationApi.Interfaces;
 using Termview.Core;
 using Termview.Models;
 
@@ -13,7 +14,7 @@ namespace Termview.Controls
     /// word-by-word display with terminology translations underneath matched terms.
     /// Port of Supervertaler's TermviewWidget.
     /// </summary>
-    public class TermviewControl : UserControl
+    public class TermviewControl : UserControl, IUIControl
     {
         private readonly FlowLayoutPanel _flowPanel;
         private readonly Label _statusLabel;
