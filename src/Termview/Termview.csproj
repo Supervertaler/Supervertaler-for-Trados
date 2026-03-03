@@ -12,6 +12,8 @@
     <Copyright>Copyright (c) 2026 Michael Beijer</Copyright>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>Termview.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <!-- Trados Studio 2024 (Studio18) DLL references from local installation -->
