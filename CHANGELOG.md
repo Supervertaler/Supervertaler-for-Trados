@@ -17,6 +17,36 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.0] — 2026-03-04
+
+### Added
+- **Alt+digit term insertion** — press Alt+1 through Alt+9 to instantly insert the
+  corresponding matched term into the target segment; Alt+0 inserts term 10; for
+  segments with 10+ matches, two-digit chords are supported (e.g. Alt+1 then 3
+  within 400ms inserts term 13)
+- **Term Picker dialog** — press Ctrl+Shift+G to open a modal dialog listing all
+  matched terms for the current segment; select by clicking, pressing Enter, or
+  typing the term number
+- **Synonym expansion in Term Picker** — rows with multiple target translations
+  show a ► indicator; press Right arrow to expand and reveal all alternative
+  translations, Left arrow to collapse
+- **Bulk synonym loading** — target synonyms from the `termbase_synonyms` table are
+  now loaded at startup alongside term entries, so the +N badges and Term Picker
+  expansion show the correct synonym counts
+- **Project glossary column in Settings** — a new "Project" checkbox column in the
+  settings dialog lets you mark glossaries as project glossaries; project terms are
+  shown in pink, all others in blue (replaces the previous database-driven priority
+  colouring which was unreliable)
+
+### Changed
+- **Coloring is user-controlled** — pink/blue term colouring is now determined by
+  the user's "Project" setting per glossary, not by the database's ranking or
+  is_project_termbase fields
+- **Wider settings columns** — the Read, Write, and Project checkbox columns in the
+  settings dialog are now wide enough for their headers to be fully visible
+
+---
+
 ## [1.2.0] — 2026-03-04
 
 ### Added

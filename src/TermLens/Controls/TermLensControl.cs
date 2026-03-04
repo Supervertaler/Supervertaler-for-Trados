@@ -24,6 +24,13 @@ namespace TermLens.Controls
         private TermMatcher _matcher;
         private TermbaseReader _reader;
         private string _currentDbPath;
+        private HashSet<long> _projectTermbaseIds = new HashSet<long>();
+
+        /// <summary>
+        /// Number of matched terms in the current segment display.
+        /// Used by the Alt+digit state machine to decide between immediate and chord modes.
+        /// </summary>
+        public int MatchCount { get; private set; }
 
         /// <summary>
         /// Fired when the user clicks a translation to insert it into the target segment.
@@ -115,6 +122,15 @@ namespace TermLens.Controls
         }
 
         /// <summary>
+        /// Sets the project termbase IDs (glossaries shown in pink).
+        /// Call this whenever settings change.
+        /// </summary>
+        public void SetProjectTermbaseIds(IEnumerable<long> ids)
+        {
+            _projectTermbaseIds = ids != null ? new HashSet<long>(ids) : new HashSet<long>();
+        }
+
+        /// <summary>
         /// Loads a Supervertaler termbase database.
         /// </summary>
         /// <param name="dbPath">Path to the .db file.</param>
@@ -196,7 +212,18 @@ namespace TermLens.Controls
 
                 if (token.HasMatch)
                 {
-                    var block = new TermBlock(token.Text, token.Matches, shortcutIndex)
+                    // A term is "project" if any of its entries come from a project glossary
+                    bool isProject = false;
+                    foreach (var m in token.Matches)
+                    {
+                        if (_projectTermbaseIds.Contains(m.TermbaseId))
+                        {
+                            isProject = true;
+                            break;
+                        }
+                    }
+
+                    var block = new TermBlock(token.Text, token.Matches, shortcutIndex, isProject)
                     {
                         Font = Font,
                         Margin = new Padding(2, 1, 2, 1)
@@ -219,11 +246,53 @@ namespace TermLens.Controls
                 }
             }
 
+            MatchCount = matchCount;
+
             _statusLabel.Text = matchCount > 0
                 ? $"\u2713 Found {matchCount} terms in {wordCount} words"
                 : $"{wordCount} words, no matches";
 
             _flowPanel.ResumeLayout(true);
+        }
+
+        /// <summary>
+        /// Returns the TermEntry for the given 1-based shortcut index, or null if not found.
+        /// Used by Alt+digit insertion.
+        /// </summary>
+        public TermEntry GetTermByIndex(int oneBasedIndex)
+        {
+            foreach (Control ctrl in _flowPanel.Controls)
+            {
+                var block = ctrl as TermBlock;
+                if (block != null && (block.ShortcutIndex + 1) == oneBasedIndex)
+                    return block.PrimaryEntry;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns all current matched term blocks for the term picker dialog.
+        /// Each item contains: 1-based index, source text, all entries (with synonyms).
+        /// </summary>
+        public List<TermPickerMatch> GetCurrentMatches()
+        {
+            var results = new List<TermPickerMatch>();
+            foreach (Control ctrl in _flowPanel.Controls)
+            {
+                var block = ctrl as TermBlock;
+                if (block != null && block.PrimaryEntry != null)
+                {
+                    results.Add(new TermPickerMatch
+                    {
+                        Index = block.ShortcutIndex + 1,
+                        SourceText = block.PrimaryEntry.SourceTerm,
+                        PrimaryEntry = block.PrimaryEntry,
+                        AllEntries = new List<TermEntry>(block.Entries),
+                        IsProjectGlossary = block.IsProjectGlossary
+                    });
+                }
+            }
+            return results;
         }
 
         /// <summary>
@@ -233,6 +302,7 @@ namespace TermLens.Controls
         {
             _flowPanel.Controls.Clear();
             _statusLabel.Text = "";
+            MatchCount = 0;
         }
 
         protected override void Dispose(bool disposing)

@@ -32,14 +32,16 @@ namespace TermLens.Controls
         private readonly List<TermEntry> _entries;
         private readonly string _sourceText;
         private readonly int _shortcutIndex; // -1 = no shortcut
+        private readonly bool _isProjectGlossary;
 
         public event EventHandler<TermInsertEventArgs> TermInsertRequested;
 
-        public TermBlock(string sourceText, List<TermEntry> entries, int shortcutIndex = -1)
+        public TermBlock(string sourceText, List<TermEntry> entries, int shortcutIndex = -1, bool isProjectGlossary = false)
         {
             _sourceText = sourceText;
             _entries = entries ?? new List<TermEntry>();
             _shortcutIndex = shortcutIndex;
+            _isProjectGlossary = isProjectGlossary;
 
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
@@ -48,8 +50,14 @@ namespace TermLens.Controls
             CalculateSize();
         }
 
-        public bool IsProjectTermbase => _entries.Count > 0 && _entries[0].IsProjectTermbase;
+        /// <summary>
+        /// True when the primary entry's termbase is marked as a project glossary by the user.
+        /// Controls background color: pink for project glossaries, blue for others.
+        /// </summary>
+        public bool IsProjectGlossary => _isProjectGlossary;
         public TermEntry PrimaryEntry => _entries.Count > 0 ? _entries[0] : null;
+        public IReadOnlyList<TermEntry> Entries => _entries;
+        public int ShortcutIndex => _shortcutIndex;
 
         private const int BadgeDiameter = 16;
 
@@ -109,7 +117,7 @@ namespace TermLens.Controls
             float badgeWidth = _shortcutIndex >= 0 ? BadgeDiameter + 4 : 0;
             float targetRowWidth = targetSize.Width + extraWidth + badgeWidth + 4;
 
-            var bgColor = IsProjectTermbase
+            var bgColor = IsProjectGlossary
                 ? (_isHovered ? ProjectHover : ProjectBg)
                 : (_isHovered ? RegularHover : RegularBg);
 
@@ -146,7 +154,7 @@ namespace TermLens.Controls
                 float circleX = targetX + 2;
                 float circleY = y + (targetSize.Height - BadgeDiameter) / 2 + 1;
 
-                var badgeColor = IsProjectTermbase
+                var badgeColor = IsProjectGlossary
                     ? Color.FromArgb(200, 100, 150)
                     : Color.FromArgb(90, 140, 210);
 

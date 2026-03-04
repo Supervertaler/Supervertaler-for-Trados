@@ -47,6 +47,71 @@ namespace TermLens.Models
     }
 
     /// <summary>
+    /// A matched source term with all its entries, used by the Term Picker dialog.
+    /// </summary>
+    public class TermPickerMatch
+    {
+        public int Index { get; set; }
+        public string SourceText { get; set; }
+        public TermEntry PrimaryEntry { get; set; }
+        public List<TermEntry> AllEntries { get; set; } = new List<TermEntry>();
+
+        /// <summary>
+        /// True if the user marked this term's glossary as a project glossary.
+        /// Used for pink/blue coloring in the Term Picker dialog.
+        /// </summary>
+        public bool IsProjectGlossary { get; set; }
+
+        /// <summary>
+        /// Gets all unique target options (primary + synonyms from all entries).
+        /// The first item is always the primary target.
+        /// </summary>
+        public List<TermTargetOption> GetAllTargets()
+        {
+            var results = new List<TermTargetOption>();
+            var seen = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in AllEntries)
+            {
+                if (!string.IsNullOrEmpty(entry.TargetTerm) && seen.Add(entry.TargetTerm))
+                {
+                    results.Add(new TermTargetOption
+                    {
+                        TargetTerm = entry.TargetTerm,
+                        TermbaseName = entry.TermbaseName,
+                        Ranking = entry.Ranking
+                    });
+                }
+
+                foreach (var syn in entry.TargetSynonyms)
+                {
+                    if (!string.IsNullOrEmpty(syn) && seen.Add(syn))
+                    {
+                        results.Add(new TermTargetOption
+                        {
+                            TargetTerm = syn,
+                            TermbaseName = entry.TermbaseName,
+                            Ranking = entry.Ranking
+                        });
+                    }
+                }
+            }
+
+            return results;
+        }
+    }
+
+    /// <summary>
+    /// A single target translation option within a TermPickerMatch.
+    /// </summary>
+    public class TermTargetOption
+    {
+        public string TargetTerm { get; set; }
+        public string TermbaseName { get; set; }
+        public int Ranking { get; set; }
+    }
+
+    /// <summary>
     /// Metadata about a loaded termbase.
     /// </summary>
     public class TermbaseInfo

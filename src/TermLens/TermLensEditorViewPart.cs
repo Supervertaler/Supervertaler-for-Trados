@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
 using Sdl.Desktop.IntegrationApi.Interfaces;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 using TermLens.Controls;
+using TermLens.Models;
 using TermLens.Settings;
 
 namespace TermLens
@@ -33,6 +35,10 @@ namespace TermLens
         private EditorController _editorController;
         private IStudioDocument _activeDocument;
         private TermLensSettings _settings;
+
+        // --- Alt+digit chord state machine ---
+        private static int? _pendingDigit;
+        private static Timer _chordTimer;
 
         protected override IUIControl GetContentControl()
         {
@@ -78,6 +84,9 @@ namespace TermLens
             var disabled = _settings.DisabledTermbaseIds != null && _settings.DisabledTermbaseIds.Count > 0
                 ? new HashSet<long>(_settings.DisabledTermbaseIds)
                 : null;
+
+            // Push project glossary IDs to the control for pink/blue coloring
+            _control.Value.SetProjectTermbaseIds(_settings.ProjectTermbaseIds);
 
             // 1. Use the saved termbase path if set and the file exists
             if (!string.IsNullOrEmpty(_settings.TermbasePath) && File.Exists(_settings.TermbasePath))
@@ -210,10 +219,142 @@ namespace TermLens
             instance.UpdateFromActiveSegment();
         }
 
+        // ─── Alt+digit term insertion ────────────────────────────────
+
+        /// <summary>
+        /// Called by TermInsertDigitNAction when Alt+digit is pressed.
+        /// Implements a two-digit chord state machine with 400ms timeout.
+        /// </summary>
+        public static void HandleDigitPress(int digit)
+        {
+            var instance = _currentInstance;
+            if (instance == null) return;
+
+            // If there's already a pending first digit, combine into a two-digit number
+            if (_pendingDigit.HasValue)
+            {
+                StopChordTimer();
+                int number = _pendingDigit.Value * 10 + digit;
+                _pendingDigit = null;
+                instance.InsertTermByIndex(number);
+                return;
+            }
+
+            // Check how many matched terms are in the current segment
+            int matchCount = _control.Value.MatchCount;
+
+            if (matchCount <= 9)
+            {
+                // ≤9 terms: insert immediately, no chord wait needed
+                int number = digit == 0 ? 10 : digit;
+                instance.InsertTermByIndex(number);
+            }
+            else
+            {
+                // 10+ terms: start chord timer, wait for possible second digit
+                _pendingDigit = digit;
+                StartChordTimer();
+            }
+        }
+
+        private static void StartChordTimer()
+        {
+            StopChordTimer();
+            _chordTimer = new Timer { Interval = 400 };
+            _chordTimer.Tick += OnChordTimerTick;
+            _chordTimer.Start();
+        }
+
+        private static void StopChordTimer()
+        {
+            if (_chordTimer != null)
+            {
+                _chordTimer.Stop();
+                _chordTimer.Tick -= OnChordTimerTick;
+                _chordTimer.Dispose();
+                _chordTimer = null;
+            }
+        }
+
+        private static void OnChordTimerTick(object sender, EventArgs e)
+        {
+            StopChordTimer();
+
+            var instance = _currentInstance;
+            if (instance == null || !_pendingDigit.HasValue) return;
+
+            int digit = _pendingDigit.Value;
+            _pendingDigit = null;
+
+            // Single digit: 0 means term 10, otherwise 1-9
+            int number = digit == 0 ? 10 : digit;
+            instance.InsertTermByIndex(number);
+        }
+
+        private void InsertTermByIndex(int oneBasedIndex)
+        {
+            if (_activeDocument == null) return;
+
+            var entry = _control.Value.GetTermByIndex(oneBasedIndex);
+            if (entry == null) return;
+
+            try
+            {
+                _activeDocument.Selection.Target.Replace(entry.TargetTerm, "TermLens");
+            }
+            catch (Exception)
+            {
+                // Silently handle — editor may not allow insertion at this moment
+            }
+        }
+
+        // ─── Term Picker dialog ─────────────────────────────────────
+
+        /// <summary>
+        /// Called by TermPickerAction (Ctrl+Shift+G).
+        /// Opens a dialog showing all matched terms for the current segment.
+        /// </summary>
+        public static void HandleTermPicker()
+        {
+            var instance = _currentInstance;
+            if (instance == null || instance._activeDocument == null) return;
+
+            var matches = _control.Value.GetCurrentMatches();
+            if (matches.Count == 0) return;
+
+            instance.SafeInvoke(() =>
+            {
+                using (var dlg = new TermPickerDialog(matches))
+                {
+                    var parent = _control.Value.FindForm();
+                    var result = parent != null
+                        ? dlg.ShowDialog(parent)
+                        : dlg.ShowDialog();
+
+                    if (result == DialogResult.OK && !string.IsNullOrEmpty(dlg.SelectedTargetTerm))
+                    {
+                        try
+                        {
+                            instance._activeDocument.Selection.Target.Replace(
+                                dlg.SelectedTargetTerm, "TermLens");
+                        }
+                        catch (Exception)
+                        {
+                            // Silently handle
+                        }
+                    }
+                }
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────
+
         public override void Dispose()
         {
             if (_currentInstance == this)
                 _currentInstance = null;
+
+            StopChordTimer();
 
             if (_activeDocument != null)
                 _activeDocument.ActiveSegmentChanged -= OnActiveSegmentChanged;

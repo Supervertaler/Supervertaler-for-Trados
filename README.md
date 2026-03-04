@@ -13,11 +13,13 @@ As you navigate between segments in the Trados Studio editor, the TermLens panel
 ## Features
 
 - **Dedicated terminology panel** — source words flow left to right with translations directly underneath matched terms
-- **Color-coded by termbase** — project termbases (pink) vs. regular termbases (blue) at a glance
+- **Color-coded by glossary type** — mark glossaries as "Project" in settings to show their terms in pink; all others appear in blue
 - **Multi-word term support** — correctly matches phrases like "prior art" or "machine translation" as single units
 - **Click to insert** — click any translation to insert it at the cursor position in the target segment
+- **Alt+digit shortcuts** — press Alt+1 through Alt+9 (or Alt+0 for term 10) to instantly insert a matched term; two-digit chords supported for 10+ matches
+- **Term Picker dialog** — press Ctrl+Shift+G to browse all matched terms and their synonyms in a list, with expandable synonym rows
 - **Add terms from the editor** — right-click to add a new term from the active segment's source/target text, with or without a confirmation dialog
-- **Read/Write termbase selection** — choose which termbases to search (Read) and which one receives new terms (Write) independently
+- **Read/Write/Project termbase selection** — choose which termbases to search (Read), which one receives new terms (Write), and which are project glossaries (Project)
 - **Supervertaler-compatible** — reads and writes Supervertaler's SQLite termbase format directly, so you can share termbases between both tools
 - **Auto-detect** — automatically finds your Supervertaler termbase if no file is configured
 

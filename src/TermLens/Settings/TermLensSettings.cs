@@ -41,6 +41,13 @@ namespace TermLens.Settings
         public long WriteTermbaseId { get; set; } = -1;
 
         /// <summary>
+        /// IDs of termbases the user has marked as "Project" glossaries.
+        /// Project glossaries are shown in pink; all others in blue.
+        /// </summary>
+        [DataMember(Name = "projectTermbaseIds")]
+        public List<long> ProjectTermbaseIds { get; set; } = new List<long>();
+
+        /// <summary>
         /// Loads settings from disk. Returns default settings if the file doesn't exist or can't be read.
         /// </summary>
         public static TermLensSettings Load()

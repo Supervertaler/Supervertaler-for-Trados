@@ -185,6 +185,9 @@ namespace TermLens.Core
 
             sql += " ORDER BY ranking ASC";
 
+            // First pass: load all term entries
+            var allEntries = new List<TermEntry>();
+
             using (var cmd = new SqliteCommand(sql, _connection))
             {
                 if (disabledTermbaseIds != null && disabledTermbaseIds.Count > 0)
@@ -198,23 +201,34 @@ namespace TermLens.Core
                 {
                     while (reader.Read())
                     {
-                        var entry = ReadTermEntry(reader);
-                        var key = entry.SourceTerm.Trim().ToLowerInvariant();
-
-                        // Also index with trailing punctuation stripped
-                        var stripped = key.TrimEnd('.', '!', '?', ',', ';', ':');
-
-                        if (!index.ContainsKey(key))
-                            index[key] = new List<TermEntry>();
-                        index[key].Add(entry);
-
-                        if (stripped != key && stripped.Length > 0)
-                        {
-                            if (!index.ContainsKey(stripped))
-                                index[stripped] = new List<TermEntry>();
-                            index[stripped].Add(entry);
-                        }
+                        allEntries.Add(ReadTermEntry(reader));
                     }
+                }
+            }
+
+            // Second pass: bulk-load all target synonyms into a dictionary
+            var synonymsByTermId = BulkLoadTargetSynonyms();
+
+            // Build the index and hydrate synonyms
+            foreach (var entry in allEntries)
+            {
+                if (synonymsByTermId.TryGetValue(entry.Id, out var syns))
+                    entry.TargetSynonyms = syns;
+
+                var key = entry.SourceTerm.Trim().ToLowerInvariant();
+
+                // Also index with trailing punctuation stripped
+                var stripped = key.TrimEnd('.', '!', '?', ',', ';', ':');
+
+                if (!index.ContainsKey(key))
+                    index[key] = new List<TermEntry>();
+                index[key].Add(entry);
+
+                if (stripped != key && stripped.Length > 0)
+                {
+                    if (!index.ContainsKey(stripped))
+                        index[stripped] = new List<TermEntry>();
+                    index[stripped].Add(entry);
                 }
             }
 
@@ -245,6 +259,40 @@ namespace TermLens.Core
             }
 
             return synonyms;
+        }
+
+        /// <summary>
+        /// Bulk-loads all target synonyms in one query.
+        /// Returns a dictionary mapping term_id → list of synonym texts.
+        /// Used by LoadAllTerms() for efficient synonym hydration.
+        /// </summary>
+        private Dictionary<long, List<string>> BulkLoadTargetSynonyms()
+        {
+            var result = new Dictionary<long, List<string>>();
+            if (_connection == null) return result;
+
+            const string sql = @"
+                SELECT term_id, synonym_text FROM termbase_synonyms
+                WHERE language = 'target' AND forbidden = 0
+                ORDER BY term_id, display_order ASC";
+
+            using (var cmd = new SqliteCommand(sql, _connection))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (reader.IsDBNull(1)) continue;
+
+                    var termId = reader.GetInt64(0);
+                    var text = reader.GetString(1);
+
+                    if (!result.ContainsKey(termId))
+                        result[termId] = new List<string>();
+                    result[termId].Add(text);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>

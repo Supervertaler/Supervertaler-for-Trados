@@ -149,7 +149,7 @@ namespace TermLens.Settings
             {
                 Name = "colRead",
                 HeaderText = "Read",
-                Width = 45,
+                Width = 54,
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
                 FillWeight = 1
             };
@@ -157,9 +157,18 @@ namespace TermLens.Settings
             {
                 Name = "colWrite",
                 HeaderText = "Write",
-                Width = 45,
+                Width = 54,
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
                 FillWeight = 1
+            };
+            var colProject = new DataGridViewCheckBoxColumn
+            {
+                Name = "colProject",
+                HeaderText = "Project",
+                Width = 62,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                FillWeight = 1,
+                ToolTipText = "Mark as project glossary (shown in pink)"
             };
             var colName = new DataGridViewTextBoxColumn
             {
@@ -190,7 +199,7 @@ namespace TermLens.Settings
             };
             _dgvTermbases.Columns.AddRange(new DataGridViewColumn[]
             {
-                colRead, colWrite, colName, colTermCount, colLanguages
+                colRead, colWrite, colProject, colName, colTermCount, colLanguages
             });
 
             // Enforce radio-button behaviour on the Write column
@@ -358,14 +367,17 @@ namespace TermLens.Settings
 
                     _termbases = reader.GetTermbases();
                     var disabled = new HashSet<long>(_settings.DisabledTermbaseIds ?? new List<long>());
+                    var projectIds = new HashSet<long>(_settings.ProjectTermbaseIds ?? new List<long>());
 
                     foreach (var tb in _termbases)
                     {
                         bool isRead = !disabled.Contains(tb.Id);
                         bool isWrite = tb.Id == _settings.WriteTermbaseId;
+                        bool isProject = projectIds.Contains(tb.Id);
                         _dgvTermbases.Rows.Add(
                             isRead,
                             isWrite,
+                            isProject,
                             tb.Name,
                             tb.TermCount.ToString("N0"),
                             $"{tb.SourceLang} \u2192 {tb.TargetLang}");
@@ -383,19 +395,23 @@ namespace TermLens.Settings
             _settings.TermbasePath = _txtTermbasePath.Text.Trim();
             _settings.AutoLoadOnStartup = _chkAutoLoad.Checked;
 
-            // Build disabled list from unchecked Read cells and write ID from Write cell
+            // Build disabled list, write ID, and project IDs from grid cells
             _settings.DisabledTermbaseIds = new List<long>();
             _settings.WriteTermbaseId = -1;
+            _settings.ProjectTermbaseIds = new List<long>();
 
             for (int i = 0; i < _termbases.Count; i++)
             {
                 var readChecked = _dgvTermbases.Rows[i].Cells["colRead"].Value as bool? ?? false;
                 var writeChecked = _dgvTermbases.Rows[i].Cells["colWrite"].Value as bool? ?? false;
+                var projectChecked = _dgvTermbases.Rows[i].Cells["colProject"].Value as bool? ?? false;
 
                 if (!readChecked)
                     _settings.DisabledTermbaseIds.Add(_termbases[i].Id);
                 if (writeChecked)
                     _settings.WriteTermbaseId = _termbases[i].Id;
+                if (projectChecked)
+                    _settings.ProjectTermbaseIds.Add(_termbases[i].Id);
             }
 
             _settings.Save();
