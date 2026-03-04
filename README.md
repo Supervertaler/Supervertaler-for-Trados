@@ -2,13 +2,13 @@
 
 **Instant terminology insight for every segment**
 
-A Trados Studio plugin that displays terminology matches in a dedicated panel docked below the editor — using the same approach as [Supervertaler](https://supervertaler.com).
+A Trados Studio plugin that displays terminology matches in a dedicated panel next to the editor — using the same approach as [Supervertaler](https://supervertaler.com).
 
 TermLens renders the full source segment word-by-word in its own panel, with glossary translations displayed directly underneath each matched term. Translators see every term match in context without having to switch to a separate termbase lookup window.
 
 ## How it works
 
-As you navigate between segments in the Trados Studio editor, the TermLens panel updates automatically. It shows the source text word-by-word, scanning it against your loaded termbase. Each matched term appears as a coloured block with the target-language translation directly below it — so you can see all terminology at a glance in the panel below the editor.
+As you navigate between segments in the Trados Studio editor, the TermLens panel updates automatically. It shows the source text word-by-word, scanning it against your loaded termbase. Each matched term appears as a coloured block with the target-language translation directly below it — so you can see all terminology at a glance.
 
 ## Features
 
