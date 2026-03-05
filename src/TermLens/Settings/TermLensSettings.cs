@@ -34,11 +34,19 @@ namespace TermLens.Settings
         public List<long> DisabledTermbaseIds { get; set; } = new List<long>();
 
         /// <summary>
-        /// ID of the termbase that receives new terms via the Add Term action.
-        /// -1 means no write termbase is configured.
+        /// DEPRECATED — kept for backward-compatible migration from settings that
+        /// stored a single write target.  New code should use <see cref="WriteTermbaseIds"/>.
         /// </summary>
         [DataMember(Name = "writeTermbaseId")]
         public long WriteTermbaseId { get; set; } = -1;
+
+        /// <summary>
+        /// IDs of termbases that receive new terms via the Add Term / Quick Add Term actions.
+        /// Multiple termbases can be marked as Write targets — a new term is inserted into all of them.
+        /// Empty list means no write termbases are configured.
+        /// </summary>
+        [DataMember(Name = "writeTermbaseIds")]
+        public List<long> WriteTermbaseIds { get; set; } = new List<long>();
 
         /// <summary>
         /// ID of the termbase the user has marked as the "Project" glossary.
@@ -65,6 +73,13 @@ namespace TermLens.Settings
         [DataMember(Name = "settingsFormHeight")]
         public int SettingsFormHeight { get; set; }
 
+        // ─── Glossary Editor dialog layout persistence ──────────────
+        [DataMember(Name = "glossaryEditorWidth")]
+        public int GlossaryEditorWidth { get; set; }
+
+        [DataMember(Name = "glossaryEditorHeight")]
+        public int GlossaryEditorHeight { get; set; }
+
         // ─── Panel font size ─────────────────────────────────────────
         /// <summary>
         /// Font size (in points) for the TermLens panel. Default: 9pt.
@@ -87,7 +102,21 @@ namespace TermLens.Settings
                 using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 {
                     var serializer = new DataContractJsonSerializer(typeof(TermLensSettings));
-                    return (TermLensSettings)serializer.ReadObject(stream);
+                    var s = (TermLensSettings)serializer.ReadObject(stream);
+
+                    // Migrate: old single WriteTermbaseId → new WriteTermbaseIds list
+                    if ((s.WriteTermbaseIds == null || s.WriteTermbaseIds.Count == 0)
+                        && s.WriteTermbaseId >= 0)
+                    {
+                        s.WriteTermbaseIds = new List<long> { s.WriteTermbaseId };
+                        s.WriteTermbaseId = -1;
+                    }
+
+                    // Ensure list is never null
+                    if (s.WriteTermbaseIds == null)
+                        s.WriteTermbaseIds = new List<long>();
+
+                    return s;
                 }
             }
             catch

@@ -7,6 +7,7 @@ using Sdl.Desktop.IntegrationApi.Extensions;
 using Sdl.Desktop.IntegrationApi.Interfaces;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 using TermLens.Controls;
+using TermLens.Core;
 using TermLens.Models;
 using TermLens.Settings;
 
@@ -68,6 +69,10 @@ namespace TermLens
 
             // Wire up term insertion — when user clicks a translation in the panel
             _control.Value.TermInsertRequested += OnTermInsertRequested;
+
+            // Wire up right-click edit/delete on term blocks
+            _control.Value.TermEditRequested += OnTermEditRequested;
+            _control.Value.TermDeleteRequested += OnTermDeleteRequested;
 
             // Wire up the gear/settings button
             _control.Value.SettingsRequested += OnSettingsRequested;
@@ -221,6 +226,99 @@ namespace TermLens
             {
                 // Silently handle — editor may not allow insertion at this moment
             }
+        }
+
+        private void OnTermEditRequested(object sender, TermEditEventArgs e)
+        {
+            if (e.Entry == null) return;
+
+            SafeInvoke(() =>
+            {
+                // Look up the termbase info for the entry's termbase
+                TermbaseInfo termbase = null;
+                if (!string.IsNullOrEmpty(_settings.TermbasePath) && File.Exists(_settings.TermbasePath))
+                {
+                    using (var reader = new TermbaseReader(_settings.TermbasePath))
+                    {
+                        if (reader.Open())
+                            termbase = reader.GetTermbaseById(e.Entry.TermbaseId);
+                    }
+                }
+
+                using (var dlg = new AddTermDialog(e.Entry, termbase))
+                {
+                    var parent = _control.Value.FindForm();
+                    var result = parent != null ? dlg.ShowDialog(parent) : dlg.ShowDialog();
+
+                    if (result == DialogResult.OK)
+                    {
+                        if (string.IsNullOrWhiteSpace(dlg.SourceTerm) ||
+                            string.IsNullOrWhiteSpace(dlg.TargetTerm))
+                        {
+                            MessageBox.Show("Both source and target terms are required.",
+                                "TermLens", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+
+                        try
+                        {
+                            bool updated = TermbaseReader.UpdateTerm(
+                                _settings.TermbasePath,
+                                e.Entry.Id,
+                                dlg.SourceTerm,
+                                dlg.TargetTerm,
+                                dlg.Definition);
+
+                            if (updated)
+                                NotifyTermAdded();
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(
+                                $"Failed to update term: {ex.Message}\n\n" +
+                                "The database may be locked by another application.",
+                                "TermLens \u2014 Edit Term",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            });
+        }
+
+        private void OnTermDeleteRequested(object sender, TermEditEventArgs e)
+        {
+            if (e.Entry == null) return;
+
+            SafeInvoke(() =>
+            {
+                var confirmResult = MessageBox.Show(
+                    $"Delete the term \u201c{e.Entry.SourceTerm} \u2192 {e.Entry.TargetTerm}\u201d?\n\n" +
+                    "This cannot be undone.",
+                    "TermLens \u2014 Delete Term",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+
+                if (confirmResult != DialogResult.Yes) return;
+
+                try
+                {
+                    bool deleted = TermbaseReader.DeleteTerm(
+                        _settings.TermbasePath,
+                        e.Entry.Id);
+
+                    if (deleted)
+                        NotifyTermAdded();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"Failed to delete term: {ex.Message}\n\n" +
+                        "The database may be locked by another application.",
+                        "TermLens \u2014 Delete Term",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            });
         }
 
         /// <summary>

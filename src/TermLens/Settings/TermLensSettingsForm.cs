@@ -12,7 +12,7 @@ namespace TermLens.Settings
     /// <summary>
     /// Settings dialog for the TermLens plugin.
     /// Allows the user to select a Supervertaler termbase (.db) file,
-    /// choose which termbases to search (Read) and which one receives new terms (Write).
+    /// choose which termbases to search (Read) and which ones receive new terms (Write).
     /// </summary>
     public class TermLensSettingsForm : Form
     {
@@ -29,6 +29,7 @@ namespace TermLens.Settings
         private Button _btnRemoveGlossary;
         private Button _btnImport;
         private Button _btnExport;
+        private Button _btnOpenGlossary;
         private CheckBox _chkAutoLoad;
         private NumericUpDown _nudFontSize;
         private Button _btnOK;
@@ -191,6 +192,21 @@ namespace TermLens.Settings
             _btnExport.Location = new Point(_btnImport.Left - _btnExport.Width - 2, 118);
             _btnExport.Click += OnExportClick;
 
+            _btnOpenGlossary = new Button
+            {
+                Text = "Open",
+                Width = 55,
+                Height = 26,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8f),
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            _btnOpenGlossary.FlatAppearance.BorderSize = 0;
+            _btnOpenGlossary.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnOpenGlossary.Location = new Point(_btnExport.Left - _btnOpenGlossary.Width - 2, 118);
+            _btnOpenGlossary.Click += OnOpenGlossaryClick;
+
             _dgvTermbases = new DataGridView
             {
                 Location = new Point(16, 144),
@@ -285,8 +301,11 @@ namespace TermLens.Settings
                 colRead, colWrite, colProject, colName, colTermCount, colLanguages
             });
 
-            // Enforce radio-button behaviour on the Write column
+            // Enforce radio-button behaviour on the Project column (only one can be project)
             _dgvTermbases.CellContentClick += OnGridCellContentClick;
+
+            // Double-click a glossary row to open the Glossary Editor
+            _dgvTermbases.CellDoubleClick += OnGridCellDoubleClick;
 
             // === Options section ===
             var sep = new Label
@@ -366,7 +385,7 @@ namespace TermLens.Settings
             {
                 lblSection, lblPath, _txtTermbasePath, _btnCreateNew, _btnBrowse,
                 _lblTermbaseInfo, _lblTermbasesHeader,
-                _btnExport, _btnImport, _btnRemoveGlossary, _btnAddGlossary,
+                _btnOpenGlossary, _btnExport, _btnImport, _btnRemoveGlossary, _btnAddGlossary,
                 _dgvTermbases,
                 sep, _chkAutoLoad, lblFontSize, _nudFontSize, lblFontPt,
                 _btnOK, _btnCancel
@@ -379,8 +398,9 @@ namespace TermLens.Settings
 
             var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
 
-            // Radio-button enforcement for Write and Project columns (only one can be checked)
-            if (colName == "colWrite" || colName == "colProject")
+            // Radio-button enforcement for Project column only (only one can be project)
+            // Write column allows multiple selections — terms are inserted into all write targets.
+            if (colName == "colProject")
             {
                 // Commit the edit so .Value is up-to-date
                 _dgvTermbases.CommitEdit(DataGridViewDataErrorContexts.Commit);
@@ -397,6 +417,55 @@ namespace TermLens.Settings
                     }
                 }
             }
+        }
+
+        private void OnGridCellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+
+            // Don't open editor when double-clicking checkbox columns
+            var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
+            if (colName == "colRead" || colName == "colWrite" || colName == "colProject")
+                return;
+
+            OpenGlossaryEditor(e.RowIndex);
+        }
+
+        private void OnOpenGlossaryClick(object sender, EventArgs e)
+        {
+            if (_dgvTermbases.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Select a glossary to open.",
+                    "TermLens", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            OpenGlossaryEditor(_dgvTermbases.SelectedRows[0].Index);
+        }
+
+        private void OpenGlossaryEditor(int rowIndex)
+        {
+            var dbPath = _txtTermbasePath.Text.Trim();
+            if (string.IsNullOrEmpty(dbPath) || !File.Exists(dbPath))
+            {
+                MessageBox.Show("Please select or create a termbase file first.",
+                    "TermLens", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (rowIndex < 0 || rowIndex >= _termbases.Count)
+                return;
+
+            var selected = _termbases[rowIndex];
+
+            using (var editor = new GlossaryEditorDialog(dbPath, selected, _settings))
+            {
+                editor.ShowDialog(this);
+            }
+
+            // Refresh the list — term counts may have changed
+            UpdateTermbaseInfo(dbPath);
+            PopulateTermbaseList(dbPath);
         }
 
         private void PopulateFromSettings()
@@ -486,11 +555,12 @@ namespace TermLens.Settings
 
                     _termbases = reader.GetTermbases();
                     var disabled = new HashSet<long>(_settings.DisabledTermbaseIds ?? new List<long>());
+                    var writeIds = new HashSet<long>(_settings.WriteTermbaseIds ?? new List<long>());
 
                     foreach (var tb in _termbases)
                     {
                         bool isRead = !disabled.Contains(tb.Id);
-                        bool isWrite = tb.Id == _settings.WriteTermbaseId;
+                        bool isWrite = writeIds.Contains(tb.Id);
                         bool isProject = tb.Id == _settings.ProjectTermbaseId;
                         _dgvTermbases.Rows.Add(
                             isRead,
@@ -598,8 +668,8 @@ namespace TermLens.Settings
                     TermbaseReader.DeleteTermbase(dbPath, selected.Id);
 
                     // Clear write/project references if the deleted glossary was selected
-                    if (_settings.WriteTermbaseId == selected.Id)
-                        _settings.WriteTermbaseId = -1;
+                    if (_settings.WriteTermbaseIds != null)
+                        _settings.WriteTermbaseIds.Remove(selected.Id);
                     if (_settings.ProjectTermbaseId == selected.Id)
                         _settings.ProjectTermbaseId = -1;
 
@@ -721,9 +791,10 @@ namespace TermLens.Settings
             _settings.AutoLoadOnStartup = _chkAutoLoad.Checked;
             _settings.PanelFontSize = (float)_nudFontSize.Value;
 
-            // Build disabled list, write ID, and project ID from grid cells
+            // Build disabled list, write IDs, and project ID from grid cells
             _settings.DisabledTermbaseIds = new List<long>();
-            _settings.WriteTermbaseId = -1;
+            _settings.WriteTermbaseIds = new List<long>();
+            _settings.WriteTermbaseId = -1; // deprecated single-ID field
             _settings.ProjectTermbaseId = -1;
 
             for (int i = 0; i < _termbases.Count; i++)
@@ -735,7 +806,7 @@ namespace TermLens.Settings
                 if (!readChecked)
                     _settings.DisabledTermbaseIds.Add(_termbases[i].Id);
                 if (writeChecked)
-                    _settings.WriteTermbaseId = _termbases[i].Id;
+                    _settings.WriteTermbaseIds.Add(_termbases[i].Id);
                 if (projectChecked)
                     _settings.ProjectTermbaseId = _termbases[i].Id;
             }

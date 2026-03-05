@@ -14,6 +14,33 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.6.0] — 2026-03-05
+
+### Added
+- **F2 expand selection to word boundaries** — press F2 after making a rough
+  partial text selection in the source or target pane; the selection automatically
+  expands to encompass the complete words at each end (e.g. selecting "et recht"
+  becomes "het rechtstreeks")
+- **Smart word expansion for term adding** — the Add Term dialog and Quick Add
+  Term action now auto-expand partial selections to full word boundaries before
+  populating the term pair, so you no longer need pixel-perfect text selection
+- **Multiple Write glossaries** — the Write column in Settings now allows checking
+  multiple glossaries; new terms are inserted into all Write-checked glossaries at
+  once
+
+### Changed
+- **Term Picker shortcut** — changed from Ctrl+Shift+G to **Ctrl+Alt+G**
+- **Quick Add action renamed** — "Quick add term to glossaries set to 'Read'" →
+  "Quick Add Term to Glossary Set to 'Write'" (reflecting its actual behaviour)
+
+### Fixed
+- **Duplicate terms in Term Picker** — when the same source term matched at
+  multiple positions in a segment (e.g. "cap" appearing twice), it was listed
+  multiple times in the picker; matches are now deduplicated and renumbered
+  sequentially
+
+---
+
 ## [1.5.0] — 2026-03-04
 
 ### Added

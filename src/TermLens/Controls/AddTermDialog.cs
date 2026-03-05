@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using TermLens.Models;
@@ -5,7 +6,7 @@ using TermLens.Models;
 namespace TermLens.Controls
 {
     /// <summary>
-    /// Confirmation dialog for adding a new term to the write termbase.
+    /// Confirmation dialog for adding a new term to one or more write termbases.
     /// Pre-populated with selected source/target text from the Trados editor.
     /// </summary>
     public class AddTermDialog : Form
@@ -14,6 +15,7 @@ namespace TermLens.Controls
         private TextBox _txtTarget;
         private TextBox _txtDefinition;
         private Button _btnAdd;
+        private long _termId = -1;
 
         /// <summary>The (possibly edited) source term.</summary>
         public string SourceTerm => _txtSource.Text.Trim();
@@ -24,7 +26,13 @@ namespace TermLens.Controls
         /// <summary>Optional definition entered by the user.</summary>
         public string Definition => _txtDefinition.Text.Trim();
 
-        public AddTermDialog(string sourceTerm, string targetTerm, TermbaseInfo writeTermbase)
+        /// <summary>Database row ID of the term being edited, or -1 for add mode.</summary>
+        public long TermId => _termId;
+
+        /// <summary>True when editing an existing term, false when adding a new one.</summary>
+        public bool IsEditMode => _termId >= 0;
+
+        public AddTermDialog(string sourceTerm, string targetTerm, List<TermbaseInfo> writeTermbases)
         {
             Text = "Add Term to Termbase";
             Font = new Font("Segoe UI", 9f);
@@ -98,9 +106,22 @@ namespace TermLens.Controls
             y += 34;
 
             // Termbase info label
-            var tbText = writeTermbase != null
-                ? $"Will be added to: {writeTermbase.Name} ({writeTermbase.SourceLang} \u2192 {writeTermbase.TargetLang})"
-                : "No write termbase configured.";
+            string tbText;
+            if (writeTermbases != null && writeTermbases.Count > 0)
+            {
+                if (writeTermbases.Count == 1)
+                    tbText = $"Will be added to: {writeTermbases[0].Name} ({writeTermbases[0].SourceLang} \u2192 {writeTermbases[0].TargetLang})";
+                else
+                {
+                    var names = new List<string>();
+                    foreach (var tb in writeTermbases) names.Add(tb.Name);
+                    tbText = "Will be added to: " + string.Join(", ", names);
+                }
+            }
+            else
+            {
+                tbText = "No write termbase configured.";
+            }
             Controls.Add(new Label
             {
                 Text = tbText,
@@ -127,7 +148,7 @@ namespace TermLens.Controls
                 Location = new Point(ClientSize.Width - 170, ClientSize.Height - 38),
                 Width = 75,
                 FlatStyle = FlatStyle.System,
-                Enabled = writeTermbase != null
+                Enabled = writeTermbases != null && writeTermbases.Count > 0
             };
             Controls.Add(_btnAdd);
 
@@ -143,6 +164,25 @@ namespace TermLens.Controls
 
             AcceptButton = _btnAdd;
             CancelButton = btnCancel;
+        }
+
+        /// <summary>
+        /// Edit-mode constructor. Pre-fills the dialog with an existing term's data
+        /// and changes the title/button text to reflect editing rather than adding.
+        /// </summary>
+        public AddTermDialog(TermEntry existingEntry, TermbaseInfo termbase)
+            : this(existingEntry.SourceTerm, existingEntry.TargetTerm,
+                  termbase != null ? new List<TermbaseInfo> { termbase } : new List<TermbaseInfo>())
+        {
+            _termId = existingEntry.Id;
+
+            // Override title and button text for edit mode
+            Text = "Edit Term";
+            _btnAdd.Text = "Save";
+            _btnAdd.Enabled = true;
+
+            // Pre-fill definition if present
+            _txtDefinition.Text = existingEntry.Definition ?? "";
         }
     }
 }

@@ -12,7 +12,7 @@ namespace TermLens.Controls
     /// The user can select a term by clicking, pressing Enter, or typing its number.
     /// Rows with multiple target synonyms show a small ▸ indicator in the # column
     /// and can be expanded with the Right arrow key to reveal all alternative translations.
-    /// Triggered by Ctrl+Shift+G.
+    /// Triggered by Ctrl+Alt+G.
     /// </summary>
     public class TermPickerDialog : Form
     {

@@ -418,6 +418,125 @@ namespace TermLens.Core
             }
         }
 
+        /// <summary>
+        /// Updates an existing term's source, target, definition, domain, and notes
+        /// using a short-lived ReadWrite connection (same pattern as InsertTerm).
+        /// </summary>
+        /// <returns>True if the row was updated, false if the term ID was not found.</returns>
+        public static bool UpdateTerm(string dbPath, long termId,
+            string sourceTerm, string targetTerm,
+            string definition = "", string domain = "", string notes = "")
+        {
+            var connStr = new SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Mode = SqliteOpenMode.ReadWrite
+            }.ToString();
+
+            using (var conn = new SqliteConnection(connStr))
+            {
+                conn.Open();
+
+                const string sql = @"
+                    UPDATE termbase_terms
+                    SET source_term = @source,
+                        target_term = @target,
+                        definition  = @def,
+                        domain      = @domain,
+                        notes       = @notes
+                    WHERE id = @id";
+
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@source", sourceTerm.Trim());
+                    cmd.Parameters.AddWithValue("@target", targetTerm.Trim());
+                    cmd.Parameters.AddWithValue("@def", definition ?? "");
+                    cmd.Parameters.AddWithValue("@domain", domain ?? "");
+                    cmd.Parameters.AddWithValue("@notes", notes ?? "");
+                    cmd.Parameters.AddWithValue("@id", termId);
+
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Deletes a single term by its ID using a short-lived ReadWrite connection.
+        /// Synonyms are cascade-deleted via the FK constraint on termbase_synonyms.
+        /// </summary>
+        /// <returns>True if the row was deleted, false if the term ID was not found.</returns>
+        public static bool DeleteTerm(string dbPath, long termId)
+        {
+            var connStr = new SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Mode = SqliteOpenMode.ReadWrite
+            }.ToString();
+
+            using (var conn = new SqliteConnection(connStr))
+            {
+                conn.Open();
+
+                // Enable foreign keys so CASCADE delete works for termbase_synonyms
+                using (var pragma = new SqliteCommand("PRAGMA foreign_keys=ON;", conn))
+                    pragma.ExecuteNonQuery();
+
+                const string sql = "DELETE FROM termbase_terms WHERE id = @id";
+
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", termId);
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads all terms belonging to a specific glossary, for use in the
+        /// Glossary Editor dialog. Uses a short-lived ReadOnly connection.
+        /// </summary>
+        public static List<TermEntry> GetAllTermsByTermbaseId(string dbPath, long termbaseId)
+        {
+            var results = new List<TermEntry>();
+
+            var connStr = new SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Mode = SqliteOpenMode.ReadOnly
+            }.ToString();
+
+            using (var conn = new SqliteConnection(connStr))
+            {
+                conn.Open();
+
+                const string sql = @"
+                    SELECT t.id, t.source_term, t.target_term, t.termbase_id,
+                           t.source_lang, t.target_lang, t.definition, t.domain,
+                           t.notes, t.forbidden, t.case_sensitive,
+                           tb.name AS termbase_name,
+                           tb.is_project_termbase,
+                           COALESCE(tb.ranking, 99) AS ranking
+                    FROM termbase_terms t
+                    LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
+                    WHERE CAST(t.termbase_id AS INTEGER) = @tbId
+                    ORDER BY t.source_term ASC";
+
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@tbId", termbaseId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            results.Add(ReadTermEntry(reader));
+                        }
+                    }
+                }
+            }
+
+            return results;
+        }
+
         // ==================================================================
         //  Static database management methods (short-lived connections)
         // ==================================================================

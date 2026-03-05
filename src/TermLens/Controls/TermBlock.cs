@@ -35,6 +35,8 @@ namespace TermLens.Controls
         private readonly bool _isProjectGlossary;
 
         public event EventHandler<TermInsertEventArgs> TermInsertRequested;
+        public event EventHandler<TermEditEventArgs> TermEditRequested;
+        public event EventHandler<TermEditEventArgs> TermDeleteRequested;
 
         public TermBlock(string sourceText, List<TermEntry> entries, int shortcutIndex = -1, bool isProjectGlossary = false)
         {
@@ -48,6 +50,27 @@ namespace TermLens.Controls
 
             Cursor = Cursors.Hand;
             CalculateSize();
+
+            // Right-click context menu for edit/delete
+            var contextMenu = new ContextMenuStrip();
+
+            var editItem = new ToolStripMenuItem("Edit Term\u2026");
+            editItem.Click += (s, ev) =>
+            {
+                if (PrimaryEntry != null)
+                    TermEditRequested?.Invoke(this, new TermEditEventArgs { Entry = PrimaryEntry });
+            };
+            contextMenu.Items.Add(editItem);
+
+            var deleteItem = new ToolStripMenuItem("Delete Term");
+            deleteItem.Click += (s, ev) =>
+            {
+                if (PrimaryEntry != null)
+                    TermDeleteRequested?.Invoke(this, new TermEditEventArgs { Entry = PrimaryEntry });
+            };
+            contextMenu.Items.Add(deleteItem);
+
+            ContextMenuStrip = contextMenu;
         }
 
         /// <summary>
@@ -293,6 +316,11 @@ namespace TermLens.Controls
     public class TermInsertEventArgs : EventArgs
     {
         public string TargetTerm { get; set; }
+        public TermEntry Entry { get; set; }
+    }
+
+    public class TermEditEventArgs : EventArgs
+    {
         public TermEntry Entry { get; set; }
     }
 }

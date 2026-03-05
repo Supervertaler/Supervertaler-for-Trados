@@ -38,6 +38,16 @@ namespace TermLens.Controls
         public event EventHandler<TermInsertEventArgs> TermInsertRequested;
 
         /// <summary>
+        /// Fired when the user right-clicks a term and selects "Edit Term...".
+        /// </summary>
+        public event EventHandler<TermEditEventArgs> TermEditRequested;
+
+        /// <summary>
+        /// Fired when the user right-clicks a term and selects "Delete Term".
+        /// </summary>
+        public event EventHandler<TermEditEventArgs> TermDeleteRequested;
+
+        /// <summary>
         /// Fired when the user clicks the gear/settings button in the header.
         /// </summary>
         public event EventHandler SettingsRequested;
@@ -281,6 +291,8 @@ namespace TermLens.Controls
                     };
 
                     block.TermInsertRequested += (s, args) => TermInsertRequested?.Invoke(s, args);
+                    block.TermEditRequested += (s, args) => TermEditRequested?.Invoke(s, args);
+                    block.TermDeleteRequested += (s, args) => TermDeleteRequested?.Invoke(s, args);
                     _flowPanel.Controls.Add(block);
 
                     matchCount++;
@@ -324,23 +336,46 @@ namespace TermLens.Controls
         /// <summary>
         /// Returns all current matched term blocks for the term picker dialog.
         /// Each item contains: 1-based index, source text, all entries (with synonyms).
+        /// Duplicate source terms (same term matched at multiple positions) are merged
+        /// into a single entry so each term appears only once in the picker.
         /// </summary>
         public List<TermPickerMatch> GetCurrentMatches()
         {
             var results = new List<TermPickerMatch>();
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
             foreach (Control ctrl in _flowPanel.Controls)
             {
                 var block = ctrl as TermBlock;
                 if (block != null && block.PrimaryEntry != null)
                 {
-                    results.Add(new TermPickerMatch
+                    var key = block.PrimaryEntry.SourceTerm ?? "";
+
+                    if (seen.TryGetValue(key, out int existingIdx))
                     {
-                        Index = block.ShortcutIndex + 1,
-                        SourceText = block.PrimaryEntry.SourceTerm,
-                        PrimaryEntry = block.PrimaryEntry,
-                        AllEntries = new List<TermEntry>(block.Entries),
-                        IsProjectGlossary = block.IsProjectGlossary
-                    });
+                        // Merge entries into the existing match (skip duplicate)
+                        var existing = results[existingIdx];
+                        foreach (var entry in block.Entries)
+                        {
+                            if (!existing.AllEntries.Contains(entry))
+                                existing.AllEntries.Add(entry);
+                        }
+                        // Promote to project glossary if either occurrence is
+                        if (block.IsProjectGlossary)
+                            existing.IsProjectGlossary = true;
+                    }
+                    else
+                    {
+                        seen[key] = results.Count;
+                        results.Add(new TermPickerMatch
+                        {
+                            Index = results.Count + 1, // renumber sequentially
+                            SourceText = block.PrimaryEntry.SourceTerm,
+                            PrimaryEntry = block.PrimaryEntry,
+                            AllEntries = new List<TermEntry>(block.Entries),
+                            IsProjectGlossary = block.IsProjectGlossary
+                        });
+                    }
                 }
             }
             return results;
