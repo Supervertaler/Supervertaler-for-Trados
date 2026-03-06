@@ -53,11 +53,6 @@ namespace Supervertaler.Trados.Controls
         public event EventHandler<TermEditEventArgs> TermNonTranslatableToggled;
 
         /// <summary>
-        /// Fired when the user clicks the gear/settings button in the header.
-        /// </summary>
-        public event EventHandler SettingsRequested;
-
-        /// <summary>
         /// Fired when the user changes font size via the A+/A- buttons.
         /// The ViewPart should persist the new size and refresh the segment display.
         /// </summary>
@@ -88,28 +83,6 @@ namespace Supervertaler.Trados.Controls
                 TextAlign = ContentAlignment.MiddleLeft
             };
             _headerPanel.Controls.Add(_headerLabel);
-
-            // Gear button (right side of header)
-            var btnSettings = new Button
-            {
-                Text = "\u2699\uFE0E",  // gear character + text presentation selector
-                Dock = DockStyle.Right,
-                Width = 28,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Symbol", 11f),
-                ForeColor = Color.FromArgb(100, 100, 100),
-                BackColor = Color.Transparent,
-                Cursor = Cursors.Hand,
-                TabStop = false,
-                UseCompatibleTextRendering = true,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Padding = Padding.Empty,
-                Margin = Padding.Empty
-            };
-            btnSettings.FlatAppearance.BorderSize = 0;
-            btnSettings.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            btnSettings.Click += (s, e) => SettingsRequested?.Invoke(this, EventArgs.Empty);
-            _headerPanel.Controls.Add(btnSettings);
 
             // Font size increase button (A+)
             var btnFontUp = new Button
@@ -252,6 +225,15 @@ namespace Supervertaler.Trados.Controls
         public void RemoveTermFromIndex(long termId)
         {
             _matcher.RemoveEntry(termId);
+        }
+
+        /// <summary>
+        /// Returns all loaded glossary term entries from the in-memory index.
+        /// Used for glossary injection into AI translation prompts.
+        /// </summary>
+        public List<TermEntry> GetAllLoadedTerms()
+        {
+            return _matcher.GetAllEntries();
         }
 
         /// <summary>

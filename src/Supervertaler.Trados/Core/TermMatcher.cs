@@ -86,6 +86,28 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Returns all unique term entries from the in-memory index.
+        /// Used for glossary injection into AI translation prompts.
+        /// </summary>
+        public List<TermEntry> GetAllEntries()
+        {
+            if (_termIndex == null)
+                return new List<TermEntry>();
+
+            var seen = new HashSet<long>();
+            var result = new List<TermEntry>();
+            foreach (var list in _termIndex.Values)
+            {
+                foreach (var entry in list)
+                {
+                    if (seen.Add(entry.Id))
+                        result.Add(entry);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Tokenizes source text into a list of SegmentTokens with term matches populated.
         /// This is the main entry point — equivalent to Supervertaler's update_with_matches().
         /// </summary>

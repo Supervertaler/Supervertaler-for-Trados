@@ -3,7 +3,6 @@
 ## [Unreleased]
 
 ### Planned
-- **AI batch translation** — translate segments using LLM providers (OpenAI, Anthropic, Google)
 - **Prompt manager / library** — manage system and custom prompts for AI translation
 - **AI chat assistant** — project-aware chat interface docked in Trados
 - **TBX support** — to be added simultaneously in both Supervertaler and this plugin
@@ -13,6 +12,36 @@
 All notable changes to Supervertaler for Trados (formerly TermLens) will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version numbers follow [Semantic Versioning](https://semver.org/).
+
+---
+
+## [3.0.0] — 2026-03-06
+
+### Added
+- **AI batch translation** — translate segments in bulk using LLM providers; supports
+  OpenAI (GPT-4o, GPT-4o mini, o1, o3-mini), Anthropic (Claude 3.5 Sonnet, Haiku,
+  Opus), and Google (Gemini 2.0 Flash, Gemini 1.5 Pro); configurable via the new AI
+  Settings panel accessible from the Batch Translate tab
+- **AI single-segment translate** — press **Ctrl+Alt+A** or right-click → "AI Translate
+  Current Segment" to translate just the active segment using the configured AI provider
+- **Glossary-aware AI prompts** — AI translations automatically include matched
+  terminology from your TermLens glossaries in the prompt, so the AI respects your
+  approved terms, including non-translatable terms
+- **Four batch translate scopes** — "Empty segments only" (default), "All segments",
+  "Filtered segments", and "Filtered (empty only)"; filtered scopes translate only
+  segments visible in Trados's advanced display filter
+- **Live filtered segment counts** — the Batch Translate tab updates segment counts
+  in real time when you change the Trados display filter
+- **AI Settings panel** — configure provider, model, API key, and temperature directly
+  in the Batch Translate tab; settings persist across sessions
+- **Batch translate progress** — real-time log panel shows translation progress,
+  segment-by-segment results, and any errors; cancel button to stop mid-batch
+
+### Changed
+- **Batch Translate tab** — no longer a placeholder; fully functional with scope
+  selector, segment counts, translate/cancel buttons, and scrollable log panel
+- **AI Settings integrated into Settings dialog** — the gear icon in TermLens now
+  opens a tabbed settings dialog with separate tabs for Glossary and AI configuration
 
 ---
 

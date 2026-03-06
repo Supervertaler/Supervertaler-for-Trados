@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Sdl.Desktop.IntegrationApi;
@@ -28,6 +29,9 @@ namespace Supervertaler.Trados
 
         public void Execute()
         {
+            // Enable TLS 1.2+ for HTTPS API calls (OpenAI, Anthropic, Google)
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+
             PreloadNativeSQLite();
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
         }

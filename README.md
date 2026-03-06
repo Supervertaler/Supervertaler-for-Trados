@@ -2,7 +2,7 @@
 
 **Terminology insight and AI translation for Trados Studio**
 
-Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key features from [Supervertaler](https://supervertaler.com) into the Trados ecosystem. It currently includes the **TermLens** glossary panel, with AI-powered translation features coming soon.
+Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key features from [Supervertaler](https://supervertaler.com) into the Trados ecosystem. It includes the **TermLens** glossary panel and **AI-powered batch and single-segment translation** using OpenAI, Anthropic, and Google LLMs.
 
 ## TermLens — inline terminology display
 
@@ -44,6 +44,20 @@ As you navigate between segments in the Trados Studio editor, the TermLens panel
 ---
 
 <img width="1411" height="1015" alt="4_TermLens-in-Trados-Studio-2024-Settings-KBS" src="https://github.com/user-attachments/assets/ee14c3ae-43f3-4f76-8ec2-871a9c18e10b" />
+
+## AI Translation
+
+Supervertaler for Trados includes built-in AI translation powered by OpenAI, Anthropic, and Google LLMs. Translations are glossary-aware — matched terms from your TermLens glossaries are injected into the AI prompt so the model respects your approved terminology.
+
+### Features
+
+- **Batch translate** — translate multiple segments at once from the Batch Translate tab; choose from four scopes: empty segments only, all segments, filtered segments, or filtered empty only
+- **Single-segment translate** — press **Ctrl+Alt+A** or right-click → "AI Translate Current Segment" to translate just the active segment
+- **Filtered segment support** — use Trados's advanced display filter to narrow down which segments to translate, then batch-translate only those
+- **Multiple AI providers** — OpenAI (GPT-4o, GPT-4o mini, o1, o3-mini), Anthropic (Claude Sonnet, Haiku, Opus), and Google (Gemini 2.0 Flash, Gemini 1.5 Pro)
+- **Glossary-aware prompts** — AI translations automatically include your approved terms (including non-translatable terms) in the prompt
+- **Configurable settings** — provider, model, API key, and temperature are set in the AI Settings panel and persist across sessions
+- **Real-time progress** — batch translations show segment-by-segment progress in a scrollable log panel, with cancel support
 
 ## Requirements
 

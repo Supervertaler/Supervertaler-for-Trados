@@ -1,0 +1,262 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using Supervertaler.Trados.Models;
+using Supervertaler.Trados.Settings;
+
+namespace Supervertaler.Trados.Core
+{
+    /// <summary>
+    /// A segment to be batch-translated. Carries its index (position in the document)
+    /// and a reference to the original segment pair for writing back.
+    /// </summary>
+    public class BatchSegment
+    {
+        public int Index { get; set; }
+        public string SourceText { get; set; }
+        public string ExistingTarget { get; set; }
+
+        /// <summary>
+        /// Opaque reference to the Trados ISegmentPair. Stored as object
+        /// so the engine doesn't depend on Trados SDK types.
+        /// </summary>
+        public object SegmentPairRef { get; set; }
+    }
+
+    public enum BatchScope
+    {
+        EmptyOnly,
+        All,
+        Filtered,
+        FilteredEmptyOnly
+    }
+
+    // ─── Event Args ──────────────────────────────────────────
+
+    public class BatchProgressEventArgs : EventArgs
+    {
+        public int Current { get; set; }
+        public int Total { get; set; }
+        public string Message { get; set; }
+        public bool IsError { get; set; }
+        public TimeSpan Elapsed { get; set; }
+    }
+
+    public class BatchCompletedEventArgs : EventArgs
+    {
+        public int Translated { get; set; }
+        public int Failed { get; set; }
+        public int Skipped { get; set; }
+        public TimeSpan TotalTime { get; set; }
+        public bool WasCancelled { get; set; }
+    }
+
+    public class BatchSegmentResultEventArgs : EventArgs
+    {
+        public int SegmentIndex { get; set; }
+        public string Translation { get; set; }
+        public object SegmentPairRef { get; set; }
+    }
+
+    // ─── Engine ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Core batch translation engine. UI-agnostic — communicates via events.
+    /// Ported from Python Supervertaler's PreTranslationWorker.
+    /// </summary>
+    public class BatchTranslator
+    {
+        public event EventHandler<BatchProgressEventArgs> Progress;
+        public event EventHandler<BatchCompletedEventArgs> Completed;
+        public event EventHandler<BatchSegmentResultEventArgs> SegmentTranslated;
+
+        /// <summary>
+        /// Translates segments in batches using the configured LLM provider.
+        /// This method is async and should be called on a background thread
+        /// or via Task.Run.
+        /// </summary>
+        public async Task TranslateAsync(
+            List<BatchSegment> segments,
+            string sourceLang,
+            string targetLang,
+            AiSettings aiSettings,
+            List<TermEntry> glossaryTerms,
+            int batchSize,
+            CancellationToken cancellationToken)
+        {
+            var sw = Stopwatch.StartNew();
+            int translated = 0;
+            int failed = 0;
+            int skipped = 0;
+
+            if (segments == null || segments.Count == 0)
+            {
+                Completed?.Invoke(this, new BatchCompletedEventArgs
+                {
+                    TotalTime = sw.Elapsed
+                });
+                return;
+            }
+
+            // Build system prompt
+            var systemPrompt = TranslationPrompt.BuildSystemPrompt(
+                sourceLang, targetLang, glossaryTerms);
+
+            // Resolve provider settings
+            var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+            var model = aiSettings.GetSelectedModel();
+            var apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+            string baseUrl = null;
+
+            if (provider == LlmModels.ProviderOllama)
+                baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+            else if (provider == LlmModels.ProviderCustomOpenAi)
+            {
+                var profile = aiSettings.GetActiveCustomProfile();
+                if (profile != null)
+                {
+                    baseUrl = profile.Endpoint;
+                    model = profile.Model;
+                    apiKey = profile.ApiKey;
+                }
+            }
+
+            // Determine max tokens based on batch size
+            var modelInfo = LlmModels.FindModel(model);
+            int maxTokens = modelInfo?.DefaultMaxTokens ?? 16384;
+
+            if (batchSize <= 0) batchSize = 20;
+
+            // Split into batches
+            int totalBatches = (segments.Count + batchSize - 1) / batchSize;
+
+            RaiseProgress(0, segments.Count, "Starting translation...", false, TimeSpan.Zero);
+
+            using (var client = new LlmClient(provider, model, apiKey, baseUrl, maxTokens))
+            {
+                for (int batchNum = 0; batchNum < totalBatches; batchNum++)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        break;
+
+                    int startIdx = batchNum * batchSize;
+                    int endIdx = Math.Min(startIdx + batchSize, segments.Count);
+                    int batchCount = endIdx - startIdx;
+
+                    RaiseProgress(startIdx, segments.Count,
+                        $"Translating batch {batchNum + 1}/{totalBatches} " +
+                        $"(segments {startIdx + 1}\u2013{endIdx})...",
+                        false, sw.Elapsed);
+
+                    try
+                    {
+                        var batchSw = Stopwatch.StartNew();
+
+                        // Build numbered segment list for prompt
+                        var promptSegments = new List<BatchSegmentInput>();
+                        for (int i = startIdx; i < endIdx; i++)
+                        {
+                            promptSegments.Add(new BatchSegmentInput
+                            {
+                                Number = i + 1, // 1-based numbering
+                                SourceText = segments[i].SourceText
+                            });
+                        }
+
+                        // Build user prompt
+                        var userPrompt = TranslationPrompt.BuildBatchUserPrompt(promptSegments);
+
+                        // Call LLM
+                        var response = await client.SendPromptAsync(
+                            userPrompt, systemPrompt, maxTokens, cancellationToken);
+
+                        // Parse response
+                        var parsed = TranslationPrompt.ParseBatchResponse(response, batchCount);
+
+                        // Map parsed translations back to segments by number
+                        var translationMap = new Dictionary<int, string>();
+                        foreach (var p in parsed)
+                            translationMap[p.Number] = p.Translation;
+
+                        // Apply translations
+                        int batchTranslated = 0;
+                        int batchFailed = 0;
+
+                        for (int i = startIdx; i < endIdx; i++)
+                        {
+                            int number = i + 1; // match 1-based numbering
+
+                            string translation;
+                            if (translationMap.TryGetValue(number, out translation)
+                                && !string.IsNullOrWhiteSpace(translation))
+                            {
+                                SegmentTranslated?.Invoke(this, new BatchSegmentResultEventArgs
+                                {
+                                    SegmentIndex = segments[i].Index,
+                                    Translation = translation,
+                                    SegmentPairRef = segments[i].SegmentPairRef
+                                });
+
+                                batchTranslated++;
+                                translated++;
+                            }
+                            else
+                            {
+                                batchFailed++;
+                                failed++;
+                            }
+
+                            RaiseProgress(i + 1, segments.Count, null, false, sw.Elapsed);
+                        }
+
+                        batchSw.Stop();
+                        RaiseProgress(endIdx, segments.Count,
+                            $"\u2713 Batch {batchNum + 1} complete: " +
+                            $"{batchTranslated} translated" +
+                            (batchFailed > 0 ? $", {batchFailed} failed" : "") +
+                            $" ({batchSw.Elapsed.TotalSeconds:F1}s)",
+                            false, sw.Elapsed);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log the batch error and continue to next batch
+                        failed += batchCount;
+                        RaiseProgress(endIdx, segments.Count,
+                            $"\u2717 Batch {batchNum + 1} failed: {ex.Message}",
+                            true, sw.Elapsed);
+                    }
+                }
+            }
+
+            sw.Stop();
+
+            Completed?.Invoke(this, new BatchCompletedEventArgs
+            {
+                Translated = translated,
+                Failed = failed,
+                Skipped = skipped,
+                TotalTime = sw.Elapsed,
+                WasCancelled = cancellationToken.IsCancellationRequested
+            });
+        }
+
+        private void RaiseProgress(int current, int total, string message,
+            bool isError, TimeSpan elapsed)
+        {
+            Progress?.Invoke(this, new BatchProgressEventArgs
+            {
+                Current = current,
+                Total = total,
+                Message = message,
+                IsError = isError,
+                Elapsed = elapsed
+            });
+        }
+    }
+}

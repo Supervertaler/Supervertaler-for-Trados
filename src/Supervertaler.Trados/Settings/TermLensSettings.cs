@@ -93,6 +93,13 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "panelFontSize")]
         public float PanelFontSize { get; set; } = 9f;
 
+        // ─── AI settings ────────────────────────────────────────────
+        /// <summary>
+        /// AI provider configuration (API keys, provider selection, model selection).
+        /// </summary>
+        [DataMember(Name = "aiSettings")]
+        public AiSettings AiSettings { get; set; } = new AiSettings();
+
         /// <summary>
         /// Loads settings from disk. Returns default settings if the file doesn't exist or can't be read.
         /// </summary>
@@ -127,6 +134,14 @@ namespace Supervertaler.Trados.Settings
                     // Ensure list is never null
                     if (s.WriteTermbaseIds == null)
                         s.WriteTermbaseIds = new List<long>();
+
+                    // Ensure AI settings are never null (backward compat with older settings files)
+                    if (s.AiSettings == null)
+                        s.AiSettings = new AiSettings();
+                    if (s.AiSettings.ApiKeys == null)
+                        s.AiSettings.ApiKeys = new AiApiKeys();
+                    if (s.AiSettings.CustomOpenAiProfiles == null)
+                        s.AiSettings.CustomOpenAiProfiles = new List<CustomOpenAiProfile>();
 
                     return s;
                 }

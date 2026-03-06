@@ -10,15 +10,18 @@ using Supervertaler.Trados.Models;
 namespace Supervertaler.Trados.Settings
 {
     /// <summary>
-    /// Settings dialog for the TermLens plugin.
-    /// Allows the user to select a Supervertaler termbase (.db) file,
-    /// choose which termbases to search (Read) and which ones receive new terms (Write).
+    /// Settings dialog for Supervertaler for Trados.
+    /// Two tabs: TermLens (glossary settings) and AI Settings (provider/model/keys).
     /// </summary>
     public class TermLensSettingsForm : Form
     {
         private readonly TermLensSettings _settings;
 
-        // Controls
+        // Tab control
+        private TabControl _tabControl;
+        private AiSettingsPanel _aiSettingsPanel;
+
+        // TermLens tab controls
         private TextBox _txtTermbasePath;
         private Button _btnBrowse;
         private Button _btnCreateNew;
@@ -32,6 +35,8 @@ namespace Supervertaler.Trados.Settings
         private Button _btnOpenGlossary;
         private CheckBox _chkAutoLoad;
         private NumericUpDown _nudFontSize;
+
+        // Form buttons (outside tabs)
         private Button _btnOK;
         private Button _btnCancel;
 
@@ -51,15 +56,78 @@ namespace Supervertaler.Trados.Settings
 
         private void BuildUI()
         {
-            Text = "TermLens Settings";
+            Text = "Supervertaler Settings";
             Font = new Font("Segoe UI", 9f);
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(560, 440);
-            MinimumSize = new Size(480, 360);
+            ClientSize = new Size(560, 480);
+            MinimumSize = new Size(480, 400);
             BackColor = Color.White;
+
+            // === OK / Cancel — anchored to bottom of form, outside tabs ===
+            _btnOK = new Button
+            {
+                Text = "OK",
+                DialogResult = DialogResult.OK,
+                Location = new Point(ClientSize.Width - 170, ClientSize.Height - 40),
+                Width = 75,
+                FlatStyle = FlatStyle.System,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
+            };
+            _btnOK.Click += OnOKClick;
+
+            _btnCancel = new Button
+            {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(ClientSize.Width - 88, ClientSize.Height - 40),
+                Width = 75,
+                FlatStyle = FlatStyle.System,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
+            };
+
+            AcceptButton = _btnOK;
+            CancelButton = _btnCancel;
+
+            // === Tab Control ===
+            _tabControl = new TabControl
+            {
+                Location = new Point(8, 8),
+                Size = new Size(ClientSize.Width - 16, ClientSize.Height - 56),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
+                Font = new Font("Segoe UI", 8.5f),
+                Padding = new Point(6, 3)
+            };
+
+            // --- TermLens tab ---
+            var termLensPage = new TabPage("TermLens") { BackColor = Color.White };
+            BuildTermLensTab(termLensPage);
+            _tabControl.TabPages.Add(termLensPage);
+
+            // --- AI Settings tab ---
+            var aiPage = new TabPage("AI Settings") { BackColor = Color.White };
+            _aiSettingsPanel = new AiSettingsPanel
+            {
+                Dock = DockStyle.Fill
+            };
+            aiPage.Controls.Add(_aiSettingsPanel);
+            _tabControl.TabPages.Add(aiPage);
+
+            Controls.AddRange(new Control[] { _tabControl, _btnOK, _btnCancel });
+        }
+
+        /// <summary>
+        /// Builds all TermLens controls inside the given TabPage.
+        /// Layout is the same as the original flat form, but relative to the tab page.
+        /// </summary>
+        private void BuildTermLensTab(TabPage page)
+        {
+            // Use the tab page's available dimensions for layout calculations.
+            // TabPage content area is roughly 530 x 390 at default form size.
+            var w = page.ClientSize.Width > 0 ? page.ClientSize.Width : 530;
+            var h = page.ClientSize.Height > 0 ? page.ClientSize.Height : 390;
 
             // === Termbase section ===
             var lblSection = new Label
@@ -67,14 +135,14 @@ namespace Supervertaler.Trados.Settings
                 Text = "Termbase",
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(16, 16),
+                Location = new Point(10, 10),
                 AutoSize = true
             };
 
             var lblPath = new Label
             {
                 Text = "Termbase file (.db):",
-                Location = new Point(16, 42),
+                Location = new Point(10, 36),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(80, 80, 80)
             };
@@ -87,7 +155,7 @@ namespace Supervertaler.Trados.Settings
                 FlatStyle = FlatStyle.System,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            _btnBrowse.Location = new Point(ClientSize.Width - 16 - _btnBrowse.Width, 58);
+            _btnBrowse.Location = new Point(w - 10 - _btnBrowse.Width, 52);
             _btnBrowse.Click += OnBrowseClick;
 
             _btnCreateNew = new Button
@@ -98,35 +166,35 @@ namespace Supervertaler.Trados.Settings
                 FlatStyle = FlatStyle.System,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            _btnCreateNew.Location = new Point(_btnBrowse.Left - 6 - _btnCreateNew.Width, 58);
+            _btnCreateNew.Location = new Point(_btnBrowse.Left - 6 - _btnCreateNew.Width, 52);
             _btnCreateNew.Click += OnCreateNewClick;
 
             _txtTermbasePath = new TextBox
             {
-                Location = new Point(16, 60),
+                Location = new Point(10, 54),
                 ReadOnly = true,
                 BackColor = Color.FromArgb(250, 250, 250),
                 ForeColor = Color.FromArgb(40, 40, 40),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            _txtTermbasePath.Width = _btnCreateNew.Left - 16 - 6;
+            _txtTermbasePath.Width = _btnCreateNew.Left - 10 - 6;
 
             _lblTermbaseInfo = new Label
             {
-                Location = new Point(16, 86),
+                Location = new Point(10, 80),
                 AutoSize = false,
                 Height = 32,
                 ForeColor = Color.FromArgb(100, 100, 100),
                 Font = new Font("Segoe UI", 8f),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            _lblTermbaseInfo.Width = ClientSize.Width - 32;
+            _lblTermbaseInfo.Width = w - 20;
 
             // === Glossary grid (Read / Write / Project columns) ===
             _lblTermbasesHeader = new Label
             {
                 Text = "Glossaries:",
-                Location = new Point(16, 122),
+                Location = new Point(10, 114),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(80, 80, 80)
             };
@@ -144,7 +212,7 @@ namespace Supervertaler.Trados.Settings
             };
             _btnAddGlossary.FlatAppearance.BorderSize = 0;
             _btnAddGlossary.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnAddGlossary.Location = new Point(ClientSize.Width - 16 - 26, 118);
+            _btnAddGlossary.Location = new Point(w - 10 - 26, 110);
             _btnAddGlossary.Click += OnAddGlossaryClick;
 
             _btnRemoveGlossary = new Button
@@ -159,7 +227,7 @@ namespace Supervertaler.Trados.Settings
             };
             _btnRemoveGlossary.FlatAppearance.BorderSize = 0;
             _btnRemoveGlossary.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnRemoveGlossary.Location = new Point(_btnAddGlossary.Left - 28, 118);
+            _btnRemoveGlossary.Location = new Point(_btnAddGlossary.Left - 28, 110);
             _btnRemoveGlossary.Click += OnRemoveGlossaryClick;
 
             _btnImport = new Button
@@ -174,7 +242,7 @@ namespace Supervertaler.Trados.Settings
             };
             _btnImport.FlatAppearance.BorderSize = 0;
             _btnImport.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnImport.Location = new Point(_btnRemoveGlossary.Left - _btnImport.Width - 2, 118);
+            _btnImport.Location = new Point(_btnRemoveGlossary.Left - _btnImport.Width - 2, 110);
             _btnImport.Click += OnImportClick;
 
             _btnExport = new Button
@@ -189,7 +257,7 @@ namespace Supervertaler.Trados.Settings
             };
             _btnExport.FlatAppearance.BorderSize = 0;
             _btnExport.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnExport.Location = new Point(_btnImport.Left - _btnExport.Width - 2, 118);
+            _btnExport.Location = new Point(_btnImport.Left - _btnExport.Width - 2, 110);
             _btnExport.Click += OnExportClick;
 
             _btnOpenGlossary = new Button
@@ -204,12 +272,12 @@ namespace Supervertaler.Trados.Settings
             };
             _btnOpenGlossary.FlatAppearance.BorderSize = 0;
             _btnOpenGlossary.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnOpenGlossary.Location = new Point(_btnExport.Left - _btnOpenGlossary.Width - 2, 118);
+            _btnOpenGlossary.Location = new Point(_btnExport.Left - _btnOpenGlossary.Width - 2, 110);
             _btnOpenGlossary.Click += OnOpenGlossaryClick;
 
             _dgvTermbases = new DataGridView
             {
-                Location = new Point(16, 144),
+                Location = new Point(10, 138),
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
                 AllowUserToResizeRows = false,
@@ -240,8 +308,8 @@ namespace Supervertaler.Trados.Settings
                 SelectionBackColor = Color.FromArgb(220, 235, 252),
                 SelectionForeColor = Color.FromArgb(40, 40, 40)
             };
-            _dgvTermbases.Width = ClientSize.Width - 32;
-            _dgvTermbases.Height = ClientSize.Height - 140 - 120;
+            _dgvTermbases.Width = w - 20;
+            _dgvTermbases.Height = h - 138 - 110;
 
             // Columns
             var colRead = new DataGridViewCheckBoxColumn
@@ -315,17 +383,17 @@ namespace Supervertaler.Trados.Settings
             // === Options section ===
             var sep = new Label
             {
-                Location = new Point(16, ClientSize.Height - 110),
+                Location = new Point(10, h - 102),
                 Height = 1,
                 BorderStyle = BorderStyle.Fixed3D,
                 Anchor = AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right
             };
-            sep.Width = ClientSize.Width - 32;
+            sep.Width = w - 20;
 
             _chkAutoLoad = new CheckBox
             {
                 Text = "Automatically load termbase when Trados Studio starts",
-                Location = new Point(16, ClientSize.Height - 98),
+                Location = new Point(10, h - 90),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(60, 60, 60),
                 Anchor = AnchorStyles.Left | AnchorStyles.Bottom
@@ -334,7 +402,7 @@ namespace Supervertaler.Trados.Settings
             var lblFontSize = new Label
             {
                 Text = "Panel font size:",
-                Location = new Point(16, ClientSize.Height - 70),
+                Location = new Point(10, h - 62),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(60, 60, 60),
                 Anchor = AnchorStyles.Left | AnchorStyles.Bottom
@@ -342,7 +410,7 @@ namespace Supervertaler.Trados.Settings
 
             _nudFontSize = new NumericUpDown
             {
-                Location = new Point(120, ClientSize.Height - 72),
+                Location = new Point(114, h - 64),
                 Width = 60,
                 Minimum = 7,
                 Maximum = 16,
@@ -355,45 +423,19 @@ namespace Supervertaler.Trados.Settings
             var lblFontPt = new Label
             {
                 Text = "pt",
-                Location = new Point(184, ClientSize.Height - 70),
+                Location = new Point(178, h - 62),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(100, 100, 100),
                 Anchor = AnchorStyles.Left | AnchorStyles.Bottom
             };
 
-            // === OK / Cancel ===
-            _btnOK = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Location = new Point(ClientSize.Width - 170, ClientSize.Height - 40),
-                Width = 75,
-                FlatStyle = FlatStyle.System,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
-            };
-            _btnOK.Click += OnOKClick;
-
-            _btnCancel = new Button
-            {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(ClientSize.Width - 88, ClientSize.Height - 40),
-                Width = 75,
-                FlatStyle = FlatStyle.System,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
-            };
-
-            AcceptButton = _btnOK;
-            CancelButton = _btnCancel;
-
-            Controls.AddRange(new Control[]
+            page.Controls.AddRange(new Control[]
             {
                 lblSection, lblPath, _txtTermbasePath, _btnCreateNew, _btnBrowse,
                 _lblTermbaseInfo, _lblTermbasesHeader,
                 _btnOpenGlossary, _btnExport, _btnImport, _btnRemoveGlossary, _btnAddGlossary,
                 _dgvTermbases,
-                sep, _chkAutoLoad, lblFontSize, _nudFontSize, lblFontPt,
-                _btnOK, _btnCancel
+                sep, _chkAutoLoad, lblFontSize, _nudFontSize, lblFontPt
             });
         }
 
@@ -515,6 +557,9 @@ namespace Supervertaler.Trados.Settings
             _nudFontSize.Value = Math.Max(_nudFontSize.Minimum, Math.Min(_nudFontSize.Maximum, (decimal)_settings.PanelFontSize));
             UpdateTermbaseInfo(_settings.TermbasePath);
             PopulateTermbaseList(_settings.TermbasePath);
+
+            // AI settings
+            _aiSettingsPanel.PopulateFromSettings(_settings.AiSettings);
         }
 
         private void OnBrowseClick(object sender, EventArgs e)
@@ -827,6 +872,7 @@ namespace Supervertaler.Trados.Settings
 
         private void OnOKClick(object sender, EventArgs e)
         {
+            // TermLens settings
             _settings.TermbasePath = _txtTermbasePath.Text.Trim();
             _settings.AutoLoadOnStartup = _chkAutoLoad.Checked;
             _settings.PanelFontSize = (float)_nudFontSize.Value;
@@ -850,6 +896,9 @@ namespace Supervertaler.Trados.Settings
                 if (projectChecked)
                     _settings.ProjectTermbaseId = _termbases[i].Id;
             }
+
+            // AI settings
+            _aiSettingsPanel.ApplyToSettings(_settings.AiSettings);
 
             _settings.Save();
         }

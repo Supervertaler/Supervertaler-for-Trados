@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
@@ -29,8 +31,12 @@ namespace Supervertaler.Trados
         private static readonly Lazy<TermLensControl> _control =
             new Lazy<TermLensControl>(() => new TermLensControl());
 
+        private static readonly Lazy<BatchTranslateControl> _batchControl =
+            new Lazy<BatchTranslateControl>(() => new BatchTranslateControl());
+
         private static readonly Lazy<MainPanelControl> _mainPanel =
-            new Lazy<MainPanelControl>(() => new MainPanelControl(_control.Value));
+            new Lazy<MainPanelControl>(() => new MainPanelControl(
+                _control.Value, _batchControl.Value));
 
         // Single instance — Trados creates exactly one ViewPart of each type.
         // Used by AddTermAction to trigger a reload after inserting a term.
@@ -40,9 +46,13 @@ namespace Supervertaler.Trados
         private IStudioDocument _activeDocument;
         private TermLensSettings _settings;
 
+        // Batch translate state
+        private BatchTranslator _batchTranslator;
+        private CancellationTokenSource _batchCts;
+
         // --- Alt+digit chord state machine ---
         private static int? _pendingDigit;
-        private static Timer _chordTimer;
+        private static System.Windows.Forms.Timer _chordTimer;
 
         protected override IUIControl GetContentControl()
         {
@@ -78,11 +88,16 @@ namespace Supervertaler.Trados
             _control.Value.TermDeleteRequested += OnTermDeleteRequested;
             _control.Value.TermNonTranslatableToggled += OnTermNonTranslatableToggled;
 
-            // Wire up the gear/settings button
-            _control.Value.SettingsRequested += OnSettingsRequested;
+            // Wire up the gear/settings button (on the MainPanelControl, visible on all tabs)
+            _mainPanel.Value.SettingsRequested += OnSettingsRequested;
 
             // Wire up font size changes from the A+/A- buttons in the panel header
             _control.Value.FontSizeChanged += OnFontSizeChanged;
+
+            // Wire up batch translate control events
+            _batchControl.Value.TranslateRequested += OnBatchTranslateRequested;
+            _batchControl.Value.StopRequested += OnBatchStopRequested;
+            _batchControl.Value.ScopeChanged += OnBatchScopeChanged;
 
             // Apply persisted font size
             _control.Value.SetFontSize(_settings.PanelFontSize);
@@ -92,6 +107,10 @@ namespace Supervertaler.Trados
 
             // Display the current segment immediately (even without a termbase, show all words)
             UpdateFromActiveSegment();
+
+            // Update batch translate tab with current provider info and segment counts
+            UpdateBatchProviderDisplay();
+            UpdateBatchSegmentCounts();
         }
 
         private void LoadTermbase(bool forceReload = false)
@@ -150,6 +169,9 @@ namespace Supervertaler.Trados
                         // Force reload — the user may have toggled glossaries.
                         LoadTermbase(forceReload: true);
                         UpdateFromActiveSegment();
+
+                        // Refresh batch translate provider display (user may have changed AI settings)
+                        UpdateBatchProviderDisplay();
                     }
                 }
             });
@@ -168,19 +190,33 @@ namespace Supervertaler.Trados
         private void OnActiveDocumentChanged(object sender, DocumentEventArgs e)
         {
             if (_activeDocument != null)
+            {
                 _activeDocument.ActiveSegmentChanged -= OnActiveSegmentChanged;
+                _activeDocument.DocumentFilterChanged -= OnDocumentFilterChanged;
+            }
 
             _activeDocument = _editorController?.ActiveDocument;
 
             if (_activeDocument != null)
             {
                 _activeDocument.ActiveSegmentChanged += OnActiveSegmentChanged;
+                _activeDocument.DocumentFilterChanged += OnDocumentFilterChanged;
                 UpdateFromActiveSegment();
+                UpdateBatchSegmentCounts();
             }
             else
             {
-                SafeInvoke(() => _control.Value.Clear());
+                SafeInvoke(() =>
+                {
+                    _control.Value.Clear();
+                    _batchControl.Value.Reset();
+                });
             }
+        }
+
+        private void OnDocumentFilterChanged(object sender, DocumentFilterEventArgs e)
+        {
+            UpdateBatchSegmentCounts();
         }
 
         private void OnActiveSegmentChanged(object sender, EventArgs e)
@@ -445,6 +481,513 @@ namespace Supervertaler.Trados
             instance.UpdateFromActiveSegment();
         }
 
+        // ─── Batch Translate ──────────────────────────────────────────
+
+        private void OnBatchTranslateRequested(object sender, EventArgs e)
+        {
+            SafeInvoke(() =>
+            {
+                if (_activeDocument == null)
+                {
+                    _batchControl.Value.AppendLog("No document open.", true);
+                    return;
+                }
+
+                var aiSettings = _settings.AiSettings;
+                if (aiSettings == null)
+                {
+                    _batchControl.Value.AppendLog("AI settings not configured. Open Settings to configure a provider.", true);
+                    return;
+                }
+
+                // Resolve API key
+                var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+                string apiKey;
+                string baseUrl = null;
+                string model = aiSettings.GetSelectedModel();
+
+                if (provider == LlmModels.ProviderOllama)
+                {
+                    apiKey = "ollama"; // Ollama doesn't need a real key
+                    baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+                }
+                else if (provider == LlmModels.ProviderCustomOpenAi)
+                {
+                    var profile = aiSettings.GetActiveCustomProfile();
+                    if (profile == null)
+                    {
+                        _batchControl.Value.AppendLog("No custom OpenAI profile configured.", true);
+                        return;
+                    }
+                    apiKey = profile.ApiKey;
+                    baseUrl = profile.Endpoint;
+                    model = profile.Model;
+                }
+                else
+                {
+                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                }
+
+                if (string.IsNullOrEmpty(apiKey))
+                {
+                    _batchControl.Value.AppendLog(
+                        $"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.", true);
+                    return;
+                }
+
+                // Get language pair from the document
+                var sourceLang = GetDocumentSourceLanguage();
+                var targetLang = GetDocumentTargetLanguage();
+
+                if (string.IsNullOrEmpty(sourceLang) || string.IsNullOrEmpty(targetLang))
+                {
+                    _batchControl.Value.AppendLog("Cannot determine source/target language from document.", true);
+                    return;
+                }
+
+                // Collect segments based on selected scope
+                var scope = _batchControl.Value.GetSelectedScope();
+                var segments = CollectSegments(scope);
+
+                if (segments.Count == 0)
+                {
+                    _batchControl.Value.AppendLog("No segments to translate.", true);
+                    return;
+                }
+
+                // Get glossary terms for prompt injection
+                var glossaryTerms = _control.Value.GetAllLoadedTerms();
+
+                int batchSize = aiSettings.BatchSize > 0 ? aiSettings.BatchSize : 20;
+
+                // Start the batch translation
+                _batchControl.Value.SetRunning(true);
+                _batchControl.Value.AppendLog(
+                    $"Starting: {segments.Count} segments, provider={provider}, model={model}, " +
+                    $"batch size={batchSize}");
+
+                _batchCts = new CancellationTokenSource();
+                _batchTranslator = new BatchTranslator();
+
+                _batchTranslator.Progress += OnBatchProgress;
+                _batchTranslator.SegmentTranslated += OnBatchSegmentTranslated;
+                _batchTranslator.Completed += OnBatchCompleted;
+
+                var ct = _batchCts.Token;
+
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _batchTranslator.TranslateAsync(
+                            segments, sourceLang, targetLang,
+                            aiSettings, glossaryTerms, batchSize, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeInvoke(() =>
+                        {
+                            _batchControl.Value.AppendLog($"Unexpected error: {ex.Message}", true);
+                            _batchControl.Value.SetRunning(false);
+                        });
+                    }
+                });
+            });
+        }
+
+        private void OnBatchStopRequested(object sender, EventArgs e)
+        {
+            _batchCts?.Cancel();
+            SafeInvoke(() => _batchControl.Value.AppendLog("Cancellation requested..."));
+        }
+
+        private void OnBatchScopeChanged(object sender, EventArgs e)
+        {
+            UpdateBatchSegmentCounts();
+        }
+
+        private void OnBatchProgress(object sender, BatchProgressEventArgs e)
+        {
+            SafeInvoke(() =>
+            {
+                _batchControl.Value.ReportProgress(e.Current, e.Total, e.Message, e.IsError);
+            });
+        }
+
+        private void OnBatchSegmentTranslated(object sender, BatchSegmentResultEventArgs e)
+        {
+            SafeInvoke(() =>
+            {
+                try
+                {
+                    if (e.SegmentPairRef == null || _activeDocument == null) return;
+
+                    // SegmentPairRef stores string[] { paragraphUnitId, segmentId }
+                    var ids = e.SegmentPairRef as string[];
+                    if (ids == null || ids.Length < 2) return;
+
+                    _activeDocument.SetActiveSegmentPair(ids[0], ids[1], true);
+                    _activeDocument.Selection.Target.Replace(e.Translation, "Supervertaler");
+                }
+                catch (Exception ex)
+                {
+                    _batchControl.Value.AppendLog(
+                        $"Failed to write segment {e.SegmentIndex}: {ex.Message}", true);
+                }
+            });
+        }
+
+        private void OnBatchCompleted(object sender, BatchCompletedEventArgs e)
+        {
+            SafeInvoke(() =>
+            {
+                _batchControl.Value.ReportCompleted(
+                    e.Translated, e.Failed, e.Skipped,
+                    e.TotalTime, e.WasCancelled);
+
+                // Update segment counts (some may now be filled)
+                UpdateBatchSegmentCounts();
+            });
+
+            // Clean up
+            if (_batchTranslator != null)
+            {
+                _batchTranslator.Progress -= OnBatchProgress;
+                _batchTranslator.SegmentTranslated -= OnBatchSegmentTranslated;
+                _batchTranslator.Completed -= OnBatchCompleted;
+                _batchTranslator = null;
+            }
+
+            _batchCts?.Dispose();
+            _batchCts = null;
+        }
+
+        private List<BatchSegment> CollectSegments(BatchScope scope)
+        {
+            var segments = new List<BatchSegment>();
+            if (_activeDocument == null) return segments;
+
+            try
+            {
+                // Use filtered or full segment pairs depending on scope
+                var useFiltered = scope == BatchScope.Filtered
+                    || scope == BatchScope.FilteredEmptyOnly;
+                var emptyOnly = scope == BatchScope.EmptyOnly
+                    || scope == BatchScope.FilteredEmptyOnly;
+                var pairs = useFiltered
+                    ? _activeDocument.FilteredSegmentPairs
+                    : _activeDocument.SegmentPairs;
+
+                int index = 0;
+                foreach (var pair in pairs)
+                {
+                    var sourceText = pair.Source?.ToString() ?? "";
+                    var targetText = pair.Target?.ToString() ?? "";
+
+                    if (string.IsNullOrWhiteSpace(sourceText))
+                    {
+                        index++;
+                        continue;
+                    }
+
+                    bool include = !emptyOnly || string.IsNullOrWhiteSpace(targetText);
+
+                    if (include)
+                    {
+                        // Store IDs for later navigation via SetActiveSegmentPair
+                        var parentPU = _activeDocument.GetParentParagraphUnit(pair);
+                        var paragraphUnitId = parentPU.Properties.ParagraphUnitId.Id;
+                        var segmentId = pair.Properties.Id.Id;
+
+                        segments.Add(new BatchSegment
+                        {
+                            Index = index,
+                            SourceText = sourceText,
+                            ExistingTarget = targetText,
+                            SegmentPairRef = new[] { paragraphUnitId, segmentId }
+                        });
+                    }
+
+                    index++;
+                }
+            }
+            catch (Exception)
+            {
+                // Document may not be accessible during transitions
+            }
+
+            return segments;
+        }
+
+        private void UpdateBatchSegmentCounts()
+        {
+            SafeInvoke(() =>
+            {
+                if (_activeDocument == null)
+                {
+                    _batchControl.Value.UpdateSegmentCounts(0, 0);
+                    return;
+                }
+
+                try
+                {
+                    int total = 0;
+                    int empty = 0;
+
+                    foreach (var pair in _activeDocument.SegmentPairs)
+                    {
+                        total++;
+                        var targetText = pair.Target?.ToString() ?? "";
+                        if (string.IsNullOrWhiteSpace(targetText))
+                            empty++;
+                    }
+
+                    // Get filtered count from Trados display filter
+                    int filtered = _activeDocument.FilteredSegmentPairsCount;
+
+                    _batchControl.Value.UpdateSegmentCounts(empty, total, filtered);
+                }
+                catch (Exception)
+                {
+                    _batchControl.Value.UpdateSegmentCounts(0, 0);
+                }
+            });
+        }
+
+        private void UpdateBatchProviderDisplay()
+        {
+            SafeInvoke(() =>
+            {
+                var ai = _settings?.AiSettings;
+                if (ai == null)
+                {
+                    _batchControl.Value.UpdateProviderDisplay("Not configured", "");
+                    return;
+                }
+
+                var provider = ai.SelectedProvider ?? "Not configured";
+                var model = ai.GetSelectedModel() ?? "";
+
+                if (provider == LlmModels.ProviderCustomOpenAi)
+                {
+                    var profile = ai.GetActiveCustomProfile();
+                    if (profile != null)
+                    {
+                        provider = string.IsNullOrEmpty(profile.Name) ? "Custom" : profile.Name;
+                        model = profile.Model ?? "";
+                    }
+                }
+
+                _batchControl.Value.UpdateProviderDisplay(provider, model);
+            });
+        }
+
+        private string GetDocumentSourceLanguage()
+        {
+            try
+            {
+                var file = _activeDocument?.ActiveFile;
+                if (file != null)
+                {
+                    var lang = file.SourceFile?.Language;
+                    if (lang != null)
+                        return lang.DisplayName;
+                }
+            }
+            catch (Exception) { }
+            return null;
+        }
+
+        private string GetDocumentTargetLanguage()
+        {
+            try
+            {
+                var file = _activeDocument?.ActiveFile;
+                if (file != null)
+                {
+                    var lang = file.Language;
+                    if (lang != null)
+                        return lang.DisplayName;
+                }
+            }
+            catch (Exception) { }
+            return null;
+        }
+
+        // ─── Single-segment AI translate ─────────────────────────────
+
+        /// <summary>
+        /// Called by AiTranslateSegmentAction (Ctrl+Alt+A / right-click menu).
+        /// Translates the active segment using the configured AI provider.
+        /// </summary>
+        public static void HandleAiTranslateSegment()
+        {
+            var instance = _currentInstance;
+            if (instance == null) return;
+
+            instance.SafeInvoke(() =>
+            {
+                try
+                {
+                    if (instance._activeDocument?.ActiveSegmentPair == null)
+                    {
+                        MessageBox.Show("No active segment.",
+                            "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    var settings = instance._settings;
+                    var aiSettings = settings?.AiSettings;
+                    if (aiSettings == null)
+                    {
+                        MessageBox.Show(
+                            "AI settings not configured.\n\nOpen Settings \u2192 AI Settings to configure a provider.",
+                            "Supervertaler \u2014 AI Translate",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    // Resolve API key (same logic as batch translate)
+                    var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+                    string apiKey;
+                    string baseUrl = null;
+                    string model = aiSettings.GetSelectedModel();
+
+                    if (provider == LlmModels.ProviderOllama)
+                    {
+                        apiKey = "ollama";
+                        baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+                    }
+                    else if (provider == LlmModels.ProviderCustomOpenAi)
+                    {
+                        var profile = aiSettings.GetActiveCustomProfile();
+                        if (profile == null)
+                        {
+                            MessageBox.Show("No custom OpenAI profile configured.",
+                                "Supervertaler \u2014 AI Translate",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                        apiKey = profile.ApiKey;
+                        baseUrl = profile.Endpoint;
+                        model = profile.Model;
+                    }
+                    else
+                    {
+                        apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    }
+
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        MessageBox.Show(
+                            $"No API key configured for {provider}.\n\nOpen Settings \u2192 AI Settings to add one.",
+                            "Supervertaler \u2014 AI Translate",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    var sourceLang = instance.GetDocumentSourceLanguage();
+                    var targetLang = instance.GetDocumentTargetLanguage();
+                    if (string.IsNullOrEmpty(sourceLang) || string.IsNullOrEmpty(targetLang))
+                    {
+                        MessageBox.Show("Cannot determine source/target language.",
+                            "Supervertaler \u2014 AI Translate",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    var sourceText = instance._activeDocument.ActiveSegmentPair.Source?.ToString() ?? "";
+                    if (string.IsNullOrWhiteSpace(sourceText))
+                    {
+                        MessageBox.Show("Active segment has no source text.",
+                            "Supervertaler \u2014 AI Translate",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    // Get glossary terms for prompt injection
+                    var glossaryTerms = _control.Value.GetAllLoadedTerms();
+
+                    // Log to batch translate panel for visibility
+                    _batchControl.Value.AppendLog($"Translating segment: \"{Truncate(sourceText, 60)}\"...");
+
+                    // Run async — single segment, reuse TranslationPrompt + LlmClient
+                    var capturedAiSettings = aiSettings;
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var systemPrompt = TranslationPrompt.BuildSystemPrompt(
+                                sourceLang, targetLang, glossaryTerms);
+
+                            var client = new LlmClient(
+                                capturedAiSettings.SelectedProvider,
+                                capturedAiSettings.GetSelectedModel(),
+                                apiKey, baseUrl);
+
+                            // For single segment, send it directly (not numbered batch format)
+                            var userPrompt = $"Translate the following segment:\n\n{sourceText}";
+
+                            var response = await client.SendPromptAsync(systemPrompt, userPrompt);
+
+                            if (!string.IsNullOrWhiteSpace(response))
+                            {
+                                // Clean up the response (remove potential numbering or quotes)
+                                var translation = response.Trim();
+                                // Remove leading "1. " if the model added numbering
+                                if (translation.StartsWith("1. "))
+                                    translation = translation.Substring(3).Trim();
+                                // Remove surrounding quotes if present
+                                if (translation.Length >= 2 &&
+                                    ((translation.StartsWith("\"") && translation.EndsWith("\"")) ||
+                                     (translation.StartsWith("\u201c") && translation.EndsWith("\u201d"))))
+                                    translation = translation.Substring(1, translation.Length - 2);
+
+                                instance.SafeInvoke(() =>
+                                {
+                                    try
+                                    {
+                                        instance._activeDocument.Selection.Target.Replace(
+                                            translation, "Supervertaler");
+                                        _batchControl.Value.AppendLog(
+                                            $"Done: \"{Truncate(translation, 60)}\"");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _batchControl.Value.AppendLog(
+                                            $"Failed to write translation: {ex.Message}", true);
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                instance.SafeInvoke(() =>
+                                    _batchControl.Value.AppendLog("Empty response from AI provider.", true));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            instance.SafeInvoke(() =>
+                                _batchControl.Value.AppendLog(
+                                    $"AI translate failed: {ex.Message}", true));
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Unexpected error: {ex.Message}",
+                        "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            });
+        }
+
+        private static string Truncate(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+                return text;
+            return text.Substring(0, maxLength) + "\u2026";
+        }
+
         // ─── Alt+digit term insertion ────────────────────────────────
 
         /// <summary>
@@ -486,7 +1029,7 @@ namespace Supervertaler.Trados
         private static void StartChordTimer()
         {
             StopChordTimer();
-            _chordTimer = new Timer { Interval = 400 };
+            _chordTimer = new System.Windows.Forms.Timer { Interval = 400 };
             _chordTimer.Tick += OnChordTimerTick;
             _chordTimer.Start();
         }
@@ -582,8 +1125,24 @@ namespace Supervertaler.Trados
 
             StopChordTimer();
 
+            // Cancel any running batch translation
+            _batchCts?.Cancel();
+            _batchCts?.Dispose();
+            _batchCts = null;
+
+            if (_batchTranslator != null)
+            {
+                _batchTranslator.Progress -= OnBatchProgress;
+                _batchTranslator.SegmentTranslated -= OnBatchSegmentTranslated;
+                _batchTranslator.Completed -= OnBatchCompleted;
+                _batchTranslator = null;
+            }
+
             if (_activeDocument != null)
+            {
                 _activeDocument.ActiveSegmentChanged -= OnActiveSegmentChanged;
+                _activeDocument.DocumentFilterChanged -= OnDocumentFilterChanged;
+            }
 
             if (_editorController != null)
                 _editorController.ActiveDocumentChanged -= OnActiveDocumentChanged;
