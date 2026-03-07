@@ -66,7 +66,7 @@ namespace Supervertaler.Trados.Settings
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(560, 480);
-            MinimumSize = new Size(480, 400);
+            MinimumSize = new Size(480, 440);
             BackColor = Color.White;
 
             // === OK / Cancel — anchored to bottom of form, outside tabs ===
@@ -136,10 +136,21 @@ namespace Supervertaler.Trados.Settings
         /// </summary>
         private void BuildTermLensTab(TabPage page)
         {
-            // Use the tab page's available dimensions for layout calculations.
-            // TabPage content area is roughly 530 x 390 at default form size.
+            // Reference width for initial control positioning; Dock handles actual sizing.
             var w = page.ClientSize.Width > 0 ? page.ClientSize.Width : 530;
-            var h = page.ClientSize.Height > 0 ? page.ClientSize.Height : 390;
+
+            // Use Dock-based panels for robust layout across DPI scales and resolutions.
+            // Top: termbase path, browse, info, glossary buttons (fixed height)
+            // Bottom: separator, auto-load, font size (fixed height)
+            // Middle: DataGridView fills remaining space
+            var topPanel = new Panel { Dock = DockStyle.Top, Height = 138, BackColor = Color.White };
+            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 68, BackColor = Color.White };
+            var gridPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10, 0, 10, 0),
+                BackColor = Color.White
+            };
 
             // === Termbase section ===
             var lblSection = new Label
@@ -289,7 +300,7 @@ namespace Supervertaler.Trados.Settings
 
             _dgvTermbases = new DataGridView
             {
-                Location = new Point(10, 138),
+                Dock = DockStyle.Fill,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
                 AllowUserToResizeRows = false,
@@ -300,7 +311,6 @@ namespace Supervertaler.Trados.Settings
                 BorderStyle = BorderStyle.FixedSingle,
                 BackgroundColor = Color.FromArgb(250, 250, 250),
                 Font = new Font("Segoe UI", 8.5f),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
                 EnableHeadersVisualStyles = false
@@ -320,9 +330,6 @@ namespace Supervertaler.Trados.Settings
                 SelectionBackColor = Color.FromArgb(220, 235, 252),
                 SelectionForeColor = Color.FromArgb(40, 40, 40)
             };
-            _dgvTermbases.Width = w - 20;
-            _dgvTermbases.Height = h - 138 - 110;
-
             // Columns
             var colRead = new DataGridViewCheckBoxColumn
             {
@@ -392,63 +399,71 @@ namespace Supervertaler.Trados.Settings
             // Double-click a glossary row to open the Glossary Editor
             _dgvTermbases.CellDoubleClick += OnGridCellDoubleClick;
 
-            // === Options section ===
+            // === Options section (inside bottomPanel, positions relative to panel) ===
             var sep = new Label
             {
-                Location = new Point(10, h - 102),
+                Location = new Point(10, 0),
                 Height = 1,
                 BorderStyle = BorderStyle.Fixed3D,
-                Anchor = AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right
+                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
             };
             sep.Width = w - 20;
 
             _chkAutoLoad = new CheckBox
             {
                 Text = "Automatically load termbase when Trados Studio starts",
-                Location = new Point(10, h - 90),
+                Location = new Point(10, 8),
                 AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60),
-                Anchor = AnchorStyles.Left | AnchorStyles.Bottom
+                ForeColor = Color.FromArgb(60, 60, 60)
             };
 
             var lblFontSize = new Label
             {
                 Text = "Panel font size:",
-                Location = new Point(10, h - 62),
+                Location = new Point(10, 36),
                 AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60),
-                Anchor = AnchorStyles.Left | AnchorStyles.Bottom
+                ForeColor = Color.FromArgb(60, 60, 60)
             };
 
             _nudFontSize = new NumericUpDown
             {
-                Location = new Point(114, h - 64),
+                Location = new Point(114, 34),
                 Width = 60,
                 Minimum = 7,
                 Maximum = 16,
                 DecimalPlaces = 1,
                 Increment = 0.5m,
-                Value = (decimal)_settings.PanelFontSize,
-                Anchor = AnchorStyles.Left | AnchorStyles.Bottom
+                Value = (decimal)_settings.PanelFontSize
             };
 
             var lblFontPt = new Label
             {
                 Text = "pt",
-                Location = new Point(178, h - 62),
+                Location = new Point(178, 36),
                 AutoSize = true,
-                ForeColor = Color.FromArgb(100, 100, 100),
-                Anchor = AnchorStyles.Left | AnchorStyles.Bottom
+                ForeColor = Color.FromArgb(100, 100, 100)
             };
 
-            page.Controls.AddRange(new Control[]
+            // Add controls to their respective panels
+            topPanel.Controls.AddRange(new Control[]
             {
                 lblSection, lblPath, _txtTermbasePath, _btnCreateNew, _btnBrowse,
                 _lblTermbaseInfo, _lblTermbasesHeader,
-                _btnOpenGlossary, _btnExport, _btnImport, _btnRemoveGlossary, _btnAddGlossary,
-                _dgvTermbases,
+                _btnOpenGlossary, _btnExport, _btnImport, _btnRemoveGlossary, _btnAddGlossary
+            });
+
+            bottomPanel.Controls.AddRange(new Control[]
+            {
                 sep, _chkAutoLoad, lblFontSize, _nudFontSize, lblFontPt
             });
+
+            gridPanel.Controls.Add(_dgvTermbases);
+
+            // Add panels to page — order matters for Dock layout
+            // (last added has highest z-order and docks first)
+            page.Controls.Add(gridPanel);     // Fill — docks last, fills remaining space
+            page.Controls.Add(bottomPanel);   // Bottom
+            page.Controls.Add(topPanel);      // Top
         }
 
         private void OnGridCellContentClick(object sender, DataGridViewCellEventArgs e)

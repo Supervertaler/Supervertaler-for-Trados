@@ -10,7 +10,7 @@ namespace Supervertaler.Trados.Controls
 {
     /// <summary>
     /// UserControl for the "Prompts" tab in the Settings dialog.
-    /// Shows the base system prompt (read-only or editable) and the custom prompt library.
+    /// Side-by-side layout: custom prompt library on the left, system prompt on the right.
     /// </summary>
     public class PromptManagerPanel : UserControl
     {
@@ -24,6 +24,9 @@ namespace Supervertaler.Trados.Controls
         private Button _btnEdit;
         private Button _btnDelete;
         private Button _btnRestore;
+
+        private Panel _leftPanel;
+        private Panel _rightPanel;
 
         private PromptLibrary _library;
         private List<PromptTemplate> _prompts;
@@ -39,158 +42,68 @@ namespace Supervertaler.Trados.Controls
             SuspendLayout();
             BackColor = Color.White;
 
-            var y = 10;
             var labelColor = Color.FromArgb(80, 80, 80);
             var headerFont = new Font("Segoe UI", 9f, FontStyle.Bold);
             var bodyFont = new Font("Segoe UI", 8.5f);
 
             // ═══════════════════════════════════════════════
-            // SYSTEM PROMPT SECTION
+            // TWO-PANEL LAYOUT — library left (Fill), system prompt right (38%)
+            // Uses plain Panels instead of SplitContainer to avoid
+            // SplitterDistance initialization errors in WinForms.
             // ═══════════════════════════════════════════════
-            var lblSysHeader = new Label
+            _rightPanel = new Panel
             {
-                Text = "System Prompt",
-                Font = headerFont,
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(10, y),
-                AutoSize = true
-            };
-            Controls.Add(lblSysHeader);
-            y += 22;
-
-            var lblSysInfo = new Label
-            {
-                Text = "The system prompt provides base instructions for AI translation (tag preservation, " +
-                    "number formatting, etc.). It is always included before any custom prompt.",
-                Location = new Point(10, y),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
-                ForeColor = Color.FromArgb(130, 130, 130),
-                AutoSize = false,
-                Height = 28,
-                Width = 500,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            Controls.Add(lblSysInfo);
-            y += 30;
-
-            _txtSystemPrompt = new TextBox
-            {
-                Location = new Point(10, y),
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Font = new Font("Consolas", 7.5f),
-                BackColor = Color.FromArgb(248, 248, 248),
-                ForeColor = Color.FromArgb(60, 60, 60),
-                WordWrap = true,
-                Height = 120,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            Controls.Add(_txtSystemPrompt);
-            y += 124;
-
-            // Buttons row for system prompt
-            _btnEditSystem = new Button
-            {
-                Text = "Edit System Prompt",
-                Location = new Point(10, y),
-                Width = 130,
-                Height = 25,
-                FlatStyle = FlatStyle.System,
-                Font = bodyFont
-            };
-            _btnEditSystem.Click += OnEditSystemPrompt;
-
-            _btnResetSystem = new Button
-            {
-                Text = "Reset to Default",
-                Location = new Point(146, y),
-                Width = 120,
-                Height = 25,
-                FlatStyle = FlatStyle.System,
-                Font = bodyFont
-            };
-            _btnResetSystem.Click += OnResetSystemPrompt;
-
-            _lblSystemStatus = new Label
-            {
-                Text = "",
-                Location = new Point(274, y + 4),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(100, 100, 100),
-                Font = new Font("Segoe UI", 8f)
+                Dock = DockStyle.Right,
+                Width = 250, // initial; updated in Resize
+                BackColor = Color.White
             };
 
-            Controls.Add(_btnEditSystem);
-            Controls.Add(_btnResetSystem);
-            Controls.Add(_lblSystemStatus);
-            y += 36;
-
-            // ═══════════════════════════════════════════════
-            // CUSTOM PROMPT LIBRARY SECTION
-            // ═══════════════════════════════════════════════
-            var sep = new Label
+            _leftPanel = new Panel
             {
-                Location = new Point(10, y),
-                Height = 1,
-                BorderStyle = BorderStyle.Fixed3D,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Dock = DockStyle.Fill,
+                BackColor = Color.White
             };
-            Controls.Add(sep);
-            y += 8;
 
+            // ─── LEFT PANEL: Custom Prompt Library ───────────
+            BuildLibraryPanel(_leftPanel, headerFont, bodyFont, labelColor);
+
+            // ─── RIGHT PANEL: System Prompt ──────────────────
+            BuildSystemPromptPanel(_rightPanel, headerFont, bodyFont, labelColor);
+
+            // Add right first so Fill calculates correctly
+            Controls.Add(_leftPanel);
+            Controls.Add(_rightPanel);
+
+            // Keep right panel at ~38% of total width
+            Resize += (s, e) =>
+            {
+                if (Width > 100)
+                    _rightPanel.Width = Math.Max(200, (int)(Width * 0.38));
+            };
+
+            ResumeLayout(false);
+        }
+
+        private void BuildLibraryPanel(Panel panel, Font headerFont, Font bodyFont, Color labelColor)
+        {
+            // Header
             var lblLibHeader = new Label
             {
                 Text = "Custom Prompt Library",
                 Font = headerFont,
                 ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(10, y),
+                Location = new Point(10, 10),
                 AutoSize = true
             };
-            Controls.Add(lblLibHeader);
+            panel.Controls.Add(lblLibHeader);
 
             // Buttons (right-aligned on header row)
-            _btnRestore = new Button
+            var topPanel = new Panel
             {
-                Text = "Restore Built-in",
-                Width = 105,
-                Height = 25,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Dock = DockStyle.Top,
+                Height = 36,
+                BackColor = Color.White
             };
-            _btnRestore.FlatAppearance.BorderSize = 0;
-            _btnRestore.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnRestore.Click += OnRestoreBuiltIn;
-
-            _btnDelete = new Button
-            {
-                Text = "Delete",
-                Width = 55,
-                Height = 25,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnDelete.FlatAppearance.BorderSize = 0;
-            _btnDelete.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnDelete.Click += OnDeletePrompt;
-
-            _btnEdit = new Button
-            {
-                Text = "Edit",
-                Width = 45,
-                Height = 25,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnEdit.FlatAppearance.BorderSize = 0;
-            _btnEdit.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
-            _btnEdit.Click += OnEditPrompt;
 
             _btnNew = new Button
             {
@@ -206,16 +119,64 @@ namespace Supervertaler.Trados.Controls
             _btnNew.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
             _btnNew.Click += OnNewPrompt;
 
-            Controls.Add(_btnRestore);
-            Controls.Add(_btnDelete);
-            Controls.Add(_btnEdit);
-            Controls.Add(_btnNew);
-            y += 28;
+            _btnEdit = new Button
+            {
+                Text = "Edit",
+                Width = 45,
+                Height = 25,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8f),
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            _btnEdit.FlatAppearance.BorderSize = 0;
+            _btnEdit.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnEdit.Click += OnEditPrompt;
+
+            _btnDelete = new Button
+            {
+                Text = "Delete",
+                Width = 55,
+                Height = 25,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8f),
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            _btnDelete.FlatAppearance.BorderSize = 0;
+            _btnDelete.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnDelete.Click += OnDeletePrompt;
+
+            _btnRestore = new Button
+            {
+                Text = "Restore",
+                Width = 60,
+                Height = 25,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8f),
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            _btnRestore.FlatAppearance.BorderSize = 0;
+            _btnRestore.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnRestore.Click += OnRestoreBuiltIn;
+
+            topPanel.Controls.AddRange(new Control[] { lblLibHeader, _btnNew, _btnEdit, _btnDelete, _btnRestore });
+
+            // Position buttons from right edge
+            topPanel.Resize += (s, e) =>
+            {
+                var pw = topPanel.Width;
+                _btnRestore.Location = new Point(pw - 4 - _btnRestore.Width, 6);
+                _btnDelete.Location = new Point(_btnRestore.Left - _btnDelete.Width - 2, 6);
+                _btnEdit.Location = new Point(_btnDelete.Left - _btnEdit.Width - 2, 6);
+                _btnNew.Location = new Point(_btnEdit.Left - _btnNew.Width - 2, 6);
+            };
 
             // ─── Prompt grid ──────────────────────────────
             _dgvPrompts = new DataGridView
             {
-                Location = new Point(10, y),
+                Dock = DockStyle.Fill,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
                 AllowUserToResizeRows = false,
@@ -226,7 +187,6 @@ namespace Supervertaler.Trados.Controls
                 BorderStyle = BorderStyle.FixedSingle,
                 BackgroundColor = Color.FromArgb(250, 250, 250),
                 Font = new Font("Segoe UI", 8.5f),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
                 EnableHeadersVisualStyles = false
@@ -263,48 +223,124 @@ namespace Supervertaler.Trados.Controls
             {
                 Name = "colSource",
                 HeaderText = "Source",
-                Width = 65,
-                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
-                FillWeight = 1
+                FillWeight = 15,
+                MinimumWidth = 50
             };
             _dgvPrompts.Columns.AddRange(new DataGridViewColumn[] { colName, colDomain, colSource });
             _dgvPrompts.CellDoubleClick += OnGridDoubleClick;
 
-            Controls.Add(_dgvPrompts);
+            var gridPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10, 0, 4, 10),
+                BackColor = Color.White
+            };
+            gridPanel.Controls.Add(_dgvPrompts);
 
-            ResumeLayout(false);
-
-            // Handle resize to position elements
-            Resize += OnResize;
+            // Add in reverse order for correct Dock layout
+            panel.Controls.Add(gridPanel);   // Fill
+            panel.Controls.Add(topPanel);    // Top
         }
 
-        private void OnResize(object sender, EventArgs e)
+        private void BuildSystemPromptPanel(Panel panel, Font headerFont, Font bodyFont, Color labelColor)
         {
-            var w = Width - 20;
-
-            // System prompt textbox width
-            if (_txtSystemPrompt != null)
-                _txtSystemPrompt.Width = Math.Max(100, w);
-
-            // Separator width
-            foreach (Control c in Controls)
+            // Top section: header + info + buttons
+            var topPanel = new Panel
             {
-                if (c is Label lbl && lbl.BorderStyle == BorderStyle.Fixed3D)
-                    lbl.Width = Math.Max(100, w);
-            }
+                Dock = DockStyle.Top,
+                Height = 54,
+                BackColor = Color.White
+            };
 
-            // Button row positioning for library section
-            if (_btnRestore != null)
+            var lblSysHeader = new Label
             {
-                _btnRestore.Location = new Point(Width - 10 - _btnRestore.Width, _btnRestore.Top);
-                _btnDelete.Location = new Point(_btnRestore.Left - _btnDelete.Width - 2, _btnDelete.Top);
-                _btnEdit.Location = new Point(_btnDelete.Left - _btnEdit.Width - 2, _btnEdit.Top);
-                _btnNew.Location = new Point(_btnEdit.Left - _btnNew.Width - 2, _btnNew.Top);
-            }
+                Text = "System Prompt",
+                Font = headerFont,
+                ForeColor = Color.FromArgb(50, 50, 50),
+                Location = new Point(6, 10),
+                AutoSize = true
+            };
 
-            // Grid width
-            if (_dgvPrompts != null)
-                _dgvPrompts.Width = Math.Max(100, w);
+            var lblSysInfo = new Label
+            {
+                Text = "Base instructions for AI translation. Always included before custom prompts.",
+                Location = new Point(6, 30),
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
+                ForeColor = Color.FromArgb(130, 130, 130),
+                AutoSize = false,
+                Height = 18,
+                Width = 400,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+
+            topPanel.Controls.AddRange(new Control[] { lblSysHeader, lblSysInfo });
+
+            // Bottom section: Edit/Reset buttons
+            var bottomPanel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 34,
+                BackColor = Color.White
+            };
+
+            _btnEditSystem = new Button
+            {
+                Text = "Edit System Prompt",
+                Location = new Point(6, 4),
+                Width = 130,
+                Height = 25,
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont
+            };
+            _btnEditSystem.Click += OnEditSystemPrompt;
+
+            _btnResetSystem = new Button
+            {
+                Text = "Reset to Default",
+                Location = new Point(142, 4),
+                Width = 120,
+                Height = 25,
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont
+            };
+            _btnResetSystem.Click += OnResetSystemPrompt;
+
+            _lblSystemStatus = new Label
+            {
+                Text = "",
+                Location = new Point(268, 8),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(100, 100, 100),
+                Font = new Font("Segoe UI", 8f)
+            };
+
+            bottomPanel.Controls.AddRange(new Control[] { _btnEditSystem, _btnResetSystem, _lblSystemStatus });
+
+            // Middle: system prompt textbox
+            _txtSystemPrompt = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 7.5f),
+                BackColor = Color.FromArgb(248, 248, 248),
+                ForeColor = Color.FromArgb(60, 60, 60),
+                WordWrap = true
+            };
+
+            var textPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(6, 0, 6, 0),
+                BackColor = Color.White
+            };
+            textPanel.Controls.Add(_txtSystemPrompt);
+
+            // Add in reverse order for correct Dock layout
+            panel.Controls.Add(textPanel);      // Fill
+            panel.Controls.Add(bottomPanel);    // Bottom
+            panel.Controls.Add(topPanel);       // Top
         }
 
         // ─── Public API ─────────────────────────────────────────

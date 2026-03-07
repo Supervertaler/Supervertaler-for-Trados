@@ -119,11 +119,14 @@ namespace Supervertaler.Trados.Controls
 
             var lblVars = new Label
             {
-                Text = "Variables: {source_lang}  {target_lang}  {{SOURCE_LANGUAGE}}  {{TARGET_LANGUAGE}}",
+                Text = "Variables:  {{SOURCE_LANGUAGE}} \u2014 source language   |   {{TARGET_LANGUAGE}} \u2014 target language",
                 Location = new Point(12, y),
-                AutoSize = true,
+                AutoSize = false,
+                Height = 16,
+                Width = ClientSize.Width - 24,
                 ForeColor = Color.FromArgb(130, 130, 130),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic)
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             Controls.Add(lblVars);
             y += 20;
