@@ -4,6 +4,9 @@
 
 Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key features from [Supervertaler](https://supervertaler.com) into the Trados ecosystem. It includes the **TermLens** glossary panel and **AI-powered batch and single-segment translation** using OpenAI, Anthropic, and Google LLMs.
 
+- Supervertaler = open-source and free
+- Supervertaler for Trados = small monthly subscription 
+
 ## TermLens — inline terminology display
 
 TermLens renders the full source segment word-by-word in a dedicated panel, with glossary translations displayed directly underneath each matched term. Translators see every term match in context.
