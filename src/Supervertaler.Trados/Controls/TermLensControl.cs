@@ -25,6 +25,7 @@ namespace Supervertaler.Trados.Controls
         private TermbaseReader _reader;
         private string _currentDbPath;
         private long _projectTermbaseId = -1;
+        private string _multiTermStatusSuffix = "";
 
         /// <summary>
         /// Number of matched terms in the current segment display.
@@ -237,6 +238,45 @@ namespace Supervertaler.Trados.Controls
         }
 
         /// <summary>
+        /// Merges MultiTerm terms into the existing TermMatcher index.
+        /// Call after LoadTermbase() to add MultiTerm entries alongside Supervertaler terms.
+        /// </summary>
+        public void MergeMultiTermEntries(Dictionary<string, List<TermEntry>> multiTermIndex,
+            List<MultiTermTermbaseInfo> infos)
+        {
+            _matcher.MergeIndex(multiTermIndex);
+
+            // Build and store MultiTerm status suffix so it persists across UpdateSegment() calls
+            if (infos != null && infos.Count > 0)
+            {
+                int mtCount = 0;
+                int mtTerms = 0;
+                foreach (var info in infos)
+                {
+                    if (info.LoadMode != MultiTermLoadMode.Failed)
+                    {
+                        mtCount++;
+                        mtTerms += info.TermCount;
+                    }
+                }
+                if (mtCount > 0)
+                {
+                    _multiTermStatusSuffix = $" + {mtCount} MultiTerm, {mtTerms:N0} terms";
+                }
+            }
+        }
+
+        /// <summary>
+        /// Removes all MultiTerm entries from the TermMatcher index.
+        /// Called before reloading MultiTerm termbases (e.g. on project switch).
+        /// </summary>
+        public void ClearMultiTermEntries()
+        {
+            _matcher.RemoveMultiTermEntries();
+            _multiTermStatusSuffix = "";
+        }
+
+        /// <summary>
         /// Updates the display with a new source segment.
         /// Call this when the active segment changes in Trados Studio.
         /// </summary>
@@ -300,22 +340,39 @@ namespace Supervertaler.Trados.Controls
                         }
                     }
 
-                    // Sort entries so project termbase entries come first (they become PrimaryEntry),
-                    // then by ranking ASC, so the displayed target term matches the project termbase
+                    // Check if all entries are from MultiTerm (no Supervertaler entries)
+                    bool isMultiTerm = true;
+                    foreach (var m in token.Matches)
+                    {
+                        if (!m.IsMultiTerm)
+                        {
+                            isMultiTerm = false;
+                            break;
+                        }
+                    }
+
+                    // Sort entries: non-MultiTerm first (Supervertaler takes priority),
+                    // then project termbase entries, then by ranking ASC
                     var sortedEntries = token.Matches;
-                    if (isProject && sortedEntries.Count > 1)
+                    if (sortedEntries.Count > 1)
                     {
                         sortedEntries = new List<TermEntry>(sortedEntries);
                         sortedEntries.Sort((a, b) =>
                         {
-                            bool aProj = a.TermbaseId == _projectTermbaseId;
-                            bool bProj = b.TermbaseId == _projectTermbaseId;
-                            if (aProj != bProj) return aProj ? -1 : 1;
+                            // Non-MultiTerm entries first
+                            if (a.IsMultiTerm != b.IsMultiTerm) return a.IsMultiTerm ? 1 : -1;
+                            // Project termbase entries first
+                            if (_projectTermbaseId >= 0)
+                            {
+                                bool aProj = a.TermbaseId == _projectTermbaseId;
+                                bool bProj = b.TermbaseId == _projectTermbaseId;
+                                if (aProj != bProj) return aProj ? -1 : 1;
+                            }
                             return a.Ranking.CompareTo(b.Ranking);
                         });
                     }
 
-                    var block = new TermBlock(token.Text, sortedEntries, shortcutIndex, isProject, isNonTranslatable)
+                    var block = new TermBlock(token.Text, sortedEntries, shortcutIndex, isProject, isNonTranslatable, isMultiTerm)
                     {
                         Font = Font,
                         Margin = new Padding(2, 1, 2, 1)
@@ -342,9 +399,9 @@ namespace Supervertaler.Trados.Controls
 
             MatchCount = matchCount;
 
-            _statusLabel.Text = matchCount > 0
+            _statusLabel.Text = (matchCount > 0
                 ? $"\u2713 Found {matchCount} terms in {wordCount} words"
-                : $"{wordCount} words, no matches";
+                : $"{wordCount} words, no matches") + _multiTermStatusSuffix;
 
             _flowPanel.ResumeLayout(true);
         }

@@ -16,7 +16,7 @@ namespace Supervertaler.Trados.Models
     }
 
     /// <summary>
-    /// A single term pair from a Supervertaler termbase.
+    /// A single term pair from a Supervertaler or MultiTerm termbase.
     /// </summary>
     public class TermEntry
     {
@@ -36,6 +36,12 @@ namespace Supervertaler.Trados.Models
         public bool Forbidden { get; set; }
         public bool CaseSensitive { get; set; }
         public bool IsNonTranslatable { get; set; }
+
+        /// <summary>
+        /// True if this term comes from a MultiTerm .sdltb termbase (read-only).
+        /// MultiTerm terms have negative IDs and cannot be edited or deleted.
+        /// </summary>
+        public bool IsMultiTerm { get; set; }
 
         /// <summary>
         /// Simple list of non-forbidden target synonym texts, used for display/matching.

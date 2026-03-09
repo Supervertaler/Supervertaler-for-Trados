@@ -36,6 +36,46 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Merges additional term entries into the existing index.
+        /// Used to add MultiTerm terms alongside Supervertaler terms.
+        /// Entries are appended to existing key lists (not replaced).
+        /// </summary>
+        public void MergeIndex(Dictionary<string, List<TermEntry>> additionalIndex)
+        {
+            if (additionalIndex == null || additionalIndex.Count == 0) return;
+
+            if (_termIndex == null)
+                _termIndex = new Dictionary<string, List<TermEntry>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in additionalIndex)
+            {
+                if (_termIndex.TryGetValue(kvp.Key, out var existing))
+                    existing.AddRange(kvp.Value);
+                else
+                    _termIndex[kvp.Key] = new List<TermEntry>(kvp.Value);
+            }
+        }
+
+        /// <summary>
+        /// Removes all entries from the index that have the IsMultiTerm flag set.
+        /// Used to clear MultiTerm entries before reloading (e.g. project switch).
+        /// </summary>
+        public void RemoveMultiTermEntries()
+        {
+            if (_termIndex == null) return;
+
+            var keysToClean = new List<string>();
+            foreach (var kvp in _termIndex)
+            {
+                kvp.Value.RemoveAll(e => e.IsMultiTerm);
+                if (kvp.Value.Count == 0)
+                    keysToClean.Add(kvp.Key);
+            }
+            foreach (var key in keysToClean)
+                _termIndex.Remove(key);
+        }
+
+        /// <summary>
         /// Adds a single entry to the in-memory index without rebuilding.
         /// Mirrors the indexing logic from TermbaseReader.LoadAllTerms():
         /// indexes by lowercase source term and by stripped-punctuation variant.

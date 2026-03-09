@@ -5,7 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Supervertaler.Trados</RootNamespace>
     <AssemblyName>Supervertaler.Trados</AssemblyName>
-    <Version>3.3.3</Version>
+    <Version>3.4.0</Version>
     <Authors>Michael Beijer</Authors>
     <Company>Supervertaler</Company>
     <Description>Supervertaler for Trados — terminology and AI translation for Trados Studio</Description>
@@ -56,6 +56,14 @@
     </Reference>
     <Reference Include="Sdl.Core.Globalization.Async">
       <HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.Async.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.ProjectAutomation.FileBased">
+      <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.FileBased.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.Terminology.TerminologyProvider.Core">
+      <HintPath>$(TradosStudioPath)\Sdl.Terminology.TerminologyProvider.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="System.Net.Http" />

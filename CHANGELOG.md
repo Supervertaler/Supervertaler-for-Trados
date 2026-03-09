@@ -10,6 +10,36 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [3.4.0] — 2026-03-09
+
+### Added
+- **MultiTerm termbase support** — TermLens now automatically detects MultiTerm .sdltb
+  termbases attached to the active Trados project and displays their terms alongside
+  Supervertaler terms; MultiTerm terms appear as green chips in the TermLens panel
+- **Read-only MultiTerm terms** — MultiTerm terms are read-only: right-click context menus
+  do not show Edit, Delete, or Non-Translatable options for green (MultiTerm) chips;
+  tooltips show "[MultiTerm — read-only]"
+- **MultiTerm in settings** — detected MultiTerm termbases appear in the Supervertaler
+  Settings dialog with a "[MultiTerm]" label and light green row tint; Read checkbox
+  toggles visibility; Write and Project columns are always disabled (read-only)
+- **Auto-refresh on termbase changes** — when terms are added or removed from a MultiTerm
+  .sdltb termbase (e.g. via Trados's native Term Recognition panel), TermLens automatically
+  detects the file modification and reloads terms on the next segment change
+- **JET 4.0 / ACE OLEDB driver support** — .sdltb files are opened via the built-in
+  Microsoft.Jet.OLEDB.4.0 driver (available in all 32-bit Windows processes) with fallback
+  to ACE OLEDB 12.0–16.0; no additional driver installation required for Trados Studio
+  (which runs as an x86 process)
+- **API fallback** — if no OleDb driver can open an .sdltb file, the plugin attempts to
+  use Trados's built-in ITerminologyProviderManager API for per-segment term search with
+  LRU caching (200 segments)
+
+### Changed
+- **Cleaned up MultiTerm diagnostic logging** — removed verbose reflection-based logging
+  from the MultiTerm detection and fallback provider code; the multiterm_debug.log file is
+  no longer written
+
+---
+
 ## [3.3.3] — 2026-03-09
 
 ### Added

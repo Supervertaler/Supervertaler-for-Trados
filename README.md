@@ -9,7 +9,7 @@ Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key 
 
 ## TermLens — inline terminology display
 
-TermLens renders the full source segment word-by-word in a dedicated panel, with glossary translations displayed directly underneath each matched term. Translators see every term match in context.
+TermLens renders the full source segment word-by-word in a dedicated panel, with glossary translations displayed directly underneath each matched term. Translators see every term match in context — from both Supervertaler termbases and MultiTerm .sdltb termbases attached to the active Trados project.
 
 <img width="2560" height="1439" alt="image" src="https://github.com/user-attachments/assets/417e4240-c294-4ee8-826c-ac5f05c607c0" />
 
@@ -20,7 +20,8 @@ As you navigate between segments in the Trados Studio editor, the TermLens panel
 ### Features
 
 - **Dedicated terminology panel** — source words flow left to right with translations directly underneath matched terms
-- **Color-coded by glossary type** — mark glossaries as "Project" in settings to show their terms in pink; all others appear in blue; non-translatable terms appear in yellow
+- **MultiTerm termbase support** — automatically detects .sdltb termbases attached to the active Trados project and displays their terms as green chips alongside Supervertaler terms; read-only, auto-refreshes when terms are added via Trados's native interface
+- **Color-coded by glossary type** — mark glossaries as "Project" in settings to show their terms in pink; all others appear in blue; non-translatable terms appear in yellow; MultiTerm terms appear in green
 - **Non-translatable terms** — mark brand names, product codes, or abbreviations that should stay the same across languages; Ctrl+Alt+N to quick-add, or right-click any term to toggle; the source term is copied verbatim as the target
 - **Multi-word term support** — correctly matches phrases like "prior art" or "machine translation" as single units
 - **Click to insert** — click any translation to insert it at the cursor position in the target segment

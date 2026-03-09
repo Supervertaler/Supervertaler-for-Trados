@@ -45,6 +45,9 @@ namespace Supervertaler.Trados.Settings
         // Cached termbase list from the DB, aligned with DataGridView row indices
         private List<TermbaseInfo> _termbases = new List<TermbaseInfo>();
 
+        // MultiTerm termbases from the active Trados project (rows after _termbases in the grid)
+        private List<MultiTermTermbaseInfo> _multiTermInfos = new List<MultiTermTermbaseInfo>();
+
         public TermLensSettingsForm(TermLensSettings settings,
             Core.PromptLibrary promptLibrary = null, int defaultTab = 0)
         {
@@ -486,6 +489,14 @@ namespace Supervertaler.Trados.Settings
 
             var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
 
+            // Prevent toggling Write/Project for MultiTerm rows (read-only)
+            if (e.RowIndex >= _termbases.Count && (colName == "colWrite" || colName == "colProject"))
+            {
+                _dgvTermbases.CommitEdit(DataGridViewDataErrorContexts.Commit);
+                _dgvTermbases.Rows[e.RowIndex].Cells[colName].Value = false;
+                return;
+            }
+
             // Radio-button enforcement for Project column only (only one can be project)
             // Write column allows multiple selections — terms are inserted into all write targets.
             if (colName == "colProject")
@@ -515,11 +526,17 @@ namespace Supervertaler.Trados.Settings
 
             if (_dgvTermbases.Rows.Count == 0) return;
 
+            // For Write/Project, skip MultiTerm rows (they're read-only)
+            bool skipMultiTerm = col.Name == "colWrite" || col.Name == "colProject";
+
             if (col.Name == "colProject")
             {
                 // Project is radio-button style — header click clears the selection
                 foreach (DataGridViewRow row in _dgvTermbases.Rows)
+                {
+                    if (skipMultiTerm && row.Index >= _termbases.Count) continue;
                     row.Cells[col.Name].Value = false;
+                }
             }
             else
             {
@@ -527,6 +544,7 @@ namespace Supervertaler.Trados.Settings
                 bool allChecked = true;
                 foreach (DataGridViewRow row in _dgvTermbases.Rows)
                 {
+                    if (skipMultiTerm && row.Index >= _termbases.Count) continue;
                     if (!(row.Cells[col.Name].Value as bool? ?? false))
                     {
                         allChecked = false;
@@ -536,7 +554,10 @@ namespace Supervertaler.Trados.Settings
 
                 bool newValue = !allChecked;
                 foreach (DataGridViewRow row in _dgvTermbases.Rows)
+                {
+                    if (skipMultiTerm && row.Index >= _termbases.Count) continue;
                     row.Cells[col.Name].Value = newValue;
+                }
             }
 
             _dgvTermbases.RefreshEdit();
@@ -545,6 +566,9 @@ namespace Supervertaler.Trados.Settings
         private void OnGridCellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+
+            // Don't open editor for MultiTerm rows (read-only)
+            if (e.RowIndex >= _termbases.Count) return;
 
             // Don't open editor when double-clicking checkbox columns
             var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
@@ -673,39 +697,75 @@ namespace Supervertaler.Trados.Settings
         {
             _dgvTermbases.Rows.Clear();
             _termbases.Clear();
+            _multiTermInfos.Clear();
 
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                return;
-
-            try
+            // Load Supervertaler termbases from the .db file
+            if (!string.IsNullOrEmpty(path) && File.Exists(path))
             {
-                using (var reader = new TermbaseReader(path))
+                try
                 {
-                    if (!reader.Open())
-                        return;
-
-                    _termbases = reader.GetTermbases();
-                    var disabled = new HashSet<long>(_settings.DisabledTermbaseIds ?? new List<long>());
-                    var writeIds = new HashSet<long>(_settings.WriteTermbaseIds ?? new List<long>());
-
-                    foreach (var tb in _termbases)
+                    using (var reader = new TermbaseReader(path))
                     {
-                        bool isRead = !disabled.Contains(tb.Id);
-                        bool isWrite = writeIds.Contains(tb.Id);
-                        bool isProject = tb.Id == _settings.ProjectTermbaseId;
-                        _dgvTermbases.Rows.Add(
-                            isRead,
-                            isWrite,
-                            isProject,
-                            tb.Name,
-                            tb.TermCount.ToString("N0"),
-                            $"{LanguageUtils.ShortenLanguageName(tb.SourceLang)} \u2192 {LanguageUtils.ShortenLanguageName(tb.TargetLang)}");
+                        if (reader.Open())
+                        {
+                            _termbases = reader.GetTermbases();
+                            var disabled = new HashSet<long>(_settings.DisabledTermbaseIds ?? new List<long>());
+                            var writeIds = new HashSet<long>(_settings.WriteTermbaseIds ?? new List<long>());
+
+                            foreach (var tb in _termbases)
+                            {
+                                bool isRead = !disabled.Contains(tb.Id);
+                                bool isWrite = writeIds.Contains(tb.Id);
+                                bool isProject = tb.Id == _settings.ProjectTermbaseId;
+                                _dgvTermbases.Rows.Add(
+                                    isRead,
+                                    isWrite,
+                                    isProject,
+                                    tb.Name,
+                                    tb.TermCount.ToString("N0"),
+                                    $"{LanguageUtils.ShortenLanguageName(tb.SourceLang)} \u2192 {LanguageUtils.ShortenLanguageName(tb.TargetLang)}");
+                            }
+                        }
                     }
                 }
+                catch
+                {
+                    // If we can't read the DB, just leave the Supervertaler rows empty
+                }
             }
-            catch
+
+            // Add MultiTerm termbases from the active Trados project
+            var mtInfos = TermLensEditorViewPart.GetMultiTermInfos();
+            if (mtInfos != null)
+                _multiTermInfos = mtInfos;
+
+            if (_multiTermInfos.Count > 0)
             {
-                // If we can't read the DB, just leave the grid empty
+                var disabledMtIds = new HashSet<long>(_settings.DisabledMultiTermIds ?? new List<long>());
+
+                foreach (var info in _multiTermInfos)
+                {
+                    bool isRead = !disabledMtIds.Contains(info.SyntheticId);
+                    var langText = !string.IsNullOrEmpty(info.SourceIndexName)
+                        && !string.IsNullOrEmpty(info.TargetIndexName)
+                        ? $"{info.SourceIndexName} \u2192 {info.TargetIndexName}"
+                        : info.LoadMode == MultiTermLoadMode.Failed ? "Failed to load" : "";
+
+                    int rowIdx = _dgvTermbases.Rows.Add(
+                        isRead,     // Read
+                        false,      // Write (always disabled for MultiTerm)
+                        false,      // Project (always disabled for MultiTerm)
+                        $"{info.Name} [MultiTerm]",
+                        info.TermCount.ToString("N0"),
+                        langText);
+
+                    // Style MultiTerm rows with a light green tint
+                    var row = _dgvTermbases.Rows[rowIdx];
+                    row.Cells["colWrite"].ReadOnly = true;
+                    row.Cells["colProject"].ReadOnly = true;
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(232, 245, 233);
+                    row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(200, 230, 201);
+                }
             }
         }
 
@@ -947,6 +1007,19 @@ namespace Supervertaler.Trados.Settings
                     _settings.WriteTermbaseIds.Add(_termbases[i].Id);
                 if (projectChecked)
                     _settings.ProjectTermbaseId = _termbases[i].Id;
+            }
+
+            // Save MultiTerm disabled IDs
+            _settings.DisabledMultiTermIds = new List<long>();
+            for (int i = 0; i < _multiTermInfos.Count; i++)
+            {
+                int rowIdx = _termbases.Count + i;
+                if (rowIdx < _dgvTermbases.Rows.Count)
+                {
+                    var readChecked = _dgvTermbases.Rows[rowIdx].Cells["colRead"].Value as bool? ?? false;
+                    if (!readChecked)
+                        _settings.DisabledMultiTermIds.Add(_multiTermInfos[i].SyntheticId);
+                }
             }
 
             // AI settings

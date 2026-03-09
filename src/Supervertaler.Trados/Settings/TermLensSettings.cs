@@ -61,6 +61,13 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "projectTermbaseId")]
         public long ProjectTermbaseId { get; set; } = -1;
 
+        /// <summary>
+        /// Synthetic IDs of MultiTerm termbases the user has disabled (negative numbers).
+        /// Empty means all detected MultiTerm termbases are active.
+        /// </summary>
+        [DataMember(Name = "disabledMultiTermIds")]
+        public List<long> DisabledMultiTermIds { get; set; } = new List<long>();
+
         // ─── Term Picker dialog layout persistence ────────────────────
         [DataMember(Name = "termPickerWidth")]
         public int TermPickerWidth { get; set; }

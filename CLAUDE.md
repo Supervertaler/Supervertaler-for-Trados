@@ -56,6 +56,29 @@ ships older versions of several .NET Standard polyfills.
 
 ---
 
+## MultiTerm .sdltb termbase support
+
+TermLens reads MultiTerm `.sdltb` termbases (JET4/MDB format) attached to the active Trados project
+and displays their terms as green chips alongside Supervertaler terms.
+
+- **Primary access**: Opens `.sdltb` files directly via `System.Data.OleDb` — tries JET 4.0 first
+  (built into Windows for 32-bit processes, i.e. Trados Studio), then ACE OLEDB 16.0–12.0.
+  `MultiTermReader.cs` handles this.
+- **Fallback**: If no OleDb driver works, `TerminologyProviderFallback.cs` uses Trados's
+  `ITerminologyProviderManager` API for per-segment search with LRU caching.
+- **Detection**: `MultiTermProjectDetector.DetectTermbases()` reads the project's
+  `TermbaseConfiguration` to find `.sdltb` file paths and language index mappings.
+- **Auto-refresh**: File modification timestamps are tracked per `.sdltb` file; on each segment
+  change, `HasMultiTermFileChanged()` checks if any file was modified and reloads if so.
+- **Read-only**: MultiTerm entries have `IsMultiTerm = true` and negative IDs. Edit/delete/NT
+  context menu items are suppressed. Green chip color (`#D4EDDA`).
+- **Settings**: MultiTerm termbases appear in the settings grid with "[MultiTerm]" label and
+  green tint. Read toggles visibility; Write and Project are always disabled.
+- **IDs**: Synthetic negative IDs derived from the file path hash, avoiding collision with
+  SQLite rowids from Supervertaler termbases.
+
+---
+
 ## Key files
 
 | File | Purpose |
@@ -66,7 +89,10 @@ ships older versions of several .NET Standard polyfills.
 | `src/Supervertaler.Trados/Controls/TermBlock.cs` | Individual term chip (custom-painted) + WordLabel for unmatched words |
 | `src/Supervertaler.Trados/AppInitializer.cs` | Runs at Trados startup; pre-loads `e_sqlite3.dll`, registers `AssemblyResolve` |
 | `src/Supervertaler.Trados/Core/TermbaseReader.cs` | SQLite reader — Open(), LoadAllTerms(), InsertTerm(), InsertTermBatch(), UpdateTerm() |
-| `src/Supervertaler.Trados/Core/TermMatcher.cs` | In-memory term matching + incremental AddEntry()/RemoveEntry() |
+| `src/Supervertaler.Trados/Core/TermMatcher.cs` | In-memory term matching + incremental AddEntry()/RemoveEntry() + MergeIndex() for MultiTerm |
+| `src/Supervertaler.Trados/Core/MultiTermReader.cs` | Opens .sdltb files via OleDb (JET 4.0 / ACE), bulk-loads terms |
+| `src/Supervertaler.Trados/Core/MultiTermProjectDetector.cs` | Detects MultiTerm termbases from active Trados project |
+| `src/Supervertaler.Trados/Core/TerminologyProviderFallback.cs` | API fallback for per-segment search when OleDb fails |
 | `src/Supervertaler.Trados/Settings/TermLensSettings.cs` | JSON settings at `%LocalAppData%\Supervertaler.Trados\settings.json` |
 | `src/Supervertaler.Trados/Settings/TermLensSettingsForm.cs` | Settings dialog — termbase picker, termbase management, import/export |
 | `src/Supervertaler.Trados/Supervertaler.Trados.plugin.xml` | Extension manifest (UTF-16 LE — edit via Python to preserve encoding) |

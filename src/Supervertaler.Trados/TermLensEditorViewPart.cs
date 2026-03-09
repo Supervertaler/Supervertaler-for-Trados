@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Xml.Linq;
 using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
@@ -41,6 +43,12 @@ namespace Supervertaler.Trados
         private EditorController _editorController;
         private IStudioDocument _activeDocument;
         private TermLensSettings _settings;
+
+        // MultiTerm integration
+        private List<MultiTermTermbaseConfig> _multiTermConfigs;
+        private List<MultiTermTermbaseInfo> _multiTermInfos;
+        private List<TerminologyProviderFallback> _fallbackProviders;
+        private Dictionary<string, DateTime> _multiTermFileTimestamps;
 
         // Prompt library (shared — used by settings dialog)
         private PromptLibrary _promptLibrary;
@@ -99,6 +107,9 @@ namespace Supervertaler.Trados
             // Load termbase: prefer saved setting, fall back to auto-detect
             LoadTermbase();
 
+            // Load MultiTerm termbases from the active Trados project (if any)
+            LoadMultiTermTermbases();
+
             // Display the current segment immediately (even without a termbase, show all words)
             UpdateFromActiveSegment();
         }
@@ -138,6 +149,602 @@ namespace Supervertaler.Trados
             }
         }
 
+        /// <summary>
+        /// Detects MultiTerm .sdltb termbases from the active Trados project
+        /// and loads their terms into the TermMatcher index.
+        /// </summary>
+        private void LoadMultiTermTermbases()
+        {
+            try
+            {
+                // Clear previous MultiTerm entries from the index
+                _control.Value.ClearMultiTermEntries();
+                DisposeFallbackProviders();
+                _multiTermConfigs = null;
+                _multiTermInfos = null;
+                _multiTermFileTimestamps = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+                if (_activeDocument == null) return;
+
+                _multiTermConfigs = MultiTermProjectDetector.DetectTermbases(_activeDocument);
+
+                if (_multiTermConfigs.Count == 0) return;
+
+                // Filter out disabled MultiTerm termbases
+                var disabledMtIds = _settings.DisabledMultiTermIds ?? new List<long>();
+
+                var mergedIndex = new Dictionary<string, List<TermEntry>>(StringComparer.OrdinalIgnoreCase);
+                var infos = new List<MultiTermTermbaseInfo>();
+                var failedConfigs = new List<MultiTermTermbaseConfig>();
+
+                foreach (var config in _multiTermConfigs)
+                {
+                    if (disabledMtIds.Contains(config.SyntheticId))
+                        continue;
+
+                    try
+                    {
+                        using (var reader = new MultiTermReader(config.FilePath))
+                        {
+                            if (reader.Open())
+                            {
+                                var index = reader.LoadAllTerms(
+                                    config.SourceIndexName, config.TargetIndexName,
+                                    config.SyntheticId, config.TermbaseName);
+
+                                // Merge into combined index
+                                foreach (var kvp in index)
+                                {
+                                    if (mergedIndex.TryGetValue(kvp.Key, out var existing))
+                                        existing.AddRange(kvp.Value);
+                                    else
+                                        mergedIndex[kvp.Key] = new List<TermEntry>(kvp.Value);
+                                }
+
+                                infos.Add(reader.GetTermbaseInfo(
+                                    config.SourceIndexName, config.TargetIndexName,
+                                    config.SyntheticId));
+
+                                // Record file timestamp for change detection
+                                try { _multiTermFileTimestamps[config.FilePath] = File.GetLastWriteTimeUtc(config.FilePath); }
+                                catch { /* ignore timestamp errors */ }
+                            }
+                            else
+                            {
+                                // Direct access failed — try API fallback later
+                                failedConfigs.Add(config);
+                                infos.Add(new MultiTermTermbaseInfo
+                                {
+                                    SyntheticId = config.SyntheticId,
+                                    FilePath = config.FilePath,
+                                    Name = config.TermbaseName,
+                                    SourceIndexName = config.SourceIndexName,
+                                    TargetIndexName = config.TargetIndexName,
+                                    LoadMode = MultiTermLoadMode.Failed
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        failedConfigs.Add(config);
+                        infos.Add(new MultiTermTermbaseInfo
+                        {
+                            SyntheticId = config.SyntheticId,
+                            FilePath = config.FilePath,
+                            Name = config.TermbaseName,
+                            SourceIndexName = config.SourceIndexName,
+                            TargetIndexName = config.TargetIndexName,
+                            LoadMode = MultiTermLoadMode.Failed
+                        });
+                    }
+                }
+
+                // Try API fallback for termbases that failed direct access
+                if (failedConfigs.Count > 0)
+                    SetupFallbackProviders(failedConfigs, infos);
+
+                _multiTermInfos = infos;
+
+                if (mergedIndex.Count > 0)
+                    SafeInvoke(() => _control.Value.MergeMultiTermEntries(mergedIndex, infos));
+            }
+            catch (Exception)
+            {
+                // Silently handle — MultiTerm integration should never crash the plugin
+            }
+        }
+
+        /// <summary>
+        /// Sets up API-based fallback providers for termbases that couldn't be opened via OleDb.
+        /// Uses Trados's ITerminologyProviderManager to try multiple URI schemes.
+        /// </summary>
+        private void SetupFallbackProviders(
+            List<MultiTermTermbaseConfig> failedConfigs,
+            List<MultiTermTermbaseInfo> infos)
+        {
+            try
+            {
+                var manager = ResolveTerminologyProviderManager();
+                if (manager == null) return;
+
+                var factories = DiscoverTerminologyProviderFactories(manager);
+
+                foreach (var config in failedConfigs)
+                {
+                    try
+                    {
+                        var candidateUris = BuildCandidateUris(config);
+
+                        Sdl.Terminology.TerminologyProvider.Core.ITerminologyProvider provider = null;
+
+                        // Strategy 1: Check each factory's SupportsTerminologyProviderUri()
+                        foreach (var factory in factories)
+                        {
+                            foreach (var uri in candidateUris)
+                            {
+                                try
+                                {
+                                    if (factory.SupportsTerminologyProviderUri(uri))
+                                    {
+                                        provider = factory.CreateTerminologyProvider(uri, null);
+                                        if (provider != null) break;
+                                    }
+                                }
+                                catch { }
+                            }
+                            if (provider != null) break;
+                        }
+
+                        // Strategy 2: Try manager.GetTerminologyProvider() with each URI
+                        if (provider == null)
+                        {
+                            foreach (var uri in candidateUris)
+                            {
+                                try
+                                {
+                                    provider = manager.GetTerminologyProvider(uri);
+                                    if (provider != null) break;
+                                }
+                                catch { }
+                            }
+                        }
+
+                        if (provider != null)
+                        {
+                            var fallback = new TerminologyProviderFallback(
+                                provider,
+                                config.SourceIndexName,
+                                config.TargetIndexName,
+                                config.TermbaseName,
+                                config.SyntheticId);
+
+                            if (fallback.IsAvailable)
+                            {
+                                if (_fallbackProviders == null)
+                                    _fallbackProviders = new List<TerminologyProviderFallback>();
+                                _fallbackProviders.Add(fallback);
+
+                                foreach (var info in infos)
+                                {
+                                    if (info.SyntheticId == config.SyntheticId)
+                                    {
+                                        info.LoadMode = MultiTermLoadMode.TerminologyProviderApi;
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                fallback.Dispose();
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Discovers ITerminologyProviderFactory instances from the manager or loaded assemblies.
+        /// </summary>
+        private List<Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderFactory> DiscoverTerminologyProviderFactories(
+            Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager manager)
+        {
+            var result = new List<Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderFactory>();
+            var factoryType = typeof(Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderFactory);
+
+            try
+            {
+                var mgrType = manager.GetType();
+                var flags = System.Reflection.BindingFlags.Instance |
+                            System.Reflection.BindingFlags.Public |
+                            System.Reflection.BindingFlags.NonPublic;
+
+                // Search properties for factory collections
+                foreach (var prop in mgrType.GetProperties(flags))
+                {
+                    try
+                    {
+                        if (prop.PropertyType.Name.Contains("IEnumerable") ||
+                            prop.PropertyType.Name.Contains("List") ||
+                            prop.PropertyType.Name.Contains("Collection") ||
+                            prop.PropertyType.Name.Contains("Factory"))
+                        {
+                            var val = prop.GetValue(manager);
+                            if (val is System.Collections.IEnumerable enumerable)
+                            {
+                                foreach (var item in enumerable)
+                                {
+                                    if (item != null && factoryType.IsAssignableFrom(item.GetType()))
+                                        result.Add((Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderFactory)item);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                // Search fields for factory collections
+                foreach (var field in mgrType.GetFields(flags))
+                {
+                    try
+                    {
+                        if (field.FieldType.Name.Contains("Factory") ||
+                            field.FieldType.Name.Contains("List") ||
+                            field.FieldType.Name.Contains("Dictionary"))
+                        {
+                            var val = field.GetValue(manager);
+                            if (val is System.Collections.IEnumerable enumerable)
+                            {
+                                foreach (var item in enumerable)
+                                {
+                                    if (item != null && factoryType.IsAssignableFrom(item.GetType()))
+                                        result.Add((Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderFactory)item);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            // If no factories found via manager, scan loaded assemblies
+            if (result.Count == 0)
+            {
+                try
+                {
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        try
+                        {
+                            if (!asm.FullName.Contains("Sdl") && !asm.FullName.Contains("MultiTerm"))
+                                continue;
+
+                            foreach (var type in asm.GetTypes())
+                            {
+                                if (type.IsAbstract || type.IsInterface) continue;
+                                if (!factoryType.IsAssignableFrom(type)) continue;
+
+                                try
+                                {
+                                    var instance = Activator.CreateInstance(type) as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderFactory;
+                                    if (instance != null)
+                                        result.Add(instance);
+                                }
+                                catch { }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Builds candidate URIs for a MultiTerm termbase config.
+        /// </summary>
+        private List<Uri> BuildCandidateUris(MultiTermTermbaseConfig config)
+        {
+            var uris = new List<Uri>();
+            var filePath = config.FilePath;
+
+            // Try to extract URI from SettingsXml
+            if (!string.IsNullOrEmpty(config.SettingsXml))
+            {
+                try
+                {
+                    var xml = System.Xml.Linq.XElement.Parse(config.SettingsXml);
+                    foreach (var el in xml.DescendantsAndSelf())
+                    {
+                        if (el.Name.LocalName.Contains("Uri") || el.Name.LocalName.Contains("uri") ||
+                            el.Name.LocalName.Contains("Path") || el.Name.LocalName.Contains("path") ||
+                            el.Name.LocalName.Contains("Location") || el.Name.LocalName.Contains("location"))
+                        {
+                            var text = el.Value?.Trim();
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                try { uris.Add(new Uri(text)); }
+                                catch { }
+                            }
+                        }
+                        foreach (var attr in el.Attributes())
+                        {
+                            if (attr.Name.LocalName.Contains("uri") || attr.Name.LocalName.Contains("Uri") ||
+                                attr.Name.LocalName.Contains("path") || attr.Name.LocalName.Contains("Path"))
+                            {
+                                try { uris.Add(new Uri(attr.Value)); }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // Try various URI formats for local .sdltb files
+            var pathForward = filePath.Replace('\\', '/');
+            var schemes = new[]
+            {
+                $"multiterm:///{pathForward}",
+                $"multiterm://{pathForward}",
+                $"multiterm:local:///{pathForward}",
+                $"sdl-multiterm:///{pathForward}",
+                $"glossary:///{pathForward}",
+                $"file:///{pathForward}"
+            };
+
+            foreach (var s in schemes)
+            {
+                try
+                {
+                    var uri = new Uri(s);
+                    if (!uris.Any(u => u.ToString() == uri.ToString()))
+                        uris.Add(uri);
+                }
+                catch { }
+            }
+
+            return uris;
+        }
+
+        /// <summary>
+        /// Resolves ITerminologyProviderManager via reflection (multiple strategies).
+        /// </summary>
+        private Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager ResolveTerminologyProviderManager()
+        {
+            var managerType = typeof(Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager);
+
+            // Approach 1: Search app type hierarchy for manager properties or DI containers
+            try
+            {
+                var app = SdlTradosStudio.Application;
+                var type = app.GetType();
+                var flags = System.Reflection.BindingFlags.Instance |
+                            System.Reflection.BindingFlags.NonPublic |
+                            System.Reflection.BindingFlags.Public |
+                            System.Reflection.BindingFlags.DeclaredOnly;
+
+                while (type != null && type != typeof(object))
+                {
+                    foreach (var prop in type.GetProperties(flags))
+                    {
+                        if (managerType.IsAssignableFrom(prop.PropertyType))
+                        {
+                            try
+                            {
+                                var val = prop.GetValue(app) as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                                if (val != null) return val;
+                            }
+                            catch { }
+                        }
+
+                        if (prop.PropertyType.Name.Contains("Container") ||
+                            prop.PropertyType.Name.Contains("ServiceProvider") ||
+                            prop.PropertyType.Name.Contains("ComponentContext") ||
+                            prop.PropertyType.Name.Contains("Scope"))
+                        {
+                            try
+                            {
+                                var container = prop.GetValue(app);
+                                if (container != null)
+                                {
+                                    var mgr = TryResolveFromContainer(container, managerType);
+                                    if (mgr != null) return mgr;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+
+                    foreach (var field in type.GetFields(flags))
+                    {
+                        if (managerType.IsAssignableFrom(field.FieldType))
+                        {
+                            try
+                            {
+                                var val = field.GetValue(app) as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                                if (val != null) return val;
+                            }
+                            catch { }
+                        }
+
+                        if (field.FieldType.Name.Contains("Container") ||
+                            field.FieldType.Name.Contains("ServiceProvider") ||
+                            field.FieldType.Name.Contains("ComponentContext") ||
+                            field.FieldType.Name.Contains("Scope") ||
+                            field.FieldType.Name.Contains("Kernel") ||
+                            field.FieldType.Name.Contains("Locator"))
+                        {
+                            try
+                            {
+                                var container = field.GetValue(app);
+                                if (container != null)
+                                {
+                                    var mgr = TryResolveFromContainer(container, managerType);
+                                    if (mgr != null) return mgr;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+
+                    type = type.BaseType;
+                }
+            }
+            catch { }
+
+            // Approach 2: Search loaded assemblies for singleton
+            try
+            {
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        if (!asm.FullName.Contains("Sdl.Terminology")) continue;
+
+                        foreach (var t in asm.GetTypes())
+                        {
+                            if (t.IsAbstract || t.IsInterface) continue;
+                            if (!managerType.IsAssignableFrom(t)) continue;
+
+                            foreach (var prop in t.GetProperties(
+                                System.Reflection.BindingFlags.Static |
+                                System.Reflection.BindingFlags.Public |
+                                System.Reflection.BindingFlags.NonPublic))
+                            {
+                                if (managerType.IsAssignableFrom(prop.PropertyType))
+                                {
+                                    try
+                                    {
+                                        var val = prop.GetValue(null) as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                                        if (val != null) return val;
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            foreach (var field in t.GetFields(
+                                System.Reflection.BindingFlags.Static |
+                                System.Reflection.BindingFlags.Public |
+                                System.Reflection.BindingFlags.NonPublic))
+                            {
+                                if (managerType.IsAssignableFrom(field.FieldType))
+                                {
+                                    try
+                                    {
+                                        var val = field.GetValue(null) as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                                        if (val != null) return val;
+                                    }
+                                    catch { }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            // Approach 3: Try direct construction
+            try
+            {
+                var concreteType = typeof(Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager).Assembly
+                    .GetType("Sdl.Terminology.TerminologyProvider.Core.TerminologyProviderManager");
+
+                if (concreteType != null)
+                {
+                    foreach (var ctor in concreteType.GetConstructors(
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.NonPublic))
+                    {
+                        if (ctor.GetParameters().Length == 0)
+                        {
+                            try
+                            {
+                                var val = ctor.Invoke(new object[0]) as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                                if (val != null) return val;
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Tries to resolve ITerminologyProviderManager from a DI container via Resolve() or GetService().
+        /// </summary>
+        private Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager TryResolveFromContainer(
+            object container, Type serviceType)
+        {
+            var containerType = container.GetType();
+
+            var resolveMethod = containerType.GetMethod("Resolve", new Type[] { typeof(Type) });
+            if (resolveMethod != null)
+            {
+                try
+                {
+                    var val = resolveMethod.Invoke(container, new object[] { serviceType })
+                        as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                    if (val != null) return val;
+                }
+                catch { }
+            }
+
+            var getServiceMethod = containerType.GetMethod("GetService", new Type[] { typeof(Type) });
+            if (getServiceMethod != null)
+            {
+                try
+                {
+                    var val = getServiceMethod.Invoke(container, new object[] { serviceType })
+                        as Sdl.Terminology.TerminologyProvider.Core.ITerminologyProviderManager;
+                    if (val != null) return val;
+                }
+                catch { }
+            }
+
+            return null;
+        }
+
+        private void DisposeFallbackProviders()
+        {
+            if (_fallbackProviders != null)
+            {
+                foreach (var fb in _fallbackProviders)
+                {
+                    try { fb.Dispose(); }
+                    catch { /* ignore */ }
+                }
+                _fallbackProviders = null;
+            }
+        }
+
+        /// <summary>
+        /// Returns detected MultiTerm termbase metadata for the settings dialog.
+        /// </summary>
+        public static List<MultiTermTermbaseInfo> GetMultiTermInfos()
+        {
+            return _currentInstance?._multiTermInfos ?? new List<MultiTermTermbaseInfo>();
+        }
+
+        /// <summary>
+        /// Returns detected MultiTerm configs for the settings dialog.
+        /// </summary>
+        public static List<MultiTermTermbaseConfig> GetMultiTermConfigs()
+        {
+            return _currentInstance?._multiTermConfigs ?? new List<MultiTermTermbaseConfig>();
+        }
+
         private void OnSettingsRequested(object sender, EventArgs e)
         {
             SafeInvoke(() =>
@@ -158,6 +765,7 @@ namespace Supervertaler.Trados
 
                         // Force reload — the user may have toggled glossaries.
                         LoadTermbase(forceReload: true);
+                        LoadMultiTermTermbases();
                         UpdateFromActiveSegment();
 
                         // Refresh prompt library (user may have added/edited/deleted prompts)
@@ -189,6 +797,9 @@ namespace Supervertaler.Trados
             if (_activeDocument != null)
             {
                 _activeDocument.ActiveSegmentChanged += OnActiveSegmentChanged;
+
+                // Reload MultiTerm termbases — may have switched projects
+                LoadMultiTermTermbases();
                 UpdateFromActiveSegment();
             }
             else
@@ -199,7 +810,35 @@ namespace Supervertaler.Trados
 
         private void OnActiveSegmentChanged(object sender, EventArgs e)
         {
+            // Reload MultiTerm terms if any .sdltb file has been modified since last load
+            // (e.g., user added terms via Trados's native MultiTerm interface)
+            if (HasMultiTermFileChanged())
+                LoadMultiTermTermbases();
+
             UpdateFromActiveSegment();
+        }
+
+        /// <summary>
+        /// Checks whether any loaded .sdltb file has been modified since we last read it.
+        /// Uses File.GetLastWriteTimeUtc() which is a fast stat call.
+        /// </summary>
+        private bool HasMultiTermFileChanged()
+        {
+            if (_multiTermFileTimestamps == null || _multiTermFileTimestamps.Count == 0)
+                return false;
+
+            foreach (var kvp in _multiTermFileTimestamps)
+            {
+                try
+                {
+                    if (!File.Exists(kvp.Key)) continue;
+                    var currentMtime = File.GetLastWriteTimeUtc(kvp.Key);
+                    if (currentMtime > kvp.Value)
+                        return true;
+                }
+                catch { /* ignore errors checking file times */ }
+            }
+            return false;
         }
 
         private void UpdateFromActiveSegment()
@@ -214,6 +853,30 @@ namespace Supervertaler.Trados
             {
                 var sourceSegment = _activeDocument.ActiveSegmentPair.Source;
                 var sourceText = GetPlainText(sourceSegment);
+
+                // If we have fallback providers (API-based), search them for this segment
+                // and merge results into the index before updating the display
+                if (_fallbackProviders != null && _fallbackProviders.Count > 0
+                    && !string.IsNullOrWhiteSpace(sourceText))
+                {
+                    try
+                    {
+                        foreach (var fb in _fallbackProviders)
+                        {
+                            var results = fb.SearchSegment(sourceText);
+                            if (results.Count > 0)
+                            {
+                                // Temporarily merge these results for this segment
+                                SafeInvoke(() => _control.Value.MergeMultiTermEntries(results, null));
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Swallow — fallback search should never crash the plugin
+                    }
+                }
+
                 SafeInvoke(() => _control.Value.UpdateSegment(sourceText));
             }
             catch (Exception)
@@ -274,7 +937,7 @@ namespace Supervertaler.Trados
 
         private void OnTermEditRequested(object sender, TermEditEventArgs e)
         {
-            if (e.Entry == null) return;
+            if (e.Entry == null || e.Entry.IsMultiTerm) return;
 
             SafeInvoke(() =>
             {
@@ -348,7 +1011,7 @@ namespace Supervertaler.Trados
 
         private void OnTermDeleteRequested(object sender, TermEditEventArgs e)
         {
-            if (e.Entry == null) return;
+            if (e.Entry == null || e.Entry.IsMultiTerm) return;
 
             SafeInvoke(() =>
             {
@@ -384,7 +1047,7 @@ namespace Supervertaler.Trados
 
         private void OnTermNonTranslatableToggled(object sender, TermEditEventArgs e)
         {
-            if (e.Entry == null) return;
+            if (e.Entry == null || e.Entry.IsMultiTerm) return;
 
             SafeInvoke(() =>
             {
@@ -448,12 +1111,6 @@ namespace Supervertaler.Trados
             instance.UpdateFromActiveSegment();
         }
 
-        /// <summary>
-        /// Called after a term is inserted via quick-add. Incrementally updates the
-        /// in-memory index and refreshes the segment display, without reloading the
-        /// entire database. Much faster than NotifyTermAdded() for single inserts.
-        /// </summary>
-
         // ─── Context sharing for AI Assistant ─────────────────────
 
         /// <summary>
@@ -479,6 +1136,11 @@ namespace Supervertaler.Trados
             catch { return new List<TermPickerMatch>(); }
         }
 
+        /// <summary>
+        /// Called after a term is inserted via quick-add. Incrementally updates the
+        /// in-memory index and refreshes the segment display, without reloading the
+        /// entire database. Much faster than NotifyTermAdded() for single inserts.
+        /// </summary>
         public static void NotifyTermInserted(List<Models.TermEntry> newEntries)
         {
             var instance = _currentInstance;
@@ -679,6 +1341,7 @@ namespace Supervertaler.Trados
                 _currentInstance = null;
 
             StopChordTimer();
+            DisposeFallbackProviders();
 
             if (_activeDocument != null)
             {

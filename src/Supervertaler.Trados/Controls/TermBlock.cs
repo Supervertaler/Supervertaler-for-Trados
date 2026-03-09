@@ -28,6 +28,8 @@ namespace Supervertaler.Trados.Controls
         private static readonly Color RegularHover = ColorTranslator.FromHtml("#BBDEFB");
         private static readonly Color NonTranslatableBg = ColorTranslator.FromHtml("#FFF3D0");
         private static readonly Color NonTranslatableHover = ColorTranslator.FromHtml("#FFE8A0");
+        private static readonly Color MultiTermBg = ColorTranslator.FromHtml("#D4EDDA");
+        private static readonly Color MultiTermHover = ColorTranslator.FromHtml("#B8D9C0");
         private static readonly Color SeparatorColor = Color.FromArgb(180, 180, 180);
 
         private bool _isHovered;
@@ -36,6 +38,7 @@ namespace Supervertaler.Trados.Controls
         private readonly int _shortcutIndex; // -1 = no shortcut
         private readonly bool _isProjectTermbase;
         private readonly bool _isNonTranslatable;
+        private readonly bool _isMultiTerm;
 
         public event EventHandler<TermInsertEventArgs> TermInsertRequested;
         public event EventHandler<TermEditEventArgs> TermEditRequested;
@@ -43,13 +46,14 @@ namespace Supervertaler.Trados.Controls
         public event EventHandler<TermEditEventArgs> TermNonTranslatableToggled;
 
         public TermBlock(string sourceText, List<TermEntry> entries, int shortcutIndex = -1,
-            bool isProjectTermbase = false, bool isNonTranslatable = false)
+            bool isProjectTermbase = false, bool isNonTranslatable = false, bool isMultiTerm = false)
         {
             _sourceText = sourceText;
             _entries = entries ?? new List<TermEntry>();
             _shortcutIndex = shortcutIndex;
             _isProjectTermbase = isProjectTermbase;
             _isNonTranslatable = isNonTranslatable;
+            _isMultiTerm = isMultiTerm;
 
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
@@ -58,38 +62,42 @@ namespace Supervertaler.Trados.Controls
             CalculateSize();
 
             // Right-click context menu for edit/delete/non-translatable
-            var contextMenu = new ContextMenuStrip();
-
-            var editItem = new ToolStripMenuItem("Edit Term\u2026");
-            editItem.Click += (s, ev) =>
+            // (not shown for read-only MultiTerm entries)
+            if (!isMultiTerm)
             {
-                if (PrimaryEntry != null)
-                    TermEditRequested?.Invoke(this, new TermEditEventArgs
-                    {
-                        Entry = PrimaryEntry,
-                        AllEntries = _entries.AsReadOnly()
-                    });
-            };
-            contextMenu.Items.Add(editItem);
+                var contextMenu = new ContextMenuStrip();
 
-            var toggleNtItem = new ToolStripMenuItem(
-                _isNonTranslatable ? "Mark as Translatable" : "Mark as Non-Translatable");
-            toggleNtItem.Click += (s, ev) =>
-            {
-                if (PrimaryEntry != null)
-                    TermNonTranslatableToggled?.Invoke(this, new TermEditEventArgs { Entry = PrimaryEntry });
-            };
-            contextMenu.Items.Add(toggleNtItem);
+                var editItem = new ToolStripMenuItem("Edit Term\u2026");
+                editItem.Click += (s, ev) =>
+                {
+                    if (PrimaryEntry != null)
+                        TermEditRequested?.Invoke(this, new TermEditEventArgs
+                        {
+                            Entry = PrimaryEntry,
+                            AllEntries = _entries.AsReadOnly()
+                        });
+                };
+                contextMenu.Items.Add(editItem);
 
-            var deleteItem = new ToolStripMenuItem("Delete Term");
-            deleteItem.Click += (s, ev) =>
-            {
-                if (PrimaryEntry != null)
-                    TermDeleteRequested?.Invoke(this, new TermEditEventArgs { Entry = PrimaryEntry });
-            };
-            contextMenu.Items.Add(deleteItem);
+                var toggleNtItem = new ToolStripMenuItem(
+                    _isNonTranslatable ? "Mark as Translatable" : "Mark as Non-Translatable");
+                toggleNtItem.Click += (s, ev) =>
+                {
+                    if (PrimaryEntry != null)
+                        TermNonTranslatableToggled?.Invoke(this, new TermEditEventArgs { Entry = PrimaryEntry });
+                };
+                contextMenu.Items.Add(toggleNtItem);
 
-            ContextMenuStrip = contextMenu;
+                var deleteItem = new ToolStripMenuItem("Delete Term");
+                deleteItem.Click += (s, ev) =>
+                {
+                    if (PrimaryEntry != null)
+                        TermDeleteRequested?.Invoke(this, new TermEditEventArgs { Entry = PrimaryEntry });
+                };
+                contextMenu.Items.Add(deleteItem);
+
+                ContextMenuStrip = contextMenu;
+            }
         }
 
         /// <summary>
@@ -98,6 +106,7 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public bool IsProjectTermbase => _isProjectTermbase;
         public bool IsNonTranslatable => _isNonTranslatable;
+        public bool IsMultiTerm => _isMultiTerm;
         public TermEntry PrimaryEntry => _entries.Count > 0 ? _entries[0] : null;
         public IReadOnlyList<TermEntry> Entries => _entries;
         public int ShortcutIndex => _shortcutIndex;
@@ -189,6 +198,8 @@ namespace Supervertaler.Trados.Controls
                 bgColor = _isHovered ? NonTranslatableHover : NonTranslatableBg;
             else if (IsProjectTermbase)
                 bgColor = _isHovered ? ProjectHover : ProjectBg;
+            else if (_isMultiTerm)
+                bgColor = _isHovered ? MultiTermHover : MultiTermBg;
             else
                 bgColor = _isHovered ? RegularHover : RegularBg;
 
@@ -231,6 +242,8 @@ namespace Supervertaler.Trados.Controls
                     badgeColor = Color.FromArgb(180, 150, 50);
                 else if (IsProjectTermbase)
                     badgeColor = Color.FromArgb(200, 100, 150);
+                else if (_isMultiTerm)
+                    badgeColor = Color.FromArgb(80, 150, 90);
                 else
                     badgeColor = Color.FromArgb(90, 140, 210);
 
@@ -272,6 +285,8 @@ namespace Supervertaler.Trados.Controls
             if (_entries.Count > 0)
             {
                 var lines = new List<string>();
+                if (_isMultiTerm)
+                    lines.Add("[MultiTerm \u2014 read-only]");
                 if (_isNonTranslatable)
                     lines.Add("[Non-translatable]");
                 foreach (var entry in _entries)
