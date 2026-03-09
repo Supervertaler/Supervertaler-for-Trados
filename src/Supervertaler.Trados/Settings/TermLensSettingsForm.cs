@@ -217,7 +217,7 @@ namespace Supervertaler.Trados.Settings
                 ForeColor = Color.FromArgb(40, 40, 40),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            _txtTermbasePath.Width = _btnCreateNew.Left - 10 - 6;
+            _txtTermbasePath.Width = _btnCreateNew.Left - 10 - 10;
 
             _lblTermbaseInfo = new Label
             {
