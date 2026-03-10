@@ -453,6 +453,7 @@ namespace Supervertaler.Trados.Controls
                     }
 
                     UpdateTermCountLabel();
+                    TermLensEditorViewPart.NotifyTermAdded();
 
                     int skipped = dlg.Terms.Count - results.Count;
                     var msg = $"Added {results.Count} non-translatable term(s).";
@@ -503,6 +504,10 @@ namespace Supervertaler.Trados.Controls
                     row["Domain"] as string ?? "",
                     row["Notes"] as string ?? "",
                     isNonTranslatable: isNt);
+
+                // Refresh the in-memory term index so TermLens reflects
+                // the edit immediately (source/target text may have changed)
+                TermLensEditorViewPart.NotifyTermAdded();
             }
             catch (Exception ex)
             {
@@ -559,6 +564,7 @@ namespace Supervertaler.Trados.Controls
                 {
                     row["Id"] = newId;
                     UpdateTermCountLabel();
+                    TermLensEditorViewPart.NotifyTermAdded();
                 }
                 else
                 {
@@ -629,6 +635,7 @@ namespace Supervertaler.Trados.Controls
                     {
                         TermbaseReader.DeleteTerm(_dbPath, id);
                         _dataTable.Rows.Remove(row);
+                        TermLensEditorViewPart.NotifyTermDeleted(id);
                     }
                     catch
                     {
@@ -740,6 +747,10 @@ namespace Supervertaler.Trados.Controls
                         // Update synonym count
                         int synCount = dlg.SourceSynonymsList.Count + dlg.TargetSynonymsList.Count;
                         row["Synonyms"] = synCount > 0 ? $"{synCount} syn." : "";
+
+                        // Refresh the in-memory term index so TermLens
+                        // reflects the edit immediately
+                        TermLensEditorViewPart.NotifyTermAdded();
                     }
                     finally
                     {
@@ -754,6 +765,7 @@ namespace Supervertaler.Trados.Controls
                     {
                         _dataTable.Rows.Remove(row);
                         UpdateTermCountLabel();
+                        TermLensEditorViewPart.NotifyTermDeleted(id);
                     }
                     finally
                     {
@@ -792,6 +804,7 @@ namespace Supervertaler.Trados.Controls
                 TermbaseReader.DeleteTerm(_dbPath, id);
                 _dataTable.Rows.Remove(row);
                 UpdateTermCountLabel();
+                TermLensEditorViewPart.NotifyTermDeleted(id);
             }
             catch (Exception ex)
             {
@@ -893,6 +906,9 @@ namespace Supervertaler.Trados.Controls
                 catch { }
 
                 UpdateTermCountLabel();
+
+                // Refresh in-memory index (merge changes term structure)
+                TermLensEditorViewPart.NotifyTermAdded();
 
                 MessageBox.Show(
                     $"Merged {selected.Count} entries into one. " +
