@@ -12,9 +12,11 @@
 
 ### Changed
 - **"MultiTerm Help"** — renamed the context menu item from "MultiTerm Support" to "MultiTerm Help" for consistency
+- **"Supervertaler Assistant Help"** — renamed the AI Assistant help menu item from "Assistant Help" to "Supervertaler Assistant Help"
 
 ### Fixed
-- **Shift+Enter in AI Assistant** — Shift+Enter now correctly inserts a newline in the chat input instead of being intercepted by Trados Studio; uses a custom TextBox subclass with `IsInputKey` override for robust key claiming
+- **Shift+Enter in AI Assistant** — Shift+Enter now correctly inserts a newline in the chat input instead of being intercepted by Trados Studio; uses a thread-local `WH_GETMESSAGE` hook to intercept the key press before Trados's message filters can consume it
+- **Paste newlines in AI Assistant** — pasting text with bare `\n` line endings (e.g. copied from Trados segments) now displays correctly; the chat input normalises `\n` to `\r\n` on paste
 
 ---
 
