@@ -63,7 +63,7 @@ namespace Supervertaler.Trados.Settings
             // Restore persisted form size (capped to reasonable bounds)
             if (_settings.SettingsFormWidth > 0 && _settings.SettingsFormHeight > 0)
             {
-                var maxW = Math.Min(800, Screen.PrimaryScreen.WorkingArea.Width);
+                var maxW = Screen.PrimaryScreen.WorkingArea.Width;
                 var maxH = Screen.PrimaryScreen.WorkingArea.Height;
                 var w = Math.Max(MinimumSize.Width, Math.Min(_settings.SettingsFormWidth, maxW));
                 var h = Math.Max(MinimumSize.Height, Math.Min(_settings.SettingsFormHeight, maxH));
@@ -83,7 +83,7 @@ namespace Supervertaler.Trados.Settings
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(560, 480);
             MinimumSize = new Size(480, 440);
-            MaximumSize = new Size(800, Screen.PrimaryScreen.WorkingArea.Height);
+            MaximumSize = new Size(Screen.PrimaryScreen.WorkingArea.Width, Screen.PrimaryScreen.WorkingArea.Height);
             BackColor = Color.White;
 
             // === OK / Cancel — anchored to bottom of form, outside tabs ===
