@@ -436,7 +436,7 @@ namespace Supervertaler.Trados.Controls
                 : HelpSystem.Topics.AiAssistantChat;
             string label = _tabControl.SelectedIndex == 1
                 ? "Batch Translate Help"
-                : "Assistant Help";
+                : "Supervertaler Assistant Help";
 
             var menu = new ContextMenuStrip();
             menu.Items.Add(label, null, (s, ev) =>
@@ -906,30 +906,39 @@ namespace Supervertaler.Trados.Controls
     }
 
     /// <summary>
-    /// TextBox subclass that intercepts Enter and Shift+Enter at the earliest
-    /// point in the WinForms key processing pipeline (ProcessCmdKey), preventing
-    /// Trados Studio's form-level handler from stealing them.
+    /// TextBox subclass that intercepts Enter and Shift+Enter at the application
+    /// message-filter level — the earliest possible interception point in WinForms.
     ///
     /// WinForms key processing order:
+    ///   0. IMessageFilter.PreFilterMessage  ← we intercept HERE
     ///   1. ProcessCmdKey — walks focused control → parent chain (Trados form)
     ///   2. IsInputKey    — only checked if ProcessCmdKey didn't consume the key
     ///   3. KeyDown       — only fires if IsInputKey returned true
     ///
-    /// Trados intercepts Enter in step 1 to navigate segments, so we must
-    /// consume it there and manually fire KeyDown for our handler.
+    /// Trados Studio registers its own IMessageFilter or form-level ProcessCmdKey
+    /// to intercept Enter for segment navigation. By registering our own filter
+    /// we consume the key before Trados ever sees it.
     /// </summary>
-    internal class ChatInputTextBox : TextBox
+    internal class ChatInputTextBox : TextBox, IMessageFilter
     {
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        private const int WM_KEYDOWN = 0x0100;
+
+        public ChatInputTextBox()
         {
-            if ((keyData & Keys.KeyCode) == Keys.Enter)
+            Application.AddMessageFilter(this);
+        }
+
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg == WM_KEYDOWN && Focused && (Keys)m.WParam == Keys.Enter)
             {
-                // Consume the key here so Trados never sees it.
+                // Consume Enter/Shift+Enter before Trados can intercept.
                 // Fire KeyDown so OnInputKeyDown handles send vs newline.
-                OnKeyDown(new KeyEventArgs(keyData));
-                return true;
+                var modifiers = Control.ModifierKeys;
+                OnKeyDown(new KeyEventArgs(Keys.Enter | modifiers));
+                return true; // Message consumed — Trados never sees it
             }
-            return base.ProcessCmdKey(ref msg, keyData);
+            return false;
         }
 
         protected override bool IsInputKey(Keys keyData)
@@ -937,6 +946,13 @@ namespace Supervertaler.Trados.Controls
             if ((keyData & Keys.KeyCode) == Keys.Enter)
                 return true;
             return base.IsInputKey(keyData);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                Application.RemoveMessageFilter(this);
+            base.Dispose(disposing);
         }
     }
 }
