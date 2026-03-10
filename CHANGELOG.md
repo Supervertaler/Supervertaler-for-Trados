@@ -2,17 +2,21 @@
 
 ## [Unreleased]
 
-### Added
-- **Select All / Deselect All** links for termbases in AI Settings → AI Context section
-
-### Fixed
-- **Settings TextBox overlap** — the database file path TextBox no longer extends over the "Create New..." button when the settings dialog is resized
-
 ---
 
 All notable changes to Supervertaler for Trados (formerly TermLens) will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version numbers follow [Semantic Versioning](https://semver.org/).
+
+---
+
+## [3.4.1] — 2026-03-10
+
+### Added
+- **Select All / Deselect All** links for termbases in AI Settings → AI Context section
+
+### Fixed
+- **Settings TextBox overlap** — the database file path TextBox no longer extends over the "Create New..." button when the settings dialog is resized
 
 ---
 
