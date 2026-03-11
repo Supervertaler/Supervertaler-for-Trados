@@ -34,7 +34,7 @@ namespace Supervertaler.Trados.Licensing
 
         private const string BaseUrl = "https://api.lemonsqueezy.com/v1/licenses";
         private const int OfflineCacheDays = 30;
-        private const int TrialDays = 14;
+        private const int TrialDays = 90;
 
         /// <summary>
         /// Lemon Squeezy variant names — must match exactly what's configured
