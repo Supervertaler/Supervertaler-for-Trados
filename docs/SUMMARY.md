@@ -6,6 +6,7 @@
 
 * [Installation](installation.md)
 * [Getting Started](getting-started.md)
+* [Licensing & Pricing](licensing.md)
 
 ## Features
 

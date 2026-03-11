@@ -38,6 +38,7 @@ namespace Supervertaler.Trados.Core
             public const string SettingsTermLens   = "settings/termlens";
             public const string SettingsAi         = "settings/ai-settings";
             public const string SettingsPrompts    = "settings/prompts";
+            public const string Licensing          = "getting-started/licensing-and-pricing";
             public const string KeyboardShortcuts  = "reference/keyboard-shortcuts";
             public const string Troubleshooting    = "reference/troubleshooting";
         }
