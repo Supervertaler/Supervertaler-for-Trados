@@ -26,7 +26,7 @@ namespace Supervertaler.Trados.Controls
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(460, 530);
+            ClientSize = new Size(460, 555);
             BackColor = Color.White;
 
             int y = 16;
@@ -244,7 +244,7 @@ namespace Supervertaler.Trados.Controls
             // Links
             AddLink("Website", "https://supervertaler.com", leftPad, ref y);
             AddLink("Documentation", null, leftPad, ref y, () => HelpSystem.OpenDocsHome());
-            AddLink("Support", "https://github.com/Supervertaler/Supervertaler-for-Trados/issues", leftPad, ref y);
+            AddLink("Support & Community", "https://supervertaler.com/trados/#support", leftPad, ref y);
 
             y += 4;
 
