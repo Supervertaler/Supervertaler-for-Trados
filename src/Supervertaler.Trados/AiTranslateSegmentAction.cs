@@ -3,6 +3,7 @@ using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 using Sdl.TranslationStudioAutomation.IntegrationApi.Presentation.DefaultLocations;
+using Supervertaler.Trados.Licensing;
 
 namespace Supervertaler.Trados
 {
@@ -21,6 +22,12 @@ namespace Supervertaler.Trados
     {
         protected override void Execute()
         {
+            if (!LicenseManager.Instance.HasTier2Access)
+            {
+                LicenseManager.ShowUpgradeMessage();
+                return;
+            }
+
             AiAssistantViewPart.HandleAiTranslateSegment();
         }
     }

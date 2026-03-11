@@ -503,6 +503,49 @@ namespace Supervertaler.Trados.Controls
             FontSizeChanged?.Invoke(this, EventArgs.Empty);
         }
 
+        // ─── License gating ────────────────────────────────────────
+
+        private Panel _licenseOverlay;
+
+        /// <summary>
+        /// Shows a license-required overlay that covers the TermLens panel.
+        /// </summary>
+        public void ShowLicenseRequired()
+        {
+            if (_licenseOverlay != null) return;
+
+            _licenseOverlay = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White
+            };
+
+            var lbl = new Label
+            {
+                Text = "Your trial has expired.\nEnter a license key in Settings \u2192 License\nto continue using Supervertaler for Trados.",
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = Color.FromArgb(100, 100, 100)
+            };
+
+            _licenseOverlay.Controls.Add(lbl);
+            Controls.Add(_licenseOverlay);
+            _licenseOverlay.BringToFront();
+        }
+
+        /// <summary>
+        /// Hides the license-required overlay after activation.
+        /// </summary>
+        public void HideLicenseRequired()
+        {
+            if (_licenseOverlay == null) return;
+            Controls.Remove(_licenseOverlay);
+            _licenseOverlay.Dispose();
+            _licenseOverlay = null;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)

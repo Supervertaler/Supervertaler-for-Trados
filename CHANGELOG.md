@@ -1,10 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## [4.0.0] — 2026-03-11
 
 ### Added
+- **Licensing system** — Lemon Squeezy-powered license key activation with two paid tiers: **TermLens** (€10/month — terminology features) and **TermLens + Supervertaler Assistant** (€15/month — all features including AI); 14-day free trial with full access on first install; 30-day offline cache for validation; 2 machine activations per key
+- **License tab in Settings** — dedicated tab for entering license keys, activating/deactivating licenses, verifying license status, and managing subscriptions; shows trial countdown, plan name, masked key, and last verification date
+- **License status in About dialog** — color-coded license status (blue for trial, green for active, red for expired) with a clickable link that opens the License settings tab directly
+- **Feature gating** — TermLens panel and terminology actions require Tier 1+; AI Assistant panel and AI translate action require Tier 2; graceful overlays and messages guide users to purchase or upgrade
+- **Security transparency** — "Source code available for security audit" link in the About dialog with tooltip explaining the plugin's network behaviour; links to the public GitHub repository
 - **Enhanced AI Assistant context** — the AI chat assistant now sees the full document content (all source segments) so it can determine the document type (legal, medical, technical, etc.) and provide context-appropriate assistance; also includes project/file metadata, surrounding segments, and term definitions/domains/notes
 - **AI Context settings** — three new settings in AI Settings: "Include full document content" (with configurable max segments), and "Include term definitions and domains"
+
+### Changed
+- **About dialog** — removed duplicate "Plugin Help" link (Documentation link remains); added clickable license status that opens Settings → License tab; added security audit note with GitHub link
 
 ### Fixed
 - **Settings sync between panels** — changing settings from the TermLens gear icon now immediately reflects in the AI Assistant panel and vice versa; previously each panel had its own in-memory copy that could get out of sync

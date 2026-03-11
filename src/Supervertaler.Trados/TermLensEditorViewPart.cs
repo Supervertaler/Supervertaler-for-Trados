@@ -12,6 +12,7 @@ using Sdl.FileTypeSupport.Framework.BilingualApi;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 using Supervertaler.Trados.Controls;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Licensing;
 using Supervertaler.Trados.Models;
 using Supervertaler.Trados.Settings;
 
@@ -65,6 +66,24 @@ namespace Supervertaler.Trados
         protected override void Initialize()
         {
             _currentInstance = this;
+
+            // License check — show/hide activation overlay based on tier
+            LicenseManager.Instance.LicenseStateChanged += (s, e) =>
+            {
+                _control.Value.BeginInvoke(new Action(() =>
+                {
+                    if (LicenseManager.Instance.HasTier1Access)
+                        _control.Value.HideLicenseRequired();
+                    else
+                        _control.Value.ShowLicenseRequired();
+                }));
+            };
+
+            if (LicenseManager.Instance.CurrentTier == LicenseTier.None)
+            {
+                _control.Value.ShowLicenseRequired();
+                return;
+            }
 
             // Load persisted settings
             _settings = TermLensSettings.Load();

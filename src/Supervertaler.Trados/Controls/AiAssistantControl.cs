@@ -904,6 +904,49 @@ namespace Supervertaler.Trados.Controls
         {
             _txtInput?.Focus();
         }
+
+        // ─── License gating ────────────────────────────────────────
+
+        private Panel _upgradeOverlay;
+
+        /// <summary>
+        /// Shows an upgrade-required overlay that covers the AI Assistant panel.
+        /// </summary>
+        public void ShowUpgradeRequired()
+        {
+            if (_upgradeOverlay != null) return;
+
+            _upgradeOverlay = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White
+            };
+
+            var lbl = new Label
+            {
+                Text = "The Supervertaler Assistant requires a\n\"TermLens + Supervertaler Assistant\" license.\n\nUpgrade in Settings \u2192 License.",
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = Color.FromArgb(100, 100, 100)
+            };
+
+            _upgradeOverlay.Controls.Add(lbl);
+            Controls.Add(_upgradeOverlay);
+            _upgradeOverlay.BringToFront();
+        }
+
+        /// <summary>
+        /// Hides the upgrade-required overlay after license upgrade.
+        /// </summary>
+        public void HideUpgradeRequired()
+        {
+            if (_upgradeOverlay == null) return;
+            Controls.Remove(_upgradeOverlay);
+            _upgradeOverlay.Dispose();
+            _upgradeOverlay = null;
+        }
     }
 
     /// <summary>

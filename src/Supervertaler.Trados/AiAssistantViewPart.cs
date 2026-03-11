@@ -10,6 +10,7 @@ using Sdl.Desktop.IntegrationApi.Interfaces;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 using Supervertaler.Trados.Controls;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Licensing;
 using Supervertaler.Trados.Models;
 using Supervertaler.Trados.Settings;
 
@@ -58,6 +59,25 @@ namespace Supervertaler.Trados
         protected override void Initialize()
         {
             _currentInstance = this;
+
+            // License check — show/hide upgrade overlay based on tier
+            LicenseManager.Instance.LicenseStateChanged += (s, e) =>
+            {
+                _control.Value.BeginInvoke(new Action(() =>
+                {
+                    if (LicenseManager.Instance.HasTier2Access)
+                        _control.Value.HideUpgradeRequired();
+                    else
+                        _control.Value.ShowUpgradeRequired();
+                }));
+            };
+
+            if (!LicenseManager.Instance.HasTier2Access)
+            {
+                _control.Value.ShowUpgradeRequired();
+                return;
+            }
+
             _settings = TermLensSettings.Load();
 
             // Initialize prompt library — try to share with TermLens if already loaded

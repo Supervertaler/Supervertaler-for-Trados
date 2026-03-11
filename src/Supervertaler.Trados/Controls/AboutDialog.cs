@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Licensing;
+using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Controls
 {
@@ -24,7 +26,7 @@ namespace Supervertaler.Trados.Controls
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(460, 500);
+            ClientSize = new Size(460, 530);
             BackColor = Color.White;
 
             int y = 16;
@@ -117,6 +119,66 @@ namespace Supervertaler.Trados.Controls
             });
             y += 12;
 
+            // License status
+            var mgr = LicenseManager.Instance;
+            var tier = mgr.CurrentTier;
+            string licenseText;
+            Color licenseColor;
+            switch (tier)
+            {
+                case LicenseTier.Trial:
+                    licenseText = $"License: Trial ({mgr.TrialDaysRemaining} days remaining)";
+                    licenseColor = Color.FromArgb(30, 80, 160);
+                    break;
+                case LicenseTier.Tier1:
+                    licenseText = "License: TermLens (active)";
+                    licenseColor = Color.FromArgb(40, 120, 40);
+                    break;
+                case LicenseTier.Tier2:
+                    licenseText = "License: TermLens + Supervertaler Assistant (active)";
+                    licenseColor = Color.FromArgb(40, 120, 40);
+                    break;
+                default:
+                    licenseText = "License: No active license";
+                    licenseColor = Color.FromArgb(180, 40, 40);
+                    break;
+            }
+
+            var licenseLink = new NoFocusCuesLinkLabel
+            {
+                Text = licenseText,
+                Location = new Point(leftPad, y),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                LinkColor = licenseColor,
+                ActiveLinkColor = licenseColor,
+                LinkBehavior = LinkBehavior.HoverUnderline
+            };
+            var licenseTip = new ToolTip();
+            licenseTip.SetToolTip(licenseLink, "Open license settings");
+            licenseLink.LinkClicked += (s, e) =>
+            {
+                Close();
+                try
+                {
+                    using (var form = new TermLensSettingsForm(TermLensSettings.Load(), defaultTab: 3))
+                        form.ShowDialog();
+                }
+                catch { }
+            };
+            Controls.Add(licenseLink);
+            y += 24;
+
+            // Separator
+            Controls.Add(new Label
+            {
+                Location = new Point(leftPad, y),
+                Width = contentWidth,
+                Height = 1,
+                BorderStyle = BorderStyle.Fixed3D
+            });
+            y += 12;
+
             // Keyboard shortcuts header
             Controls.Add(new Label
             {
@@ -181,9 +243,50 @@ namespace Supervertaler.Trados.Controls
 
             // Links
             AddLink("Website", "https://supervertaler.com", leftPad, ref y);
-            AddLink("Plugin Help", null, leftPad, ref y, () => HelpSystem.OpenHelp(HelpSystem.Topics.Overview));
             AddLink("Documentation", null, leftPad, ref y, () => HelpSystem.OpenDocsHome());
             AddLink("Support", "https://github.com/Supervertaler/Supervertaler-for-Trados/issues", leftPad, ref y);
+
+            y += 4;
+
+            // Security / open-source note
+            Controls.Add(new Label
+            {
+                Location = new Point(leftPad, y),
+                Width = contentWidth,
+                Height = 1,
+                BorderStyle = BorderStyle.Fixed3D
+            });
+            y += 10;
+
+            var shieldLabel = new Label
+            {
+                Text = "\U0001f6e1\ufe0f",
+                Location = new Point(leftPad, y),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9f)
+            };
+            Controls.Add(shieldLabel);
+
+            var securityLink = new NoFocusCuesLinkLabel
+            {
+                Text = "Source code available for security audit",
+                Location = new Point(leftPad + 22, y),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 8.5f),
+                LinkColor = Color.FromArgb(80, 120, 80),
+                ActiveLinkColor = Color.FromArgb(60, 100, 60)
+            };
+            var securityTip = new ToolTip();
+            securityTip.SetToolTip(securityLink,
+                "This plugin makes no network calls except to your chosen AI provider and the license server.\n" +
+                "No telemetry, no tracking, no data collection. Verify it yourself on GitHub.");
+            securityLink.LinkClicked += (s, e) =>
+            {
+                try { Process.Start(new ProcessStartInfo("https://github.com/Supervertaler/Supervertaler-for-Trados") { UseShellExecute = true }); }
+                catch { }
+            };
+            Controls.Add(securityLink);
+            y += 20;
 
             // Close button
             var btnClose = new Button

@@ -2,10 +2,28 @@
 
 **Terminology insight and AI translation for Trados Studio**
 
-Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key features from [Supervertaler Workbench](https://supervertaler.com/desktop.html) into the Trados ecosystem. It includes the **TermLens** glossary panel and **AI-powered batch and single-segment translation** using OpenAI, Anthropic, and Google LLMs. It relates to Supervertaler Workbench as follows:
+Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key features from [Supervertaler Workbench](https://supervertaler.com/workbench/) into the Trados ecosystem. It includes the **TermLens** glossary panel and **AI-powered batch and single-segment translation** using OpenAI, Anthropic, and Google LLMs. It relates to Supervertaler Workbench as follows:
 
 - Supervertaler Workbench – free, open-source, standalone tool (Windows/Mac/Linux)
-- Supervertaler for Trados – paid plugin (Windows-based, but can run on Mac/Linux via virtualisation, e.g., using Parallels Desktop) 
+- Supervertaler for Trados – paid plugin (Windows-based, but can run on Mac/Linux via virtualisation, e.g., using Parallels Desktop)
+
+## Pricing
+
+| Plan | Price | Features |
+|------|-------|----------|
+| **Free trial** | 14 days | Full access to all features |
+| **TermLens** | €10/month | Terminology management, termbases, MultiTerm support, Term Picker, quick-add shortcuts |
+| **TermLens + Supervertaler Assistant** | €15/month | All TermLens features plus AI Assistant, Batch Translate, Prompt Library, multimodal support |
+
+Purchase a license at [supervertaler.com/trados](https://supervertaler.com/trados/).
+
+## Privacy & Security
+
+This plugin makes **no network calls** except to:
+1. **Your chosen AI provider** (OpenAI, Anthropic, Google Gemini, or local Ollama) — only when you use AI features
+2. **Lemon Squeezy license API** — for license activation and periodic validation (sends only your license key and a hashed machine fingerprint)
+
+No telemetry, no tracking, no analytics, no data collection. Your API keys are stored locally in `%LocalAppData%\Supervertaler.Trados\settings.json` and are never transmitted anywhere except to your chosen AI provider. The full source code is available here for security audit.
 
 ## TermLens — inline terminology display
 
@@ -116,4 +134,4 @@ Source available — see [LICENSE](LICENSE) for details. Pre-built binaries are 
 
 ## Author
 
-Michael Beijer — [supervertaler.com](https://supervertaler.com)
+Michael Beijer — [supervertaler.com](https://supervertaler.com/trados/)

@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
+using Supervertaler.Trados.Licensing;
 
 namespace Supervertaler.Trados
 {
@@ -57,6 +58,9 @@ namespace Supervertaler.Trados
                 // If it also fails, the user gets a descriptive error
                 // when they first try to use a database.
             }
+
+            // Initialize licensing — loads cached state, triggers background validation
+            LicenseManager.Instance.InitializeAsync();
         }
 
         /// <summary>

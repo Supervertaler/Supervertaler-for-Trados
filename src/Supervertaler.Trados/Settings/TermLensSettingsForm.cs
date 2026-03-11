@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows.Forms;
 using Supervertaler.Trados.Controls;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Licensing;
 using Supervertaler.Trados.Models;
 
 namespace Supervertaler.Trados.Settings
@@ -143,6 +144,12 @@ namespace Supervertaler.Trados.Settings
             };
             promptsPage.Controls.Add(_promptManagerPanel);
             _tabControl.TabPages.Add(promptsPage);
+
+            // --- License tab ---
+            var licensePage = new TabPage("License") { BackColor = Color.White };
+            var licensePanel = new LicensePanel { Dock = DockStyle.Fill };
+            licensePage.Controls.Add(licensePanel);
+            _tabControl.TabPages.Add(licensePage);
 
             Controls.AddRange(new Control[] { _tabControl, _btnOK, _btnCancel });
         }

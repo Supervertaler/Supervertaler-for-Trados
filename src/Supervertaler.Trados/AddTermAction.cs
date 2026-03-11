@@ -9,6 +9,7 @@ using Sdl.TranslationStudioAutomation.IntegrationApi;
 using Sdl.TranslationStudioAutomation.IntegrationApi.Presentation.DefaultLocations;
 using Supervertaler.Trados.Controls;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Licensing;
 using Supervertaler.Trados.Models;
 using Supervertaler.Trados.Settings;
 
@@ -30,6 +31,12 @@ namespace Supervertaler.Trados
     {
         protected override void Execute()
         {
+            if (!LicenseManager.Instance.HasTier1Access)
+            {
+                LicenseManager.ShowLicenseRequiredMessage();
+                return;
+            }
+
             try
             {
                 var editorController = SdlTradosStudio.Application.GetController<EditorController>();
