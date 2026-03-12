@@ -490,8 +490,8 @@ namespace Supervertaler.Trados.Settings
                 Width = 280,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
-            _cboShortcutStyle.Items.Add("Sequential (type digits: Alt 4 5 = term 45)");
-            _cboShortcutStyle.Items.Add("Repeated digit (same key: Alt 5\u00d72 = term 14)");
+            _cboShortcutStyle.Items.Add("Sequential (Alt+45 = term 45)");
+            _cboShortcutStyle.Items.Add("Repeated digit (Alt+55, Alt+66, etc.)");
             _cboShortcutStyle.SelectedIndex = _settings.TermShortcutStyle == "repeated" ? 1 : 0;
 
             var lblChordDelay = new Label
