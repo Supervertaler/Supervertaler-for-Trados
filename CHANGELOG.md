@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.0.0-beta] — 2026-03-12
+
+### Changed
+- **90-day free trial** — extended from 14 days; no credit card required, no sign-up
+- **Support & Community link** in About dialog now points to `supervertaler.com/trados/#support` (Groups.io mailing list, ProZ forum, GitHub Issues) instead of directly to GitHub Issues; future-proofed so support channels can be updated without rebuilding the plugin
+- **Version display** — About dialog now shows the full informational version string (e.g. "4.0.0-beta") rather than the numeric assembly version
+
+### Fixed
+- **Shield emoji clipping** — "Source code available for security audit" link in the About dialog was partially obscured by the shield emoji; offset increased to prevent overlap
+- **Tooltips on About dialog links** — Documentation and Support & Community links now show tooltips on hover
+
+---
+
 ## [4.0.0] — 2026-03-11
 
 ### Added

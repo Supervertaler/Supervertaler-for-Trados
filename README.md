@@ -11,7 +11,7 @@ Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings key 
 
 | Plan | Price | Features |
 |------|-------|----------|
-| **Free trial** | 14 days | Full access to all features |
+| **Free trial** | 90 days — no credit card required | Full access to all features |
 | **TermLens** | €10/month | Terminology management, termbases, MultiTerm support, Term Picker, quick-add shortcuts |
 | **TermLens + Supervertaler Assistant** | €15/month | All TermLens features plus AI Assistant, Batch Translate, Prompt Library, multimodal support |
 
