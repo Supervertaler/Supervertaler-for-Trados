@@ -42,6 +42,17 @@ Adjust the font size used in the TermLens display panel. Valid range: **7 pt** t
 
 Increase the font size if TermLens text is hard to read; decrease it to fit more terms on screen.
 
+## Term shortcuts
+
+Choose how Alt+digit shortcuts work when a segment has more than 9 matched terms:
+
+* **Sequential** (default) — type the term number digit by digit. Alt+4 then Alt+5 inserts term 45. Badges show clean sequential numbers (10, 11, 12, ...). There is a brief delay after each digit while the system waits for a possible next digit.
+* **Repeated digit** — press the same digit key multiple times. Alt+5 twice inserts term 14 (the 5th term in the second tier). Badges show repeated digits (11, 22, 333, ...). No delay, but the badges are less intuitive.
+
+Both modes behave identically when a segment has 9 or fewer matches — pressing Alt+N inserts immediately with no delay.
+
+See [Keyboard Shortcuts](../keyboard-shortcuts.md) for the full reference.
+
 ---
 
 ## See Also

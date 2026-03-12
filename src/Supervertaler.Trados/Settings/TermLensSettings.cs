@@ -100,6 +100,16 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "panelFontSize")]
         public float PanelFontSize { get; set; } = 9f;
 
+        // ─── Term shortcut style ────────────────────────────────────────
+        /// <summary>
+        /// How Alt+digit shortcuts work for terms beyond 9.
+        /// "sequential" = type Alt+4,5 for term 45 (timer-based, clean badges).
+        /// "repeated"   = type Alt+5,5 for term 14 (no timer ambiguity, repeated-digit badges).
+        /// Default: sequential.
+        /// </summary>
+        [DataMember(Name = "termShortcutStyle")]
+        public string TermShortcutStyle { get; set; } = "sequential";
+
         // ─── AI settings ────────────────────────────────────────────
         /// <summary>
         /// AI provider configuration (API keys, provider selection, model selection).

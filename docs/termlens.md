@@ -40,18 +40,17 @@ Click any translation shown under a source word. The translation is inserted at 
 
 Each matched term in TermLens is assigned a **numbered badge**. Press **Alt+1** to insert the first match, **Alt+2** for the second, and so on up to **Alt+9**.
 
-### Two-Digit Chord (Terms 10+)
+### Shortcuts for Terms 10+
 
-For terms numbered 10 and above, use a quick two-key chord:
+For terms numbered 10 and above, TermLens supports two shortcut styles (configurable in Settings):
 
-* **Alt+n+n** (pressed quickly) inserts term 11
-* **Alt+1+2** inserts term 12
-* **Alt+2+3** inserts term 23
+* **Sequential** (default) — type the term number digit by digit: `Alt+4`, `Alt+5` inserts term 45
+* **Repeated digit** — press the same key multiple times: `Alt+5`, `Alt+5` inserts term 14
 
-The first digit is the tens place, the second is the ones place.
+The badge on each term chip shows exactly which key combination to use. See [Keyboard Shortcuts](keyboard-shortcuts.md) for details on both modes.
 
-{% hint style="warning" %}
-**Alt+0** is reserved and cannot be used for term insertion. TermLens numbering starts at 1.
+{% hint style="info" %}
+Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** to insert them.
 {% endhint %}
 
 ### Term Picker (Ctrl+Shift+G)

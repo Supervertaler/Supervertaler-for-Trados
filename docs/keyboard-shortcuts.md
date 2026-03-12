@@ -11,8 +11,7 @@ All keyboard shortcuts available in Supervertaler for Trados.
 | `Ctrl+Alt+T` | Add term (opens dialog with full control) |
 | `Ctrl+Alt+N` | Quick-add non-translatable term |
 | `Ctrl+Shift+G` | Open Term Picker |
-| `Alt+1` ... `Alt+9` | Insert term by badge number |
-| `Alt+0` | (Reserved) |
+| `Alt+1` ... `Alt+9` | Insert term 1–9 by badge number |
 
 ## AI Translation
 
@@ -28,23 +27,40 @@ All keyboard shortcuts available in Supervertaler for Trados.
 | `F2` | Expand selection to word boundaries |
 | `F5` | Force refresh TermLens display |
 
-## Two-Digit Chord for Terms 10+
+## Shortcuts for Terms 10+
 
-When a segment has more than 9 matched terms, use a quick two-key chord to insert terms numbered 10 and above.
+When a segment has more than 9 matched terms, you can still insert terms by number using Alt+digit. TermLens offers two shortcut styles — choose the one you prefer in **Settings > TermLens > Term shortcuts**.
 
-Press the **tens digit** followed by the **ones digit** in rapid succession:
+### Sequential (default)
 
-| Chord | Inserts Term |
-|-------|-------------|
+Type the term number digit by digit. Each badge shows the plain term number (10, 11, 12, ...).
+
+| Shortcut | Inserts |
+|----------|---------|
 | `Alt+1`, `Alt+0` | Term 10 |
-| `Alt+1`, `Alt+1` | Term 11 |
-| `Alt+1`, `Alt+2` | Term 12 |
 | `Alt+2`, `Alt+3` | Term 23 |
+| `Alt+4`, `Alt+5` | Term 45 |
 
-The two keys must be pressed within a short time window. If you wait too long between keys, the first press is treated as a single-digit insertion.
+After the first digit, TermLens waits briefly for a possible second (or third) digit. If no further digit is pressed, the single-digit term is inserted.
+
+### Repeated digit
+
+Press the **same digit key** multiple times. Each badge shows the repeated digit (11, 222, 3333, ...).
+
+| Presses | Shortcut example | Badge | Terms |
+|---------|-----------------|-------|-------|
+| 1x | `Alt+1` ... `Alt+9` | **1** – **9** | 1–9 |
+| 2x | `Alt+1,1` ... `Alt+9,9` | **11** – **99** | 10–18 |
+| 3x | `Alt+1,1,1` ... `Alt+9,9,9` | **111** – **999** | 19–27 |
+| 4x | `Alt+1,1,1,1` ... `Alt+9,9,9,9` | **1111** – **9999** | 28–36 |
+| 5x | `Alt+1,1,1,1,1` ... `Alt+9,9,9,9,9` | **11111** – **99999** | 37–45 |
 
 {% hint style="info" %}
-These shortcuts are active when focus is in the Trados editor or in a Supervertaler panel. They do not interfere with Trados's built-in shortcuts.
+In both modes, when a segment has 9 or fewer matches, pressing Alt+N inserts immediately with no delay.
+{% endhint %}
+
+{% hint style="info" %}
+Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** (`Ctrl+Shift+G`) to insert them.
 {% endhint %}
 
 ---

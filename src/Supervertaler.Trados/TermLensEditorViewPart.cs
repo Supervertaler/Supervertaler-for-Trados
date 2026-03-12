@@ -54,8 +54,10 @@ namespace Supervertaler.Trados
         // Prompt library (shared — used by settings dialog)
         private PromptLibrary _promptLibrary;
 
-        // --- Alt+digit chord state machine ---
+        // --- Alt+digit shortcut state machine ---
         private static int? _pendingDigit;
+        private static int _pendingRepeatCount;   // repeated mode: how many times same digit pressed
+        private static int _pendingAccumulated;    // sequential mode: accumulated number so far
         private static System.Windows.Forms.Timer _chordTimer;
 
         protected override IUIControl GetContentControl()
@@ -122,6 +124,9 @@ namespace Supervertaler.Trados
 
             // Apply persisted font size
             _control.Value.SetFontSize(_settings.PanelFontSize);
+
+            // Apply shortcut style to badge rendering
+            TermBlock.UseRepeatedDigitBadges = _settings.TermShortcutStyle == "repeated";
 
             // Load termbase: prefer saved setting, fall back to auto-detect
             LoadTermbase();
@@ -782,6 +787,9 @@ namespace Supervertaler.Trados
                         // Apply font size change (user may have adjusted it in settings)
                         _control.Value.SetFontSize(_settings.PanelFontSize);
 
+                        // Apply shortcut style change
+                        TermBlock.UseRepeatedDigitBadges = _settings.TermShortcutStyle == "repeated";
+
                         // Force reload — the user may have toggled glossaries.
                         LoadTermbase(forceReload: true);
                         LoadMultiTermTermbases();
@@ -1128,6 +1136,7 @@ namespace Supervertaler.Trados
             if (instance == null) return;
             instance._settings = TermLensSettings.Load();
             _control.Value.SetFontSize(instance._settings.PanelFontSize);
+            TermBlock.UseRepeatedDigitBadges = instance._settings.TermShortcutStyle == "repeated";
         }
 
         /// <summary>
@@ -1240,42 +1249,151 @@ namespace Supervertaler.Trados
         }
 
         // ─── Alt+digit term insertion ────────────────────────────────
+        // Two modes controlled by TermShortcutStyle setting:
+        //   "sequential" — Alt+4,5 = term 45 (timer waits for next digit)
+        //   "repeated"   — Alt+5,5 = term 14 (same digit = next tier)
+
+        private static bool IsRepeatedMode =>
+            _currentInstance?._settings?.TermShortcutStyle == "repeated";
 
         /// <summary>
         /// Called by TermInsertDigitNAction when Alt+digit is pressed.
-        /// Implements a two-digit chord state machine with 400ms timeout.
+        /// Dispatches to repeated-digit or sequential handler based on settings.
         /// </summary>
         public static void HandleDigitPress(int digit)
         {
             var instance = _currentInstance;
             if (instance == null) return;
 
-            // If there's already a pending first digit, combine into a two-digit number
-            if (_pendingDigit.HasValue)
-            {
-                StopChordTimer();
-                int number = _pendingDigit.Value * 10 + digit;
-                _pendingDigit = null;
-                instance.InsertTermByIndex(number);
-                return;
-            }
+            if (IsRepeatedMode)
+                HandleDigitPressRepeated(digit);
+            else
+                HandleDigitPressSequential(digit);
+        }
 
-            // Check how many matched terms are in the current segment
+        // ── Sequential mode: Alt+4,5 = term 45 ──────────────────────
+
+        private static void HandleDigitPressSequential(int digit)
+        {
+            var instance = _currentInstance;
+            if (instance == null) return;
+
             int matchCount = _control.Value.MatchCount;
 
-            if (matchCount <= 9)
+            if (_pendingDigit.HasValue)
             {
-                // ≤9 terms: insert immediately, no chord wait needed
-                int number = digit == 0 ? 10 : digit;
-                instance.InsertTermByIndex(number);
+                // Second (or third) digit in the sequence
+                StopChordTimer();
+                int accumulated = _pendingAccumulated * 10 + digit;
+
+                // How many digits could the highest term need?
+                int maxDigits = matchCount.ToString().Length;
+                int currentDigits = accumulated.ToString().Length;
+
+                if (currentDigits >= maxDigits)
+                {
+                    // We have enough digits — insert immediately
+                    _pendingDigit = null;
+                    _pendingAccumulated = 0;
+                    int number = accumulated == 0 ? 10 : accumulated;
+                    instance.InsertTermByIndex(number);
+                }
+                else
+                {
+                    // Could still have more digits — keep waiting
+                    _pendingDigit = digit;
+                    _pendingAccumulated = accumulated;
+                    StartChordTimer();
+                }
             }
             else
             {
-                // 10+ terms: start chord timer, wait for possible second digit
-                _pendingDigit = digit;
-                StartChordTimer();
+                // First digit pressed
+                if (matchCount <= 9)
+                {
+                    // ≤9 terms: insert immediately, no ambiguity
+                    int number = digit == 0 ? 10 : digit;
+                    instance.InsertTermByIndex(number);
+                }
+                else
+                {
+                    _pendingDigit = digit;
+                    _pendingAccumulated = digit;
+                    _pendingRepeatCount = 0;
+                    StartChordTimer();
+                }
             }
         }
+
+        // ── Repeated-digit mode: Alt+5,5 = term 14 ─────────────────
+
+        private static void HandleDigitPressRepeated(int digit)
+        {
+            var instance = _currentInstance;
+            if (instance == null) return;
+            if (digit == 0) return; // Alt+0 not used in repeated mode
+
+            int matchCount = _control.Value.MatchCount;
+
+            if (_pendingDigit.HasValue && _pendingDigit.Value == digit)
+            {
+                // Same digit repeated
+                StopChordTimer();
+                _pendingRepeatCount++;
+
+                int maxTiers = TermBlock.MaxTiers;
+                if (_pendingRepeatCount >= maxTiers || matchCount <= _pendingRepeatCount * 9)
+                {
+                    // Max tier reached, or no higher tier needed given match count
+                    int oneBasedIndex = (_pendingRepeatCount - 1) * 9 + digit;
+                    _pendingDigit = null;
+                    _pendingRepeatCount = 0;
+                    instance.InsertTermByIndex(oneBasedIndex);
+                }
+                else
+                {
+                    // Wait for potential further repeat
+                    StartChordTimer();
+                }
+            }
+            else if (_pendingDigit.HasValue)
+            {
+                // Different digit pressed — insert the pending one first,
+                // then start tracking the new digit
+                StopChordTimer();
+                int oneBasedIndex = (_pendingRepeatCount - 1) * 9 + _pendingDigit.Value;
+                instance.InsertTermByIndex(oneBasedIndex);
+
+                // Now handle the new digit
+                if (matchCount <= 9)
+                {
+                    instance.InsertTermByIndex(digit);
+                }
+                else
+                {
+                    _pendingDigit = digit;
+                    _pendingRepeatCount = 1;
+                    StartChordTimer();
+                }
+            }
+            else
+            {
+                // First digit pressed
+                if (matchCount <= 9)
+                {
+                    // ≤9 terms: insert immediately
+                    instance.InsertTermByIndex(digit);
+                }
+                else
+                {
+                    _pendingDigit = digit;
+                    _pendingRepeatCount = 1;
+                    StartChordTimer();
+                }
+            }
+        }
+
+        // ── Shared timer ────────────────────────────────────────────
 
         private static void StartChordTimer()
         {
@@ -1303,12 +1421,24 @@ namespace Supervertaler.Trados
             var instance = _currentInstance;
             if (instance == null || !_pendingDigit.HasValue) return;
 
-            int digit = _pendingDigit.Value;
-            _pendingDigit = null;
-
-            // Single digit: 0 means term 10, otherwise 1-9
-            int number = digit == 0 ? 10 : digit;
-            instance.InsertTermByIndex(number);
+            if (IsRepeatedMode)
+            {
+                int digit = _pendingDigit.Value;
+                int repeats = _pendingRepeatCount;
+                _pendingDigit = null;
+                _pendingRepeatCount = 0;
+                int oneBasedIndex = (repeats - 1) * 9 + digit;
+                instance.InsertTermByIndex(oneBasedIndex);
+            }
+            else
+            {
+                // Sequential mode: insert whatever has accumulated
+                int accumulated = _pendingAccumulated;
+                _pendingDigit = null;
+                _pendingAccumulated = 0;
+                int number = accumulated == 0 ? 10 : accumulated;
+                instance.InsertTermByIndex(number);
+            }
         }
 
         private void InsertTermByIndex(int oneBasedIndex)

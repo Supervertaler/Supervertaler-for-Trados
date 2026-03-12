@@ -114,15 +114,53 @@ namespace Supervertaler.Trados.Controls
         private const int BadgeHeight = 16;
 
         /// <summary>
+        /// Maximum number of repeated-digit tiers (1 through MaxTiers repeats).
+        /// 5 tiers = 45 shortcuts: 1-9, 11-99, 111-999, 1111-9999, 11111-99999.
+        /// </summary>
+        internal const int MaxTiers = 5;
+
+        /// <summary>
+        /// Set to true to use repeated-digit badges (11, 222, etc.),
+        /// false for sequential badges (10, 11, 12, ...).
+        /// Updated from TermLensEditorViewPart when settings change.
+        /// </summary>
+        internal static bool UseRepeatedDigitBadges { get; set; }
+
+        /// <summary>
+        /// Returns the badge text for the given 0-based shortcut index.
+        /// In sequential mode: "1", "2", ... "45" (plain numbers).
+        /// In repeated mode: "1"–"9", "11"–"99", "111"–"999", etc.
+        /// Returns null if the index is beyond the shortcut range.
+        /// </summary>
+        internal static string GetBadgeText(int shortcutIndex)
+        {
+            if (shortcutIndex < 0) return null;
+
+            if (UseRepeatedDigitBadges)
+            {
+                int tier = shortcutIndex / 9;  // 0-based tier
+                if (tier >= MaxTiers) return null;
+                int d = shortcutIndex % 9 + 1; // digit 1-9
+                return new string((char)('0' + d), tier + 1);
+            }
+            else
+            {
+                // Sequential: just show the 1-based number
+                return (shortcutIndex + 1).ToString();
+            }
+        }
+
+        /// <summary>
         /// Calculates the badge width for the shortcut number.
         /// Single digits use a circle (diameter = BadgeHeight).
-        /// Double digits use a wider pill shape.
+        /// Double/triple digits use a wider pill shape.
         /// </summary>
         private int GetBadgeWidth(Graphics g)
         {
             if (_shortcutIndex < 0) return 0;
 
-            var badgeText = (_shortcutIndex + 1).ToString();
+            var badgeText = GetBadgeText(_shortcutIndex);
+            if (badgeText == null) return 0;
             if (badgeText.Length <= 1)
                 return BadgeHeight; // circle
 
@@ -230,9 +268,9 @@ namespace Supervertaler.Trados.Controls
             }
 
             // Shortcut badge — filled circle/pill with number, after translation
-            if (_shortcutIndex >= 0)
+            if (_shortcutIndex >= 0 && GetBadgeText(_shortcutIndex) != null)
             {
-                var badgeText = (_shortcutIndex + 1).ToString();
+                var badgeText = GetBadgeText(_shortcutIndex);
                 int badgeW = GetBadgeWidth(g);
                 float badgeX = targetX + 2;
                 float badgeY = y + (targetSize.Height - BadgeHeight) / 2 + 1;

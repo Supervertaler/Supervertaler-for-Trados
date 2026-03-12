@@ -40,7 +40,7 @@ namespace Supervertaler.Trados.Controls
             _matches = matches ?? new List<TermPickerMatch>();
             _settings = settings;
 
-            Text = "TermLens \u2014 Pick Term to Insert";
+            Text = "TermLens \u2014 Term Picker";
             Size = new Size(580, 400);
             MinimumSize = new Size(400, 250);
             StartPosition = FormStartPosition.CenterParent;
@@ -108,7 +108,7 @@ namespace Supervertaler.Trados.Controls
 
             var hintLabel = new Label
             {
-                Text = "Type a number or Enter to insert \u2022 Right arrow expands synonyms",
+                Text = "Enter to insert \u2022 Right/Left expands/collapses synonyms",
                 Dock = DockStyle.Left,
                 AutoSize = true,
                 ForeColor = Color.FromArgb(120, 120, 120),
@@ -156,7 +156,7 @@ namespace Supervertaler.Trados.Controls
                 var allTargets = match.GetAllTargets();
                 bool hasExpansion = allTargets.Count > 1;
 
-                // # column: number + subtle ▸ indicator for expandable rows
+                // # column: plain sequential number + subtle ▸ indicator for expandable rows
                 string indexDisplay = match.Index.ToString();
                 if (hasExpansion)
                     indexDisplay += " \u25B8"; // small right triangle ▸
@@ -311,6 +311,33 @@ namespace Supervertaler.Trados.Controls
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 AcceptSelection();
+            }
+            else if (e.KeyCode == Keys.Down)
+            {
+                // Wrap around: if at the last item, go to the first
+                if (_listView.Items.Count > 0 && _listView.SelectedIndices.Count > 0
+                    && _listView.SelectedIndices[0] == _listView.Items.Count - 1)
+                {
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    _listView.Items[0].Selected = true;
+                    _listView.Items[0].Focused = true;
+                    _listView.EnsureVisible(0);
+                }
+            }
+            else if (e.KeyCode == Keys.Up)
+            {
+                // Wrap around: if at the first item, go to the last
+                if (_listView.Items.Count > 0 && _listView.SelectedIndices.Count > 0
+                    && _listView.SelectedIndices[0] == 0)
+                {
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    int last = _listView.Items.Count - 1;
+                    _listView.Items[last].Selected = true;
+                    _listView.Items[last].Focused = true;
+                    _listView.EnsureVisible(last);
+                }
             }
             else if (e.KeyCode == Keys.Right)
             {

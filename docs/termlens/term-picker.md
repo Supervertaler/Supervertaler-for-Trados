@@ -37,9 +37,11 @@ The Term Picker is designed for fast keyboard use:
 | **0-9** | Type a number to jump directly to that term |
 | **Enter** | Insert the selected term and close the picker |
 | **Escape** | Close the picker without inserting |
-| **Up / Down** | Navigate between terms |
+| **Up / Down** | Navigate between terms (wraps around) |
 | **Right** | Expand synonyms for the selected term |
 | **Left** | Collapse synonyms |
+
+Navigation wraps around: pressing **Down** on the last term jumps to the first, and **Up** on the first jumps to the last.
 
 ## Inserting a term
 
