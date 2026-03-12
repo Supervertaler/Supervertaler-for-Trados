@@ -10,14 +10,16 @@ There is nothing to configure. If your Trados project has MultiTerm termbases at
 
 ### Colour coding
 
-| Colour | Meaning |
-|-------|---------|
-| **Blue** | Regular Supervertaler termbase match |
-| **Pink** | Project termbase match (higher priority) |
-| **Yellow** | Non-translatable term (source = target) |
-| **Green** | MultiTerm termbase match (`.sdltb`) |
+| Colour     | Meaning                                  |
+| ---------- | ---------------------------------------- |
+| **Blue**   | Regular Supervertaler termbase match     |
+| **Pink**   | Project termbase match (higher priority) |
+| **Yellow** | Non-translatable term (source = target)  |
+| **Green**  | MultiTerm termbase match (`.sdltb`)      |
 
-Green chips behave like any other TermLens chip –click to insert, or use **Alt+1** through **Alt+9** to insert by number.
+Green chips behave like any other TermLens chip – click to insert, or use **Alt+1** through **Alt+9** to insert by number.
+
+<figure><img src=".gitbook/assets/image (2).png" alt=""><figcaption></figcaption></figure>
 
 ## Read-Only
 
@@ -31,13 +33,13 @@ When you add or edit terms in a MultiTerm termbase using Trados's native interfa
 
 ## MultiTerm Termbases in Settings
 
-MultiTerm termbases appear at the bottom of the termbase list in the **Supervertaler Settings** dialog (gear icon > TermLens tab). Each one is labelled with **[MultiTerm]** and has a light green background to distinguish it from Supervertaler termbases.
+MultiTerm termbases appear at the bottom of the termbase list in the **Supervertaler Settings** dialog (gear icon > TermLens tab). Each one is labelled with **\[MultiTerm]** and has a light green background to distinguish it from Supervertaler termbases.
 
-| Toggle | Behaviour |
-|--------|-----------|
-| **Read** | Controls whether this termbase's terms appear in TermLens. Uncheck to hide it. |
-| **Write** | Always disabled –MultiTerm termbases are read-only in TermLens |
-| **Project** | Always disabled –only Supervertaler termbases can be the project termbase |
+| Toggle      | Behaviour                                                                      |
+| ----------- | ------------------------------------------------------------------------------ |
+| **Read**    | Controls whether this termbase's terms appear in TermLens. Uncheck to hide it. |
+| **Write**   | Always disabled –MultiTerm termbases are read-only in TermLens                 |
+| **Project** | Always disabled –only Supervertaler termbases can be the project termbase      |
 
 To add or remove MultiTerm termbases from your project, use Trados Studio's **Project Settings > Language Pairs > Termbases**.
 
@@ -57,14 +59,14 @@ Because the access is read-only, there is no risk of data corruption. TermLens o
 
 ### Terms added in MultiTerm not updating
 
-- Navigate to a different segment –this triggers the auto-refresh check
-- If terms still do not appear, close and reopen the settings dialog to force a full termbase reload
+* Navigate to a different segment –this triggers the auto-refresh check
+* If terms still do not appear, close and reopen the settings dialog to force a full termbase reload
 
----
+***
 
 ## See Also
 
-- [TermLens](termlens.md)
-- [Termbase Management](termbase-management.md)
-- [TermLens Settings](settings/termlens.md)
-- [Troubleshooting](troubleshooting.md)
+* [TermLens](termlens.md)
+* [Termbase Management](termbase-management.md)
+* [TermLens Settings](settings/termlens.md)
+* [Troubleshooting](troubleshooting.md)

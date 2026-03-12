@@ -13,7 +13,7 @@ When you select a segment in the Trados editor, TermLens analyses the source tex
 
 This gives you an at-a-glance overview of every term in the segment that has a termbase entry – without hovering or clicking anything.
 
-<figure><img src=".gitbook/assets/image.png" alt=""><figcaption></figcaption></figure>
+<figure><img src=".gitbook/assets/image (1).png" alt=""><figcaption></figcaption></figure>
 
 ## Colour Coding
 
