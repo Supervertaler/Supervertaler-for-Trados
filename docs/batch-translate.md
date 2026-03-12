@@ -2,6 +2,8 @@
 
 Batch Translate lets you translate multiple segments at once using AI. It is located in the **Supervertaler Assistant** panel, on the second tab.
 
+<figure><img src=".gitbook/assets/image (3).png" alt=""><figcaption></figcaption></figure>
+
 ## Starting a Batch Translation
 
 1. Open the **Supervertaler Assistant** panel (View > Supervertaler Assistant)
@@ -14,19 +16,19 @@ Batch Translate lets you translate multiple segments at once using AI. It is loc
 
 The scope dropdown controls which segments are translated:
 
-| Scope | Description |
-|-------|-------------|
-| **Empty Segments Only** | Translates segments that have no target text |
-| **All Segments** | Translates every segment in the file |
-| **Filtered Segments** | Translates only the segments currently visible after applying a filter |
-| **Filtered Empty Only** | Translates empty segments within the current filter |
+| Scope                   | Description                                                            |
+| ----------------------- | ---------------------------------------------------------------------- |
+| **Empty Segments Only** | Translates segments that have no target text                           |
+| **All Segments**        | Translates every segment in the file                                   |
+| **Filtered Segments**   | Translates only the segments currently visible after applying a filter |
+| **Filtered Empty Only** | Translates empty segments within the current filter                    |
 
 ## Prompt Selection
 
 Choose a prompt to guide the AI translation style and domain. The prompt selector shows:
 
-- **Built-in prompts** – 14 prompts covering medical, legal, patent, financial, technical, marketing, IT, style guides, and project prompts
-- **Custom prompts** – your own prompts created in the Prompt Manager
+* **Built-in prompts** – 14 prompts covering medical, legal, patent, financial, technical, marketing, IT, style guides, and project prompts
+* **Custom prompts** – your own prompts created in the Prompt Manager
 
 {% hint style="info" %}
 Domain-specific prompts (e.g., Medical Translation Specialist, Legal Translation Specialist) produce significantly better results for specialized content. Choose the prompt that matches your source material.
@@ -40,9 +42,9 @@ The current AI provider and model are displayed below the prompt selector. To ch
 
 During translation:
 
-- A **progress bar** shows overall completion
-- A **real-time log** displays the status of each segment as it is translated
-- The **Stop** button aborts the batch at any time – segments already translated are kept
+* A **progress bar** shows overall completion
+* A **real-time log** displays the status of each segment as it is translated
+* The **Stop** button aborts the batch at any time – segments already translated are kept
 
 ## Single-Segment AI Translation
 
@@ -70,10 +72,10 @@ AI translation is a first draft. After a batch run:
 2. Fix any terminology or style issues
 3. Confirm segments with **Ctrl+Enter** (Trados default)
 
----
+***
 
 ## See Also
 
-- [Supervertaler Assistant](ai-assistant.md)
-- [TermLens](termlens.md)
-- [Keyboard Shortcuts](keyboard-shortcuts.md)
+* [Supervertaler Assistant](ai-assistant.md)
+* [TermLens](termlens.md)
+* [Keyboard Shortcuts](keyboard-shortcuts.md)
