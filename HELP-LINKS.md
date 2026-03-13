@@ -43,6 +43,7 @@ These are hardcoded URLs outside `HelpSystem`, found in the About dialog and lic
 | Website | [supervertaler.com](https://supervertaler.com) | AboutDialog — "Website" link |
 | Support & Community | [supervertaler.com/trados/#support](https://supervertaler.com/trados/#support) | AboutDialog — "Support & Community" link |
 | Source code | [github.com/Supervertaler/Supervertaler-for-Trados](https://github.com/Supervertaler/Supervertaler-for-Trados) | AboutDialog — "Source Code" link |
+| Changelog | [github.com/.../CHANGELOG.md](https://github.com/Supervertaler/Supervertaler-for-Trados/blob/main/CHANGELOG.md) | Website trados page — nav bar + footer |
 | Purchase page | supervertaler.com/trados/ | LicenseManager — shown in trial-expired / upgrade-required messages |
 
 ## Docs source structure
