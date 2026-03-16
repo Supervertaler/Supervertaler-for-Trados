@@ -115,17 +115,21 @@ See [MultiTerm Support](multiterm-support.md) for full details.
 
 ## Still having issues?
 
-1. Check the [GitHub Issues](https://github.com/Supervertaler/Supervertaler-for-Trados/issues) for known bugs and workarounds
-2. Open a new issue with:
+1. Ask a question on the [Supervertaler Forum](https://github.com/orgs/Supervertaler/discussions) — the main community hub for both Supervertaler Workbench and Supervertaler for Trados
+2. Check the [GitHub Issues](https://github.com/Supervertaler/Supervertaler-for-Trados/issues) for known bugs and workarounds
+3. Open a new issue with:
    - Your Trados Studio version
    - The Supervertaler plugin version
    - Steps to reproduce the problem
    - Any error messages or screenshots
 
+See [Support & Community](support.md) for all the ways to get help.
+
 ---
 
 ## See Also
 
+- [Support & Community](support.md)
 - [MultiTerm Support](multiterm-support.md)
 - [TermLens Settings](settings/termlens.md)
 - [AI Settings](settings/ai-settings.md)
