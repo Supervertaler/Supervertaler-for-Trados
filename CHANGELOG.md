@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.4.0] — 2026-03-16
+
+### Added
+- **Tag-aware AI translation** — segments containing inline Trados tags (bold, italic, field codes, etc.) are now fully supported for both Batch Translate and single-segment AI translation (Ctrl+Alt+A); previously, tags were silently stripped and lost in the target
+- **SegmentTagHandler** — new serialization/reconstruction engine that converts Trados `ITagPair` and `IPlaceholderTag` objects into numbered placeholders (`<t1>...</t1>`, `<t2/>`), sends them through the LLM translation pipeline, then reconstructs the target segment with the original tag objects cloned and repositioned to match the translated word order
+- **Graceful fallback** — if the LLM drops or corrupts tag placeholders, the plugin falls back to plain-text insertion (stripping placeholders) instead of failing silently
+
+### Improved
+- **Translation prompt tag instructions** — replaced generic CAT tool tag preservation instructions with specific numbered placeholder format and examples, improving LLM tag preservation accuracy
+
+---
+
 ## [4.3.0] — 2026-03-14
 
 ### Added
