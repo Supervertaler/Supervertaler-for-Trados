@@ -17,9 +17,9 @@ You'll need a free [GitHub account](https://github.com/signup) to post.
 
 ---
 
-## Report a Bug
+## Bugs & Feature Requests
 
-Found a bug? Open an issue on the [GitHub Issues](https://github.com/Supervertaler/Supervertaler-for-Trados/issues) page with:
+Use [GitHub Issues](https://github.com/Supervertaler/Supervertaler-for-Trados/issues) to report bugs or request new features. When reporting a bug, please include:
 
 - Your Trados Studio version
 - The Supervertaler plugin version
