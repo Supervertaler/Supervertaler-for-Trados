@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.8.1] — 2026-03-17
+
+### Changed
+- **Ctrl+Alt+T opens full Term Entry Editor** — pressing Ctrl+Alt+T to add a new term now opens the full Term Entry Editor dialog instead of the simple Add Term dialog, giving immediate access to definition, domain, notes, and synonym fields when adding a term
+
+### Fixed
+- **TermLens subscript/superscript matching** — terms containing Unicode subscript digits (₀–₉) or superscript digits (⁰¹²³⁴⁵⁶⁷⁸⁹) such as H₂O, CO₂, and mm² were not recognised in segments because the tokeniser split them at the script character; the word pattern now includes these Unicode ranges and index keys are normalised so matching works correctly
+- **Context-aware help links** — F1 help in the Batch Operations and Reports tabs now opens the correct documentation page for the active context rather than falling back to the generic help home page
+
+---
+
 ## [4.8.0] — 2026-03-16
 
 ### Added
