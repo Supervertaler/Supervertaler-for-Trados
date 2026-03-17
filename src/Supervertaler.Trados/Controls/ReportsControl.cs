@@ -22,6 +22,14 @@ namespace Supervertaler.Trados.Controls
     /// </summary>
     public class ReportsControl : UserControl
     {
+        private const int HeaderLeft = 12;
+        private const int HeaderTop = 10;
+        private const int HeaderSpacing = 8;
+        private const int ClearButtonMinWidth = 64;
+        private const int ClearButtonMinHeight = 26;
+        private const int ClearButtonHorizontalPadding = 16;
+        private const int ClearButtonVerticalPadding = 8;
+
         // Header row (absolute positioned, like BatchTranslateControl)
         private Label _lblHeader;
         private Label _lblIssueCount;
@@ -73,7 +81,7 @@ namespace Supervertaler.Trados.Controls
                 Text = "Reports",
                 Font = headerFont,
                 ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(12, y),
+                Location = new Point(HeaderLeft, HeaderTop),
                 AutoSize = true
             };
             Controls.Add(_lblHeader);
@@ -81,7 +89,7 @@ namespace Supervertaler.Trados.Controls
             _btnClear = new Button
             {
                 Text = "Clear",
-                Size = new Size(56, 24),
+                Size = new Size(ClearButtonMinWidth, ClearButtonMinHeight),
                 Location = new Point(200, y),
                 FlatStyle = FlatStyle.Flat,
                 Font = bodyFont,
@@ -151,15 +159,40 @@ namespace Supervertaler.Trados.Controls
 
         private void OnControlResize(object sender, EventArgs e)
         {
-            var w = Width;
-            // Position Clear button at top-right
-            _btnClear.Location = new Point(w - _btnClear.Width - 8, 8);
-            // Position issue count label to the left of the Clear button
+            if (_btnClear == null || _lblIssueCount == null || _resultsPanel == null || _lblFooter == null)
+                return;
+
+            UpdateClearButtonSize();
+
+            var clientWidth = ClientSize.Width;
+
+            // Position Clear button at top-right using the actual rendered button width.
+            _btnClear.Location = new Point(
+                Math.Max(HeaderLeft, clientWidth - _btnClear.Width - HeaderSpacing),
+                HeaderTop - 2);
+
+            // Position issue count label between the title and Clear button.
             _lblIssueCount.Location = new Point(
-                _btnClear.Left - _lblIssueCount.Width - 8, 12);
-            // Size results panel to fill available space
-            _resultsPanel.Width = w;
+                Math.Max(_lblHeader.Right + HeaderSpacing, _btnClear.Left - _lblIssueCount.Width - HeaderSpacing),
+                _btnClear.Top + Math.Max(0, (_btnClear.Height - _lblIssueCount.Height) / 2));
+
+            var resultsTop = Math.Max(_lblHeader.Bottom, _btnClear.Bottom) + HeaderSpacing;
+            _resultsPanel.Location = new Point(0, resultsTop);
+            _resultsPanel.Width = clientWidth;
             _resultsPanel.Height = Math.Max(40, _lblFooter.Top - _resultsPanel.Top);
+        }
+
+        private void UpdateClearButtonSize()
+        {
+            var measured = TextRenderer.MeasureText(
+                _btnClear.Text,
+                _btnClear.Font,
+                new Size(int.MaxValue, int.MaxValue),
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+
+            _btnClear.Size = new Size(
+                Math.Max(ClearButtonMinWidth, measured.Width + ClearButtonHorizontalPadding),
+                Math.Max(ClearButtonMinHeight, measured.Height + ClearButtonVerticalPadding));
         }
 
         // ─── Public Methods ───────────────────────────────────────
