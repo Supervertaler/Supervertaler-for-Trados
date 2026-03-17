@@ -41,7 +41,7 @@ namespace Supervertaler.Trados
             {
                 MessageBox.Show(
                     "No QuickLauncher prompts are configured.\n\n" +
-                    "Add sv_quickmenu: true to a .svprompt file's YAML frontmatter, " +
+                    "Add sv_quicklauncher: true to a .svprompt file's YAML frontmatter, " +
                     "or set its category to 'QuickLauncher'.",
                     "Supervertaler \u2014 QuickLauncher",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -91,38 +91,39 @@ namespace Supervertaler.Trados
                 catch { /* Language info may not be available */ }
             }
 
-            // Build and show the context menu at the current cursor position
-            using (var menu = new ContextMenuStrip())
+            // Build and show the context menu at the current cursor position.
+            // Do NOT use a 'using' block or dispose on Closed — Show() is non-blocking
+            // and Closed fires before item click handlers run, causing ObjectDisposedException.
+            // ContextMenuStrip is small; GC handles it.
+            var menu = new ContextMenuStrip();
+
+            foreach (var prompt in prompts)
             {
-                // Capture locals for lambda capture
+                var capturedPrompt = prompt;
                 var capturedSourceText = sourceText;
                 var capturedTargetText = targetText;
                 var capturedSelection = selection;
                 var capturedSourceLang = sourceLang;
                 var capturedTargetLang = targetLang;
 
-                foreach (var prompt in prompts)
+                var item = new ToolStripMenuItem(capturedPrompt.MenuLabel);
+                if (!string.IsNullOrEmpty(capturedPrompt.Description))
+                    item.ToolTipText = capturedPrompt.Description;
+
+                item.Click += (s, e) =>
                 {
-                    var capturedPrompt = prompt;
-                    var item = new ToolStripMenuItem(capturedPrompt.MenuLabel);
-                    if (!string.IsNullOrEmpty(capturedPrompt.Description))
-                        item.ToolTipText = capturedPrompt.Description;
+                    var expanded = PromptLibrary.ApplyVariables(
+                        capturedPrompt.Content,
+                        capturedSourceLang, capturedTargetLang,
+                        capturedSourceText, capturedTargetText, capturedSelection);
 
-                    item.Click += (s, e) =>
-                    {
-                        var expanded = PromptLibrary.ApplyVariables(
-                            capturedPrompt.Content,
-                            capturedSourceLang, capturedTargetLang,
-                            capturedSourceText, capturedTargetText, capturedSelection);
+                    AiAssistantViewPart.RunQuickLauncherPrompt(expanded);
+                };
 
-                        AiAssistantViewPart.RunQuickLauncherPrompt(expanded);
-                    };
-
-                    menu.Items.Add(item);
-                }
-
-                menu.Show(Cursor.Position);
+                menu.Items.Add(item);
             }
+
+            menu.Show(Cursor.Position);
         }
     }
 }

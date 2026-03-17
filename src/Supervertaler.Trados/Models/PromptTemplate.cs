@@ -39,7 +39,7 @@ namespace Supervertaler.Trados.Models
 
         /// <summary>
         /// True when the prompt should appear in the QuickLauncher right-click menu.
-        /// Set by YAML 'sv_quickmenu: true' or category 'QuickLauncher' / 'quickmenu_prompts'.
+        /// Set by YAML 'sv_quicklauncher: true' (or legacy 'sv_quickmenu: true') or category 'QuickLauncher' / 'quickmenu_prompts'.
         /// </summary>
         public bool IsQuickLauncher { get; set; }
 

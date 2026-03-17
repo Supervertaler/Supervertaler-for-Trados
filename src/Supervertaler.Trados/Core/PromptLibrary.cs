@@ -340,7 +340,7 @@ namespace Supervertaler.Trados.Core
             if (string.IsNullOrEmpty(prompt.Name))
                 prompt.Name = Path.GetFileNameWithoutExtension(filePath);
 
-            // Fallback: use folder name as domain if not specified
+            // Fallback: use folder name as domain if not specified in YAML
             if (string.IsNullOrEmpty(prompt.Domain))
             {
                 var relDir = Path.GetDirectoryName(prompt.RelativePath);
@@ -348,7 +348,30 @@ namespace Supervertaler.Trados.Core
                     prompt.Domain = relDir;
             }
 
+            // Normalise domain regardless of whether it came from YAML or folder name
+            NormaliseDomain(prompt);
+
             return prompt;
+        }
+
+        /// <summary>
+        /// Applies canonical normalisation to prompt.Domain and sets IsQuickLauncher.
+        /// Called after both YAML parsing and the folder-name fallback so the logic
+        /// is consistent regardless of how the domain was determined.
+        /// </summary>
+        private static void NormaliseDomain(PromptTemplate prompt)
+        {
+            if (string.IsNullOrEmpty(prompt.Domain)) return;
+
+            // Normalise legacy names → canonical "QuickLauncher"
+            if (prompt.Domain.Equals("quickmenu_prompts", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Domain.Equals("quicklauncher_prompts", StringComparison.OrdinalIgnoreCase))
+            {
+                prompt.Domain = "QuickLauncher";
+            }
+
+            if (prompt.Domain.Equals("QuickLauncher", StringComparison.OrdinalIgnoreCase))
+                prompt.IsQuickLauncher = true;
         }
 
         private void ParseYamlFrontmatter(PromptTemplate prompt, string yaml)
@@ -385,19 +408,15 @@ namespace Supervertaler.Trados.Core
                         break;
                     case "category":
                     case "domain": // backward compatibility
-                        // Normalise legacy category name to canonical "QuickLauncher"
-                        if (value.Equals("quickmenu_prompts", StringComparison.OrdinalIgnoreCase))
-                            value = "QuickLauncher";
                         prompt.Domain = value;
-                        // Mark as QuickLauncher when the category says so
-                        if (value.Equals("QuickLauncher", StringComparison.OrdinalIgnoreCase))
-                            prompt.IsQuickLauncher = true;
+                        // Full normalisation (legacy names → QuickLauncher, IsQuickLauncher flag)
+                        // runs after all YAML is parsed, in NormaliseDomain().
                         break;
                     case "built_in":
                         prompt.IsBuiltIn = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                         break;
-                    case "sv_quickmenu":
-                        // Workbench-compatible flag: sv_quickmenu: true
+                    case "sv_quicklauncher":
+                    case "sv_quickmenu": // legacy alias — kept for backward compatibility
                         if (value.Equals("true", StringComparison.OrdinalIgnoreCase))
                             prompt.IsQuickLauncher = true;
                         break;
