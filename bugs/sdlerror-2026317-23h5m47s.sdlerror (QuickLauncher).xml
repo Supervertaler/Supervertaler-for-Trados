@@ -1,0 +1,45 @@
+﻿<SDLErrorDetails time="2026-03-17 23:06:24">
+  <ErrorMessage>Cannot access a disposed object.
+Object name: 'ContextMenuStrip'.</ErrorMessage>
+  <Exception>
+    <Type>System.ObjectDisposedException, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</Type>
+    <ExceptionMessage>Cannot access a disposed object.
+Object name: 'ContextMenuStrip'.</ExceptionMessage>
+    <ObjectName>ContextMenuStrip</ObjectName>
+    <HelpLink />
+    <Source>System.Windows.Forms</Source>
+    <HResult>-2146232798</HResult>
+    <StackTrace><![CDATA[   at System.Windows.Forms.Control.CreateHandle()
+   at System.Windows.Forms.ToolStripDropDown.CreateHandle()
+   at System.Windows.Forms.Control.get_Handle()
+   at System.Windows.Forms.ToolStripDropDown.ReparentToDropDownOwnerWindow()
+   at System.Windows.Forms.ToolStripDropDown.SetVisibleCore(Boolean visible)
+   at System.Windows.Forms.ContextMenuStrip.SetVisibleCore(Boolean visible)
+   at System.Windows.Forms.ToolStripDropDown.OnItemClicked(ToolStripItemClickedEventArgs e)
+   at System.Windows.Forms.ToolStrip.HandleItemClick(ToolStripItem dismissingItem)
+   at System.Windows.Forms.ToolStripItem.HandleClick(EventArgs e)
+   at System.Windows.Forms.ToolStripItem.FireEventInteractive(EventArgs e, ToolStripItemEventType met)
+   at System.Windows.Forms.ToolStripItem.FireEvent(EventArgs e, ToolStripItemEventType met)
+   at System.Windows.Forms.ToolStripItem.ProcessDialogKey(Keys keyData)
+   at System.Windows.Forms.ToolStripDropDownItem.ProcessDialogKey(Keys keyData)
+   at System.Windows.Forms.ToolStrip.ProcessDialogKey(Keys keyData)
+   at System.Windows.Forms.ToolStripDropDown.ProcessDialogKey(Keys keyData)
+   at System.Windows.Forms.Control.PreProcessMessage(Message& msg)
+   at System.Windows.Forms.Control.PreProcessControlMessageInternal(Control target, Message& msg)
+   at System.Windows.Forms.Application.ThreadContext.PreTranslateMessage(MSG& msg)]]></StackTrace>
+  </Exception>
+  <Environment>
+    <ProductName>Trados Studio</ProductName>
+    <ProductVersion>Studio18</ProductVersion>
+    <EntryAssemblyFileVersion>18.1.3.6657</EntryAssemblyFileVersion>
+    <OperatingSystem>Microsoft Windows 11 Pro</OperatingSystem>
+    <ServicePack>NULL</ServicePack>
+    <OperatingSystemLanguage>2057</OperatingSystemLanguage>
+    <CodePage>1252</CodePage>
+    <LoggedOnUser>PRECISION7740\mbeijer</LoggedOnUser>
+    <DotNetFrameWork>4.0.30319.42000</DotNetFrameWork>
+    <ComputerName>PRECISION7740</ComputerName>
+    <ConnectedToNetwork>True</ConnectedToNetwork>
+    <PhysicalMemory>66852484 MB</PhysicalMemory>
+  </Environment>
+</SDLErrorDetails>

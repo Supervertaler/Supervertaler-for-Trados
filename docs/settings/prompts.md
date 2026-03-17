@@ -145,14 +145,13 @@ given the full segment context above. Give a short explanation of your reasoning
 
 ## Marking a prompt as a QuickLauncher shortcut
 
-To make a custom prompt appear in the QuickLauncher right-click menu (`Ctrl+Q`), add this line to the YAML frontmatter of the `.svprompt` file:
+To make a custom prompt appear in the QuickLauncher right-click menu (`Ctrl+Q`), set `category: QuickLauncher` in the YAML frontmatter:
 
 ```yaml
 ---
 name: Explain selected term
 description: Explains the selected term in translation context
 category: QuickLauncher
-sv_quicklauncher: true
 quickmenu_label: Explain term
 ---
 
@@ -161,14 +160,13 @@ Your prompt content here...
 
 | Field | Description |
 |-------|-------------|
-| `sv_quicklauncher: true` | Marks this prompt as a QuickLauncher item |
-| `category: QuickLauncher` | Alternative way to mark it (also sets category) |
+| `category: QuickLauncher` | Marks this prompt as a QuickLauncher item |
 | `quickmenu_label` | Optional short label shown in the menu — falls back to `name` if omitted |
 
 You can also organise QuickLauncher prompts by placing them in a folder called `QuickLauncher` inside your `prompt_library` folder. Any prompt in that folder is automatically treated as a QuickLauncher prompt.
 
 {% hint style="info" %}
-QuickLauncher prompts are shared with Supervertaler Workbench. A prompt marked `sv_quicklauncher: true` will also appear in Workbench's QuickLauncher grid if you use both applications.
+QuickLauncher prompts are shared with Supervertaler Workbench via the shared prompt library folder.
 {% endhint %}
 
 ---
@@ -193,8 +191,7 @@ You are a professional medical translator...
 | `name` | Display name shown in the prompt selector |
 | `description` | Optional summary |
 | `category` | `Translate`, `Proofread`, or `QuickLauncher` — controls where the prompt appears |
-| `sv_quicklauncher` | `true` to include in the QuickLauncher menu |
-| `quickmenu_label` | Short label for the QuickLauncher menu (optional) |
+| `quickmenu_label` | Short label for the QuickLauncher menu (optional, falls back to `name`) |
 | `built_in` | `true` for shipped prompts (managed by the plugin) |
 
 {% hint style="info" %}

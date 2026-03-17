@@ -74,7 +74,7 @@ The plugin fills in all variables and sends the expanded prompt straight to the 
 
 Any `.svprompt` file can be made into a QuickLauncher prompt by adding `sv_quicklauncher: true` to its YAML frontmatter, or by placing it in a folder called `QuickLauncher` inside your `prompt_library` folder.
 
-See [Prompts → Marking a prompt as a QuickLauncher shortcut](settings/prompts.md#marking-a-prompt-as-a-quicklauncher-shortcut) for full details.
+Set `category: QuickLauncher` in the YAML frontmatter, or place the file in a folder called `QuickLauncher` inside your `prompt_library`. See [Prompts → Marking a prompt as a QuickLauncher shortcut](settings/prompts.md#marking-a-prompt-as-a-quicklauncher-shortcut) for full details.
 
 ## Shared with Supervertaler Workbench
 

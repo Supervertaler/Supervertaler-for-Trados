@@ -45,8 +45,8 @@ namespace Supervertaler.Trados
             {
                 MessageBox.Show(
                     "No QuickLauncher prompts are configured.\n\n" +
-                    "Add sv_quicklauncher: true to a .svprompt file's YAML frontmatter, " +
-                    "or set its category to 'QuickLauncher'.",
+                    "Set category: QuickLauncher in a .svprompt file's YAML frontmatter, " +
+                    "or place the file in a folder named 'QuickLauncher' inside your prompt library.",
                     "Supervertaler \u2014 QuickLauncher",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;

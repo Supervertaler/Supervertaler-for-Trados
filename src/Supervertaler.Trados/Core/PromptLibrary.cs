@@ -422,11 +422,6 @@ namespace Supervertaler.Trados.Core
                     case "built_in":
                         prompt.IsBuiltIn = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                         break;
-                    case "sv_quicklauncher":
-                    case "sv_quickmenu": // legacy alias — kept for backward compatibility
-                        if (value.Equals("true", StringComparison.OrdinalIgnoreCase))
-                            prompt.IsQuickLauncher = true;
-                        break;
                     case "quickmenu_label":
                         prompt.QuickLauncherLabel = value;
                         break;
