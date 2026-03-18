@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.10.9] — 2026-03-18
+
+### Changed
+- **Lavender chip colour for abbreviation matches** — TermLens chips that matched via a source abbreviation now render with a light lavender background instead of the regular blue, making them instantly distinguishable from full-term matches; the shortcut badge on abbreviation chips is purple to match
+
+---
+
 ## [4.10.8] — 2026-03-18
 
 ### Fixed

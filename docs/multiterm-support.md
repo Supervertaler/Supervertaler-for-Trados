@@ -14,12 +14,13 @@ There is nothing to configure. If your Trados project has MultiTerm termbases at
 
 ### Colour coding
 
-| Colour     | Meaning                                  |
-| ---------- | ---------------------------------------- |
-| **Blue**   | Regular Supervertaler termbase match     |
-| **Pink**   | Project termbase match (higher priority) |
-| **Yellow** | Non-translatable term (source = target)  |
-| **Green**  | MultiTerm termbase match (`.sdltb`)      |
+| Colour       | Meaning                                          |
+| ------------ | ------------------------------------------------ |
+| **Blue**     | Regular Supervertaler termbase match             |
+| **Pink**     | Project termbase match (higher priority)         |
+| **Yellow**   | Non-translatable term (source = target)          |
+| **Green**    | MultiTerm termbase match (`.sdltb`)              |
+| **Lavender** | Abbreviation match (matched via source abbreviation) |
 
 Green chips behave like any other TermLens chip – click to insert, or use **Alt+1** through **Alt+9** to insert by number.
 

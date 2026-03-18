@@ -144,8 +144,8 @@ Each variant is indexed and matched independently, so all common forms of the ab
 
 When both the full term and its abbreviation appear in the same segment (e.g., "gaschromatografie (GC)"), TermLens shows **both** as highlighted chips:
 
-- The **full term** chip shows the full target translation (e.g., "gas chromatography")
-- The **abbreviation** chip shows the target abbreviation (e.g., "GC")
+- The **full term** chip shows the full target translation (e.g., "gas chromatography") — displayed in the regular **blue** colour
+- The **abbreviation** chip shows the target abbreviation (e.g., "GC") — displayed in **lavender** so it is instantly distinguishable from a full-term match
 
 Clicking or Alt+digit-inserting an abbreviation chip inserts the **target abbreviation** (first variant), not the full target term.
 
