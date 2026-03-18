@@ -402,17 +402,15 @@ namespace Supervertaler.Trados.Settings
                 FillWeight = 1,
                 ToolTipText = "Mark as project termbase (shown in pink). Click header to clear."
             };
-            var colCase = new DataGridViewComboBoxColumn
+            var colCS = new DataGridViewCheckBoxColumn
             {
-                Name = "colCase",
-                HeaderText = "Case",
-                Width = 112,
+                Name = "colCS",
+                HeaderText = "CS",
+                Width = 40,
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
                 FillWeight = 1,
-                FlatStyle = FlatStyle.Flat,
-                ToolTipText = "Case sensitivity for this termbase."
+                ToolTipText = "Case-sensitive matching for this termbase."
             };
-            colCase.Items.AddRange("Insensitive", "Sensitive");
             var colName = new DataGridViewTextBoxColumn
             {
                 Name = "colName",
@@ -442,7 +440,7 @@ namespace Supervertaler.Trados.Settings
             };
             _dgvTermbases.Columns.AddRange(new DataGridViewColumn[]
             {
-                colRead, colWrite, colProject, colCase, colName, colTermCount, colLanguages
+                colRead, colWrite, colProject, colCS, colName, colTermCount, colLanguages
             });
 
             // Enforce radio-button behaviour on the Project column (only one can be project)
@@ -706,7 +704,7 @@ namespace Supervertaler.Trados.Settings
             var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
 
             // Prevent toggling Write/Project/Case for MultiTerm rows (read-only)
-            if (e.RowIndex >= _termbases.Count && (colName == "colWrite" || colName == "colProject" || colName == "colCase"))
+            if (e.RowIndex >= _termbases.Count && (colName == "colWrite" || colName == "colProject" || colName == "colCS"))
             {
                 _dgvTermbases.CommitEdit(DataGridViewDataErrorContexts.Commit);
                 _dgvTermbases.Rows[e.RowIndex].Cells[colName].Value = false;
@@ -788,7 +786,7 @@ namespace Supervertaler.Trados.Settings
 
             // Don't open editor when double-clicking checkbox columns
             var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
-            if (colName == "colRead" || colName == "colWrite" || colName == "colProject" || colName == "colCase")
+            if (colName == "colRead" || colName == "colWrite" || colName == "colProject" || colName == "colCS")
                 return;
 
             OpenTermbaseEditor(e.RowIndex);
@@ -934,13 +932,12 @@ namespace Supervertaler.Trados.Settings
                                 bool isRead = !disabled.Contains(tb.Id);
                                 bool isWrite = writeIds.Contains(tb.Id);
                                 bool isProject = tb.Id == _settings.ProjectTermbaseId;
-                                var caseText = tb.CaseSensitive == 1 ? "Sensitive"
-                                             : "Insensitive";
+                                bool isCaseSensitive = tb.CaseSensitive == 1;
                                 _dgvTermbases.Rows.Add(
                                     isRead,
                                     isWrite,
                                     isProject,
-                                    caseText,
+                                    isCaseSensitive,
                                     tb.Name,
                                     tb.TermCount.ToString("N0"),
                                     $"{LanguageUtils.ShortenLanguageName(tb.SourceLang)} \u2192 {LanguageUtils.ShortenLanguageName(tb.TargetLang)}");
@@ -975,7 +972,7 @@ namespace Supervertaler.Trados.Settings
                         isRead,     // Read
                         false,      // Write (always disabled for MultiTerm)
                         false,      // Project (always disabled for MultiTerm)
-                        "Default",  // Case (always default for MultiTerm)
+                        false,      // CS (always disabled for MultiTerm)
                         $"{info.Name} [MultiTerm]",
                         info.TermCount.ToString("N0"),
                         langText);
@@ -984,7 +981,7 @@ namespace Supervertaler.Trados.Settings
                     var row = _dgvTermbases.Rows[rowIdx];
                     row.Cells["colWrite"].ReadOnly = true;
                     row.Cells["colProject"].ReadOnly = true;
-                    row.Cells["colCase"].ReadOnly = true;
+                    row.Cells["colCS"].ReadOnly = true;
                     row.DefaultCellStyle.BackColor = Color.FromArgb(232, 245, 233);
                     row.DefaultCellStyle.SelectionBackColor = Color.FromArgb(200, 230, 201);
                 }
@@ -1237,8 +1234,8 @@ namespace Supervertaler.Trados.Settings
                 var projectChecked = _dgvTermbases.Rows[i].Cells["colProject"].Value as bool? ?? false;
 
                 // Save per-termbase case sensitivity to DB
-                var caseVal = _dgvTermbases.Rows[i].Cells["colCase"].Value as string ?? "Insensitive";
-                int caseSetting = caseVal == "Sensitive" ? 1 : 0;
+                bool csChecked = _dgvTermbases.Rows[i].Cells["colCS"].Value as bool? ?? false;
+                int caseSetting = csChecked ? 1 : 0;
                 if (caseSetting != _termbases[i].CaseSensitive && !string.IsNullOrEmpty(dbPath) && File.Exists(dbPath))
                 {
                     try { TermbaseReader.SetTermbaseCaseSensitive(dbPath, _termbases[i].Id, caseSetting); }

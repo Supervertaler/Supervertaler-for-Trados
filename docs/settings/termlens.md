@@ -44,16 +44,10 @@ If disabled, the termbase loads the first time you open the TermLens settings or
 
 By default, TermLens matches terms regardless of letter case — "polymer", "Polymer", and "POLYMER" all match the same term entry. Enable **"Enable case-sensitive matching globally"** to require exact case matching across all termbases.
 
-You can also control case sensitivity per termbase using the **Case** dropdown in the termbase grid:
-
-| Setting | Behaviour |
-|---------|-----------|
-| **Default** | Uses the global setting (case-insensitive unless the global checkbox is ticked) |
-| **Sensitive** | This termbase always matches case-sensitively, regardless of the global setting |
-| **Insensitive** | This termbase always matches case-insensitively, regardless of the global setting |
+You can also control case sensitivity per termbase using the **CS** checkbox in the termbase grid. When the CS checkbox is ticked for a termbase, that termbase always matches case-sensitively; when unticked, it matches case-insensitively.
 
 {% hint style="info" %}
-**Tip:** Per-termbase overrides are useful when you have one termbase with abbreviations that must match exactly (e.g., "GC" should not match "gc") while other termbases should remain case-insensitive.
+**Tip:** The CS checkbox is useful when you have one termbase with abbreviations that must match exactly (e.g., "GC" should not match "gc") while other termbases should remain case-insensitive.
 {% endhint %}
 
 ## Panel font size

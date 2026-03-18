@@ -291,6 +291,14 @@ Older prompts using the `domain` key instead of `category` are still supported f
 2. Click **Edit**
 3. Modify as needed and click **Save**
 
+#### Inserting variables
+
+While editing prompt content, press **Ctrl+,** to open the variable picker menu. This lists all available variables with a short description. Select a variable to insert it at the cursor position. If text is selected in the editor, it is replaced by the inserted variable.
+
+{% hint style="info" %}
+**Ctrl+,** mirrors the variable insertion shortcut used in the Trados Studio editor.
+{% endhint %}
+
 #### Delete a prompt
 
 1. Select a custom prompt

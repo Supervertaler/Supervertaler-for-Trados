@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.10.6] — 2026-03-18
+
+### Added
+- **Variable picker in Prompt Editor** — press **Ctrl+,** in the prompt content field to open a variable menu listing all available variables with descriptions; selecting one inserts it at the cursor (mirrors the variable insertion shortcut in the Trados Studio editor)
+
+### Changed
+- **CS checkbox replaces Case dropdown in TermLens settings** — the per-termbase case sensitivity control is now a compact checkbox column (header: **CS**) instead of a dropdown showing Insensitive on every row; ticked = case-sensitive, unticked = case-insensitive; the column sits alongside the existing Read/Write/Project checkboxes
+
+---
+
 ## [4.10.5] — 2026-03-18
 
 ### Added

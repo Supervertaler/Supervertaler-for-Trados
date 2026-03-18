@@ -18,6 +18,7 @@ namespace Supervertaler.Trados.Controls
         private TextBox _txtContent;
         private Button _btnOK;
         private Button _btnCancel;
+        private ContextMenuStrip _varMenu;
 
         private readonly PromptTemplate _prompt;
         private readonly bool _isNew;
@@ -120,7 +121,7 @@ namespace Supervertaler.Trados.Controls
 
             var lblVars = new Label
             {
-                Text = "Variables:  {{SOURCE_LANGUAGE}} \u2014 source language   |   {{TARGET_LANGUAGE}} \u2014 target language",
+                Text = "Press Ctrl+, to insert a variable",
                 Location = new Point(12, y),
                 AutoSize = false,
                 Height = 16,
@@ -149,6 +150,26 @@ namespace Supervertaler.Trados.Controls
             _txtContent.Width = ClientSize.Width - 24;
             _txtContent.Height = ClientSize.Height - y - 50;
             Controls.Add(_txtContent);
+
+            // ─── Variable picker menu (Ctrl+,) ────────────
+            _varMenu = new ContextMenuStrip { Font = new Font("Segoe UI", 9f) };
+            void AddVar(string variable, string description)
+            {
+                var item = new ToolStripMenuItem($"{variable}  \u2014  {description}");
+                item.Click += (s, e) => InsertVariable(variable);
+                _varMenu.Items.Add(item);
+            }
+            AddVar("{{SOURCE_LANGUAGE}}", "Source language name (e.g. \"Dutch\")");
+            AddVar("{{TARGET_LANGUAGE}}", "Target language name (e.g. \"English\")");
+            _varMenu.Items.Add(new ToolStripSeparator());
+            AddVar("{{SOURCE_SEGMENT}}", "Source text of the active segment");
+            AddVar("{{TARGET_SEGMENT}}", "Target text of the active segment");
+            AddVar("{{SELECTION}}", "Currently selected text in the editor");
+            _varMenu.Items.Add(new ToolStripSeparator());
+            AddVar("{{PROJECT_NAME}}", "Name of the active Trados project");
+            AddVar("{{DOCUMENT_NAME}}", "Name of the active file");
+            AddVar("{{SURROUNDING_SEGMENTS}}", "Context segments before and after the active segment");
+            AddVar("{{PROJECT}}", "All source segments in the document");
 
             // ─── OK / Cancel ──────────────────────────────
             _btnOK = new Button
@@ -213,11 +234,34 @@ namespace Supervertaler.Trados.Controls
             _prompt.Content = _txtContent.Text;
         }
 
+        private void ShowVarMenu()
+        {
+            var pt = _txtContent.GetPositionFromCharIndex(_txtContent.SelectionStart);
+            pt.Y += _txtContent.Font.Height + 2;
+            _varMenu.Show(_txtContent, pt);
+        }
+
+        private void InsertVariable(string variable)
+        {
+            var start = _txtContent.SelectionStart;
+            _txtContent.Text = _txtContent.Text
+                .Remove(start, _txtContent.SelectionLength)
+                .Insert(start, variable);
+            _txtContent.SelectionStart = start + variable.Length;
+            _txtContent.SelectionLength = 0;
+            _txtContent.Focus();
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.F1)
             {
                 HelpSystem.OpenHelp(HelpSystem.Topics.SettingsPrompts);
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.Oemcomma) && _txtContent.Focused)
+            {
+                ShowVarMenu();
                 return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
