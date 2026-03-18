@@ -18,6 +18,7 @@ namespace Supervertaler.Trados.Controls
         private readonly string _dbPath;
         private TermbaseInfo _termbase;
         private long _termId;
+        private bool _isInverted; // true when project direction is opposite to termbase direction
 
         // Main fields
         private TextBox _txtSource;
@@ -77,11 +78,13 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// Edit mode — opens an existing term with its synonyms.
         /// </summary>
-        public TermEntryEditorDialog(TermEntry entry, string dbPath, TermbaseInfo termbase)
+        public TermEntryEditorDialog(TermEntry entry, string dbPath, TermbaseInfo termbase,
+            string projectSourceLang = null)
         {
             _dbPath = dbPath;
             _termbase = termbase;
             _termId = entry?.Id ?? -1;
+            _isInverted = IsDirectionInverted(projectSourceLang, termbase?.SourceLang);
 
             BuildUI(termbase);
             PopulateFromEntry(entry);
@@ -92,15 +95,24 @@ namespace Supervertaler.Trados.Controls
         /// Add mode — creates a new term entry.
         /// </summary>
         public TermEntryEditorDialog(string sourceTerm, string targetTerm,
-            string dbPath, TermbaseInfo termbase)
+            string dbPath, TermbaseInfo termbase, string projectSourceLang = null)
         {
             _dbPath = dbPath;
             _termbase = termbase;
             _termId = -1;
+            _isInverted = IsDirectionInverted(projectSourceLang, termbase?.SourceLang);
 
             BuildUI(termbase);
             _txtSource.Text = sourceTerm ?? "";
             _txtTarget.Text = targetTerm ?? "";
+        }
+
+        private static bool IsDirectionInverted(string projectSourceLang, string termbaseSourceLang)
+        {
+            if (string.IsNullOrEmpty(projectSourceLang) || string.IsNullOrEmpty(termbaseSourceLang))
+                return false;
+            return !projectSourceLang.StartsWith(termbaseSourceLang, StringComparison.OrdinalIgnoreCase)
+                && !termbaseSourceLang.StartsWith(projectSourceLang, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -260,8 +272,14 @@ namespace Supervertaler.Trados.Controls
             }
 
             // === Source / Target terms (use actual language names when available) ===
-            var srcLangLabel = !string.IsNullOrEmpty(termbase?.SourceLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.SourceLang)}:" : "Source term:";
-            var tgtLangLabel = !string.IsNullOrEmpty(termbase?.TargetLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.TargetLang)}:" : "Target term:";
+            // When the project direction is inverted relative to the termbase, show labels in
+            // project order (project source on the left, project target on the right).
+            var srcLangLabel = _isInverted
+                ? (!string.IsNullOrEmpty(termbase?.TargetLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.TargetLang)}:" : "Source term:")
+                : (!string.IsNullOrEmpty(termbase?.SourceLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.SourceLang)}:" : "Source term:");
+            var tgtLangLabel = _isInverted
+                ? (!string.IsNullOrEmpty(termbase?.SourceLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.SourceLang)}:" : "Target term:")
+                : (!string.IsNullOrEmpty(termbase?.TargetLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.TargetLang)}:" : "Target term:");
             _contentPanel.Controls.Add(MakeLabel(srcLangLabel, leftX, y, labelColor));
             _contentPanel.Controls.Add(MakeLabel(tgtLangLabel, rightX, y, labelColor));
             y += 18;
@@ -333,8 +351,12 @@ namespace Supervertaler.Trados.Controls
             y += 14;
 
             // === Source / Target synonyms (use actual language names when available) ===
-            var srcSynLabel = !string.IsNullOrEmpty(termbase?.SourceLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.SourceLang)} synonyms:" : "Source synonyms:";
-            var tgtSynLabel = !string.IsNullOrEmpty(termbase?.TargetLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.TargetLang)} synonyms:" : "Target synonyms:";
+            var srcSynLabel = _isInverted
+                ? (!string.IsNullOrEmpty(termbase?.TargetLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.TargetLang)} synonyms:" : "Source synonyms:")
+                : (!string.IsNullOrEmpty(termbase?.SourceLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.SourceLang)} synonyms:" : "Source synonyms:");
+            var tgtSynLabel = _isInverted
+                ? (!string.IsNullOrEmpty(termbase?.SourceLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.SourceLang)} synonyms:" : "Target synonyms:")
+                : (!string.IsNullOrEmpty(termbase?.TargetLang) ? $"{LanguageUtils.ShortenLanguageName(termbase.TargetLang)} synonyms:" : "Target synonyms:");
             _contentPanel.Controls.Add(MakeLabel(srcSynLabel, leftX, y, labelColor));
             _contentPanel.Controls.Add(MakeLabel(tgtSynLabel, rightX, y, labelColor));
             y += 18;
@@ -586,7 +608,10 @@ namespace Supervertaler.Trados.Controls
                 var synonyms = TermbaseReader.GetSynonyms(_dbPath, _termId);
                 foreach (var syn in synonyms)
                 {
-                    if (syn.Language == "source")
+                    // When inverted: DB source synonyms (termbase source language) display on the
+                    // right (project target side); DB target synonyms display on the left (project source side).
+                    bool showOnLeft = _isInverted ? syn.Language == "target" : syn.Language == "source";
+                    if (showOnLeft)
                     {
                         _sourceSyns.Add(syn);
                         _lstSourceSynonyms.Items.Add(FormatSynonymDisplay(syn));
@@ -916,6 +941,10 @@ namespace Supervertaler.Trados.Controls
         {
             var source = _txtSource.Text.Trim();
             var target = _txtTarget.Text.Trim();
+
+            // When the project direction is inverted relative to the termbase, the left field
+            // holds the project source (termbase target) and vice versa — swap before saving.
+            if (_isInverted) { var t = source; source = target; target = t; }
 
             if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target))
             {

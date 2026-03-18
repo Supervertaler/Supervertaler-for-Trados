@@ -150,6 +150,9 @@ namespace Supervertaler.Trados
                 // If the project translation direction is the inverse of the write termbase's
                 // language direction (e.g. project is NL→EN but termbase is EN→NL), swap
                 // source and target so the text lands in the correct termbase columns.
+                // Keep the original project-direction texts for the in-memory index update.
+                var indexSourceText = sourceText;
+                var indexTargetText = targetText;
                 try
                 {
                     var projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? "";
@@ -255,8 +258,8 @@ namespace Supervertaler.Trados
                             insertedEntries.Add(new Models.TermEntry
                             {
                                 Id = newId,
-                                SourceTerm = sourceText,
-                                TargetTerm = targetText,
+                                SourceTerm = indexSourceText,
+                                TargetTerm = indexTargetText,
                                 SourceLang = tb.SourceLang,
                                 TargetLang = tb.TargetLang,
                                 TermbaseId = tb.Id,

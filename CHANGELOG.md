@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.10.11] — 2026-03-18
+
+### Fixed
+- **Term display and immediate chip appearance restored for inverted-direction termbases** — when a project's translation direction is the opposite of a write termbase's declared direction (e.g. NL→EN project using an EN→NL termbase), TermLens now correctly indexes and matches terms after loading from disk (F5 and segment navigation both work), and newly added terms appear as chips immediately after Alt+Down or Alt+Up
+- **Edit Term Entry dialog now follows project direction** — column labels, text fields, synonyms, and abbreviation fields are presented in project source → target order (e.g. Dutch | English in a NL→EN project) regardless of the termbase's declared direction; saves still write to the correct termbase columns
+
+---
+
 ## [4.10.10] — 2026-03-18
 
 ### Fixed

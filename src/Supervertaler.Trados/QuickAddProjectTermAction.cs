@@ -140,6 +140,9 @@ namespace Supervertaler.Trados
                 }
 
                 // Swap source/target if project direction doesn't match the project termbase direction.
+                // Keep originals for the in-memory index update.
+                var indexSourceText = sourceText;
+                var indexTargetText = targetText;
                 try
                 {
                     var projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? "";
@@ -232,8 +235,8 @@ namespace Supervertaler.Trados
                         var entry = new Models.TermEntry
                         {
                             Id = newId,
-                            SourceTerm = sourceText,
-                            TargetTerm = targetText,
+                            SourceTerm = indexSourceText,
+                            TargetTerm = indexTargetText,
                             SourceLang = projectTermbase.SourceLang,
                             TargetLang = projectTermbase.TargetLang,
                             TermbaseId = projectTermbase.Id,

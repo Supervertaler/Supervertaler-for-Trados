@@ -178,7 +178,7 @@ namespace Supervertaler.Trados.Core
         /// Termbase IDs to exclude. Null or empty means load all termbases.
         /// </param>
         public Dictionary<string, List<TermEntry>> LoadAllTerms(HashSet<long> disabledTermbaseIds = null,
-            bool globalCaseSensitive = false)
+            bool globalCaseSensitive = false, string projectSourceLang = null)
         {
             var index = new Dictionary<string, List<TermEntry>>(StringComparer.OrdinalIgnoreCase);
             if (_connection == null) return index;
@@ -267,6 +267,31 @@ namespace Supervertaler.Trados.Core
                 else
                     entry.CaseSensitive = globalCaseSensitive;
 
+                // If the project source language is the inverse of this termbase's source language
+                // (e.g. NL→EN project using an EN→NL termbase), swap source and target so that
+                // the TermMatcher indexes the correct language for segment lookup.
+                List<string> srcSynsForIndex;
+                bool isInverted = !string.IsNullOrEmpty(projectSourceLang)
+                    && !string.IsNullOrEmpty(entry.SourceLang)
+                    && !projectSourceLang.StartsWith(entry.SourceLang, StringComparison.OrdinalIgnoreCase)
+                    && !entry.SourceLang.StartsWith(projectSourceLang, StringComparison.OrdinalIgnoreCase);
+
+                if (isInverted)
+                {
+                    var t = entry.SourceTerm; entry.SourceTerm = entry.TargetTerm; entry.TargetTerm = t;
+                    var tl = entry.SourceLang; entry.SourceLang = entry.TargetLang; entry.TargetLang = tl;
+                    var ta = entry.SourceAbbreviation; entry.SourceAbbreviation = entry.TargetAbbreviation; entry.TargetAbbreviation = ta;
+                    // DB target synonyms (now the source language) become index keys;
+                    // DB source synonyms become the displayed target alternatives.
+                    srcSynsForIndex = entry.TargetSynonyms;
+                    sourceSynonymsByTermId.TryGetValue(entry.Id, out var engSyns);
+                    entry.TargetSynonyms = engSyns ?? new List<string>();
+                }
+                else
+                {
+                    sourceSynonymsByTermId.TryGetValue(entry.Id, out srcSynsForIndex);
+                }
+
                 var key = TermMatcher.NormalizeScriptChars(entry.SourceTerm.Trim().ToLowerInvariant());
 
                 // Also index with trailing punctuation stripped
@@ -284,9 +309,9 @@ namespace Supervertaler.Trados.Core
                 }
 
                 // Index source synonyms as additional keys pointing to the same entry
-                if (sourceSynonymsByTermId.TryGetValue(entry.Id, out var srcSyns))
+                if (srcSynsForIndex != null)
                 {
-                    foreach (var synText in srcSyns)
+                    foreach (var synText in srcSynsForIndex)
                     {
                         var synKey = TermMatcher.NormalizeScriptChars(synText.Trim().ToLowerInvariant());
                         if (string.IsNullOrEmpty(synKey) || synKey == key) continue;

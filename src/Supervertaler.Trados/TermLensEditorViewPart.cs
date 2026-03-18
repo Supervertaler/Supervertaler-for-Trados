@@ -188,10 +188,12 @@ namespace Supervertaler.Trados
             // Push project termbase ID to the control for pink/blue coloring
             _control.Value.SetProjectTermbaseId(_settings.ProjectTermbaseId);
 
+            var projectSourceLang = GetDocumentSourceLanguage();
+
             // 1. Use the saved termbase path if set and the file exists
             if (!string.IsNullOrEmpty(_settings.TermbasePath) && File.Exists(_settings.TermbasePath))
             {
-                _control.Value.LoadTermbase(_settings.TermbasePath, disabled, forceReload, globalCaseSensitive);
+                _control.Value.LoadTermbase(_settings.TermbasePath, disabled, forceReload, globalCaseSensitive, projectSourceLang);
                 return;
             }
 
@@ -208,7 +210,7 @@ namespace Supervertaler.Trados
             {
                 if (File.Exists(path))
                 {
-                    _control.Value.LoadTermbase(path, disabled, forceReload, globalCaseSensitive);
+                    _control.Value.LoadTermbase(path, disabled, forceReload, globalCaseSensitive, projectSourceLang);
                     return;
                 }
             }
@@ -1154,7 +1156,7 @@ namespace Supervertaler.Trados
                         termbase = reader.GetTermbaseById(e.Entry.TermbaseId);
                 }
 
-                using (var dlg = new TermEntryEditorDialog(e.Entry, dbPath, termbase))
+                using (var dlg = new TermEntryEditorDialog(e.Entry, dbPath, termbase, GetDocumentSourceLanguage()))
                 {
                     var parent = _control.Value.FindForm();
                     var result = parent != null ? dlg.ShowDialog(parent) : dlg.ShowDialog();
