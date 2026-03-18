@@ -147,6 +147,28 @@ namespace Supervertaler.Trados
                     return;
                 }
 
+                // If the project translation direction is the inverse of the write termbase's
+                // language direction (e.g. project is NL→EN but termbase is EN→NL), swap
+                // source and target so the text lands in the correct termbase columns.
+                try
+                {
+                    var projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? "";
+                    var tbSrcLang = writeTermbases[0].SourceLang ?? "";
+                    if (!string.IsNullOrEmpty(projSrcLang) && !string.IsNullOrEmpty(tbSrcLang))
+                    {
+                        bool match =
+                            projSrcLang.StartsWith(tbSrcLang, StringComparison.OrdinalIgnoreCase) ||
+                            tbSrcLang.StartsWith(projSrcLang, StringComparison.OrdinalIgnoreCase);
+                        if (!match)
+                        {
+                            var tmp = sourceText;
+                            sourceText = targetText;
+                            targetText = tmp;
+                        }
+                    }
+                }
+                catch { /* leave sourceText/targetText as-is if language info unavailable */ }
+
                 // Check for existing entries with matching source or target
                 try
                 {

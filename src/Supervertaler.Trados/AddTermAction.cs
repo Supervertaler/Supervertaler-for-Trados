@@ -136,6 +136,30 @@ namespace Supervertaler.Trados
                     ? writeTermbases.Find(t => t.Id == settings.ProjectTermbaseId) ?? writeTermbases[0]
                     : writeTermbases[0];
 
+                // If the project translation direction is the inverse of the write termbase's
+                // language direction (e.g. project is NL→EN but termbase is EN→NL), the
+                // Trados "source" text belongs in the termbase's target column and vice versa.
+                // Detect this by comparing the project source language to the termbase source
+                // language and swap if they don't match.
+                try
+                {
+                    var projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? "";
+                    var tbSrcLang = primaryTb.SourceLang ?? "";
+                    if (!string.IsNullOrEmpty(projSrcLang) && !string.IsNullOrEmpty(tbSrcLang))
+                    {
+                        bool match =
+                            projSrcLang.StartsWith(tbSrcLang, StringComparison.OrdinalIgnoreCase) ||
+                            tbSrcLang.StartsWith(projSrcLang, StringComparison.OrdinalIgnoreCase);
+                        if (!match)
+                        {
+                            var tmp = sourceText;
+                            sourceText = targetText;
+                            targetText = tmp;
+                        }
+                    }
+                }
+                catch { /* leave sourceText/targetText as-is if language info unavailable */ }
+
                 // Open the full term entry editor in add mode
                 using (var dlg = new TermEntryEditorDialog(
                     sourceText.Trim(), targetText.Trim(), settings.TermbasePath, primaryTb))

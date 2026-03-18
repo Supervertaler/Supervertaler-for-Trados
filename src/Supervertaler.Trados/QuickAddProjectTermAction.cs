@@ -139,6 +139,26 @@ namespace Supervertaler.Trados
                     return;
                 }
 
+                // Swap source/target if project direction doesn't match the project termbase direction.
+                try
+                {
+                    var projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? "";
+                    var tbSrcLang = projectTermbase.SourceLang ?? "";
+                    if (!string.IsNullOrEmpty(projSrcLang) && !string.IsNullOrEmpty(tbSrcLang))
+                    {
+                        bool match =
+                            projSrcLang.StartsWith(tbSrcLang, StringComparison.OrdinalIgnoreCase) ||
+                            tbSrcLang.StartsWith(projSrcLang, StringComparison.OrdinalIgnoreCase);
+                        if (!match)
+                        {
+                            var tmp = sourceText;
+                            sourceText = targetText;
+                            targetText = tmp;
+                        }
+                    }
+                }
+                catch { /* leave sourceText/targetText as-is if language info unavailable */ }
+
                 // Check for existing entries with matching source or target
                 try
                 {

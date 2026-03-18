@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.10.10] — 2026-03-18
+
+### Fixed
+- **Term direction now respects termbase language pair** — when adding terms via Alt+Down, Alt+Up, Ctrl+Alt+T, or the right-click menu, the plugin now compares the active project's source language against the write termbase's source language and swaps source/target text when they are inverted (e.g. working in a NL→EN project but writing to an EN→NL termbase); previously terms were silently inserted in the wrong direction
+
+---
+
 ## [4.10.9] — 2026-03-18
 
 ### Changed
