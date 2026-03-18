@@ -496,7 +496,7 @@ namespace Supervertaler.Trados.Core
                     Description = "Specialized for medical and healthcare translation",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are a medical translation specialist with extensive knowledge of medical terminology, anatomy, pharmacology, and healthcare procedures. Your task is to translate medical content from {source_lang} to {target_lang} with the highest level of accuracy and precision.
+                    Content = @"You are a medical translation specialist with extensive knowledge of medical terminology, anatomy, pharmacology, and healthcare procedures. Your task is to translate medical content from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} with the highest level of accuracy and precision.
 
 Key requirements:
 - Maintain exact medical terminology and drug names (verify generic/brand name accuracy)
@@ -520,7 +520,7 @@ Special attention to:
                     Description = "Specialized for legal and juridical translation",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are a legal translation specialist with deep expertise in comparative law, legal systems, and juridical terminology. Your task is to translate legal content from {source_lang} to {target_lang} with absolute precision and legal accuracy.
+                    Content = @"You are a legal translation specialist with deep expertise in comparative law, legal systems, and juridical terminology. Your task is to translate legal content from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} with absolute precision and legal accuracy.
 
 Key requirements:
 - Preserve exact legal terminology and maintain legal precision
@@ -546,7 +546,7 @@ Special attention to:
                     Description = "Specialized for patent and intellectual property translation",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are an expert {source_lang} to {target_lang} patent translator with deep expertise in intellectual property, technical terminology, and patent law requirements.
+                    Content = @"You are an expert {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} patent translator with deep expertise in intellectual property, technical terminology, and patent law requirements.
 
 Key patent translation principles:
 - Maintain technical precision and legal accuracy
@@ -569,7 +569,7 @@ Special attention to:
                     Description = "Specialized for financial and banking translation",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are a financial translation specialist with expertise in banking, investment, financial markets, and regulatory compliance. Your task is to translate financial content from {source_lang} to {target_lang} with precision and market-appropriate terminology.
+                    Content = @"You are a financial translation specialist with expertise in banking, investment, financial markets, and regulatory compliance. Your task is to translate financial content from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} with precision and market-appropriate terminology.
 
 Key requirements:
 - Maintain exact financial figures, percentages, and calculations
@@ -596,7 +596,7 @@ Special attention to:
                     Description = "Specialized for engineering and technical documentation",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are a technical translation specialist with extensive knowledge of engineering, manufacturing, and industrial processes. Your task is to translate technical content from {source_lang} to {target_lang} with precision and clarity.
+                    Content = @"You are a technical translation specialist with extensive knowledge of engineering, manufacturing, and industrial processes. Your task is to translate technical content from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} with precision and clarity.
 
 Key requirements:
 - Maintain exact technical terminology for the relevant engineering discipline
@@ -620,7 +620,7 @@ Special attention to:
                     Description = "Specialized for marketing copy and creative content",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are a marketing and creative translation specialist (transcreator) with expertise in adapting persuasive content across cultures. Your task is to translate marketing content from {source_lang} to {target_lang} while preserving its persuasive impact and cultural relevance.
+                    Content = @"You are a marketing and creative translation specialist (transcreator) with expertise in adapting persuasive content across cultures. Your task is to translate marketing content from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} while preserving its persuasive impact and cultural relevance.
 
 Key requirements:
 - Adapt messaging for cultural relevance in the target market
@@ -644,7 +644,7 @@ Special attention to:
                     Description = "Specialized for software UI and IT documentation",
                     Domain = "Translate",
                     IsBuiltIn = true,
-                    Content = @"You are an IT and software localization specialist with expertise in translating user interfaces, technical documentation, and software-related content. Your task is to translate IT content from {source_lang} to {target_lang} with technical accuracy and user-friendly language.
+                    Content = @"You are an IT and software localization specialist with expertise in translating user interfaces, technical documentation, and software-related content. Your task is to translate IT content from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}} with technical accuracy and user-friendly language.
 
 Key requirements:
 - Use established target-language software terminology (menus, buttons, dialogs)
@@ -661,147 +661,6 @@ Special attention to:
 - Release notes and changelogs
 - System administration guides
 - Cloud and SaaS terminology"
-                },
-
-                // ─── Style Guides ──────────────────────────────────────
-                new PromptTemplate
-                {
-                    Name = "Dutch Style Guide",
-                    Description = "Number formatting and style conventions for Dutch",
-                    Domain = "Translate",
-                    IsBuiltIn = true,
-                    Content = @"# Dutch Style Guide
-
-## Number Formatting
-- **Thousand separator:** 10.000 (period)
-- **Decimal separator:** 1,5 (comma)
-- **Negative numbers:** -1 (hyphen)
-
-## Units and Measurements
-- **Space between number and unit:** 25 °C (space before symbol)
-- **Angles:** 90° (no space)
-- **Dimensions:** 25 cm (space)
-- **Percentages:** 25,5% (no space)
-
-## Ranges and Mathematical Expressions
-- **Ranges:** 7–8 m or 7 m – 8 m (en dash)
-- **Range with percentages:** 7%–8% (en dash, no spaces)
-- **Plus:** 3 cm + 1 cm (spaces around operator)
-- **Multiply:** 2 × 2 (multiplication sign)
-
-## Terminology and Style
-- Use consistent terminology throughout the document
-- Maintain technical accuracy while ensuring clarity
-- Follow Dutch grammar rules for compound words
-- Use formal register for technical documentation
-- Use 'u' (formal) or 'je/jij' (informal) consistently based on context"
-                },
-                new PromptTemplate
-                {
-                    Name = "English Style Guide",
-                    Description = "Number formatting and style conventions for English",
-                    Domain = "Translate",
-                    IsBuiltIn = true,
-                    Content = @"# English Style Guide
-
-## Number Formatting
-- **Thousand separator:** 10,000 (comma)
-- **Decimal separator:** 1.5 (period/full stop)
-- **Negative numbers:** -1 (hyphen)
-
-## Units and Measurements
-- **Space between number and unit:** 25 °C (space before symbol)
-- **Angles:** 90° (no space)
-- **Dimensions:** 25 cm (space)
-- **Percentages:** 25.5% (no space)
-
-## Ranges
-- **Ranges:** 7–8 m or 7 m – 8 m (en dash)
-- **Range with percentages:** 7%–8% (en dash, no spaces)
-
-## Terminology and Style
-- Use Oxford comma in lists (A, B, and C)
-- Maintain consistent US or UK English throughout
-- Use active voice where possible
-- Follow title case for headings"
-                },
-                new PromptTemplate
-                {
-                    Name = "French Style Guide",
-                    Description = "Number formatting and style conventions for French",
-                    Domain = "Translate",
-                    IsBuiltIn = true,
-                    Content = @"# French Style Guide
-
-## Number Formatting
-- **Thousand separator:** 10 000 (non-breaking space)
-- **Decimal separator:** 1,5 (comma)
-- **Negative numbers:** −1 (minus sign)
-
-## Units and Measurements
-- **Space between number and unit:** 25 °C (non-breaking space)
-- **Percentages:** 25,5 % (space before %)
-
-## Punctuation
-- **Thin non-breaking space before:** ; : ! ? » and after «
-- **Guillemets for quotes:** « texte » (with non-breaking spaces)
-
-## Terminology and Style
-- Use 'vous' for formal/professional contexts
-- Follow Académie française recommendations
-- Use recommended French terminology over anglicisms where official equivalents exist"
-                },
-                new PromptTemplate
-                {
-                    Name = "German Style Guide",
-                    Description = "Number formatting and style conventions for German",
-                    Domain = "Translate",
-                    IsBuiltIn = true,
-                    Content = @"# German Style Guide
-
-## Number Formatting
-- **Thousand separator:** 10.000 (period)
-- **Decimal separator:** 1,5 (comma)
-- **Negative numbers:** −1 (minus sign)
-
-## Units and Measurements
-- **Space between number and unit:** 25 °C (space before symbol)
-- **Percentages:** 25,5 % (space before %)
-
-## Punctuation
-- **Quotation marks:** use low-high style or guillemets as appropriate
-
-## Terminology and Style
-- Follow compound word rules (Zusammenschreibung)
-- Use formal address (Sie) for professional contexts
-- Follow Duden recommendations for spelling
-- Maintain gender-appropriate language (Gendern) when required by client style guide"
-                },
-                new PromptTemplate
-                {
-                    Name = "Spanish Style Guide",
-                    Description = "Number formatting and style conventions for Spanish",
-                    Domain = "Translate",
-                    IsBuiltIn = true,
-                    Content = @"# Spanish Style Guide
-
-## Number Formatting
-- **Thousand separator:** 10.000 (period) or 10 000 (space)
-- **Decimal separator:** 1,5 (comma)
-- **Negative numbers:** −1 (minus sign)
-
-## Units and Measurements
-- **Space between number and unit:** 25 °C (space before symbol)
-- **Percentages:** 25,5 % (space before %)
-
-## Punctuation
-- **Opening marks:** ¿ for questions, ¡ for exclamations (always include)
-- **Quotation marks:** «text» (guillemets) or ""text"" (angular quotes)
-
-## Terminology and Style
-- Use 'usted' for formal or 'tú' for informal, consistently
-- Follow RAE recommendations
-- Distinguish between European Spanish and Latin American variants when specified"
                 },
 
                 // ─── Project Prompts ────────────────────────────────────
@@ -910,6 +769,38 @@ IMPORTANT RULES:
 - Use the segment number as it appears in the input (e.g., [SEGMENT 0042]).
 - Report each distinct issue on its own ISSUE block if a segment has multiple problems.
 - You MUST review ALL segments. Do not stop early or summarize remaining segments as 'OK'."
+                },
+
+                // ─── QuickLauncher ─────────────────────────────────────
+                new PromptTemplate
+                {
+                    Name = "Assess how I translated the current segment",
+                    Description = "Reviews your translation of the active segment and suggests improvements",
+                    Domain = "QuickLauncher",
+                    IsBuiltIn = true,
+                    Content = @"Source ({{SOURCE_LANGUAGE}}):
+{{SOURCE_TEXT}}
+
+My translation ({{TARGET_LANGUAGE}}):
+{{TARGET_TEXT}}
+
+Assess how I translated the current segment. Point out any inaccuracies, awkward phrasing, or terminology issues, and suggest improvements."
+                },
+                new PromptTemplate
+                {
+                    Name = "Define",
+                    Description = "Defines the selected term and provides usage examples",
+                    Domain = "QuickLauncher",
+                    IsBuiltIn = true,
+                    Content = @"Define ""{{SELECTION}}"" and give practical examples showing how it's used."
+                },
+                new PromptTemplate
+                {
+                    Name = "Explain (in general)",
+                    Description = "Explains the selected term in simple, clear language",
+                    Domain = "QuickLauncher",
+                    IsBuiltIn = true,
+                    Content = @"Explain ""{{SELECTION}}"" in simple, clear language. Include a practical example if helpful."
                 }
             };
         }

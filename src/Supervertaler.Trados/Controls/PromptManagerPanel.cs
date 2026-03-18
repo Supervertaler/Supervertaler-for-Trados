@@ -136,7 +136,7 @@ namespace Supervertaler.Trados.Controls
             _btnDelete = new Button
             {
                 Text = "Delete",
-                Width = 55,
+                Width = 65,
                 Height = 25,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8f),

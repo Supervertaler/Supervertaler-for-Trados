@@ -18,10 +18,11 @@ Open the plugin **Settings** dialog and switch to the **Prompts** tab.
 
 The plugin ships with built-in prompts organised into two categories:
 
-| Category      | Prompts                                                                                                                                               | Used in              |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Translate** | Medical, Legal, Patent, Financial, Technical, Marketing, IT, Dutch/English/French/German/Spanish Style Guides, Professional Tone, Preserve Formatting | Batch Translate mode |
-| **Proofread** | Default Proofreading Prompt                                                                                                                           | Batch Proofread mode |
+| Category            | Prompts                                                                                              | Used in              |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | -------------------- |
+| **Translate**       | Medical, Legal, Patent, Financial, Technical, Marketing, IT, Professional Tone, Preserve Formatting | Batch Translate mode |
+| **Proofread**       | Default Proofreading Prompt                                                                          | Batch Proofread mode |
+| **QuickLauncher**   | Assess translation, Define, Explain (in general)                                                     | QuickLauncher menu   |
 
 {% hint style="info" %}
 Built-in prompts are **read-only**. To customise one, create a new prompt and paste the built-in content as a starting point.
