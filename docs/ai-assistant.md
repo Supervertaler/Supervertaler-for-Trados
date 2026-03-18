@@ -38,6 +38,16 @@ The AI will consider your current source text, target text, matched terminology 
 | Insert a line break         | Press **Shift+Enter**     |
 | Stop a response in progress | Click the **Stop** button |
 
+### Chat History
+
+The conversation is saved automatically after every message and restored the next time Trados starts. Your history persists until you explicitly clear it.
+
+To clear the history, click the **Clear** button in the chat toolbar. This removes all messages from both the display and the saved file.
+
+{% hint style="info" %}
+Chat history is stored in `~/Supervertaler/trados/chat_history.json`. It is a single global history — not per project or per file.
+{% endhint %}
+
 ## Context Awareness
 
 The Supervertaler Assistant is deeply integrated with your Trados project. Every time you send a message, the assistant automatically receives a rich snapshot of your current work so it can give you informed, project-specific answers. This context is assembled fresh on each message, so the AI always sees the latest state.
