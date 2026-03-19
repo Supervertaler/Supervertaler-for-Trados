@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Supervertaler Assistant
-
 The Supervertaler Assistant is a conversational chat panel that runs inside Trados Studio as a separate dockable panel. It is context-aware: it automatically includes your current source and target text, matched terminology, and TM matches in every request, so the AI can give you informed answers about the segment you are working on.
 
 <figure><img src=".gitbook/assets/Sv_Supervertaler-Assistant.png" alt=""><figcaption></figcaption></figure>
@@ -58,7 +56,7 @@ The assistant knows which project and file you are working in, the language pair
 
 ### Full document content
 
-When enabled, all source segments in the current document are included in the AI prompt. This allows the assistant to analyze the document and determine its type — legal, medical, technical, marketing, financial, scientific, etc. — and use that assessment to inform its advice on terminology, style, and translation choices.
+When enabled, all source segments in the current document are included in the AI prompt. This allows the assistant to analyse the document and determine its type — legal, medical, technical, marketing, financial, scientific, etc. — and use that assessment to inform its advice on terminology, style, and translation choices.
 
 For very large documents, the content is automatically truncated to the configured maximum (default: 500 segments). The truncation preserves the first 80% and the last 20% so the AI still sees both the beginning and the end of the document.
 

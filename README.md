@@ -96,7 +96,7 @@ The AI Assistant is a separate dockable panel in Trados Studio that provides a m
 - **Apply suggestions** — right-click any assistant response and choose "Apply to target" to insert the suggestion directly into the active segment
 - **Markdown rendering** — responses render with full formatting: headings, bold, italic, inline code, code blocks, tables, and lists
 - **AI context control** — choose which termbases contribute to AI prompts and toggle TM match inclusion from the AI Settings panel
-- **All providers supported** — OpenAI, Anthropic (Claude), Google (Gemini), Ollama, and custom OpenAI-compatible endpoints
+- **All providers supported** — OpenAI, Anthropic (Claude), Google (Gemini), Ollama (local), and custom OpenAI-compatible endpoints
 
 ## AI Batch Translation
 
@@ -107,10 +107,10 @@ Supervertaler for Trados includes built-in AI translation powered by OpenAI, Ant
 - **Batch translate** — translate multiple segments at once from the Batch Translate tab; choose from four scopes: empty segments only, all segments, filtered segments, or filtered empty only
 - **Single-segment translate** — press **Ctrl+T** to translate the active segment using the same settings as Batch Translate (provider, model, prompt); also available via right-click → "Translate active segment"
 - **Filtered segment support** — use Trados's advanced display filter to narrow down which segments to translate, then batch-translate only those
-- **Multiple AI providers** — OpenAI (GPT-4o, GPT-4o mini, o1, o3-mini), Anthropic (Claude Sonnet, Haiku, Opus), and Google (Gemini 2.0 Flash, Gemini 1.5 Pro)
+- **Multiple AI providers** — OpenAI (GPT-4o, GPT-4o Mini, GPT-5, o1, o3), Anthropic (Claude Sonnet 4.6, Haiku 4.5, Opus 4.6), Google (Gemini 2.5 Flash, 2.5 Pro, 3 Pro Preview), and Ollama (TranslateGemma, Qwen 3, Aya Expanse — local, no API key needed)
 - **Glossary-aware prompts** — AI translations automatically include your approved terms (including non-translatable terms) in the prompt
-- **Prompt library** — 14 built-in prompts for domain expertise (Medical, Legal, Patent, Financial, Technical, Marketing, IT), style guides (Dutch, English, French, German, Spanish), and project prompts; create custom prompts with Markdown + YAML frontmatter; compatible with Supervertaler desktop prompt format
-- **Composable prompt assembly** — base system prompt + custom domain/style instructions + glossary injection; advanced users can override the base system prompt entirely
+- **Prompt library** — built-in Default Translation Prompt, Default Proofreading Prompt, and QuickLauncher prompts; create custom prompts with Markdown + YAML frontmatter (`.svprompt` files); shared with Supervertaler Workbench via the shared prompt library folder
+- **Analyse Project & Generate Prompt** — analyses your document's content, terminology, and TM data to automatically generate a comprehensive domain-specific translation prompt using AI; the result appears in the AI Assistant chat for iterative refinement, then save it to your prompt library with right-click → "Save as Prompt…"
 - **Configurable settings** — provider, model, API key, and temperature are set in the AI Settings panel and persist across sessions
 - **Real-time progress** — batch translations show segment-by-segment progress in a scrollable log panel, with cancel support
 

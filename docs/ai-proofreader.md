@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# AI Proofreader
-
 The AI Proofreader checks your translated segments for errors using AI. It identifies issues such as mistranslations, omissions, grammar problems, and inconsistencies, and presents the results as clickable issue cards in the **Reports** tab.
 
 ## Starting a Proofreading Run

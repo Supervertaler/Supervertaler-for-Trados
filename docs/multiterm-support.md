@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# MultiTerm Support
-
 TermLens automatically detects MultiTerm termbases (`.sdltb` files) attached to your active Trados project and displays their terms alongside your Supervertaler terms.
 
 ## How It Works

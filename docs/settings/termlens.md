@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# TermLens Settings
-
 Configure how TermLens loads and displays terminology in Trados Studio.
 
 ## Accessing TermLens settings

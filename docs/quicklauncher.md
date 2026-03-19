@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# QuickLauncher
-
 QuickLauncher gives you one-click access to your most-used AI prompts directly from the Trados editor, without switching panels or typing anything.
 
 ## How it works

@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.14.0] — 2026-03-19
+
+### Added
+- **Analyse Project & Generate Prompt** — new feature that analyses your document's content, terminology, and TM data to automatically generate a comprehensive domain-specific translation prompt using AI. Accessible via the link next to the prompt selector on the Batch Operations tab. The generated prompt appears in the AI Assistant chat, where you can refine it through conversation. Right-click any assistant message → "Save as Prompt…" to save the result to your prompt library.
+- **Save as Prompt** — right-click any AI Assistant response and choose "Save as Prompt…" to save it as a reusable `.svprompt` file in your prompt library. The default name is your Trados project name, with automatic version numbering (v2, v3, etc.) if a prompt with that name already exists.
+
+### Changed
+- **British English spelling** — all user-facing text now uses British English spelling throughout the plugin and documentation (analyse, customise, organised, etc.).
+- **Documentation improvements** — removed duplicate page headings from all help pages, added cross-references for the new Analyse Project & Generate Prompt feature, and added comprehensive documentation for the new feature.
+
+### Fixed
+- **Save as Prompt dialog** — fixed buttons being cut off at the bottom of the dialog under certain DPI scaling settings.
+
+---
+
 ## [4.13.0] — 2026-03-19
 
 ### Changed

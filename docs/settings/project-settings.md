@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Per-Project Settings
-
 Supervertaler for Trados automatically saves and restores your termbase configuration when you switch between Trados projects. This means each project can use its own Supervertaler database, write targets, and termbase settings without manual reconfiguration.
 
 ## How it works

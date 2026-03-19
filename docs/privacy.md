@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Privacy Policy
-
 For the full Supervertaler privacy policy, please visit:
 
 **[supervertaler.com/privacy](https://supervertaler.com/privacy/)**

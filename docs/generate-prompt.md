@@ -1,10 +1,6 @@
-# Analyze Project & Generate Prompt
-
 {% hint style="info" %}
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
-
-## Analyse Project & Generate Prompt
 
 This feature uses AI to analyse your entire project and generate a comprehensive, domain-specific translation prompt tailored to your document. The generated prompt includes terminology rules, style guidelines, anti-truncation controls, and domain-specific instructions — ready to use with Batch Translate.
 

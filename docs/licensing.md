@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Licensing & Pricing
-
 Supervertaler for Trados uses a subscription-based licensing model with a free trial to get started.
 
 ## Free Trial

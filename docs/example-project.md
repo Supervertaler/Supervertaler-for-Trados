@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Example Project
-
 Supervertaler for Trados includes a downloadable example project so you can see the plugin in action without setting anything up yourself. The example is a Dutch-to-English patent translation that comes with a translation memory, a MultiTerm termbase, and a Supervertaler termbase — everything you need to see TermLens and the AI features working.
 
 <figure><img src=".gitbook/assets/example-project.png" alt="The example project open in Trados Studio, showing TermLens terminology chips, TM matches, and the Supervertaler Assistant panel."><figcaption><p>The example project open in Trados Studio with TermLens active.</p></figcaption></figure>

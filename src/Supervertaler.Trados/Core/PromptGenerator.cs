@@ -486,7 +486,7 @@ namespace Supervertaler.Trados.Core
         {
             var domain = ctx.DetectedDomain ?? "general";
             var sb = new StringBuilder();
-            sb.AppendLine("Analyzing project and generating prompt...");
+            sb.AppendLine("Analysing project and generating prompt...");
             sb.AppendLine();
             sb.AppendLine($"Domain: {char.ToUpper(domain[0])}{domain.Substring(1)}");
             sb.AppendLine($"Language pair: {ctx.SourceLang} \u2192 {ctx.TargetLang}");

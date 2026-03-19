@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Getting Started
-
 This page walks you through the first-time setup so you can start using TermLens terminology and AI translation inside Trados Studio.
 
 ## First-Time Setup

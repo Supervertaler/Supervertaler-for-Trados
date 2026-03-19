@@ -2,8 +2,6 @@
 You are viewing help for **Supervertaler for Trados** — the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
 
-# Batch Translate
-
 Batch Translate lets you translate multiple segments at once using AI. It is located in the **Supervertaler Assistant** panel, on the **Batch Operations** tab.
 
 {% hint style="info" %}
@@ -75,7 +73,7 @@ Start by translating only the empty segments (scope: **Empty Segments Only**). R
 
 ### Generate a Domain-Specific Prompt Automatically
 
-Click **Analyze Project & Generate Prompt…** next to the prompt dropdown. Supervertaler analyzes your entire document, detects the domain, and uses AI to generate a comprehensive translation prompt with terminology rules, style guidelines, and anti-truncation controls — all tailored to your specific project. See [Analyze Project & Generate Prompt](generate-prompt.md) for details.
+Click **Analyse Project & Generate Prompt…** next to the prompt dropdown. Supervertaler analyses your entire document, detects the domain, and uses AI to generate a comprehensive translation prompt with terminology rules, style guidelines, and anti-truncation controls — all tailored to your specific project. See [Analyse Project & Generate Prompt](generate-prompt.md) for details.
 
 ### Create Domain-Specific Prompts Manually
 
@@ -97,7 +95,7 @@ AI translation is a first draft. After a batch run:
 
 ## See Also
 
-* [Analyze Project & Generate Prompt](generate-prompt.md)
+* [Analyse Project & Generate Prompt](generate-prompt.md)
 * [AI Proofreader](ai-proofreader.md)
 * [Supervertaler Assistant](ai-assistant.md)
 * [TermLens](termlens.md)
