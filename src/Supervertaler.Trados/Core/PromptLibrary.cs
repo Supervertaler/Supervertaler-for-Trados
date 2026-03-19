@@ -46,6 +46,17 @@ namespace Supervertaler.Trados.Core
 
             if (Directory.Exists(PromptsDir))
                 ScanDirectory(PromptsDir, PromptsDir, isReadOnly: false);
+
+            // Mark prompts that match built-in definitions as IsBuiltIn,
+            // even if the file on disk was created by Workbench without that flag.
+            var builtInNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var b in GetBuiltInPromptDefinitions())
+                builtInNames.Add(b.Name);
+            foreach (var p in _cache)
+            {
+                if (builtInNames.Contains(p.Name))
+                    p.IsBuiltIn = true;
+            }
         }
 
         /// <summary>
@@ -404,6 +415,9 @@ namespace Supervertaler.Trados.Core
             if (string.IsNullOrWhiteSpace(text))
                 return null;
 
+            // Normalize line endings to CRLF for Windows TextBox controls
+            text = text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+
             var prompt = new PromptTemplate
             {
                 FilePath = filePath,
@@ -586,9 +600,7 @@ namespace Supervertaler.Trados.Core
 ## Style
 - Match the formality level of the source (formal documents stay formal, casual content stays casual)
 - Use natural sentence structures in the target language rather than mirroring source syntax
-- Avoid unnecessary additions, omissions, or explanatory notes unless explicitly requested
-
-This prompt is a starting point. Duplicate it in the Prompt Manager and customise it for your domain — add terminology rules, style preferences, or domain-specific instructions to get better results."
+- Avoid unnecessary additions, omissions, or explanatory notes unless explicitly requested"
                 },
 
                 // ─── Proofreading ─────────────────────────────────────────
@@ -664,6 +676,96 @@ IMPORTANT RULES:
 - Use the segment number as it appears in the input (e.g., [SEGMENT 0042]).
 - Report each distinct issue on its own ISSUE block if a segment has multiple problems.
 - You MUST review ALL segments. Do not stop early or summarize remaining segments as 'OK'."
+                },
+                new PromptTemplate
+                {
+                    Name = "UK to US English Localization",
+                    Description = "Flags British English spelling, vocabulary, and conventions that need changing to American English",
+                    Domain = "Proofread",
+                    IsBuiltIn = true,
+                    Content = @"You are a professional English localizer specializing in adapting British English (BrE) text to American English (AmE). Your task is to review each segment and flag any British English forms that should be changed to their American English equivalents.
+
+IMPORTANT: This is a linguistic localization check only. Do NOT flag style, tone, sentence structure, readability, or rewriting suggestions. Only flag words, spellings, and conventions that differ between British and American English.
+
+## 1. Spelling Differences
+
+### -ise/-ize and -isation/-ization
+British -ise spellings must be changed to American -ize:
+- localise → localize, organise → organize, recognise → recognize, specialise → specialize, optimise → optimize, customise → customize, minimise → minimize, maximise → maximize, utilise → utilize, standardise → standardize, synchronise → synchronize, authorise → authorize, characterise → characterize, initialise → initialize, finalise → finalize, normalise → normalize, prioritise → prioritize, summarise → summarize, categorise → categorize, analyse → analyze, paralyse → paralyze, catalyse → catalyze
+- localisation → localization, organisation → organization, specialisation → specialization, optimisation → optimization, synchronisation → synchronization, authorisation → authorization, initialisation → initialization, normalisation → normalization, serialisation → serialization, visualisation → visualization
+
+### -our/-or
+- colour → color, favour → favor, behaviour → behavior, honour → honor, labour → labor, neighbour → neighbor, humour → humor, vapour → vapor, flavour → flavor, harbour → harbor, rumour → rumor, vigour → vigor, savour → savor, armour → armor, glamour → glamor (though ""glamour"" is sometimes kept in AmE)
+- Also their derivatives: coloured → colored, favourite → favorite, flavoured → flavored, honourable → honorable, neighbouring → neighboring, behavioural → behavioral, favourable → favorable, unfavourable → unfavorable, colourful → colorful, humorous stays ""humorous"" in both
+
+### -re/-er
+- centre → center, metre → meter, litre → liter, fibre → fiber, theatre → theater, calibre → caliber, lustre → luster, manoeuvre → maneuver, spectre → specter, sombre → somber, meagre → meager
+- Also: centred → centered, centring → centering, metreing → metering
+
+### -ence/-ense
+- defence → defense, offence → offense, licence (noun) → license, pretence → pretense
+
+### -lled/-led, -lling/-ling, -ller/-ler
+British English doubles the L before suffixes; American English does not:
+- travelling → traveling, traveller → traveler, cancelled → canceled, cancelling → canceling, modelling → modeling, modeller → modeler, labelling → labeling, labelled → labeled, levelled → leveled, levelling → leveling, fuelling → fueling, fuelled → fueled, dialled → dialed, dialling → dialing, marshalled → marshaled, marshalling → marshaling, channelled → channeled, channelling → channeling, signalling → signaling, signalled → signaled, panelling → paneling, panelled → paneled, jewellery → jewelry
+
+### -ogue/-og
+- analogue → analog, catalogue → catalog, dialogue → dialog, prologue → prolog, monologue → monolog, epilogue → epilog
+- Note: in technical contexts, ""analog"" and ""dialog"" are strongly preferred in AmE
+
+### -ae-/-oe- to -e-
+- anaemia → anemia, anaesthesia → anesthesia, oestrogen → estrogen, paediatric → pediatric, encyclopaedia → encyclopedia, orthopaedic → orthopedic, haemorrhage → hemorrhage, haemoglobin → hemoglobin, foetus → fetus, diarrhoea → diarrhea, oesophagus → esophagus, gynaecology → gynecology, leukaemia → leukemia, manoeuvre → maneuver
+
+### -t/-ed past tense
+- learnt → learned, burnt → burned, spelt → spelled, dreamt → dreamed, leapt → leaped, spoilt → spoiled, knelt → kneeled (though ""knelt"" is acceptable in AmE too)
+
+### Other spelling differences
+- grey → gray, tyre → tire, kerb → curb, draught → draft, plough → plow, cheque → check (financial), gaol → jail, aeroplane → airplane, aluminium → aluminum, artefact → artifact, cosy → cozy, doughnut stays ""doughnut"" (both acceptable in AmE), fulfil → fulfill, enrol → enroll, enthral → enthrall, instal → install, skilful → skillful, wilful → willful, distil → distill, instalment → installment, fulfilment → fulfillment, enrolment → enrollment, judgement → judgment (in legal/technical contexts), ageing → aging, likeable → likable, sizeable → sizable, moveable → movable, saleable → salable, acknowledgement → acknowledgment, programme → program, whilst → while, amongst → among, amidst → amid, towards → toward, forwards → forward, backwards → backward, afterwards → afterward, upwards → upward, outwards → outward
+
+## 2. Vocabulary Differences
+
+Flag any British vocabulary that has a standard American equivalent:
+- lorry → truck, boot (of car) → trunk, bonnet (of car) → hood, windscreen → windshield, petrol → gas/gasoline, motorway → highway/freeway, dual carriageway → divided highway, car park → parking lot/parking garage, pavement → sidewalk, zebra crossing → crosswalk, roundabout → traffic circle/rotary, flyover → overpass, estate car → station wagon, gear lever → gearshift, number plate → license plate
+- lift → elevator, flat → apartment, ground floor → first floor, first floor → second floor, garden → yard (residential outdoor area), bin → trash can/garbage can, rubbish → trash/garbage, skip → dumpster, tap → faucet, torch → flashlight, nappy → diaper, dummy (baby) → pacifier, pram → stroller/baby carriage, queue → line, post (mail) → mail, postbox → mailbox, postcode → zip code, mobile (phone) → cell phone, cooker → stove/range, hob → stovetop/burner, grill → broiler (when top-heat cooking), crisps → chips, chips → fries/French fries, biscuit → cookie (sweet) or cracker (savory), tin → can, courgette → zucchini, aubergine → eggplant, rocket (salad) → arugula, coriander → cilantro (leaves), spring onion → scallion/green onion, swede → rutabaga, mince → ground meat, candyfloss → cotton candy
+- holiday → vacation (but ""holiday"" for public holidays is fine in AmE), autumn → fall (though ""autumn"" is understood in AmE), fortnight → two weeks, anti-clockwise → counterclockwise, full stop → period (punctuation), inverted commas → quotation marks, maths → math, sport → sports (when general), at the weekend → on the weekend, ring (phone) → call, have a go → try/give it a try, sorted → taken care of/resolved
+
+### Technical/IT vocabulary
+- mobile → cell/mobile (both acceptable in US tech), spanner → wrench, earth (electrical) → ground, earthing → grounding, mains (electrical) → power supply/AC power, flex (electrical cable) → cord, socket → outlet, adaptor → adapter
+
+## 3. Punctuation and Formatting Conventions
+
+- Quotation marks: single quotes ('…') are BrE convention; AmE uses double quotes (""…"") as primary. Flag if the text consistently uses BrE single-quote convention.
+- Dates: flag dd/mm/yyyy format if clearly British ordering (e.g., ""05/03/2025"" meaning 5 March). Note: only flag if context makes the British ordering clear.
+- Mr, Mrs, Dr without periods → Mr., Mrs., Dr. with periods in AmE.
+
+## 4. What NOT to Flag
+
+- Do NOT flag style, sentence structure, or phrasing preferences
+- Do NOT suggest rewriting for ""more natural"" American phrasing
+- Do NOT flag words that are the same in both variants (e.g., ""transport,"" ""government"")
+- Do NOT flag proper nouns, brand names, place names, or quoted text
+- Do NOT flag ""humorous"" (same spelling in both)
+- Do NOT flag technical terms that are conventionally spelled the same way in both variants
+- Do NOT provide corrected full translations — only describe what should be changed
+
+## Output Format
+
+You MUST use this exact format for every segment. Check ALL segments — do not skip any.
+
+For segments with no British English forms:
+[SEGMENT XXXX] OK
+
+For segments with British English forms to localize:
+[SEGMENT XXXX] ISSUE
+Issue: <identify the British English word/spelling>
+Suggestion: <state the American English equivalent>
+
+IMPORTANT RULES:
+- NEVER provide corrected full translations. Only identify the specific British English word(s) and their American English replacement(s).
+- Use the segment number as it appears in the input (e.g., [SEGMENT 0042]).
+- Report each distinct issue on its own ISSUE block if a segment has multiple British English forms.
+- You MUST review ALL segments. Do not stop early or summarize remaining segments as ""OK"".
+- If a segment contains multiple British English words, list each as a separate ISSUE block under the same segment header."
                 },
 
                 // ─── QuickLauncher ─────────────────────────────────────
