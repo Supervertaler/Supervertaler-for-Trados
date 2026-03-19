@@ -12,6 +12,8 @@ Prompts tell the AI how to behave. The Prompt Manager lets you browse built-in d
 
 Open the plugin **Settings** dialog and switch to the **Prompts** tab.
 
+<figure><img src="../.gitbook/assets/image (6).png" alt=""><figcaption></figcaption></figure>
+
 ***
 
 ### Built-in prompts
