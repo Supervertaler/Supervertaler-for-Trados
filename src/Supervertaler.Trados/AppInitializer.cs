@@ -1,11 +1,15 @@
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
 using Supervertaler.Trados.Controls;
+using Supervertaler.Trados.Core;
 using Supervertaler.Trados.Licensing;
 using Supervertaler.Trados.Settings;
 
@@ -32,6 +36,12 @@ namespace Supervertaler.Trados
 
         public void Execute()
         {
+            // Check for stale Unpacked folder (user installed a newer .sdlplugin
+            // but Trados didn't re-extract).  If detected, rename the old folder
+            // and prompt for restart.
+            if (HandlePendingUpdate())
+                return;
+
             // Enable TLS 1.2+ for HTTPS API calls (OpenAI, Anthropic, Google)
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
 
@@ -76,6 +86,147 @@ namespace Supervertaler.Trados
             // Initialize licensing — loads cached state, triggers background validation
             LicenseManager.Instance.InitializeAsync();
         }
+
+        // ── Stale-plugin detection ───────────────────────────────────
+
+        private const string PluginFolderName = "Supervertaler.Trados";
+        private const string PluginFileName   = "Supervertaler.Trados.sdlplugin";
+
+        /// <summary>
+        /// Detects if a newer .sdlplugin package has been installed but Trados
+        /// is still running the old Unpacked copy.  If so, renames the stale
+        /// Unpacked folder (so Trados re-extracts on next start) and prompts
+        /// the user to restart.
+        /// Returns true if a restart is needed (caller should skip init).
+        /// </summary>
+        private static bool HandlePendingUpdate()
+        {
+            try
+            {
+                var asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (asmDir == null) return false;
+
+                var unpackedRoot = Path.GetDirectoryName(asmDir);   // …\Plugins\Unpacked\
+                if (unpackedRoot == null) return false;
+
+                // 1. Clean up .old folder from a previous update cycle
+                var oldDir = Path.Combine(unpackedRoot, PluginFolderName + ".old");
+                if (Directory.Exists(oldDir))
+                {
+                    try { Directory.Delete(oldDir, true); } catch { }
+                }
+
+                // 2. Get our running version
+                var currentVersion = UpdateChecker.GetCurrentVersion();
+                if (string.IsNullOrEmpty(currentVersion)) return false;
+
+                // 3. Find the newest .sdlplugin across all plugin locations
+                var newestPackage = FindNewestPackage();
+                if (newestPackage == null) return false;
+
+                // 4. Read version from the .sdlplugin (ZIP/OPC) manifest
+                var packageVersion = ReadPackageVersion(newestPackage);
+                if (string.IsNullOrEmpty(packageVersion)) return false;
+
+                // Normalize: manifest has 4-part (4.12.3.0), strip trailing ".0"
+                if (packageVersion.EndsWith(".0"))
+                    packageVersion = packageVersion.Substring(0, packageVersion.Length - 2);
+
+                // 5. Compare — if package is not newer, we're up to date
+                if (UpdateChecker.CompareVersions(packageVersion, currentVersion) <= 0)
+                    return false;
+
+                // 6. Package is newer — rename Unpacked folder and prompt restart
+                try
+                {
+                    Directory.Move(asmDir, oldDir);
+                }
+                catch
+                {
+                    // Rename failed (rare) — still show the restart message
+                }
+
+                MessageBox.Show(
+                    "Supervertaler for Trados has been updated to v" + packageVersion + ".\n\n" +
+                    "Please close and restart Trados Studio to load the new version.",
+                    "Supervertaler — Update Installed",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                return true;
+            }
+            catch
+            {
+                return false;  // Any failure → continue normally
+            }
+        }
+
+        /// <summary>
+        /// Searches all three Trados plugin Packages folders for our .sdlplugin
+        /// and returns the path to the one with the newest version.
+        /// </summary>
+        private static string FindNewestPackage()
+        {
+            var locations = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
+            };
+
+            string bestPath = null;
+            string bestVersion = null;
+
+            foreach (var dir in locations)
+            {
+                var pkg = Path.Combine(dir, PluginFileName);
+                if (!File.Exists(pkg)) continue;
+
+                var ver = ReadPackageVersion(pkg);
+                if (string.IsNullOrEmpty(ver)) continue;
+
+                var normalizedVer = ver.EndsWith(".0") ? ver.Substring(0, ver.Length - 2) : ver;
+                if (bestVersion == null || UpdateChecker.CompareVersions(normalizedVer, bestVersion) > 0)
+                {
+                    bestVersion = normalizedVer;
+                    bestPath = pkg;
+                }
+            }
+
+            return bestPath;
+        }
+
+        /// <summary>
+        /// Opens the .sdlplugin (OPC/ZIP) and reads the &lt;Version&gt; element
+        /// from pluginpackage.manifest.xml inside it.
+        /// </summary>
+        private static string ReadPackageVersion(string sdlpluginPath)
+        {
+            try
+            {
+                using (var stream = File.OpenRead(sdlpluginPath))
+                using (var zip = new ZipArchive(stream, ZipArchiveMode.Read))
+                {
+                    var entry = zip.GetEntry("pluginpackage.manifest.xml");
+                    if (entry == null) return null;
+
+                    using (var reader = new StreamReader(entry.Open()))
+                    {
+                        var xml = reader.ReadToEnd();
+                        var match = Regex.Match(xml, @"<Version>([^<]+)</Version>");
+                        return match.Success ? match.Groups[1].Value : null;
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // ── Native SQLite preloading ────────────────────────────────
 
         /// <summary>
         /// Loads e_sqlite3.dll from our plugin's runtimes/ folder by absolute path,

@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.12.4] — 2026-03-19
+
+### Added
+- **Automatic stale-plugin detection** — when a new `.sdlplugin` is installed but Trados is still running the old extracted version, the plugin now detects the version mismatch at startup and prompts the user to restart. On restart, the old Unpacked folder is cleaned up and Trados re-extracts the new version automatically. Searches all three possible plugin locations (Roaming, Local, All Users) so the detection works regardless of which install option was chosen.
+
+### Changed
+- **Simplified install location guidance** — the installation docs now recommend accepting the default installer option ("All your domain computers") instead of manually switching to "This computer for me only". On non-domain PCs the two options are identical, and accepting the default avoids inconsistency between updates.
+
+---
+
 ## [4.12.3] — 2026-03-19
 
 ### Fixed

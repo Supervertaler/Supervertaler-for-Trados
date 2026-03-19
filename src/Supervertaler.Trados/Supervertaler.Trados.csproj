@@ -5,8 +5,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Supervertaler.Trados</RootNamespace>
     <AssemblyName>Supervertaler.Trados</AssemblyName>
-    <Version>4.12.3</Version>
-    <InformationalVersion>4.12.3</InformationalVersion>
+    <Version>4.12.4</Version>
+    <InformationalVersion>4.12.4</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Michael Beijer</Authors>
     <Company>Supervertaler</Company>
@@ -69,6 +69,7 @@
       <Private>false</Private>
     </Reference>
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <!-- SQLite for reading Supervertaler termbases -->

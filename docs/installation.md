@@ -28,12 +28,12 @@ The installer offers three options for where to place the plugin. Each option st
 
 **"All your domain computers"** (default) : Installs to: `C:\Users\<user>\AppData\Roaming\Trados\Trados Studio\18\Plugins\` : The Windows **Roaming** profile folder. In corporate environments with Active Directory, this folder automatically syncs to a central server and follows your Windows account when you log into a different PC on the same network. If you log into PC-A at the office and then PC-B, the plugin is available on both without reinstalling. **If you are not on a corporate domain network, this behaves the same as "This computer for me only"** — the folder simply stays on your machine.
 
-**"This computer for me only"** : Installs to: `C:\Users\<user>\AppData\Local\Trados\Trados Studio\18\Plugins\Packages\` : The Windows **Local** profile folder. The plugin stays on this specific machine and is only available to your Windows user account. If another person logs into the same PC with a different Windows account, they will not have the plugin. **This is the recommended option for most users** — personal laptops, home offices, and single-user setups.
+**"This computer for me only"** : Installs to: `C:\Users\<user>\AppData\Local\Trados\Trados Studio\18\Plugins\Packages\` : The Windows **Local** profile folder. The plugin stays on this specific machine and is only available to your Windows user account. If another person logs into the same PC with a different Windows account, they will not have the plugin.
 
 **"This computer for all users"** : Installs to: `C:\ProgramData\Trados\Trados Studio\18\Plugins\Packages\` : The shared **ProgramData** folder. The plugin is available to every Windows user account on this machine. Use this on shared workstations where multiple people log in with their own Windows accounts and all need the plugin. Rarely needed for most translators.
 
 {% hint style="info" %}
-**Which should I choose?** If you work on your own computer (laptop or desktop), select **"This computer for me only"**. The default "All your domain computers" option also works fine — on a non-domain PC it behaves identically.
+**Which should I choose?** For most users, **just accept the default** ("All your domain computers") and click Next. On a personal computer this behaves identically to "This computer for me only". The important thing is to use the **same option every time** you update — switching between options can leave old copies behind.
 {% endhint %}
 
 ### Verify Installation
