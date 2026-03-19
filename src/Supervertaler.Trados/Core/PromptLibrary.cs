@@ -848,17 +848,20 @@ Explain the term ""{{SELECTION}}"" in simple, clear language. If the project con
                 new PromptTemplate
                 {
                     Name = "Translate segment using fuzzy matches as reference",
-                    Description = "Translates the active segment, using TM fuzzy matches as a starting point",
+                    Description = "Translates the active segment, using TM fuzzy matches and surrounding context",
                     Domain = "QuickLauncher",
                     IsBuiltIn = true,
                     Content = @"Translate the following from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}}.
 
 Source: {{SOURCE_SEGMENT}}
 
+Surrounding context:
+{{SURROUNDING_SEGMENTS}}
+
 TM fuzzy matches:
 {{TM_MATCHES}}
 
-Use the fuzzy matches as reference, but produce a fresh, accurate translation."
+Use the fuzzy matches and surrounding context as reference, but produce a fresh, accurate translation of the source segment."
                 },
                 new PromptTemplate
                 {
