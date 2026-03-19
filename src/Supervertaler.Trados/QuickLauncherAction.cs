@@ -141,12 +141,17 @@ namespace Supervertaler.Trados
                         ? DocumentContextHelper.FormatProjectText(capturedDoc)
                         : null;
 
+                    var tmMatchesText = content.Contains("{{TM_MATCHES}}")
+                        ? PromptLibrary.FormatTmMatches(
+                            DocumentContextHelper.GetTmMatches(capturedDoc), 70)
+                        : null;
+
                     var expanded = PromptLibrary.ApplyVariables(
                         content,
                         capturedSourceLang, capturedTargetLang,
                         capturedSourceText, capturedTargetText, capturedSelection,
                         capturedProjectName, capturedDocumentName,
-                        surroundingSegments, projectText);
+                        surroundingSegments, projectText, tmMatchesText);
 
                     // Build a compact display version for the chat bubble when {{PROJECT}} is used.
                     // The full expanded text is still sent to the AI — only the bubble is shortened.
@@ -163,7 +168,7 @@ namespace Supervertaler.Trados
                             capturedSourceLang, capturedTargetLang,
                             capturedSourceText, capturedTargetText, capturedSelection,
                             capturedProjectName, capturedDocumentName,
-                            surroundingSegments, placeholder);
+                            surroundingSegments, placeholder, tmMatchesText);
                     }
 
                     AiAssistantViewPart.RunQuickLauncherPrompt(expanded, displayExpanded);

@@ -170,6 +170,8 @@ namespace Supervertaler.Trados.Controls
             AddVar("{{DOCUMENT_NAME}}", "Name of the active file");
             AddVar("{{SURROUNDING_SEGMENTS}}", "Context segments before and after the active segment");
             AddVar("{{PROJECT}}", "All source segments in the document");
+            _varMenu.Items.Add(new ToolStripSeparator());
+            AddVar("{{TM_MATCHES}}", "Translation memory fuzzy matches (\u226570%)");
 
             // ─── OK / Cancel ──────────────────────────────
             _btnOK = new Button

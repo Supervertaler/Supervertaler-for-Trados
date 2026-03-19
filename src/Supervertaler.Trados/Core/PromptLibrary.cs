@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Supervertaler.Trados.Models;
 using Supervertaler.Trados.Settings;
@@ -91,7 +92,8 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         public static string ApplyVariables(string content, string sourceLang, string targetLang,
             string sourceText, string targetText, string selection,
-            string projectName, string documentName, string surroundingSegments, string projectText)
+            string projectName, string documentName, string surroundingSegments, string projectText,
+            string tmMatches = null)
         {
             if (string.IsNullOrEmpty(content))
                 return content;
@@ -116,11 +118,38 @@ namespace Supervertaler.Trados.Core
             content = content.Replace("{{SURROUNDING_SEGMENTS}}", surroundingSegments ?? "");
             content = content.Replace("{{PROJECT}}", projectText ?? "");
 
+            // TM matches
+            content = content.Replace("{{TM_MATCHES}}", tmMatches ?? "");
+
             // {lowercase} format (legacy compatibility with Python domain prompts)
             content = content.Replace("{source_lang}", sourceLang ?? "");
             content = content.Replace("{target_lang}", targetLang ?? "");
 
             return content;
+        }
+
+        /// <summary>
+        /// Formats a list of TM matches into a human-readable string for prompt injection.
+        /// Only includes matches at or above the specified minimum percentage.
+        /// </summary>
+        public static string FormatTmMatches(List<TmMatch> matches, int minPercent = 70)
+        {
+            if (matches == null || matches.Count == 0)
+                return "(no fuzzy matches above " + minPercent + "%)";
+
+            var filtered = matches.Where(m => m.MatchPercentage >= minPercent).ToList();
+            if (filtered.Count == 0)
+                return "(no fuzzy matches above " + minPercent + "%)";
+
+            var sb = new StringBuilder();
+            foreach (var m in filtered.OrderByDescending(m => m.MatchPercentage))
+            {
+                if (sb.Length > 0) sb.AppendLine();
+                sb.AppendLine($"- {m.MatchPercentage}% match{(string.IsNullOrEmpty(m.TmName) ? "" : " (" + m.TmName + ")")}:");
+                sb.AppendLine($"  Source: {m.SourceText}");
+                sb.Append($"  Target: {m.TargetText}");
+            }
+            return sb.ToString();
         }
 
         /// <summary>

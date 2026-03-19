@@ -56,6 +56,7 @@ QuickLauncher prompts have access to the full segment and project context at the
 | `{{DOCUMENT_NAME}}` | Active file name (e.g. `source_document.docx`) |
 | `{{SURROUNDING_SEGMENTS}}` | N source segments before and after the active segment, with their actual Trados segment numbers and the active segment marked `← ACTIVE` |
 | `{{PROJECT}}` | All source segments in the active document, numbered with their actual Trados segment numbers |
+| `{{TM_MATCHES}}` | Translation memory fuzzy matches (≥70%) for the active segment, showing match percentage, source, and target text |
 
 **`{{SURROUNDING_SEGMENTS}}` example output** (with N = 2):
 
@@ -175,6 +176,27 @@ My translations so far:
 Do you think these translations are accurate and consistent with the terminology
 used elsewhere in the document?
 ```
+
+### Example: translate using TM fuzzy matches
+
+Uses `{{TM_MATCHES}}` to give the AI any high fuzzy matches from the translation memory, so it can leverage existing translations as a starting point:
+
+```
+Translate the following segment from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}}.
+
+Source:
+{{SOURCE_SEGMENT}}
+
+Here are fuzzy matches from my translation memory:
+{{TM_MATCHES}}
+
+Use the fuzzy matches as reference where helpful, but produce an accurate
+translation of the source segment — do not simply copy a fuzzy match.
+```
+
+{% hint style="info" %}
+`{{TM_MATCHES}}` only includes matches of **70% or higher**. If no matches meet this threshold, the variable is replaced with "(no fuzzy matches above 70%)". The match data comes from the active segment's translation origin in Trados — the same match shown in the Translation Results pane.
+{% endhint %}
 
 The plugin fills in all variables and sends the expanded prompt straight to the AI.
 

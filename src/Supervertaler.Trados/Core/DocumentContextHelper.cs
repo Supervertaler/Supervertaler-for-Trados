@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
+using Supervertaler.Trados.Models;
 
 namespace Supervertaler.Trados.Core
 {
@@ -217,6 +218,52 @@ namespace Supervertaler.Trados.Core
                 return sb.ToString().TrimEnd();
             }
             catch { return ""; }
+        }
+
+        // ── TM match extraction ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Extracts TM match information from the active segment's translation origin.
+        /// Returns matches that originated from a translation memory (TM or auto-propagated).
+        /// Reusable from both AiAssistantViewPart and QuickLauncherAction.
+        /// </summary>
+        internal static List<TmMatch> GetTmMatches(IStudioDocument doc)
+        {
+            var matches = new List<TmMatch>();
+            try
+            {
+                var pair = doc?.ActiveSegmentPair;
+                if (pair == null) return matches;
+
+                var origin = pair.Properties?.TranslationOrigin;
+                if (origin == null) return matches;
+
+                var originType = origin.OriginType;
+                if (string.IsNullOrEmpty(originType)) return matches;
+
+                // Include TM matches and auto-propagated segments (which originate from TM)
+                if (originType == "tm" || originType == "auto-propagated")
+                {
+                    var sourceText = pair.Source?.ToString();
+                    var targetText = pair.Target?.ToString();
+
+                    if (!string.IsNullOrEmpty(sourceText) && !string.IsNullOrEmpty(targetText))
+                    {
+                        matches.Add(new TmMatch
+                        {
+                            SourceText = sourceText,
+                            TargetText = targetText,
+                            MatchPercentage = origin.MatchPercent,
+                            TmName = origin.OriginSystem ?? ""
+                        });
+                    }
+                }
+            }
+            catch
+            {
+                // Segment properties may not be accessible during transitions
+            }
+            return matches;
         }
     }
 }

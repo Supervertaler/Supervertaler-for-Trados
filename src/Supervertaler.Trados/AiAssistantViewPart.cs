@@ -286,7 +286,7 @@ namespace Supervertaler.Trados
             // Gather TM matches if enabled
             List<TmMatch> tmMatches = null;
             if (_settings?.AiSettings?.IncludeTmMatches != false)
-                tmMatches = GetTmMatches();
+                tmMatches = DocumentContextHelper.GetTmMatches(_activeDocument);
 
             // Document context (all segments for document type analysis)
             List<string> documentSegments = null;
