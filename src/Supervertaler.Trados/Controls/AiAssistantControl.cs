@@ -38,6 +38,9 @@ namespace Supervertaler.Trados.Controls
         private Button _btnAttach;
         private Label _lblStatus;
         private Label _lblThinking;
+        private Control _thinkingBubble;
+        private Timer _thinkingTimer;
+        private int _thinkingTicks;
         private FlowLayoutPanel _attachmentStrip;
 
         // Batch Translate tab
@@ -59,6 +62,10 @@ namespace Supervertaler.Trados.Controls
         // Optional max token override for the next API call.
         // Used by prompt generation which needs more output tokens than regular chat.
         private int? _pendingMaxTokens;
+
+        // When true, the next message displays as an assistant-styled (gray) bubble
+        // instead of a user-styled (blue) bubble. Used for system-initiated messages.
+        private bool _pendingShowAsStatus;
 
         private const int MaxImages = 5;
         private const int MaxImageBytes = 10 * 1024 * 1024; // 10 MB
@@ -868,13 +875,16 @@ namespace Supervertaler.Trados.Controls
             _pendingDisplayText = null;
             var maxTokens = _pendingMaxTokens;
             _pendingMaxTokens = null;
+            var showAsStatus = _pendingShowAsStatus;
+            _pendingShowAsStatus = false;
 
             SendRequested?.Invoke(this, new ChatSendEventArgs
             {
                 Text = text ?? "",
                 Images = images,
                 DisplayText = displayText,
-                MaxTokens = maxTokens
+                MaxTokens = maxTokens,
+                ShowAsStatus = showAsStatus
             });
         }
 
@@ -908,16 +918,120 @@ namespace Supervertaler.Trados.Controls
             _messageFlow.ResumeLayout();
         }
 
+        // Status messages shown while waiting for AI response
+        private static readonly string[] ThinkingMessages = new[]
+        {
+            "Thinking\u2026",
+            "Still working on it\u2026",
+            "Generating response\u2026",
+            "Almost there\u2026",
+            "Still thinking\u2026",
+            "Working on it\u2026",
+            "Processing\u2026",
+            "Hang tight\u2026"
+        };
+
         /// <summary>
         /// Shows or hides the "Thinking..." indicator and toggles Send/Stop buttons.
+        /// Uses an animated bubble in the chat flow so it stays visible regardless of
+        /// dock layout changes. The bubble cycles through reassuring status messages.
         /// </summary>
         public void SetThinking(bool isThinking)
         {
             _isThinking = isThinking;
-            _lblThinking.Visible = isThinking;
+            // Old docked label kept hidden — the thinking bubble in the chat flow
+            // is more reliable and visible
+            _lblThinking.Visible = false;
             _btnSend.Visible = !isThinking;
             _btnStop.Visible = isThinking;
             _txtInput.Enabled = !isThinking;
+
+            if (isThinking)
+            {
+                // Add an animated thinking bubble to the chat flow
+                _thinkingBubble = CreateThinkingBubble();
+                _messageFlow.Controls.Add(_thinkingBubble);
+                _chatPanel.ScrollControlIntoView(_thinkingBubble);
+
+                // Animate: cycle through status messages every ~8 seconds,
+                // with animated dots within each message
+                _thinkingTicks = 0;
+                if (_thinkingTimer == null)
+                {
+                    _thinkingTimer = new Timer { Interval = 2000 };
+                    _thinkingTimer.Tick += (s, e) =>
+                    {
+                        if (_thinkingBubble == null) return;
+                        _thinkingTicks++;
+                        var lbl = _thinkingBubble.Controls.Count > 0
+                            ? _thinkingBubble.Controls[0] as Label : null;
+                        if (lbl == null) return;
+
+                        // Cycle through messages every 4 ticks (~8 seconds each)
+                        var msgIndex = (_thinkingTicks / 4) % ThinkingMessages.Length;
+                        var dots = new string('.', (_thinkingTicks % 3) + 1);
+                        var baseText = ThinkingMessages[msgIndex];
+                        // Replace trailing ellipsis with animated dots
+                        if (baseText.EndsWith("\u2026"))
+                            baseText = baseText.Substring(0, baseText.Length - 1);
+                        lbl.Text = "  " + baseText + dots;
+
+                        // Keep scrolled to the thinking bubble
+                        _chatPanel.ScrollControlIntoView(_thinkingBubble);
+                    };
+                }
+                _thinkingTimer.Start();
+            }
+            else
+            {
+                // Remove the thinking bubble
+                _thinkingTimer?.Stop();
+                if (_thinkingBubble != null)
+                {
+                    _messageFlow.Controls.Remove(_thinkingBubble);
+                    _thinkingBubble.Dispose();
+                    _thinkingBubble = null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Creates a lightweight thinking indicator styled like an assistant bubble.
+        /// </summary>
+        private Control CreateThinkingBubble()
+        {
+            var container = new Panel
+            {
+                Width = _chatPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2,
+                Height = 40,
+                BackColor = Color.White,
+                Margin = new Padding(0, 2, 0, 2)
+            };
+
+            var lbl = new Label
+            {
+                Text = "  Thinking\u2026",
+                Font = new Font("Segoe UI", 9f, FontStyle.Italic),
+                ForeColor = Color.FromArgb(100, 100, 100),
+                BackColor = ColorTranslator.FromHtml("#F0F0F0"),
+                AutoSize = false,
+                Size = new Size(200, 30),
+                Location = new Point(8, 4),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(4, 0, 4, 0)
+            };
+
+            // Round the corners slightly via Region
+            var path = new System.Drawing.Drawing2D.GraphicsPath();
+            path.AddArc(0, 0, 10, 10, 180, 90);
+            path.AddArc(lbl.Width - 10, 0, 10, 10, 270, 90);
+            path.AddArc(lbl.Width - 10, lbl.Height - 10, 10, 10, 0, 90);
+            path.AddArc(0, lbl.Height - 10, 10, 10, 90, 90);
+            path.CloseFigure();
+            lbl.Region = new Region(path);
+
+            container.Controls.Add(lbl);
+            return container;
         }
 
         /// <summary>
@@ -981,7 +1095,8 @@ namespace Supervertaler.Trados.Controls
         /// sent to the AI. Use this when <paramref name="text"/> contains a large {{PROJECT}}
         /// expansion that would clutter the chat history.
         /// </summary>
-        public void SubmitMessage(string text, string displayText, int? maxTokens = null)
+        public void SubmitMessage(string text, string displayText, int? maxTokens = null,
+            bool showAsStatus = false)
         {
             if (_isThinking) return;
             if (string.IsNullOrWhiteSpace(text)) return;
@@ -991,6 +1106,7 @@ namespace Supervertaler.Trados.Controls
 
             _pendingDisplayText = displayText;
             _pendingMaxTokens = maxTokens;
+            _pendingShowAsStatus = showAsStatus;
             _txtInput.Text = text;
             DoSend();
         }

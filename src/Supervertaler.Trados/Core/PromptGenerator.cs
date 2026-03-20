@@ -493,12 +493,78 @@ namespace Supervertaler.Trados.Core
             sb.AppendLine($"Segments: {ctx.SegmentCount:N0}");
 
             if (ctx.TermbaseTerms != null && ctx.TermbaseTerms.Count > 0)
-                sb.AppendLine($"Termbase terms: {ctx.TermbaseTerms.Count:N0}");
+            {
+                if (ctx.TotalTermCount > 0 && ctx.TotalTermCount != ctx.TermbaseTerms.Count)
+                    sb.AppendLine($"Termbase terms: filtered {ctx.TermbaseTerms.Count:N0} relevant from {ctx.TotalTermCount:N0} total");
+                else
+                    sb.AppendLine($"Termbase terms: {ctx.TermbaseTerms.Count:N0}");
+            }
 
             if (ctx.TmPairs != null && ctx.TmPairs.Count > 0)
                 sb.AppendLine($"TM reference pairs: {ctx.TmPairs.Count:N0}");
 
             return sb.ToString().TrimEnd();
+        }
+
+        // ─── Term filtering ─────────────────────────────────────────
+
+        /// <summary>
+        /// Filters term entries to only those whose source term (or source synonyms /
+        /// source abbreviations) appear in at least one of the provided source segments.
+        /// Uses simple case-insensitive substring matching for speed.
+        /// </summary>
+        internal static List<TermEntry> FilterRelevantTerms(
+            List<TermEntry> terms, List<string> sourceSegments)
+        {
+            if (terms == null || terms.Count == 0)
+                return terms ?? new List<TermEntry>();
+            if (sourceSegments == null || sourceSegments.Count == 0)
+                return new List<TermEntry>();
+
+            // Concatenate all source segments into one string for fast substring search
+            var combined = string.Join("\n", sourceSegments);
+            var combinedUpper = combined.ToUpperInvariant();
+
+            var relevant = new List<TermEntry>();
+            foreach (var term in terms)
+            {
+                if (IsTermRelevant(term, combinedUpper))
+                    relevant.Add(term);
+            }
+
+            return relevant;
+        }
+
+        private static bool IsTermRelevant(TermEntry term, string combinedUpper)
+        {
+            // Check primary source term
+            if (!string.IsNullOrEmpty(term.SourceTerm) &&
+                combinedUpper.Contains(term.SourceTerm.ToUpperInvariant()))
+                return true;
+
+            // Check source abbreviation variants
+            if (!string.IsNullOrWhiteSpace(term.SourceAbbreviation))
+            {
+                foreach (var variant in term.GetSourceAbbreviationVariants())
+                {
+                    if (!string.IsNullOrEmpty(variant) &&
+                        combinedUpper.Contains(variant.Trim().ToUpperInvariant()))
+                        return true;
+                }
+            }
+
+            // Check source synonyms (rich entries populated by editor)
+            if (term.SourceSynonyms != null)
+            {
+                foreach (var syn in term.SourceSynonyms)
+                {
+                    if (!string.IsNullOrEmpty(syn.Text) &&
+                        combinedUpper.Contains(syn.Text.ToUpperInvariant()))
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         // ─── Private helpers ─────────────────────────────────────────
@@ -602,5 +668,12 @@ namespace Supervertaler.Trados.Core
         public List<string> SourceSegments { get; set; }
         public List<TermEntry> TermbaseTerms { get; set; }
         public List<TmMatch> TmPairs { get; set; }
+
+        /// <summary>
+        /// Total number of termbase terms before relevance filtering.
+        /// Used by BuildDisplayMessage to show "Filtered X relevant terms from Y total".
+        /// Zero means no filtering was applied.
+        /// </summary>
+        public int TotalTermCount { get; set; }
     }
 }

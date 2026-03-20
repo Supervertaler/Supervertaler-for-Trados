@@ -89,5 +89,14 @@ namespace Supervertaler.Trados.Models
         /// When null, the handler uses its default.
         /// </summary>
         public int? MaxTokens { get; set; }
+
+        /// <summary>
+        /// When true, the user message bubble is displayed with assistant styling (gray,
+        /// left-aligned) instead of user styling (blue, right-aligned). Used for system-
+        /// initiated messages like "Analyse Project &amp; Generate Prompt" where the user
+        /// clicked a button but didn't type the message themselves.
+        /// The message is still sent to the AI as a user message.
+        /// </summary>
+        public bool ShowAsStatus { get; set; }
     }
 }

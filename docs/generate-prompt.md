@@ -19,12 +19,24 @@ Supervertaler gathers the following data from your project and sends it to your 
 | Data                    | Purpose                                                      |
 | ----------------------- | ------------------------------------------------------------ |
 | **All source segments** | Domain detection, document content analysis, project context |
-| **Termbase terms**      | Included as a locked glossary in the generated prompt        |
-| **Translated segments** | Used as TM reference pairs (style anchors)                   |
+| **Termbase terms**      | Filtered to only document-relevant terms (TermScan), then included as a locked glossary in the generated prompt |
+| **Translated segments** | Human-confirmed segments only (Translated, Approved, or Signed-off status) — used as TM reference pairs and style anchors. Unconfirmed AI-generated translations are excluded. |
 | **Language pair**       | Embedded in the generated prompt                             |
 
 {% hint style="info" %}
 The full document is sent to the AI for analysis. For a typical 30,000-word document, this costs approximately $0.20–$0.25 with a Sonnet-class model, or $1.00–$1.15 with an Opus-class model.
+{% endhint %}
+
+#### 2b. TermScan — automatic term filtering
+
+Before building the prompt, Supervertaler runs **TermScan**: it concatenates all source segments in the document and checks each termbase entry against this text. Only terms whose source term, source abbreviation, or source synonyms actually appear in the document are included in the generated prompt.
+
+This dramatically reduces the glossary size — for example, a general patent termbase with 2,680 entries might yield only 123 relevant terms for a specific document. The status message in the AI Assistant confirms the filter: *"Termbase terms (filtered 123 relevant from 2,680 total)"*.
+
+The filtering is case-insensitive and checks all variants of each term (source term, abbreviation forms, and synonyms). Terms that do not appear anywhere in the source text are excluded entirely.
+
+{% hint style="warning" %}
+**Termbase quality matters.** Only enable termbases in [AI Settings](settings/ai-settings.md) if you are confident they contain accurate, high-quality terminology for your project. A poorly maintained termbase with incorrect or outdated translations will constrain the AI and produce worse results. Modern LLMs — especially Opus-class and GPT-4-class models — are often better at choosing the right translation on their own than when forced to follow a low-quality glossary. When in doubt, disable termbases and let the AI translate freely, then add terms incrementally as you review.
 {% endhint %}
 
 #### 3. Domain detection
@@ -79,13 +91,19 @@ A generated prompt follows the structure of professional translation prompts use
 
 ### Tips
 
-#### Start with a translated sample
+#### Start with a confirmed translated sample
 
-If some segments are already translated (from TM or manual work), the generator includes them as reference pairs. This gives the AI concrete examples of your preferred style and terminology — resulting in a more accurate prompt.
+The generator includes **confirmed** segments (Translated, Approved, or Signed-off status) as reference pairs — up to 50, sampled evenly across the document. This gives the AI concrete examples of your preferred style and terminology, resulting in a more accurate prompt. Unconfirmed segments (e.g. from a previous AI batch translation that you haven't reviewed yet) are excluded to avoid feeding unverified output back as "correct" references.
+
+**Tip:** Before generating a prompt, confirm a handful of segments you are happy with. Even 10–20 confirmed segments give the AI meaningful style anchors to work from.
 
 #### Review the glossary section
 
-The generated prompt includes all terms from your enabled termbases. Check that the glossary accurately reflects your terminology preferences. You can ask the AI to reorganise terms by category or add missing mappings.
+The generated prompt includes only the document-relevant terms from your enabled termbases (filtered by TermScan). Check that the glossary accurately reflects your terminology preferences. You can ask the AI to reorganise terms by category or add missing mappings.
+
+{% hint style="warning" %}
+If your termbase contains incorrect or low-quality entries, these will be injected into the prompt and the AI will be forced to follow them. Only enable termbases that you trust. When starting a new project with no established terminology, consider disabling termbases entirely and letting the AI translate freely — then add terms as you review.
+{% endhint %}
 
 #### Use with Batch Translate
 

@@ -322,12 +322,14 @@ namespace Supervertaler.Trados.Core
             var url = "https://api.anthropic.com/v1/messages";
             var tokens = maxTokens ?? _maxTokens;
 
-            // Timeout scales with prompt size
+            // Timeout scales with prompt size and output token limit
             var promptLen = (prompt?.Length ?? 0) + (systemPrompt?.Length ?? 0);
             int timeoutMs;
             if (promptLen > 50000) timeoutMs = 300_000;
             else if (promptLen > 20000) timeoutMs = 180_000;
             else timeoutMs = 120_000;
+            // Large output requests (e.g. prompt generation) need more time
+            if (tokens > 8192) timeoutMs = Math.Max(timeoutMs, 600_000);
 
             var sb = new StringBuilder();
             sb.Append("{\"model\":").Append(JsonString(_model));
@@ -566,6 +568,8 @@ namespace Supervertaler.Trados.Core
             if (totalLen > 50000) timeoutMs = 300_000;
             else if (totalLen > 20000) timeoutMs = 180_000;
             else timeoutMs = 120_000;
+            // Large output requests (e.g. prompt generation) need more time
+            if (tokens > 8192) timeoutMs = Math.Max(timeoutMs, 600_000);
 
             var sb = new StringBuilder();
             sb.Append("{\"model\":").Append(JsonString(_model));

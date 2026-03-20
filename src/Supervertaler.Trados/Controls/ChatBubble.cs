@@ -33,9 +33,16 @@ namespace Supervertaler.Trados.Controls
         private const int BubbleRadius = 8;
         private const int TimestampHeight = 14;
         private const int HorizontalMargin = 8;
+        private const int AvatarSize = 18;
+        private const int AvatarHeaderHeight = 22;
         private const int ImageThumbMaxWidth = 200;
         private const int ImageThumbMaxHeight = 150;
         private const int ImageSpacing = 4;
+
+        private static readonly Color UserAvatarBg = ColorTranslator.FromHtml("#4A90D9");
+        private static readonly Color AssistantAvatarBg = ColorTranslator.FromHtml("#6B7280");
+        private static readonly Font AvatarFont = new Font("Segoe UI", 7f, FontStyle.Bold);
+        private static readonly Font NameFont = new Font("Segoe UI", 7.5f);
 
         private readonly ChatMessage _message;
         private readonly bool _isUser;
@@ -70,15 +77,16 @@ namespace Supervertaler.Trados.Controls
             BackColor = Color.White;
             Cursor = Cursors.Default;
 
-            // Prepare display text for user bubbles.
-            // DisplayContent, when set, shows a short summary (e.g. for {{PROJECT}} prompts)
-            // while Content (the full text) is still sent to the AI.
-            var userDisplayText = _isUser
+            // Prepare display text.
+            // DisplayContent, when set, shows a short summary (e.g. for {{PROJECT}} prompts
+            // or system-initiated status messages) while Content is sent to the AI unchanged.
+            var hasDisplayOverride = !string.IsNullOrEmpty(message.DisplayContent);
+            var userDisplayText = _isUser || hasDisplayOverride
                 ? (message.DisplayContent ?? message.Content ?? "")
                 : null;
 
             // Prepare plain content (for copy/apply)
-            _plainContent = _isUser
+            _plainContent = _isUser || hasDisplayOverride
                 ? userDisplayText
                 : MarkdownToRtf.StripMarkdown(message.Content ?? "");
 
@@ -128,8 +136,9 @@ namespace Supervertaler.Trados.Controls
                 TabStop = false,
             };
 
-            // Set content: plain text for user (using display text), RTF for assistant
-            if (_isUser)
+            // Set content: plain text for user or display-override messages,
+            // RTF (markdown-rendered) for normal assistant messages
+            if (_isUser || hasDisplayOverride)
             {
                 _rtb.Text = userDisplayText;
             }
@@ -220,18 +229,19 @@ namespace Supervertaler.Trados.Controls
             _bubbleWidth = maxBubble;
             _bubbleHeight = _imageAreaHeight + contentHeight + BubblePadding * 2 + TimestampHeight;
 
-            // Position the bubble rectangle
+            // Position the bubble rectangle (below avatar header)
+            var topOffset = 4 + AvatarHeaderHeight;
             if (_isUser)
             {
                 // Right-aligned
                 var left = maxWidth - _bubbleWidth - HorizontalMargin;
-                _bubbleRect = new Rectangle(Math.Max(HorizontalMargin, left), 4,
+                _bubbleRect = new Rectangle(Math.Max(HorizontalMargin, left), topOffset,
                     _bubbleWidth, _bubbleHeight);
             }
             else
             {
                 // Left-aligned
-                _bubbleRect = new Rectangle(HorizontalMargin, 4,
+                _bubbleRect = new Rectangle(HorizontalMargin, topOffset,
                     _bubbleWidth, _bubbleHeight);
             }
 
@@ -252,7 +262,7 @@ namespace Supervertaler.Trados.Controls
                 _bubbleRect.Y + BubblePadding + _imageAreaHeight);
             _rtb.Size = new Size(textWidth, contentHeight);
 
-            Size = new Size(maxWidth, _bubbleHeight + 8);
+            Size = new Size(maxWidth, _bubbleHeight + AvatarHeaderHeight + 8);
         }
 
         private int MeasureRtbHeight(int width)
@@ -273,6 +283,59 @@ namespace Supervertaler.Trados.Controls
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            // Draw avatar circle + name above the bubble
+            var avatarBg = _isUser ? UserAvatarBg : AssistantAvatarBg;
+            var avatarText = "AI";
+            var nameText = _isUser ? "You" : "Supervertaler Assistant";
+            var avatarX = _bubbleRect.X;
+            var avatarY = _bubbleRect.Y - AvatarHeaderHeight;
+
+            // If user bubble is right-aligned, right-align the avatar too
+            if (_isUser)
+                avatarX = _bubbleRect.Right - AvatarSize
+                    - (int)g.MeasureString(nameText, NameFont).Width - 6;
+
+            // Circle
+            using (var brush = new SolidBrush(avatarBg))
+                g.FillEllipse(brush, avatarX, avatarY, AvatarSize, AvatarSize);
+
+            if (_isUser)
+            {
+                // Draw person silhouette (head circle + shoulders arc), clipped to the avatar circle
+                var cx = avatarX + AvatarSize / 2f;
+                var cy = avatarY + AvatarSize / 2f;
+                var savedClip = g.Clip;
+                using (var clipPath = new GraphicsPath())
+                {
+                    clipPath.AddEllipse(avatarX, avatarY, AvatarSize, AvatarSize);
+                    g.SetClip(clipPath);
+
+                    // Head
+                    var headR = AvatarSize * 0.18f;
+                    g.FillEllipse(Brushes.White, cx - headR, cy - headR - 2f, headR * 2, headR * 2);
+                    // Shoulders
+                    var shoulderW = AvatarSize * 0.48f;
+                    var shoulderH = AvatarSize * 0.32f;
+                    var shoulderY = cy + headR - 1f;
+                    g.FillEllipse(Brushes.White, cx - shoulderW, shoulderY,
+                        shoulderW * 2, shoulderH * 2);
+
+                    g.Clip = savedClip;
+                }
+            }
+            else
+            {
+                // "AI" text inside circle
+                var avatarTextSize = g.MeasureString(avatarText, AvatarFont);
+                g.DrawString(avatarText, AvatarFont, Brushes.White,
+                    avatarX + (AvatarSize - avatarTextSize.Width) / 2f,
+                    avatarY + (AvatarSize - avatarTextSize.Height) / 2f);
+            }
+
+            // Name label next to circle
+            g.DrawString(nameText, NameFont, new SolidBrush(Color.FromArgb(100, 100, 100)),
+                avatarX + AvatarSize + 4, avatarY + 1);
 
             // Draw rounded rectangle background
             var bgColor = _isUser ? UserBg : AssistantBg;

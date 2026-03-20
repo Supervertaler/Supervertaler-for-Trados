@@ -60,7 +60,13 @@ These options control what additional context is included when the AI translates
 
 ### Include termbases in AI prompt
 
-When enabled, all terminology matches from active termbases for the current segment are injected into the translation prompt. This helps the AI use the correct, approved terminology.
+When enabled, terminology matches from active termbases for the current segment are injected into the translation prompt. This helps the AI use the correct, approved terminology.
+
+For [prompt generation](../generate-prompt.md), **TermScan** automatically filters the termbase to only terms that appear in the document's source text, keeping the prompt focused and within token limits.
+
+{% hint style="warning" %}
+**Only enable termbases you trust.** The AI will follow your glossary entries even when they are wrong. If a termbase contains inaccurate, outdated, or low-quality translations, the AI will be forced to use them — producing worse results than if no termbase were enabled at all. Modern LLMs are remarkably good at choosing correct terminology on their own. When in doubt, disable termbases and add terms incrementally as you review the AI's output.
+{% endhint %}
 
 ### Include TM matches
 

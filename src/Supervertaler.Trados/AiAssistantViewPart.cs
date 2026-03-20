@@ -233,15 +233,16 @@ namespace Supervertaler.Trados
                         _settings.DisabledMultiTermIds = fresh.DisabledMultiTermIds;
                     }
 
+                    // Always refresh the prompt dropdown — prompt deletions happen
+                    // immediately on disk even if the user clicks Cancel afterwards
+                    _promptLibrary.Refresh();
+                    PopulateBatchPromptDropdown();
+
                     if (result == System.Windows.Forms.DialogResult.OK || form.SettingsImported)
                     {
                         // Refresh provider displays
                         UpdateProviderDisplay();
                         UpdateBatchProviderDisplay();
-
-                        // Refresh prompt library (user may have added/edited/deleted prompts)
-                        _promptLibrary.Refresh();
-                        PopulateBatchPromptDropdown();
 
                         // Notify TermLens to reload settings from disk
                         TermLensEditorViewPart.NotifySettingsChanged();
@@ -261,6 +262,8 @@ namespace Supervertaler.Trados
                 return;
 
             // 1. Add user message to history and display
+            // ShowAsStatus = true means the message was system-initiated (e.g. Generate Prompt)
+            // and should display as an assistant-styled bubble, even though it's sent as a user message
             var userMsg = new ChatMessage
             {
                 Role = ChatRole.User,
@@ -269,7 +272,18 @@ namespace Supervertaler.Trados
                 Images = images
             };
             _chatHistory.Add(userMsg);
-            _control.Value.AddMessage(userMsg);
+
+            // For display, use assistant role if this is a system-initiated message
+            var displayMsg = args.ShowAsStatus
+                ? new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content = messageText ?? "",
+                    DisplayContent = args.DisplayText,
+                    Images = images
+                }
+                : userMsg;
+            _control.Value.AddMessage(displayMsg);
             SaveChatHistory();
 
             // 2. Gather current context
@@ -415,7 +429,14 @@ namespace Supervertaler.Trados
                 }
                 catch (OperationCanceledException)
                 {
-                    SafeInvoke(() => _control.Value.SetThinking(false));
+                    SafeInvoke(() =>
+                    {
+                        _control.Value.SetThinking(false);
+                        // Only show timeout message if the user didn't explicitly cancel
+                        // (Stop button sets _chatCts to a new instance before cancelling)
+                        if (ct.IsCancellationRequested)
+                            AddErrorMessage("The request timed out or was cancelled. Try again, or use a faster model.");
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -536,6 +557,10 @@ namespace Supervertaler.Trados
                     ? allTerms.Where(t => !disabledIds.Contains(t.TermbaseId)).ToList()
                     : allTerms;
 
+                // Phase 3b: Filter terms to only those relevant to the document
+                var totalTermCount = termbaseTerms.Count;
+                termbaseTerms = PromptGenerator.FilterRelevantTerms(termbaseTerms, sourceSegments);
+
                 // Phase 4: Gather TM reference pairs from translated segments
                 var tmPairs = CollectTmReferencePairs();
 
@@ -549,6 +574,7 @@ namespace Supervertaler.Trados
                     SegmentCount = sourceSegments.Count,
                     SourceSegments = sourceSegments,
                     TermbaseTerms = termbaseTerms,
+                    TotalTermCount = totalTermCount,
                     TmPairs = tmPairs
                 };
 
@@ -557,14 +583,21 @@ namespace Supervertaler.Trados
 
                 // Phase 6: Send via chat (switches to AI Assistant panel)
                 // Use 32768 tokens for prompt generation — comprehensive prompts with
-                // large glossaries and TM pairs can exceed 16K tokens
-                _control.Value.SubmitMessage(metaPrompt, displayText, maxTokens: 32768);
+                // large glossaries and TM pairs can exceed 16K tokens.
+                // showAsStatus: true → display as assistant-styled (gray) bubble since the
+                // user clicked a button, not typed this message themselves
+                _control.Value.SubmitMessage(metaPrompt, displayText, maxTokens: 32768,
+                    showAsStatus: true);
             });
         }
 
         /// <summary>
-        /// Collects source/target pairs from already-translated segments to use as
-        /// TM reference pairs for the prompt generator. Samples up to 50 diverse pairs.
+        /// Collects source/target pairs from human-confirmed segments to use as
+        /// TM reference pairs for the prompt generator. Only includes segments that
+        /// are Translated, ApprovedTranslation, or ApprovedSignOff — i.e., segments
+        /// a translator has explicitly confirmed. Unconfirmed AI-generated translations
+        /// are excluded to avoid feeding unverified output back as "correct" references.
+        /// Samples up to 50 diverse pairs, spread evenly across the document.
         /// </summary>
         private List<TmMatch> CollectTmReferencePairs()
         {
@@ -573,6 +606,8 @@ namespace Supervertaler.Trados
 
             try
             {
+                // First pass: collect all confirmed translated segments
+                var candidates = new List<TmMatch>();
                 foreach (var pair in _activeDocument.SegmentPairs)
                 {
                     var sourceText = pair.Source?.ToString() ?? "";
@@ -585,15 +620,34 @@ namespace Supervertaler.Trados
                     // Skip very short segments (headers, numbers)
                     if (sourceText.Length < 20) continue;
 
-                    pairs.Add(new TmMatch
+                    // Only include human-confirmed segments — not unconfirmed AI output
+                    var confirmLevel = pair.Properties?.ConfirmationLevel
+                        ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified;
+                    if (confirmLevel < Sdl.Core.Globalization.ConfirmationLevel.Translated)
+                        continue;
+
+                    candidates.Add(new TmMatch
                     {
                         SourceText = sourceText,
                         TargetText = targetText,
                         MatchPercentage = 100
                     });
+                }
 
-                    // Cap at 50 to avoid excessive prompt size
-                    if (pairs.Count >= 50) break;
+                // Second pass: sample evenly across the document for diversity
+                if (candidates.Count <= 50)
+                {
+                    pairs = candidates;
+                }
+                else
+                {
+                    var step = (double)candidates.Count / 50;
+                    for (int i = 0; i < 50; i++)
+                    {
+                        var idx = (int)(i * step);
+                        if (idx < candidates.Count)
+                            pairs.Add(candidates[idx]);
+                    }
                 }
             }
             catch (Exception)
