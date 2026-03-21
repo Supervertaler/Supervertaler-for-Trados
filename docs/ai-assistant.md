@@ -92,7 +92,7 @@ You can control exactly what context the assistant receives. In the settings dia
 
 ### File Attachments
 
-The Supervertaler Assistant supports attaching both images and documents to your messages. Use the **paperclip button** (📎) next to the chat input, or drag and drop files directly onto the chat area.
+The Supervertaler Assistant supports attaching both images and documents to your messages. Use the **paperclip button** next to the chat input, or drag and drop files directly onto the chat area.
 
 #### Images
 
