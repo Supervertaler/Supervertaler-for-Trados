@@ -36,7 +36,9 @@ namespace Supervertaler.Trados.Controls
         private Button _btnStop;
         private Button _btnClear;
         private Button _btnAttach;
-        private Label _lblStatus;
+        private LinkLabel _lblStatus;
+        private string _currentProvider;
+        private string _currentModel;
         private Label _lblThinking;
         private Control _thinkingBubble;
         private Timer _thinkingTimer;
@@ -51,8 +53,9 @@ namespace Supervertaler.Trados.Controls
 
         private bool _isThinking;
 
-        // Pending image attachments for the next message
+        // Pending attachments for the next message
         private readonly List<ImageAttachment> _pendingImages = new List<ImageAttachment>();
+        private readonly List<DocumentAttachment> _pendingDocuments = new List<DocumentAttachment>();
 
         // Optional display-only override for the next programmatically submitted message.
         // When set, the chat bubble shows this text instead of the full prompt content.
@@ -68,6 +71,7 @@ namespace Supervertaler.Trados.Controls
         private bool _pendingShowAsStatus;
 
         private const int MaxImages = 5;
+        private const int MaxDocuments = 5;
         private const int MaxImageBytes = 10 * 1024 * 1024; // 10 MB
 
         // Input panel resize handle
@@ -329,13 +333,13 @@ namespace Supervertaler.Trados.Controls
             _btnClear.FlatAppearance.MouseOverBackColor = Color.FromArgb(230, 230, 230);
             _btnClear.Click += (s, e) => ClearRequested?.Invoke(this, EventArgs.Empty);
 
-            // Attach button for browsing image files
+            // Attach button for browsing files (images + documents)
             _btnAttach = new Button
             {
-                Text = "\uE8B9",  // Photo icon in Segoe MDL2 Assets
+                Text = "\uE723",  // Attach / paperclip icon in Segoe MDL2 Assets
                 Size = new Size(28, 26),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe MDL2 Assets", 10f),
+                Font = new Font("Segoe MDL2 Assets", 9f),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -348,14 +352,19 @@ namespace Supervertaler.Trados.Controls
             _btnAttach.FlatAppearance.MouseOverBackColor = Color.FromArgb(230, 230, 230);
             _btnAttach.Click += OnAttachClick;
 
-            _lblStatus = new Label
+            _lblStatus = new LinkLabel
             {
                 Font = new Font("Segoe UI", 7f),
-                ForeColor = Color.FromArgb(140, 140, 140),
+                LinkColor = Color.FromArgb(140, 140, 140),
+                ActiveLinkColor = Color.FromArgb(100, 100, 100),
+                VisitedLinkColor = Color.FromArgb(140, 140, 140),
+                LinkBehavior = LinkBehavior.HoverUnderline,
                 Text = "",
                 AutoSize = true,
+                Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left
             };
+            _lblStatus.LinkClicked += OnModelSelectorClicked;
 
             _txtInput = new ChatInputTextBox
             {
@@ -400,9 +409,15 @@ namespace Supervertaler.Trados.Controls
             inputTips.SetToolTip(_btnSend, "Send message (Enter)");
             inputTips.SetToolTip(_btnStop, "Stop AI response");
             inputTips.SetToolTip(_btnClear, "Clear conversation history");
-            inputTips.SetToolTip(_btnAttach, "Attach image (paste with Ctrl+V, or drag and drop)");
+            inputTips.SetToolTip(_btnAttach,
+                "Attach files — images, documents, spreadsheets, and translation files\n" +
+                "(Ctrl+V to paste images, or drag and drop)\n\n" +
+                "Supported: docx, pdf, rtf, pptx, xlsx, csv, tsv,\n" +
+                "tmx, sdlxliff, xliff, tbx, txt, md, html, json, xml,\n" +
+                "png, jpg, gif, webp, bmp");
             inputTips.SetToolTip(_txtInput, "Type your message. Shift+Enter for new line.");
             inputTips.SetToolTip(_resizeHandle, "Drag to resize input area");
+            inputTips.SetToolTip(_lblStatus, "Click to change model");
 
             // ─── Thinking indicator ───────────────────────────────
             _lblThinking = new Label
@@ -679,11 +694,137 @@ namespace Supervertaler.Trados.Controls
         private void RemoveImage(ImageAttachment attachment)
         {
             _pendingImages.Remove(attachment);
+            RemoveStripItem(attachment);
+            UpdateAttachmentStripVisibility();
+            LayoutInputPanel();
+        }
 
-            // Find and remove the corresponding thumbnail panel
+        // ─── Document attachments ─────────────────────────────────
+
+        private void AddDocumentFromFile(string filePath)
+        {
+            if (_pendingDocuments.Count >= MaxDocuments) return;
+
+            try
+            {
+                var fi = new FileInfo(filePath);
+                if (!fi.Exists) return;
+
+                var extractedText = DocumentTextExtractor.ExtractText(filePath);
+
+                var doc = new DocumentAttachment
+                {
+                    FileName = fi.Name,
+                    ExtractedText = extractedText,
+                    FileSize = fi.Length
+                };
+                AddDocument(doc);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(FindForm(),
+                    $"Could not read file:\n{ex.Message}",
+                    "Attachment Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        private void AddDocument(DocumentAttachment doc)
+        {
+            _pendingDocuments.Add(doc);
+            AddDocumentChipToStrip(doc);
+            UpdateAttachmentStripVisibility();
+            LayoutInputPanel();
+        }
+
+        private void RemoveDocument(DocumentAttachment doc)
+        {
+            _pendingDocuments.Remove(doc);
+            RemoveStripItem(doc);
+            UpdateAttachmentStripVisibility();
+            LayoutInputPanel();
+        }
+
+        private void AddDocumentChipToStrip(DocumentAttachment doc)
+        {
+            // Container panel for document chip + remove button
+            var chipPanel = new Panel
+            {
+                Size = new Size(54, 54),
+                Margin = new Padding(2),
+                Tag = doc
+            };
+
+            // Document icon area (file icon instead of image thumbnail)
+            var iconLabel = new Label
+            {
+                Size = new Size(48, 48),
+                Location = new Point(0, 0),
+                BackColor = Color.FromArgb(235, 243, 254),
+                BorderStyle = BorderStyle.FixedSingle,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe MDL2 Assets", 16f),
+                ForeColor = Color.FromArgb(80, 120, 180),
+                Text = GetDocumentIcon(doc.FileName),
+                Cursor = Cursors.Hand
+            };
+
+            // ✕ remove button (top-right corner)
+            var btnRemove = new Button
+            {
+                Text = "\u00D7", // ×
+                Size = new Size(16, 16),
+                Location = new Point(34, 0),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(180, 60, 60),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            btnRemove.FlatAppearance.BorderSize = 0;
+            btnRemove.Click += (s, e) => RemoveDocument(doc);
+
+            // Tooltip with filename and size
+            var sizeStr = DocumentTextExtractor.FormatFileSize(doc.FileSize);
+            var tip = new ToolTip();
+            tip.SetToolTip(iconLabel, $"{doc.FileName} ({sizeStr})");
+
+            chipPanel.Controls.Add(btnRemove);
+            chipPanel.Controls.Add(iconLabel);
+            btnRemove.BringToFront();
+
+            _attachmentStrip.Controls.Add(chipPanel);
+        }
+
+        private static string GetDocumentIcon(string fileName)
+        {
+            var ext = Path.GetExtension(fileName).ToLowerInvariant();
+            switch (ext)
+            {
+                case ".pdf": return "\uEA90";         // PDF icon
+                case ".docx": case ".doc": case ".rtf":
+                    return "\uE8A5";                  // Document icon
+                case ".pptx": case ".ppt":
+                    return "\uEE71";                  // Slideshow icon
+                case ".xlsx": case ".xls": case ".csv": case ".tsv":
+                    return "\uE80A";                  // Grid/table icon
+                case ".tmx": case ".sdlxliff": case ".xliff": case ".xlf": case ".tbx":
+                    return "\uE8C1";                  // Switch/translate icon
+                default: return "\uE8A5";             // Generic document icon
+            }
+        }
+
+        // ─── Shared attachment helpers ─────────────────────────────
+
+        private void RemoveStripItem(object tag)
+        {
             for (int i = _attachmentStrip.Controls.Count - 1; i >= 0; i--)
             {
-                if (_attachmentStrip.Controls[i].Tag == attachment)
+                if (_attachmentStrip.Controls[i].Tag == tag)
                 {
                     var ctrl = _attachmentStrip.Controls[i];
                     _attachmentStrip.Controls.RemoveAt(i);
@@ -691,14 +832,12 @@ namespace Supervertaler.Trados.Controls
                     break;
                 }
             }
-
-            UpdateAttachmentStripVisibility();
-            LayoutInputPanel();
         }
 
         private void ClearAttachments()
         {
             _pendingImages.Clear();
+            _pendingDocuments.Clear();
             _attachmentStrip.SuspendLayout();
             foreach (Control ctrl in _attachmentStrip.Controls)
                 ctrl.Dispose();
@@ -708,12 +847,14 @@ namespace Supervertaler.Trados.Controls
             LayoutInputPanel();
         }
 
+        private bool HasPendingAttachments => _pendingImages.Count > 0 || _pendingDocuments.Count > 0;
+
         private void UpdateAttachmentStripVisibility()
         {
-            _attachmentStrip.Visible = _pendingImages.Count > 0;
+            _attachmentStrip.Visible = HasPendingAttachments;
 
             // Grow input panel when attachments are present
-            _inputPanel.Height = _pendingImages.Count > 0 ? 140 : 90;
+            _inputPanel.Height = HasPendingAttachments ? 140 : 90;
         }
 
         private void AddThumbnailToStrip(ImageAttachment attachment)
@@ -785,7 +926,7 @@ namespace Supervertaler.Trados.Controls
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                if (files != null && HasImageFiles(files))
+                if (files != null && HasSupportedFiles(files))
                 {
                     e.Effect = DragDropEffects.Copy;
                     return;
@@ -804,36 +945,44 @@ namespace Supervertaler.Trados.Controls
 
             foreach (var file in files)
             {
-                if (_pendingImages.Count >= MaxImages) break;
-                if (IsImageFile(file))
-                    AddImageFromFile(file);
+                if (DocumentTextExtractor.IsImageFile(file))
+                {
+                    if (_pendingImages.Count < MaxImages)
+                        AddImageFromFile(file);
+                }
+                else if (DocumentTextExtractor.IsDocumentFile(file))
+                {
+                    if (_pendingDocuments.Count < MaxDocuments)
+                        AddDocumentFromFile(file);
+                }
             }
         }
 
-        private static bool HasImageFiles(string[] files)
+        private static bool HasSupportedFiles(string[] files)
         {
             foreach (var f in files)
-                if (IsImageFile(f)) return true;
+                if (DocumentTextExtractor.IsImageFile(f) || DocumentTextExtractor.IsDocumentFile(f))
+                    return true;
             return false;
-        }
-
-        private static bool IsImageFile(string path)
-        {
-            var ext = Path.GetExtension(path).ToLowerInvariant();
-            return ext == ".png" || ext == ".jpg" || ext == ".jpeg"
-                || ext == ".gif" || ext == ".webp" || ext == ".bmp";
         }
 
         // ─── Attach button (file browse) ─────────────────────
 
         private void OnAttachClick(object sender, EventArgs e)
         {
-            if (_pendingImages.Count >= MaxImages) return;
-
             using (var dlg = new OpenFileDialog
             {
-                Title = "Attach Image",
-                Filter = "Image files|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp|All files|*.*",
+                Title = "Attach File",
+                Filter =
+                    "All supported files|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;" +
+                    "*.docx;*.doc;*.pdf;*.rtf;*.pptx;*.ppt;*.xlsx;*.xls;*.csv;*.tsv;" +
+                    "*.tmx;*.sdlxliff;*.xliff;*.xlf;*.tbx;*.txt;*.md;*.htm;*.html;*.json;*.xml|" +
+                    "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp|" +
+                    "Documents|*.docx;*.doc;*.pdf;*.rtf;*.pptx;*.ppt|" +
+                    "Spreadsheets|*.xlsx;*.xls;*.csv;*.tsv|" +
+                    "Translation files|*.tmx;*.sdlxliff;*.xliff;*.xlf;*.tbx|" +
+                    "Text files|*.txt;*.md;*.htm;*.html;*.json;*.xml|" +
+                    "All files|*.*",
                 Multiselect = true
             })
             {
@@ -841,8 +990,16 @@ namespace Supervertaler.Trados.Controls
                 {
                     foreach (var file in dlg.FileNames)
                     {
-                        if (_pendingImages.Count >= MaxImages) break;
-                        AddImageFromFile(file);
+                        if (DocumentTextExtractor.IsImageFile(file))
+                        {
+                            if (_pendingImages.Count < MaxImages)
+                                AddImageFromFile(file);
+                        }
+                        else if (DocumentTextExtractor.IsDocumentFile(file))
+                        {
+                            if (_pendingDocuments.Count < MaxDocuments)
+                                AddDocumentFromFile(file);
+                        }
                     }
                 }
             }
@@ -855,21 +1012,27 @@ namespace Supervertaler.Trados.Controls
             if (_isThinking) return;
             var text = _txtInput.Text?.Trim();
 
-            // Allow sending images even without text, and text without images
+            // Allow sending attachments even without text
             var hasText = !string.IsNullOrEmpty(text);
             var hasImages = _pendingImages.Count > 0;
+            var hasDocs = _pendingDocuments.Count > 0;
 
-            if (!hasText && !hasImages) return;
+            if (!hasText && !hasImages && !hasDocs) return;
 
             _txtInput.Clear();
 
             // Capture and clear pending images
             List<ImageAttachment> images = null;
             if (hasImages)
-            {
                 images = new List<ImageAttachment>(_pendingImages);
+
+            // Capture and clear pending documents
+            List<DocumentAttachment> documents = null;
+            if (hasDocs)
+                documents = new List<DocumentAttachment>(_pendingDocuments);
+
+            if (hasImages || hasDocs)
                 ClearAttachments();
-            }
 
             var displayText = _pendingDisplayText;
             _pendingDisplayText = null;
@@ -882,6 +1045,7 @@ namespace Supervertaler.Trados.Controls
             {
                 Text = text ?? "",
                 Images = images,
+                Documents = documents,
                 DisplayText = displayText,
                 MaxTokens = maxTokens,
                 ShowAsStatus = showAsStatus
@@ -1066,9 +1230,69 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public void UpdateProviderInfo(string provider, string model)
         {
+            _currentProvider = provider;
+            _currentModel = model;
             _lblStatus.Text = !string.IsNullOrEmpty(provider) && !string.IsNullOrEmpty(model)
                 ? $"{provider} / {model}"
                 : "";
+        }
+
+        /// <summary>
+        /// Raised when the user selects a different model from the status bar dropdown.
+        /// Args: (providerKey, modelId).
+        /// </summary>
+        public event Action<string, string> ModelChangeRequested;
+
+        private void OnModelSelectorClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        {
+            var menu = new ContextMenuStrip { Font = new Font("Segoe UI", 8.5f) };
+
+            foreach (var providerKey in LlmModels.AllProviderKeys)
+            {
+                var models = LlmModels.GetModelsForProvider(providerKey);
+
+                // Custom OpenAI profiles are handled separately
+                if (providerKey == LlmModels.ProviderCustomOpenAi)
+                    continue;
+
+                if (models.Length == 0) continue;
+
+                var providerName = LlmModels.GetProviderDisplayName(providerKey);
+                var providerItem = new ToolStripMenuItem(providerName);
+
+                foreach (var model in models)
+                {
+                    var modelItem = new ToolStripMenuItem(model.DisplayName)
+                    {
+                        ToolTipText = model.Description,
+                        Tag = new[] { providerKey, model.Id }
+                    };
+
+                    // Checkmark for current selection
+                    if (providerKey == _currentProvider && model.Id == _currentModel)
+                        modelItem.Checked = true;
+
+                    modelItem.Click += OnModelMenuItemClicked;
+                    providerItem.DropDownItems.Add(modelItem);
+                }
+
+                // Bold the provider submenu if it's the active one
+                if (providerKey == _currentProvider)
+                    providerItem.Font = new Font(providerItem.Font, FontStyle.Bold);
+
+                menu.Items.Add(providerItem);
+            }
+
+            menu.Show(_lblStatus, new Point(0, -menu.PreferredSize.Height));
+        }
+
+        private void OnModelMenuItemClicked(object sender, EventArgs e)
+        {
+            var item = sender as ToolStripMenuItem;
+            var tag = item?.Tag as string[];
+            if (tag == null || tag.Length != 2) return;
+
+            ModelChangeRequested?.Invoke(tag[0], tag[1]);
         }
 
         /// <summary>

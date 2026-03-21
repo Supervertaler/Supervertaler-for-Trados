@@ -29,6 +29,10 @@ namespace Supervertaler.Trados.Controls
         private TextBox _txtDomain;
         private TextBox _txtNotes;
         private TextBox _txtUrl;
+        private const int CollapsedHeight = 60;
+        private const int ExpandedHeight = 120;
+        private bool _definitionExpanded;
+        private bool _notesExpanded;
         private CheckBox _chkNonTranslatable;
 
         // Synonym lists
@@ -171,8 +175,8 @@ namespace Supervertaler.Trados.Controls
             HelpButton = true;
             HelpButtonClicked += OnHelpButtonClicked;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(580, 596);
-            MinimumSize = new Size(500, 518);
+            ClientSize = new Size(580, 722);
+            MinimumSize = new Size(500, 644);
             var formBg = Color.FromArgb(243, 243, 243);
             BackColor = formBg;
 
@@ -486,20 +490,26 @@ namespace Supervertaler.Trados.Controls
 
             // === Metadata fields ===
             _contentPanel.Controls.Add(MakeLabel("Definition:", leftX, y, labelColor));
+            var btnExpandDef = MakeExpandButton(leftX + 65, y, labelColor);
+            _contentPanel.Controls.Add(btnExpandDef);
             y += 18;
 
             _txtDefinition = new TextBox
             {
                 Location = new Point(leftX, y),
                 Width = _contentPanel.Width - 32,
+                Height = CollapsedHeight,
                 BackColor = inputBg,
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                AcceptsReturn = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             _contentPanel.Controls.Add(_txtDefinition);
-            y += 28;
+            btnExpandDef.Click += (s, e) => ToggleExpand(_txtDefinition, btnExpandDef, ref _definitionExpanded);
+            y += CollapsedHeight + 8;
 
             _contentPanel.Controls.Add(MakeLabel("Domain:", leftX, y, labelColor));
-            _contentPanel.Controls.Add(MakeLabel("Notes:", rightX, y, labelColor));
             y += 18;
 
             _txtDomain = new TextBox
@@ -510,16 +520,27 @@ namespace Supervertaler.Trados.Controls
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             _contentPanel.Controls.Add(_txtDomain);
+            y += 28;
+
+            _contentPanel.Controls.Add(MakeLabel("Notes:", leftX, y, labelColor));
+            var btnExpandNotes = MakeExpandButton(leftX + 42, y, labelColor);
+            _contentPanel.Controls.Add(btnExpandNotes);
+            y += 18;
 
             _txtNotes = new TextBox
             {
-                Location = new Point(rightX, y),
-                Width = colWidth,
+                Location = new Point(leftX, y),
+                Width = _contentPanel.Width - 32,
+                Height = CollapsedHeight,
                 BackColor = inputBg,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                AcceptsReturn = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             _contentPanel.Controls.Add(_txtNotes);
-            y += 28;
+            btnExpandNotes.Click += (s, e) => ToggleExpand(_txtNotes, btnExpandNotes, ref _notesExpanded);
+            y += CollapsedHeight + 8;
 
             _contentPanel.Controls.Add(MakeLabel("URL (optional):", leftX, y, labelColor));
             y += 18;
@@ -1099,6 +1120,42 @@ namespace Supervertaler.Trados.Controls
         }
 
         // ─── UI helpers ──────────────────────────────────────────────
+
+        private static LinkLabel MakeExpandButton(int x, int y, Color color)
+        {
+            return new LinkLabel
+            {
+                Text = "\u25BC",  // ▼ down arrow
+                Location = new Point(x, y),
+                AutoSize = true,
+                LinkColor = color,
+                ActiveLinkColor = color,
+                VisitedLinkColor = color,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                Cursor = Cursors.Hand
+            };
+        }
+
+        private void ToggleExpand(TextBox textBox, LinkLabel button, ref bool expanded)
+        {
+            expanded = !expanded;
+            int delta = ExpandedHeight - CollapsedHeight;
+            if (!expanded) delta = -delta;
+
+            textBox.Height = expanded ? ExpandedHeight : CollapsedHeight;
+            button.Text = expanded ? "\u25B2" : "\u25BC";  // ▲ or ▼
+
+            // Shift all controls below the textbox
+            int threshold = textBox.Bottom - (expanded ? delta : 0);
+            foreach (Control ctrl in _contentPanel.Controls)
+            {
+                if (ctrl != textBox && ctrl.Top >= threshold)
+                    ctrl.Top += delta;
+            }
+
+            // Resize the dialog
+            Height += delta;
+        }
 
         private static Label MakeLabel(string text, int x, int y, Color color)
         {

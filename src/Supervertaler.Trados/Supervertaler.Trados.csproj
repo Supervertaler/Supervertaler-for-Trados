@@ -5,8 +5,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Supervertaler.Trados</RootNamespace>
     <AssemblyName>Supervertaler.Trados</AssemblyName>
-    <Version>4.16.2</Version>
-    <InformationalVersion>4.16.2</InformationalVersion>
+    <Version>4.17.0</Version>
+    <InformationalVersion>4.17.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Michael Beijer</Authors>
     <Company>Supervertaler</Company>
@@ -79,6 +79,7 @@
        "SQLite.Interop.dll"), completely sidestepping the version-fingerprint
        entry-point conflicts. -->
   <ItemGroup>
+    <PackageReference Include="iTextSharp" Version="5.5.13.5" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
   </ItemGroup>
 
@@ -101,9 +102,7 @@
 
   <!-- Copy compiled .plugin.resources sidecar to output (needed by Trados plugin framework) -->
   <Target Name="CopyPluginResources" AfterTargets="Build">
-    <Copy SourceFiles="$(IntermediateOutputPath)Supervertaler.Trados.plugin.resources"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(IntermediateOutputPath)Supervertaler.Trados.plugin.resources" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

@@ -445,8 +445,13 @@ namespace Supervertaler.Trados.Controls
                     lines.Add(new PopupLine("[MultiTerm \u2014 read-only]", PopupLineType.Tag));
                 if (_isNonTranslatable)
                     lines.Add(new PopupLine("[Non-translatable]", PopupLineType.Tag));
+                bool isFirstEntry = true;
                 foreach (var entry in _entries)
                 {
+                    if (!isFirstEntry)
+                        lines.Add(new PopupLine("", PopupLineType.Separator));
+                    isFirstEntry = false;
+
                     bool isAbbrMatch = _abbreviationMatchIds.Contains(entry.Id);
                     string heading;
                     if (isAbbrMatch && !string.IsNullOrEmpty(entry.TargetAbbreviation))
@@ -483,14 +488,20 @@ namespace Supervertaler.Trados.Controls
                     foreach (var syn in entry.TargetSynonyms)
                         lines.Add(new PopupLine($"  \u2022 {syn}", PopupLineType.Synonym));
 
+                    bool hasDefOrDomain = !string.IsNullOrEmpty(entry.Definition) || !string.IsNullOrEmpty(entry.Domain);
+                    if (hasDefOrDomain)
+                        lines.Add(new PopupLine("", PopupLineType.Plain)); // space before def/domain
                     if (!string.IsNullOrEmpty(entry.Definition))
-                        lines.Add(new PopupLine($"  Def: {entry.Definition}", PopupLineType.Meta));
+                        lines.Add(new PopupLine("  Def:", entry.Definition, PopupLineType.MetaLabelled));
                     if (!string.IsNullOrEmpty(entry.Domain))
-                        lines.Add(new PopupLine($"  Domain: {entry.Domain}", PopupLineType.Meta));
+                        lines.Add(new PopupLine("  Domain:", entry.Domain, PopupLineType.MetaLabelled));
                     if (!string.IsNullOrEmpty(entry.Notes))
-                        lines.Add(new PopupLine($"  Notes: {entry.Notes}", PopupLineType.Meta));
+                    {
+                        lines.Add(new PopupLine("", PopupLineType.Plain)); // space before notes
+                        lines.Add(new PopupLine("  Notes:", entry.Notes, PopupLineType.MetaLabelled));
+                    }
                     if (!string.IsNullOrEmpty(entry.Url))
-                        lines.Add(new PopupLine($"  URL: {entry.Url}", PopupLineType.Meta));
+                        lines.Add(new PopupLine("  URL:", entry.Url, PopupLineType.MetaLabelled));
                 }
 
                 var popup = TermPopup.GetInstance();

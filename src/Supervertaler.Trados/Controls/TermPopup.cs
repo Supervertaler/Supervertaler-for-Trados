@@ -152,9 +152,19 @@ namespace Supervertaler.Trados.Controls
             int maxNaturalWidth = MinPopupWidth - ContentPad * 2;
             foreach (var line in lines)
             {
-                var lineFont = GetFontForLine(line, font, boldFont, smallFont);
-                var textWidth = TextRenderer.MeasureText(line.Text, lineFont).Width + 4;
-                maxNaturalWidth = Math.Max(maxNaturalWidth, textWidth);
+                if (line.Type == PopupLineType.Separator) continue;
+                if (line.Type == PopupLineType.MetaLabelled)
+                {
+                    var fullText = (line.Label ?? "") + " " + (line.Text ?? "");
+                    var textWidth = TextRenderer.MeasureText(fullText, font).Width + 4;
+                    maxNaturalWidth = Math.Max(maxNaturalWidth, textWidth);
+                }
+                else
+                {
+                    var lineFont = GetFontForLine(line, font, boldFont, smallFont);
+                    var textWidth = TextRenderer.MeasureText(line.Text, lineFont).Width + 4;
+                    maxNaturalWidth = Math.Max(maxNaturalWidth, textWidth);
+                }
             }
 
             // Use the smaller of natural width and max width
@@ -167,7 +177,32 @@ namespace Supervertaler.Trados.Controls
 
             foreach (var line in lines)
             {
-                if (line.Type == PopupLineType.Meta && UrlRegex.IsMatch(line.Text))
+                if (line.Type == PopupLineType.Separator)
+                {
+                    var sep = CreateSeparator(contentWidth);
+                    sep.Location = new Point(ContentPad, y);
+                    Controls.Add(sep);
+                    y += sep.Height;
+                }
+                else if (line.Type == PopupLineType.MetaLabelled)
+                {
+                    // Check if the value contains URLs
+                    if (UrlRegex.IsMatch(line.Text ?? ""))
+                    {
+                        var ctrl = CreateMetaLineWithUrls("  " + line.Label + " " + line.Text, font, contentWidth);
+                        ctrl.Location = new Point(ContentPad, y);
+                        Controls.Add(ctrl);
+                        y += ctrl.Height;
+                    }
+                    else
+                    {
+                        var ctrl = CreateLabelledMeta(line, font, boldFont, contentWidth);
+                        ctrl.Location = new Point(ContentPad, y);
+                        Controls.Add(ctrl);
+                        y += ctrl.Height;
+                    }
+                }
+                else if (line.Type == PopupLineType.Meta && UrlRegex.IsMatch(line.Text))
                 {
                     // Meta line with URLs — use special rendering
                     var ctrl = CreateMetaLineWithUrls(line.Text, font, contentWidth);
@@ -205,6 +240,8 @@ namespace Supervertaler.Trados.Controls
                 Show();
         }
 
+        private static readonly Color SeparatorColor = Color.FromArgb(225, 225, 225);
+
         private Font GetFontForLine(PopupLine line, Font font, Font boldFont, Font smallFont)
         {
             switch (line.Type)
@@ -223,6 +260,7 @@ namespace Supervertaler.Trados.Controls
                 case PopupLineType.Tag: return MetaLabelColor;
                 case PopupLineType.Synonym: return SynonymColor;
                 case PopupLineType.Meta: return MetaValueColor;
+                case PopupLineType.MetaLabelled: return MetaValueColor;
                 default: return MetaValueColor;
             }
         }
@@ -258,6 +296,98 @@ namespace Supervertaler.Trados.Controls
             label.MouseLeave += (s, e) => { _mouseInPopup = false; ScheduleClose(); };
 
             return label;
+        }
+
+        /// <summary>
+        /// Creates a horizontal separator line.
+        /// </summary>
+        private Control CreateSeparator(int maxWidth)
+        {
+            var panel = new Panel
+            {
+                Size = new Size(maxWidth, 9),
+                BackColor = BgColor,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            panel.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(SeparatorColor))
+                    e.Graphics.DrawLine(pen, 0, 4, maxWidth, 4);
+            };
+            panel.MouseEnter += (s, e) => { _mouseInPopup = true; _closeTimer.Stop(); };
+            panel.MouseLeave += (s, e) => { _mouseInPopup = false; ScheduleClose(); };
+            return panel;
+        }
+
+        /// <summary>
+        /// Creates a meta line with a bold label and hanging-indent value text.
+        /// The value text wraps with its left edge aligned to where the value starts.
+        /// </summary>
+        private Control CreateLabelledMeta(PopupLine line, Font font, Font boldFont, int maxWidth)
+        {
+            string labelText = line.Label ?? "";
+            string valueText = line.Text ?? "";
+
+            // Measure the bold label width to establish the hanging indent
+            int labelWidth = TextRenderer.MeasureText(labelText + " ", boldFont).Width - 4;
+
+            var panel = new Panel
+            {
+                AutoSize = false,
+                BackColor = BgColor,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+
+            // Bold label
+            var lblLabel = new Label
+            {
+                Text = labelText,
+                Font = boldFont,
+                ForeColor = MetaLabelColor,
+                BackColor = BgColor,
+                AutoSize = true,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                Location = new Point(0, 0)
+            };
+            panel.Controls.Add(lblLabel);
+
+            // Value text with hanging indent — wraps within (maxWidth - labelWidth)
+            int valueWidth = maxWidth - labelWidth;
+            if (valueWidth < 100) valueWidth = maxWidth; // fallback if label is very wide
+
+            var lblValue = new Label
+            {
+                Text = valueText,
+                Font = font,
+                ForeColor = MetaValueColor,
+                BackColor = BgColor,
+                AutoSize = false,
+                MaximumSize = new Size(valueWidth, 0),
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                Location = new Point(labelWidth, 0)
+            };
+
+            var proposed = new Size(valueWidth, int.MaxValue);
+            var measured = TextRenderer.MeasureText(valueText, font, proposed,
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+            lblValue.Size = new Size(valueWidth, measured.Height);
+            panel.Controls.Add(lblValue);
+
+            int totalHeight = Math.Max(lblLabel.PreferredHeight, lblValue.Height);
+            panel.Size = new Size(maxWidth, totalHeight);
+
+            panel.MouseEnter += (s, e) => { _mouseInPopup = true; _closeTimer.Stop(); };
+            panel.MouseLeave += (s, e) => { _mouseInPopup = false; ScheduleClose(); };
+            lblLabel.MouseEnter += (s, e) => { _mouseInPopup = true; _closeTimer.Stop(); };
+            lblLabel.MouseLeave += (s, e) => { _mouseInPopup = false; ScheduleClose(); };
+            lblValue.MouseEnter += (s, e) => { _mouseInPopup = true; _closeTimer.Stop(); };
+            lblValue.MouseLeave += (s, e) => { _mouseInPopup = false; ScheduleClose(); };
+
+            return panel;
         }
 
         /// <summary>
@@ -420,6 +550,9 @@ namespace Supervertaler.Trados.Controls
         Tag,
         Synonym,
         Meta,
+        /// <summary>Meta line with a bold label prefix and hanging indent for wrapped text.</summary>
+        MetaLabelled,
+        Separator,
         Plain
     }
 
@@ -427,10 +560,19 @@ namespace Supervertaler.Trados.Controls
     {
         public string Text { get; set; }
         public PopupLineType Type { get; set; }
+        /// <summary>Bold label prefix for MetaLabelled lines (e.g. "Def:").</summary>
+        public string Label { get; set; }
 
         public PopupLine(string text, PopupLineType type = PopupLineType.Plain)
         {
             Text = text;
+            Type = type;
+        }
+
+        public PopupLine(string label, string value, PopupLineType type)
+        {
+            Label = label;
+            Text = value;
             Type = type;
         }
     }

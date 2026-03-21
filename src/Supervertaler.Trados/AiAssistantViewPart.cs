@@ -114,6 +114,7 @@ namespace Supervertaler.Trados
 
             // Wire settings/help buttons
             _control.Value.SettingsRequested += OnSettingsRequested;
+            _control.Value.ModelChangeRequested += OnModelChangeRequested;
 
             // Wire batch translate control events
             var batchControl = _control.Value.BatchTranslateControl;
@@ -204,6 +205,21 @@ namespace Supervertaler.Trados
             }
         }
 
+        private void OnModelChangeRequested(string providerKey, string modelId)
+        {
+            SafeInvoke(() =>
+            {
+                var aiSettings = _settings?.AiSettings;
+                if (aiSettings == null) return;
+
+                aiSettings.SetProviderAndModel(providerKey, modelId);
+                _settings.Save();
+
+                UpdateProviderDisplay();
+                UpdateBatchProviderDisplay();
+            });
+        }
+
         // ─── Settings ───────────────────────────────────────────────
 
         private void OnSettingsRequested(object sender, EventArgs e)
@@ -257,9 +273,44 @@ namespace Supervertaler.Trados
         {
             var messageText = args.Text;
             var images = args.Images;
+            var documents = args.Documents;
 
-            if (string.IsNullOrWhiteSpace(messageText) && (images == null || images.Count == 0))
+            if (string.IsNullOrWhiteSpace(messageText)
+                && (images == null || images.Count == 0)
+                && (documents == null || documents.Count == 0))
                 return;
+
+            // Prepend document content to the message text for the AI
+            string displayText = args.DisplayText;
+            if (documents != null && documents.Count > 0)
+            {
+                var docParts = new System.Text.StringBuilder();
+                foreach (var doc in documents)
+                {
+                    docParts.AppendLine($"[Attached file: {doc.FileName}]");
+                    docParts.AppendLine(doc.ExtractedText);
+                    docParts.AppendLine();
+                }
+
+                // Build display summary (short) for the chat bubble
+                var docNames = new List<string>();
+                foreach (var doc in documents)
+                    docNames.Add($"{doc.FileName} ({DocumentTextExtractor.FormatFileSize(doc.FileSize)})");
+
+                var displaySummary = string.Join(", ", docNames);
+                var userText = messageText ?? "";
+
+                // Full text sent to AI: document content + user's message
+                messageText = docParts.ToString() + userText;
+
+                // Display text: show short summary instead of full extracted content
+                if (string.IsNullOrEmpty(displayText))
+                {
+                    displayText = string.IsNullOrWhiteSpace(userText)
+                        ? $"\U0001F4CE {displaySummary}"
+                        : $"\U0001F4CE {displaySummary}\n\n{userText}";
+                }
+            }
 
             // 1. Add user message to history and display
             // ShowAsStatus = true means the message was system-initiated (e.g. Generate Prompt)
@@ -268,8 +319,9 @@ namespace Supervertaler.Trados
             {
                 Role = ChatRole.User,
                 Content = messageText ?? "",
-                DisplayContent = args.DisplayText,  // null = show full Content; set for {{PROJECT}} prompts
-                Images = images
+                DisplayContent = displayText,  // null = show full Content; set for {{PROJECT}} prompts
+                Images = images,
+                Documents = documents
             };
             _chatHistory.Add(userMsg);
 
@@ -279,8 +331,9 @@ namespace Supervertaler.Trados
                 {
                     Role = ChatRole.Assistant,
                     Content = messageText ?? "",
-                    DisplayContent = args.DisplayText,
-                    Images = images
+                    DisplayContent = displayText,
+                    Images = images,
+                    Documents = documents
                 }
                 : userMsg;
             _control.Value.AddMessage(displayMsg);

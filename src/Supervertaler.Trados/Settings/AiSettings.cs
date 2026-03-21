@@ -126,6 +126,23 @@ namespace Supervertaler.Trados.Settings
         public bool IncludeTermMetadata { get; set; } = true;
 
         /// <summary>
+        /// Sets the model for the given provider and makes it the active provider.
+        /// </summary>
+        public void SetProviderAndModel(string providerKey, string modelId)
+        {
+            SelectedProvider = providerKey;
+            switch (providerKey)
+            {
+                case "openai": OpenAiModel = modelId; break;
+                case "claude": ClaudeModel = modelId; break;
+                case "gemini": GeminiModel = modelId; break;
+                case "grok": GrokModel = modelId; break;
+                case "ollama": OllamaModel = modelId; break;
+                case "custom_openai": SelectedCustomProfileName = modelId; break;
+            }
+        }
+
+        /// <summary>
         /// Returns the selected model ID for the currently active provider.
         /// </summary>
         public string GetSelectedModel()

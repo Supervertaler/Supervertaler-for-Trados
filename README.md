@@ -92,7 +92,8 @@ The AI Assistant is a separate dockable panel in Trados Studio that provides a m
 
 - **Dockable chat panel** — dock it right, bottom, floating, or on a second monitor; position and size persist across sessions
 - **Project-aware context** — the assistant automatically sees the current segment (source + target), matched termbase terms, and optionally TM fuzzy matches
-- **Image attachments** — paste images from clipboard (Ctrl+V), drag and drop, or browse with the attach button; images are sent to the AI using each provider's vision API
+- **File attachments** — attach images (paste, drag-drop, or browse) and documents (DOCX, PDF, PPTX, XLSX, CSV, TMX, SDLXLIFF, TBX, TXT, Markdown, HTML, and more) for context; images use each provider's vision API, documents are text-extracted and sent as context
+- **Quick model switching** — click the provider/model label at the bottom of the chat to switch models instantly via dropdown, without opening Settings
 - **Apply suggestions** — right-click any assistant response and choose "Apply to target" to insert the suggestion directly into the active segment
 - **Markdown rendering** — responses render with full formatting: headings, bold, italic, inline code, code blocks, tables, and lists
 - **AI context control** — choose which termbases contribute to AI prompts and toggle TM match inclusion from the AI Settings panel

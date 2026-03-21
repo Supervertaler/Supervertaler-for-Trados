@@ -90,18 +90,49 @@ You can control exactly what context the assistant receives. In the settings dia
 **Tip:** For the best results, keep document content and term metadata enabled. The more context the AI has, the more accurate and consistent its suggestions will be. The document type analysis is especially valuable — it helps the AI understand that "consideration" means something different in a legal contract than in a marketing brochure.
 {% endhint %}
 
-### Image Attachments
+### File Attachments
 
-The Supervertaler Assistant supports multimodal input. You can attach images to your messages for visual context – for example, a screenshot of the source document layout, a reference image, or a table that is hard to describe in text.
+The Supervertaler Assistant supports attaching both images and documents to your messages. Use the **paperclip button** (📎) next to the chat input, or drag and drop files directly onto the chat area.
+
+#### Images
+
+Attach images for visual context — for example, a screenshot of the source document layout, a reference image, or a table that is hard to describe in text. Images are sent to the AI using each provider's native vision API.
 
 | Method        | How                                                 |
 | ------------- | --------------------------------------------------- |
 | Paste         | Press **Ctrl+V** with an image on the clipboard     |
 | Drag and drop | Drag an image file into the chat input area         |
-| Browse        | Click the **Browse** button to select an image file |
+| Browse        | Click the **📎** button and select an image file     |
 
-{% hint style="warning" %}
-Image limits: up to **5 images** per message, **10 MB** maximum per image. Supported formats: PNG, JPEG, GIF, WebP.
+Supported image formats: PNG, JPEG, GIF, WebP, BMP. Up to **5 images** per message, **10 MB** maximum per image.
+
+#### Documents
+
+Attach documents to provide the AI with additional reference material — for example, a client style guide, a glossary in spreadsheet form, a reference PDF, or a translation memory export. The text content is automatically extracted from the document and included in your message as context.
+
+| Method        | How                                                 |
+| ------------- | --------------------------------------------------- |
+| Drag and drop | Drag a document file into the chat input area       |
+| Browse        | Click the **📎** button and select a document file   |
+
+The chat bubble shows a compact summary (file name and size) instead of the full extracted text, keeping the conversation readable.
+
+**Supported document formats:**
+
+| Category           | Formats                            |
+| ------------------ | ---------------------------------- |
+| Documents          | DOCX, DOC, PDF, RTF                |
+| Presentations      | PPTX, PPT                         |
+| Spreadsheets       | XLSX, XLS, CSV, TSV                |
+| Translation files  | TMX, SDLXLIFF, XLIFF/XLF, TBX     |
+| Text and markup    | TXT, Markdown, HTML, JSON, XML     |
+
+{% hint style="info" %}
+Up to **5 documents** per message, **20 MB** maximum per file. Very large documents are automatically truncated to avoid exceeding AI context limits. Legacy binary formats (DOC, XLS, PPT) use best-effort text extraction — for best results, save as the modern format (DOCX, XLSX, PPTX) first.
+{% endhint %}
+
+{% hint style="success" %}
+**Tip:** Attaching a client style guide or reference document alongside your translation question gives the AI much better context for providing accurate, style-consistent suggestions.
 {% endhint %}
 
 ### Apply to Target
@@ -116,7 +147,10 @@ This is useful when the assistant suggests a translation and you want to use it 
 
 ### Provider and Model
 
-The current provider and model are shown in the status area of the chat panel. To change the provider or model, open the settings dialog (gear icon) and switch to the **AI Settings** tab.
+The current provider and model are shown in the status area at the bottom of the chat panel. You can switch models in two ways:
+
+* **Quick switch** — click the provider/model label directly. A dropdown menu appears with all available models grouped by provider. The current model is marked with a tick. Select a different model to switch instantly.
+* **Settings** — open the settings dialogue (gear icon) and switch to the **AI Settings** tab for full configuration including API keys, endpoints, and advanced options.
 
 #### Supported Providers
 
@@ -125,6 +159,7 @@ The current provider and model are shown in the status area of the chat panel. T
 | **OpenAI**    | GPT-4o, GPT-4o Mini, GPT-5, o1, o3                             |
 | **Anthropic** | Claude Sonnet 4.6, Claude Haiku 4.5, Claude Opus 4.6           |
 | **Google**    | Gemini 2.5 Flash, Gemini 2.5 Pro, Gemini 3 Pro Preview         |
+| **Grok**      | Grok 4.20, Grok 4.20 Reasoning, Grok 4.1 Fast                 |
 | **Ollama**    | TranslateGemma, Qwen 3, Aya Expanse (local, no API key needed) |
 | **Custom**    | Any OpenAI-compatible API endpoint                             |
 

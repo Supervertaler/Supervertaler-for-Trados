@@ -27,6 +27,9 @@ PLUGIN_FILES = [
     "SQLitePCLRaw.core.dll",
     "SQLitePCLRaw.batteries_v2.dll",
     "SQLitePCLRaw.provider.dynamic_cdecl.dll",
+    # --- iTextSharp (PDF text extraction) ---
+    "itextsharp.dll",
+    "BouncyCastle.Cryptography.dll",
     # --- .NET Standard polyfills (Trados ships older versions) ---
     "System.Memory.dll",
     "System.Buffers.dll",
@@ -42,6 +45,8 @@ PLUGIN_FILES = [
 # Extra files listed in the <Include> section of pluginpackage.manifest.xml
 # These are non-plugin DLLs that need to be deployed alongside the plugin
 INCLUDE_FILES = [
+    "itextsharp.dll",
+    "BouncyCastle.Cryptography.dll",
     "Microsoft.Data.Sqlite.dll",
     "SQLitePCLRaw.core.dll",
     "SQLitePCLRaw.batteries_v2.dll",

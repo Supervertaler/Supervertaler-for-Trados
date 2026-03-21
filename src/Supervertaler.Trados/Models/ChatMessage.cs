@@ -35,11 +35,20 @@ namespace Supervertaler.Trados.Models
         [DataMember(Name = "images", EmitDefaultValue = false)]
         public List<ImageAttachment> Images { get; set; }
 
+        /// <summary>
+        /// Optional document attachments. Null means no documents.
+        /// </summary>
+        [DataMember(Name = "documents", EmitDefaultValue = false)]
+        public List<DocumentAttachment> Documents { get; set; }
+
         [DataMember(Name = "timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.Now;
 
         /// <summary>True if this message has one or more image attachments.</summary>
         public bool HasImages => Images != null && Images.Count > 0;
+
+        /// <summary>True if this message has one or more document attachments.</summary>
+        public bool HasDocuments => Documents != null && Documents.Count > 0;
     }
 
     /// <summary>
@@ -70,12 +79,32 @@ namespace Supervertaler.Trados.Models
     }
 
     /// <summary>
-    /// Event args for chat send — carries both text and optional image attachments.
+    /// A document attached to a chat message. Text is extracted and sent as context.
+    /// </summary>
+    [DataContract]
+    public class DocumentAttachment
+    {
+        /// <summary>Original file name for display.</summary>
+        [DataMember(Name = "fileName")]
+        public string FileName { get; set; }
+
+        /// <summary>Extracted text content from the document.</summary>
+        [DataMember(Name = "extractedText")]
+        public string ExtractedText { get; set; }
+
+        /// <summary>File size in bytes (original file, for display).</summary>
+        [DataMember(Name = "fileSize")]
+        public long FileSize { get; set; }
+    }
+
+    /// <summary>
+    /// Event args for chat send — carries text, optional images, and optional documents.
     /// </summary>
     public class ChatSendEventArgs : EventArgs
     {
         public string Text { get; set; }
         public List<ImageAttachment> Images { get; set; }
+        public List<DocumentAttachment> Documents { get; set; }
 
         /// <summary>
         /// Optional display-only text for the user bubble. When set, the bubble shows this
