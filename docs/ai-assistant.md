@@ -102,7 +102,7 @@ Attach images for visual context — for example, a screenshot of the source doc
 | ------------- | --------------------------------------------------- |
 | Paste         | Press **Ctrl+V** with an image on the clipboard     |
 | Drag and drop | Drag an image file into the chat input area         |
-| Browse        | Click the **attach** button and select an image file     |
+| Browse        | Click the **📎** button and select an image file     |
 
 Supported image formats: PNG, JPEG, GIF, WebP, BMP. Up to **5 images** per message, **10 MB** maximum per image.
 
@@ -113,7 +113,7 @@ Attach documents to provide the AI with additional reference material — for ex
 | Method        | How                                                 |
 | ------------- | --------------------------------------------------- |
 | Drag and drop | Drag a document file into the chat input area       |
-| Browse        | Click the **attach** button and select a document file   |
+| Browse        | Click the **📎** button and select a document file   |
 
 The chat bubble shows a compact summary (file name and size) instead of the full extracted text, keeping the conversation readable.
 
