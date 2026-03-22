@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.18.2] — 2026-03-22
+
+### Fixed
+- **Manifest version sync** — the `pluginpackage.manifest.xml` version was stuck at 4.18.0.0 while the DLL and plugin.xml were at 4.18.1.0. All three version files are now correctly synced to 4.18.2.
+
+### Changed
+- **TermLens colour coding docs** — renamed "Lavender" to "Purple" for abbreviation match chips, as it is more recognisable as a colour name.
+
+---
+
 ## [4.18.1] — 2026-03-22
 
 ### Fixed
