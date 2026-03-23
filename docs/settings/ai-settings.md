@@ -14,10 +14,10 @@ Choose one of the supported AI providers:
 
 | Provider | Description |
 |----------|-------------|
-| **OpenAI** | GPT models (GPT-4o, GPT-5, o1, o3) |
-| **Claude (Anthropic)** | Claude models (Sonnet 4.6, Haiku 4.5, Opus 4.6) |
-| **Gemini (Google)** | Gemini models (2.5 Flash, 2.5 Pro, 3 Pro Preview) |
-| **Grok (xAI)** | Grok models (4.20, 4.20 Reasoning, 4.1 Fast) — multimodal, large context window |
+| **OpenAI** | GPT-4.1, GPT-4.1 Mini, GPT-5.4, o4-mini (reasoning) |
+| **Claude (Anthropic)** | Claude Sonnet 4.6, Claude Haiku 4.5, Claude Opus 4.6 |
+| **Gemini (Google)** | Gemini 2.5 Flash, Gemini 2.5 Pro, Gemini 3.1 Pro (Preview) |
+| **Grok (xAI)** | Grok 4.20, Grok 4.1 Fast, Grok 4.20 (Reasoning) |
 | **Ollama (Local)** | Run models locally, no API key required |
 | **Custom (OpenAI-compatible)** | Any provider with an OpenAI-compatible API |
 
@@ -96,6 +96,28 @@ When enabled, term definitions, domains, and usage notes from your termbases are
 **Tip:** For the best results, enable all context options. The more information the AI has about your project, document, terminology, and previous translations, the more accurate and consistent its suggestions will be.
 {% endhint %}
 
+## Prompt logging
+
+### Log prompts and responses to Reports tab
+
+When enabled, every AI API call is logged to the **Reports** tab in the Supervertaler Assistant panel. Each log entry shows:
+
+* The **feature and prompt name** (e.g. "QuickLauncher · Explain in Context")
+* The **model used**, estimated **token counts**, **cost**, and **duration**
+* Expandable sections for the **system prompt**, **messages**, and **response**
+
+Click "Show system prompt...", "Show messages...", or "Show response..." to expand a section. Press **Escape** to collapse it. Use **Copy** to copy a single section, or **Copy all** to copy the full prompt details to your clipboard.
+
+This is useful for:
+
+* **Monitoring costs** — see exactly how many tokens each operation uses
+* **Debugging prompts** — inspect the full text sent to the AI to understand its behaviour
+* **Comparing models** — run the same prompt with different models and compare token usage
+
+{% hint style="info" %}
+Prompt logging is off by default to keep the Reports tab clean. Enable it when you want to inspect or audit your AI usage. Log entries are stored in memory only and cleared when Trados restarts.
+{% endhint %}
+
 ## Batch settings
 
 Configure the **batch size** for the [Batch Translate](batch-translate.md) feature. This determines how many segments are sent to the AI provider in a single request.
@@ -108,5 +130,6 @@ Configure the **batch size** for the [Batch Translate](batch-translate.md) featu
 ## See Also
 
 - [Prompts](prompts.md)
+- [AI Cost Guide](../ai-cost-guide.md)
 - [TermLens Settings](termlens.md)
 - [Supported LLM Providers (Workbench)](https://supervertaler.gitbook.io/supervertaler/ai-translation/providers)
