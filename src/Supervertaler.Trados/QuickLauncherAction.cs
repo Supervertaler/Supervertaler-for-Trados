@@ -114,19 +114,17 @@ namespace Supervertaler.Trados
             var menu = new ContextMenuStrip();
             menu.ShowItemToolTips = true;
 
-            // Header: "Supervertaler QuickLauncher" — opens QuickLauncher prompts folder
+            // Header: "Supervertaler QuickLauncher" — opens Settings → Prompts tab
             var header = new ToolStripMenuItem("Supervertaler QuickLauncher");
             header.Font = new System.Drawing.Font(header.Font, System.Drawing.FontStyle.Bold);
-            header.ToolTipText = "Click to open the QuickLauncher prompts folder";
+            header.ToolTipText = "Click to open the Prompt Manager";
             header.Click += (s, e) =>
             {
-                var qlDir = System.IO.Path.Combine(
-                    Settings.UserDataPath.PromptLibraryDir, "QuickLauncher");
-                if (System.IO.Directory.Exists(qlDir))
-                    System.Diagnostics.Process.Start("explorer.exe", qlDir);
-                else
-                    System.Diagnostics.Process.Start("explorer.exe",
-                        Settings.UserDataPath.PromptLibraryDir);
+                using (var form = new Settings.TermLensSettingsForm(
+                    Settings.TermLensSettings.Load(), new Core.PromptLibrary(), defaultTab: 2))
+                {
+                    form.ShowDialog();
+                }
             };
             menu.Items.Add(header);
             menu.Items.Add(new ToolStripSeparator());
