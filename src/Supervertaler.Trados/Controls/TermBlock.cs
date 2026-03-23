@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using Supervertaler.Trados.Core;
 using Supervertaler.Trados.Models;
 
 namespace Supervertaler.Trados.Controls
@@ -163,7 +164,7 @@ namespace Supervertaler.Trados.Controls
             }
         }
 
-        private const int BadgeHeight = 16;
+        private static int BadgeHeight => UiScale.Pixels(16);
 
         /// <summary>
         /// Maximum number of repeated-digit tiers (1 through MaxTiers repeats).
@@ -382,7 +383,7 @@ namespace Supervertaler.Trados.Controls
                 !string.IsNullOrEmpty(t.Url));
             if (hasMetadata)
             {
-                const int dotSize = 8;
+                int dotSize = UiScale.Pixels(8);
                 float dotX = targetRect.Right - dotSize / 2f;
                 float dotY = targetRect.Top - dotSize / 2f;
                 using (var dotBrush = new SolidBrush(Color.FromArgb(245, 158, 11))) // amber #F59E0B
@@ -402,7 +403,7 @@ namespace Supervertaler.Trados.Controls
                 (t.SourceSynonyms != null && t.SourceSynonyms.Count > 0));
             if (hasSynonyms)
             {
-                const int iconSize = 10;
+                int iconSize = UiScale.Pixels(10);
                 // Position to the left of the metadata dot (if present), or at top-right
                 float iconX = hasMetadata
                     ? targetRect.Right - iconSize / 2f - 11
@@ -563,8 +564,8 @@ namespace Supervertaler.Trados.Controls
             AutoSize = true;
             ForeColor = Color.FromArgb(100, 100, 100);
             UseCompatibleTextRendering = true; // GDI+ rendering, same as TermBlock
-            Padding = new Padding(2, 3, 2, 0);
-            Margin = new Padding(2, 1, 2, 1);
+            Padding = new Padding(UiScale.Pixels(2), UiScale.Pixels(3), UiScale.Pixels(2), 0);
+            Margin = new Padding(UiScale.Pixels(2), UiScale.Pixels(1), UiScale.Pixels(2), UiScale.Pixels(1));
         }
     }
 

@@ -25,6 +25,7 @@ namespace Supervertaler.Trados.Controls
         private Button _btnNewFolder;
         private Button _btnMoveUp;
         private Button _btnMoveDown;
+        private Button _btnRefresh;
         private ContextMenuStrip _treeContextMenu;
 
         // ─── Right panel controls ────────────────────────────────
@@ -144,6 +145,9 @@ namespace Supervertaler.Trados.Controls
             _btnNewFolder = CreateToolbarButton("New Folder", 90);
             _btnNewFolder.Click += OnNewFolder;
 
+            _btnRefresh = CreateToolbarButton("Refresh", 65);
+            _btnRefresh.Click += OnRefresh;
+
             _btnMoveUp = CreateToolbarButton("\u25B2", 28);
             _btnMoveUp.Click += OnMoveUp;
             _btnMoveUp.Font = new Font("Segoe UI", 7f);
@@ -154,14 +158,15 @@ namespace Supervertaler.Trados.Controls
 
             toolbar.Controls.AddRange(new Control[]
             {
-                _btnNew, _btnEdit, _btnDelete, _btnRestore, _btnMoveUp, _btnMoveDown, _btnNewFolder
+                _btnNew, _btnEdit, _btnDelete, _btnRestore, _btnMoveUp, _btnMoveDown, _btnNewFolder, _btnRefresh
             });
 
             // Position buttons from right edge
             toolbar.Resize += (s, e) =>
             {
                 var pw = toolbar.Width;
-                _btnNewFolder.Location = new Point(pw - 4 - _btnNewFolder.Width, 6);
+                _btnRefresh.Location = new Point(pw - 4 - _btnRefresh.Width, 6);
+                _btnNewFolder.Location = new Point(_btnRefresh.Left - _btnNewFolder.Width - 2, 6);
                 _btnMoveDown.Location = new Point(_btnNewFolder.Left - _btnMoveDown.Width - 6, 6);
                 _btnMoveUp.Location = new Point(_btnMoveDown.Left - _btnMoveUp.Width - 1, 6);
                 _btnRestore.Location = new Point(_btnMoveUp.Left - _btnRestore.Width - 6, 6);
@@ -277,30 +282,39 @@ namespace Supervertaler.Trados.Controls
             }
             _treeContextMenu.Items.Add(miShortcut);
 
+            var miDeleteFolder = new ToolStripMenuItem("Delete Folder");
+            miDeleteFolder.Click += OnDeleteFolder;
+            _treeContextMenu.Items.Add(miDeleteFolder);
+
             _treeContextMenu.Opening += (s, ev) =>
             {
-                var prompt = GetSelectedPrompt();
-                if (prompt == null)
+                var node = _tvPrompts.SelectedNode;
+                if (node == null) { ev.Cancel = true; return; }
+
+                var prompt = node.Tag as PromptTemplate;
+                var isFolder = node.Tag is string folderPath && folderPath != SystemPromptTag;
+
+                // Show/hide items based on whether a prompt or folder is selected
+                miEdit.Visible = prompt != null;
+                miDelete.Visible = prompt != null;
+                miShortcut.Visible = prompt != null && prompt.IsQuickLauncher;
+                miDeleteFolder.Visible = isFolder;
+
+                if (prompt != null)
                 {
-                    ev.Cancel = true;
-                    return;
-                }
+                    miDelete.Enabled = !prompt.IsReadOnly;
 
-                // Enable/disable menu items based on selection
-                miEdit.Enabled = true;
-                miDelete.Enabled = !prompt.IsReadOnly;
-                miShortcut.Visible = prompt.IsQuickLauncher;
-
-                // Update checkmarks on shortcut submenu
-                if (prompt.IsQuickLauncher)
-                {
-                    string currentShortcut;
-                    _shortcutAssignments.TryGetValue(prompt.FilePath, out currentShortcut);
-                    if (currentShortcut == null) currentShortcut = "";
-
-                    foreach (ToolStripMenuItem item in miShortcut.DropDownItems)
+                    // Update checkmarks on shortcut submenu
+                    if (prompt.IsQuickLauncher)
                     {
-                        item.Checked = item.Text == currentShortcut;
+                        string currentShortcut;
+                        _shortcutAssignments.TryGetValue(prompt.FilePath, out currentShortcut);
+                        if (currentShortcut == null) currentShortcut = "";
+
+                        foreach (ToolStripMenuItem item in miShortcut.DropDownItems)
+                        {
+                            item.Checked = item.Text == currentShortcut;
+                        }
                     }
                 }
             };
@@ -1140,6 +1154,31 @@ namespace Supervertaler.Trados.Controls
             }
         }
 
+        private void OnRefresh(object sender, EventArgs e)
+        {
+            _library.Refresh();
+            RefreshTree();
+        }
+
+        private void OnDeleteFolder(object sender, EventArgs e)
+        {
+            var node = _tvPrompts.SelectedNode;
+            if (node == null || !(node.Tag is string folderPath) || folderPath == SystemPromptTag)
+                return;
+
+            var folderName = Path.GetFileName(folderPath);
+            var result = MessageBox.Show(
+                $"Delete the folder '{folderName}' and all prompts inside it?\n\nThis cannot be undone.",
+                "Delete Folder",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+
+            if (result == DialogResult.Yes)
+            {
+                _library.DeleteFolder(folderPath);
+                RefreshTree();
+            }
+        }
+
         private void OnRestoreBuiltIn(object sender, EventArgs e)
         {
             var result = MessageBox.Show(
@@ -1281,7 +1320,8 @@ namespace Supervertaler.Trados.Controls
             if (e.Button == MouseButtons.Right && e.Node != null)
             {
                 _tvPrompts.SelectedNode = e.Node;
-                if (e.Node.Tag is PromptTemplate)
+                if (e.Node.Tag is PromptTemplate ||
+                    (e.Node.Tag is string tag && tag != SystemPromptTag))
                 {
                     _treeContextMenu.Show(_tvPrompts, e.Location);
                 }

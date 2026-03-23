@@ -100,6 +100,14 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Raised when the user clicks the gear/settings button.</summary>
         public event EventHandler SettingsRequested;
 
+        /// <summary>
+        /// Fired when the user changes chat font size via the A+/A- buttons.
+        /// The ViewPart should persist the new size.
+        /// </summary>
+        public event EventHandler ChatFontSizeChanged;
+
+        private float _chatFontSize = 9f;
+
         /// <summary>Exposes the BatchTranslateControl for event wiring by the ViewPart.</summary>
         public BatchTranslateControl BatchTranslateControl => _batchTranslateControl;
 
@@ -115,8 +123,8 @@ namespace Supervertaler.Trados.Controls
             _tabControl = new TabControl
             {
                 Dock = DockStyle.Fill,
-                Font = new Font("Segoe UI", 8.5f),
-                Padding = new Point(6, 3),
+                Font = new Font("Segoe UI", UiScale.FontSize(8.5f)),
+                Padding = new Point(UiScale.Pixels(6), UiScale.Pixels(3)),
             };
 
             // === Chat tab ===
@@ -145,9 +153,9 @@ namespace Supervertaler.Trados.Controls
             _btnSettings = new Button
             {
                 Text = "\u2699\uFE0E",  // gear character + text presentation selector
-                Size = new Size(26, 22),
+                Size = new Size(UiScale.Pixels(26), UiScale.Pixels(22)),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Symbol", 10f),
+                Font = new Font("Segoe UI Symbol", UiScale.FontSize(10f)),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -165,16 +173,16 @@ namespace Supervertaler.Trados.Controls
             _btnHelp = new Button
             {
                 Text = "?",
-                Size = new Size(26, 22),
+                Size = new Size(UiScale.Pixels(26), UiScale.Pixels(22)),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f), FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
                 TabStop = false,
                 UseCompatibleTextRendering = true,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Padding = new Padding(0, 1, 0, 0),
+                Padding = new Padding(0, UiScale.Pixels(1), 0, 0),
                 Margin = Padding.Empty
             };
             _btnHelp.FlatAppearance.BorderSize = 0;
@@ -203,21 +211,63 @@ namespace Supervertaler.Trados.Controls
             _contextStrip = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 28,
+                Height = UiScale.Pixels(28),
                 BackColor = Color.FromArgb(248, 248, 248),
-                Padding = new Padding(8, 0, 60, 0)  // extra right padding to avoid gear/help buttons
+                Padding = new Padding(UiScale.Pixels(8), 0, UiScale.Pixels(60), 0)
             };
 
             _lblContext = new Label
             {
                 Dock = DockStyle.Fill,
-                Font = new Font("Segoe UI", 7.5f),
+                Font = new Font("Segoe UI", UiScale.FontSize(7.5f)),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Text = "No document open",
                 AutoEllipsis = true
             };
             _contextStrip.Controls.Add(_lblContext);
+
+            // Font size increase button (A+) — docked right inside context strip
+            var btnChatFontUp = new Button
+            {
+                Text = "A+",
+                Dock = DockStyle.Right,
+                Width = UiScale.Pixels(28),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 100, 100),
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            btnChatFontUp.FlatAppearance.BorderSize = 0;
+            btnChatFontUp.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            btnChatFontUp.Click += OnChatFontIncrease;
+            _contextStrip.Controls.Add(btnChatFontUp);
+
+            // Font size decrease button (A−)
+            var btnChatFontDown = new Button
+            {
+                Text = "A\u2212", // A followed by minus sign (−)
+                Dock = DockStyle.Right,
+                Width = UiScale.Pixels(28),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", UiScale.FontSize(7f), FontStyle.Bold),
+                ForeColor = Color.FromArgb(100, 100, 100),
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            btnChatFontDown.FlatAppearance.BorderSize = 0;
+            btnChatFontDown.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            btnChatFontDown.Click += OnChatFontDecrease;
+            _contextStrip.Controls.Add(btnChatFontDown);
 
             // Thin separator line below context
             var contextSep = new Panel
@@ -232,8 +282,8 @@ namespace Supervertaler.Trados.Controls
             _inputPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 90,
-                Padding = new Padding(8, 4, 8, 4),
+                Height = UiScale.Pixels(90),
+                Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(4), UiScale.Pixels(8), UiScale.Pixels(4)),
                 BackColor = Color.FromArgb(250, 250, 250)
             };
 
@@ -289,8 +339,8 @@ namespace Supervertaler.Trados.Controls
             _btnSend = new Button
             {
                 Text = "Send",
-                Size = new Size(60, 26),
-                Font = new Font("Segoe UI", 8f),
+                Size = new Size(UiScale.Pixels(60), UiScale.Pixels(26)),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = ColorTranslator.FromHtml("#D6EBFF"),
                 ForeColor = Color.FromArgb(30, 30, 30),
@@ -304,8 +354,8 @@ namespace Supervertaler.Trados.Controls
             _btnStop = new Button
             {
                 Text = "Stop",
-                Size = new Size(48, 26),
-                Font = new Font("Segoe UI", 8f),
+                Size = new Size(UiScale.Pixels(48), UiScale.Pixels(26)),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(255, 230, 230),
                 ForeColor = Color.FromArgb(30, 30, 30),
@@ -320,8 +370,8 @@ namespace Supervertaler.Trados.Controls
             _btnClear = new Button
             {
                 Text = "Clear",
-                Size = new Size(48, 26),
-                Font = new Font("Segoe UI", 8f),
+                Size = new Size(UiScale.Pixels(48), UiScale.Pixels(26)),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f)),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
                 ForeColor = Color.FromArgb(120, 120, 120),
@@ -337,9 +387,9 @@ namespace Supervertaler.Trados.Controls
             _btnAttach = new Button
             {
                 Text = "\uE723",  // Attach / paperclip icon in Segoe MDL2 Assets
-                Size = new Size(28, 26),
+                Size = new Size(UiScale.Pixels(28), UiScale.Pixels(26)),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe MDL2 Assets", 9f),
+                Font = new Font("Segoe MDL2 Assets", UiScale.FontSize(9f)),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -354,7 +404,7 @@ namespace Supervertaler.Trados.Controls
 
             _lblStatus = new LinkLabel
             {
-                Font = new Font("Segoe UI", 7f),
+                Font = new Font("Segoe UI", UiScale.FontSize(7f)),
                 LinkColor = Color.FromArgb(140, 140, 140),
                 ActiveLinkColor = Color.FromArgb(100, 100, 100),
                 VisitedLinkColor = Color.FromArgb(140, 140, 140),
@@ -373,7 +423,7 @@ namespace Supervertaler.Trados.Controls
                 Multiline = true,
                 AcceptsReturn = true,   // allow Enter keys as input (we handle send vs newline in KeyDown)
                 ScrollBars = ScrollBars.Vertical,
-                Font = new Font("Segoe UI", 9f),
+                Font = new Font("Segoe UI", UiScale.FontSize(9f)),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 AllowDrop = true,
                 TabIndex = 0
@@ -425,8 +475,8 @@ namespace Supervertaler.Trados.Controls
             _lblThinking = new Label
             {
                 Dock = DockStyle.Bottom,
-                Height = 24,
-                Font = new Font("Segoe UI", 8f, FontStyle.Italic),
+                Height = UiScale.Pixels(24),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f), FontStyle.Italic),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 Text = "  Thinking\u2026",
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -468,6 +518,45 @@ namespace Supervertaler.Trados.Controls
 
             // Initial layout when tab loads
             page.Layout += (s, e) => LayoutInputPanel();
+        }
+
+        /// <summary>
+        /// Sets the chat bubble font size. Called by the ViewPart on startup
+        /// to restore the persisted size.
+        /// </summary>
+        public void SetChatFontSize(float sizeInPoints)
+        {
+            _chatFontSize = Math.Max(7f, Math.Min(16f, sizeInPoints));
+        }
+
+        /// <summary>Current chat font size in points.</summary>
+        public float ChatFontSize => _chatFontSize;
+
+        private void OnChatFontIncrease(object sender, EventArgs e)
+        {
+            _chatFontSize = Math.Min(_chatFontSize + 0.5f, 16f);
+            ChatFontSizeChanged?.Invoke(this, EventArgs.Empty);
+            RebuildBubblesWithNewFont();
+        }
+
+        private void OnChatFontDecrease(object sender, EventArgs e)
+        {
+            _chatFontSize = Math.Max(_chatFontSize - 0.5f, 7f);
+            ChatFontSizeChanged?.Invoke(this, EventArgs.Empty);
+            RebuildBubblesWithNewFont();
+        }
+
+        private void RebuildBubblesWithNewFont()
+        {
+            if (_chatPanel == null || _messageFlow == null) return;
+            var w = _chatPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2;
+            _messageFlow.SuspendLayout();
+            foreach (Control ctrl in _messageFlow.Controls)
+            {
+                var bubble = ctrl as ChatBubble;
+                bubble?.UpdateFontSize(_chatFontSize, w);
+            }
+            _messageFlow.ResumeLayout(true);
         }
 
         private void PositionTopButtons()
@@ -766,7 +855,7 @@ namespace Supervertaler.Trados.Controls
                 BackColor = Color.FromArgb(235, 243, 254),
                 BorderStyle = BorderStyle.FixedSingle,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe MDL2 Assets", 16f),
+                Font = new Font("Segoe MDL2 Assets", UiScale.FontSize(16f)),
                 ForeColor = Color.FromArgb(80, 120, 180),
                 Text = GetDocumentIcon(doc.FileName),
                 Cursor = Cursors.Hand
@@ -776,10 +865,10 @@ namespace Supervertaler.Trados.Controls
             var btnRemove = new Button
             {
                 Text = "\u00D7", // ×
-                Size = new Size(16, 16),
-                Location = new Point(34, 0),
+                Size = new Size(UiScale.Pixels(16), UiScale.Pixels(16)),
+                Location = new Point(UiScale.Pixels(34), 0),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(7f), FontStyle.Bold),
                 ForeColor = Color.White,
                 BackColor = Color.FromArgb(180, 60, 60),
                 Cursor = Cursors.Hand,
@@ -896,10 +985,10 @@ namespace Supervertaler.Trados.Controls
             var btnRemove = new Button
             {
                 Text = "\u00D7", // ×
-                Size = new Size(16, 16),
-                Location = new Point(34, 0),
+                Size = new Size(UiScale.Pixels(16), UiScale.Pixels(16)),
+                Location = new Point(UiScale.Pixels(34), 0),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(7f), FontStyle.Bold),
                 ForeColor = Color.White,
                 BackColor = Color.FromArgb(180, 60, 60),
                 Cursor = Cursors.Hand,
@@ -1060,7 +1149,7 @@ namespace Supervertaler.Trados.Controls
         public void AddMessage(ChatMessage message)
         {
             var bubbleWidth = _chatPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2;
-            var bubble = new ChatBubble(message, Math.Max(200, bubbleWidth));
+            var bubble = new ChatBubble(message, Math.Max(200, bubbleWidth), _chatFontSize);
             bubble.ApplyRequested += (s, text) =>
                 ApplyToTargetRequested?.Invoke(this, text);
             bubble.SaveAsPromptRequested += (s, text) =>
@@ -1177,12 +1266,12 @@ namespace Supervertaler.Trados.Controls
             var lbl = new Label
             {
                 Text = "  Thinking\u2026",
-                Font = new Font("Segoe UI", 9f, FontStyle.Italic),
+                Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Italic),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = ColorTranslator.FromHtml("#F0F0F0"),
                 AutoSize = false,
-                Size = new Size(200, 30),
-                Location = new Point(8, 4),
+                Size = new Size(UiScale.Pixels(200), UiScale.Pixels(30)),
+                Location = new Point(UiScale.Pixels(8), UiScale.Pixels(4)),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Padding = new Padding(4, 0, 4, 0)
             };
@@ -1247,7 +1336,7 @@ namespace Supervertaler.Trados.Controls
 
         private void OnModelSelectorClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            var menu = new ContextMenuStrip { Font = new Font("Segoe UI", 8.5f) };
+            var menu = new ContextMenuStrip { Font = new Font("Segoe UI", UiScale.FontSize(8.5f)) };
 
             foreach (var providerKey in LlmModels.AllProviderKeys)
             {
@@ -1378,7 +1467,7 @@ namespace Supervertaler.Trados.Controls
                 AutoSize = false,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Dock = DockStyle.Fill,
-                Font = new Font("Segoe UI", 9.5f),
+                Font = new Font("Segoe UI", UiScale.FontSize(9.5f)),
                 ForeColor = Color.FromArgb(100, 100, 100)
             };
 

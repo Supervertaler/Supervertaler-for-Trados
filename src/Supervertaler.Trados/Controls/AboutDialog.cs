@@ -165,7 +165,7 @@ namespace Supervertaler.Trados.Controls
                 Close();
                 try
                 {
-                    using (var form = new TermLensSettingsForm(TermLensSettings.Load(), defaultTab: 3))
+                    using (var form = new TermLensSettingsForm(TermLensSettings.Load(), defaultTab: 4))
                         form.ShowDialog();
                 }
                 catch { }

@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.18.3] — 2026-03-23
+
+### New Features
+- **Delete prompt folders** — right-click any folder in the prompt library tree and select "Delete Folder" to remove it and all prompts inside (with confirmation dialog)
+- **Refresh button in Prompt Manager** — toolbar "Refresh" button reloads prompts from disk, reflecting any changes made outside Trados (e.g. in Windows Explorer or Supervertaler Workbench)
+- **UI scale setting** — new General tab in Settings with UI scale selector for high-DPI displays
+- **Chat font size controls** — A+/A− buttons in the AI Assistant to adjust chat bubble font size; persisted across sessions
+
+### Fixed
+- **Right-click context menu on prompt folders** — right-clicking a folder in the prompt library now correctly selects the folder before showing the context menu (WinForms TreeView doesn't auto-select on right-click)
+
+### Changed
+- **DPI-aware UI rendering** — TermLens, AI Assistant chat bubbles, term blocks, and settings dialog now scale correctly on high-DPI displays using the new `UiScale` helper
+
+---
+
 ## [4.18.2] — 2026-03-22
 
 ### Fixed

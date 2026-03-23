@@ -69,9 +69,9 @@ namespace Supervertaler.Trados.Controls
             _headerPanel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 28,
+                Height = UiScale.Pixels(28),
                 BackColor = Color.FromArgb(245, 245, 245),
-                Padding = new Padding(6, 2, 56, 2)  // 56px right padding for gear/help buttons that float on top
+                Padding = new Padding(UiScale.Pixels(6), UiScale.Pixels(2), UiScale.Pixels(56), UiScale.Pixels(2))
             };
 
             _headerLabel = new Label
@@ -79,7 +79,7 @@ namespace Supervertaler.Trados.Controls
                 Text = "TermLens",
                 Dock = DockStyle.Left,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold),
                 ForeColor = Color.FromArgb(80, 80, 80),
                 TextAlign = ContentAlignment.MiddleLeft
             };
@@ -90,9 +90,9 @@ namespace Supervertaler.Trados.Controls
             {
                 Text = "A+",
                 Dock = DockStyle.Right,
-                Width = 28,
+                Width = UiScale.Pixels(28),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -111,9 +111,9 @@ namespace Supervertaler.Trados.Controls
             {
                 Text = "A\u2212", // A followed by minus sign (−)
                 Dock = DockStyle.Right,
-                Width = 28,
+                Width = UiScale.Pixels(28),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 7f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(7f), FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -132,10 +132,10 @@ namespace Supervertaler.Trados.Controls
             {
                 Dock = DockStyle.Right,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 8f),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f)),
                 ForeColor = Color.FromArgb(120, 120, 120),
                 TextAlign = ContentAlignment.MiddleRight,
-                Padding = new Padding(0, 0, 4, 0)
+                Padding = new Padding(0, 0, UiScale.Pixels(4), 0)
             };
             _headerPanel.Controls.Add(_statusLabel);
 
@@ -145,7 +145,7 @@ namespace Supervertaler.Trados.Controls
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
                 WrapContents = true,
-                Padding = new Padding(4),
+                Padding = new Padding(UiScale.Pixels(4)),
                 BackColor = Color.White,
                 FlowDirection = FlowDirection.LeftToRight
             };
@@ -376,7 +376,7 @@ namespace Supervertaler.Trados.Controls
                     var block = new TermBlock(token.Text, sortedEntries, shortcutIndex, isProject, isNonTranslatable, isMultiTerm, token.AbbreviationMatchIds)
                     {
                         Font = Font,
-                        Margin = new Padding(2, 1, 2, 1)
+                        Margin = new Padding(UiScale.Pixels(2), UiScale.Pixels(1), UiScale.Pixels(2), UiScale.Pixels(1))
                     };
 
                     block.TermInsertRequested += (s, args) => TermInsertRequested?.Invoke(s, args);

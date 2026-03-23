@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using Supervertaler.Trados.Core;
 
 namespace Supervertaler.Trados.Controls
 {
@@ -26,9 +27,9 @@ namespace Supervertaler.Trados.Controls
             @"(https?://[^\s\)\""\\>]+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        private const int MaxPopupWidth = 500;
-        private const int MinPopupWidth = 180;
-        private const int ContentPad = 10;
+        private static int MaxPopupWidth => UiScale.Pixels(500);
+        private static int MinPopupWidth => UiScale.Pixels(180);
+        private static int ContentPad => UiScale.Pixels(10);
 
         private readonly Timer _closeTimer;
         private bool _mouseInPopup;
@@ -142,9 +143,9 @@ namespace Supervertaler.Trados.Controls
             SuspendLayout();
             Controls.Clear();
 
-            var font = new Font("Segoe UI", 8.5f, FontStyle.Regular);
-            var boldFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
-            var smallFont = new Font("Segoe UI", 7.75f, FontStyle.Regular);
+            var font = new Font("Segoe UI", UiScale.FontSize(8.5f), FontStyle.Regular);
+            var boldFont = new Font("Segoe UI", UiScale.FontSize(8.5f), FontStyle.Bold);
+            var smallFont = new Font("Segoe UI", UiScale.FontSize(7.75f), FontStyle.Regular);
 
             int contentWidth = MaxPopupWidth - ContentPad * 2;
 
@@ -303,9 +304,10 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         private Control CreateSeparator(int maxWidth)
         {
+            var sepHeight = UiScale.Pixels(9);
             var panel = new Panel
             {
-                Size = new Size(maxWidth, 9),
+                Size = new Size(maxWidth, sepHeight),
                 BackColor = BgColor,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
@@ -313,7 +315,7 @@ namespace Supervertaler.Trados.Controls
             panel.Paint += (s, e) =>
             {
                 using (var pen = new Pen(SeparatorColor))
-                    e.Graphics.DrawLine(pen, 0, 4, maxWidth, 4);
+                    e.Graphics.DrawLine(pen, 0, sepHeight / 2, maxWidth, sepHeight / 2);
             };
             panel.MouseEnter += (s, e) => { _mouseInPopup = true; _closeTimer.Stop(); };
             panel.MouseLeave += (s, e) => { _mouseInPopup = false; ScheduleClose(); };

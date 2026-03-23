@@ -35,9 +35,9 @@ namespace Supervertaler.Trados.Controls
             _btnSettings = new Button
             {
                 Text = "\u2699\uFE0E",  // gear character + text presentation selector
-                Size = new Size(26, 22),
+                Size = new Size(UiScale.Pixels(26), UiScale.Pixels(22)),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Symbol", 10f),
+                Font = new Font("Segoe UI Symbol", UiScale.FontSize(10f)),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -55,16 +55,16 @@ namespace Supervertaler.Trados.Controls
             _btnHelp = new Button
             {
                 Text = "?",
-                Size = new Size(26, 22),
+                Size = new Size(UiScale.Pixels(26), UiScale.Pixels(22)),
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f), FontStyle.Bold),
                 ForeColor = Color.FromArgb(100, 100, 100),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
                 TabStop = false,
                 UseCompatibleTextRendering = true,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Padding = new Padding(0, 1, 0, 0),
+                Padding = new Padding(0, UiScale.Pixels(1), 0, 0),
                 Margin = Padding.Empty
             };
             _btnHelp.FlatAppearance.BorderSize = 0;

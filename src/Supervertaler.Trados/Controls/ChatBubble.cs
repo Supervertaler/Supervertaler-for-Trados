@@ -26,23 +26,26 @@ namespace Supervertaler.Trados.Controls
         private static readonly Color AssistantBg = ColorTranslator.FromHtml("#F0F0F0");
         private static readonly Color TextColor = Color.FromArgb(30, 30, 30);
         private static readonly Color TimestampColor = Color.FromArgb(140, 140, 140);
-        private static readonly Font MessageFont = new Font("Segoe UI", 9f);
-        private static readonly Font TimestampFont = new Font("Segoe UI", 7f);
 
-        private const int BubblePadding = 10;
-        private const int BubbleRadius = 8;
-        private const int TimestampHeight = 14;
-        private const int HorizontalMargin = 8;
-        private const int AvatarSize = 18;
-        private const int AvatarHeaderHeight = 22;
-        private const int ImageThumbMaxWidth = 200;
-        private const int ImageThumbMaxHeight = 150;
-        private const int ImageSpacing = 4;
+        // Base pixel constants (before UiScale)
+        private const int BaseBubblePadding = 10;
+        private const int BaseBubbleRadius = 8;
+        private const int BaseTimestampHeight = 14;
+        private const int BaseHorizontalMargin = 8;
+        private const int BaseAvatarSize = 18;
+        private const int BaseAvatarHeaderHeight = 22;
+        private const int BaseImageThumbMaxWidth = 200;
+        private const int BaseImageThumbMaxHeight = 150;
+        private const int BaseImageSpacing = 4;
 
         private static readonly Color UserAvatarBg = ColorTranslator.FromHtml("#4A90D9");
         private static readonly Color AssistantAvatarBg = ColorTranslator.FromHtml("#6B7280");
-        private static readonly Font AvatarFont = new Font("Segoe UI", 7f, FontStyle.Bold);
-        private static readonly Font NameFont = new Font("Segoe UI", 7.5f);
+
+        // Instance fonts — derived from the fontSize parameter
+        private Font _messageFont;
+        private Font _timestampFont;
+        private Font _avatarFont;
+        private Font _nameFont;
 
         private readonly ChatMessage _message;
         private readonly bool _isUser;
@@ -56,17 +59,55 @@ namespace Supervertaler.Trados.Controls
         private int _imageAreaHeight;
         private Rectangle _bubbleRect;
 
+        private void CreateFonts(float fontSize)
+        {
+            _messageFont?.Dispose();
+            _timestampFont?.Dispose();
+            _avatarFont?.Dispose();
+            _nameFont?.Dispose();
+
+            _messageFont = new Font("Segoe UI", fontSize);
+            _timestampFont = new Font("Segoe UI", Math.Max(6f, fontSize - 2f));
+            _avatarFont = new Font("Segoe UI", Math.Max(6f, fontSize - 2f), FontStyle.Bold);
+            _nameFont = new Font("Segoe UI", Math.Max(6f, fontSize - 1.5f));
+        }
+
+        /// <summary>
+        /// Updates the font size and recalculates the bubble layout.
+        /// Called when the user changes font size via A+/A- buttons.
+        /// </summary>
+        public void UpdateFontSize(float fontSize, int maxWidth)
+        {
+            CreateFonts(fontSize);
+            if (_rtb != null) _rtb.Font = _messageFont;
+            CalculateSize(maxWidth);
+            Invalidate();
+        }
+
+        // Scaled pixel helpers — apply UiScale to base constants
+        private static int BubblePadding => UiScale.Pixels(BaseBubblePadding);
+        private static int BubbleRadius => UiScale.Pixels(BaseBubbleRadius);
+        private static int TimestampHeight => UiScale.Pixels(BaseTimestampHeight);
+        private static int HorizontalMargin => UiScale.Pixels(BaseHorizontalMargin);
+        private static int AvatarSize => UiScale.Pixels(BaseAvatarSize);
+        private static int AvatarHeaderHeight => UiScale.Pixels(BaseAvatarHeaderHeight);
+        private static int ImageThumbMaxWidth => UiScale.Pixels(BaseImageThumbMaxWidth);
+        private static int ImageThumbMaxHeight => UiScale.Pixels(BaseImageThumbMaxHeight);
+        private static int ImageSpacing => UiScale.Pixels(BaseImageSpacing);
+
         /// <summary>Raised when user clicks "Apply to target" on an assistant bubble.</summary>
         public event EventHandler<string> ApplyRequested;
 
         /// <summary>Raised when user clicks "Save as Prompt" on an assistant bubble.</summary>
         public event EventHandler<string> SaveAsPromptRequested;
 
-        public ChatBubble(ChatMessage message, int maxWidth)
+        public ChatBubble(ChatMessage message, int maxWidth, float fontSize = 9f)
         {
             _message = message;
             _isUser = message.Role == ChatRole.User;
             _timestampText = message.Timestamp.ToString("HH:mm");
+
+            CreateFonts(fontSize);
 
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
@@ -129,7 +170,7 @@ namespace Supervertaler.Trados.Controls
                 ScrollBars = RichTextBoxScrollBars.None,
                 BackColor = _isUser ? UserBg : AssistantBg,
                 ForeColor = TextColor,
-                Font = MessageFont,
+                Font = _messageFont,
                 Cursor = Cursors.IBeam,
                 DetectUrls = false,
                 WordWrap = true,
@@ -272,10 +313,10 @@ namespace Supervertaler.Trados.Controls
             _rtb.Height = 100000; // allow full layout
 
             if (_rtb.TextLength == 0)
-                return (int)Math.Ceiling(MessageFont.GetHeight()) + 4;
+                return (int)Math.Ceiling(_messageFont.GetHeight()) + 4;
 
             var pos = _rtb.GetPositionFromCharIndex(_rtb.TextLength - 1);
-            var lineHeight = (int)Math.Ceiling(MessageFont.GetHeight() * 1.3f);
+            var lineHeight = (int)Math.Ceiling(_messageFont.GetHeight() * 1.3f);
             return Math.Max(lineHeight, pos.Y + lineHeight);
         }
 
@@ -295,7 +336,7 @@ namespace Supervertaler.Trados.Controls
             // If user bubble is right-aligned, right-align the avatar too
             if (_isUser)
                 avatarX = _bubbleRect.Right - AvatarSize
-                    - (int)g.MeasureString(nameText, NameFont).Width - 6;
+                    - (int)g.MeasureString(nameText, _nameFont).Width - 6;
 
             // Circle
             using (var brush = new SolidBrush(avatarBg))
@@ -328,14 +369,14 @@ namespace Supervertaler.Trados.Controls
             else
             {
                 // "AI" text inside circle
-                var avatarTextSize = g.MeasureString(avatarText, AvatarFont);
-                g.DrawString(avatarText, AvatarFont, Brushes.White,
+                var avatarTextSize = g.MeasureString(avatarText, _avatarFont);
+                g.DrawString(avatarText, _avatarFont, Brushes.White,
                     avatarX + (AvatarSize - avatarTextSize.Width) / 2f,
                     avatarY + (AvatarSize - avatarTextSize.Height) / 2f);
             }
 
             // Name label next to circle
-            g.DrawString(nameText, NameFont, new SolidBrush(Color.FromArgb(100, 100, 100)),
+            g.DrawString(nameText, _nameFont, new SolidBrush(Color.FromArgb(100, 100, 100)),
                 avatarX + AvatarSize + 4, avatarY + 1);
 
             // Draw rounded rectangle background
@@ -356,7 +397,7 @@ namespace Supervertaler.Trados.Controls
                 _bubbleRect.Width - BubblePadding * 2,
                 TimestampHeight);
 
-            TextRenderer.DrawText(g, _timestampText, TimestampFont,
+            TextRenderer.DrawText(g, _timestampText, _timestampFont,
                 tsRect, TimestampColor,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
         }
@@ -466,6 +507,10 @@ namespace Supervertaler.Trados.Controls
             if (disposing)
             {
                 _rtb?.Dispose();
+                _messageFont?.Dispose();
+                _timestampFont?.Dispose();
+                _avatarFont?.Dispose();
+                _nameFont?.Dispose();
                 foreach (var picBox in _imageThumbs)
                 {
                     picBox.Image?.Dispose();

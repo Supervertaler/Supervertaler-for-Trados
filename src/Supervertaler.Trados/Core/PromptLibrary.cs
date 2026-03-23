@@ -994,6 +994,19 @@ Using the project context above, suggest the best translation for ""{{SELECTION}
         }
 
         /// <summary>
+        /// Deletes a folder and all its contents from the prompt library.
+        /// </summary>
+        public void DeleteFolder(string relativePath)
+        {
+            var fullPath = Path.Combine(PromptsDir, relativePath);
+            if (Directory.Exists(fullPath))
+            {
+                Directory.Delete(fullPath, recursive: true);
+                Refresh();
+            }
+        }
+
+        /// <summary>
         /// Moves a prompt file to a different folder within the prompt library.
         /// </summary>
         public void MovePrompt(PromptTemplate prompt, string newFolderRelative)

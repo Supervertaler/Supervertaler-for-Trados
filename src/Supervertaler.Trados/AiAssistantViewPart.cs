@@ -117,6 +117,10 @@ namespace Supervertaler.Trados
             _control.Value.SettingsRequested += OnSettingsRequested;
             _control.Value.ModelChangeRequested += OnModelChangeRequested;
 
+            // Chat font size: restore persisted size and wire change handler
+            _control.Value.SetChatFontSize(_settings.ChatFontSize);
+            _control.Value.ChatFontSizeChanged += OnChatFontSizeChanged;
+
             // Wire batch translate control events
             var batchControl = _control.Value.BatchTranslateControl;
             batchControl.TranslateRequested += OnBatchTranslateRequested;
@@ -221,13 +225,21 @@ namespace Supervertaler.Trados
             });
         }
 
+        // ─── Chat font size ────────────────────────────────────────
+
+        private void OnChatFontSizeChanged(object sender, EventArgs e)
+        {
+            _settings.ChatFontSize = _control.Value.ChatFontSize;
+            _settings.Save();
+        }
+
         // ─── Settings ───────────────────────────────────────────────
 
         private void OnSettingsRequested(object sender, EventArgs e)
         {
             SafeInvoke(() =>
             {
-                using (var form = new TermLensSettingsForm(_settings, _promptLibrary, defaultTab: 1))
+                using (var form = new TermLensSettingsForm(_settings, _promptLibrary, defaultTab: 2))
                 {
                     var parent = _control.Value.FindForm();
                     var result = parent != null

@@ -134,6 +134,9 @@ namespace Supervertaler.Trados
             // Load persisted settings
             _settings = TermLensSettings.Load();
 
+            // Apply global UI scale factor before any controls are created
+            UiScale.Factor = _settings.UiScaleFactor;
+
             // Initialize prompt library and seed built-in prompts on first run
             _promptLibrary = new PromptLibrary();
             _promptLibrary.EnsureBuiltInPrompts();
@@ -823,7 +826,7 @@ namespace Supervertaler.Trados
         {
             SafeInvoke(() =>
             {
-                using (var form = new TermLensSettingsForm(_settings, _promptLibrary, defaultTab: 0))
+                using (var form = new TermLensSettingsForm(_settings, _promptLibrary, defaultTab: 1))
                 {
                     // Find a parent window handle for proper dialog parenting
                     var parent = _control.Value.FindForm();
@@ -1281,6 +1284,7 @@ namespace Supervertaler.Trados
             var instance = _currentInstance;
             if (instance == null) return;
             instance._settings = TermLensSettings.Load();
+            UiScale.Factor = instance._settings.UiScaleFactor;
             _control.Value.SetFontSize(instance._settings.PanelFontSize);
             TermBlock.UseRepeatedDigitBadges = instance._settings.TermShortcutStyle == "repeated";
         }

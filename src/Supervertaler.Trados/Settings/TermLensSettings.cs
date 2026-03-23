@@ -100,6 +100,21 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "panelFontSize")]
         public float PanelFontSize { get; set; } = 9f;
 
+        /// <summary>
+        /// Font size (in points) for the AI Assistant chat bubbles. Default: 9pt.
+        /// Adjustable via the A+/A- buttons in the chat header.
+        /// </summary>
+        [DataMember(Name = "chatFontSize")]
+        public float ChatFontSize { get; set; } = 9f;
+
+        // ─── UI scale factor ──────────────────────────────────────────
+        /// <summary>
+        /// Global UI scale factor for all Supervertaler controls. Default: 1.0 (100%).
+        /// Applied on top of Windows DPI scaling. Requires Trados restart to take full effect.
+        /// </summary>
+        [DataMember(Name = "uiScaleFactor")]
+        public float UiScaleFactor { get; set; } = 1.0f;
+
         // ─── Term shortcut style ────────────────────────────────────────
         /// <summary>
         /// How Alt+digit shortcuts work for terms beyond 9.
@@ -227,6 +242,14 @@ namespace Supervertaler.Trados.Settings
                     if (s.AiSettings.SelectedPromptPath == null)
                         s.AiSettings.SelectedPromptPath = "";
                     // CustomSystemPrompt is intentionally nullable (null = use default)
+
+                    // Migrate: UI scale factor missing or invalid from older settings
+                    if (s.UiScaleFactor <= 0f || s.UiScaleFactor > 3f)
+                        s.UiScaleFactor = 1.0f;
+
+                    // Migrate: chat font size missing from older settings (deserializes as 0)
+                    if (s.ChatFontSize <= 0f)
+                        s.ChatFontSize = 9f;
 
                     // Ensure update checker field is never null
                     if (s.SkippedUpdateVersion == null)

@@ -40,6 +40,7 @@ namespace Supervertaler.Trados.Settings
         private CheckBox _chkCaseSensitive;
         private CheckBox _chkUsageStats;
         private NumericUpDown _nudFontSize;
+        private ComboBox _cboUiScale;
         private ComboBox _cboShortcutStyle;
         private NumericUpDown _nudChordDelay;
 
@@ -132,6 +133,11 @@ namespace Supervertaler.Trados.Settings
                 Padding = new Point(6, 3)
             };
 
+            // --- General tab ---
+            var generalPage = new TabPage("General") { BackColor = Color.White };
+            BuildGeneralTab(generalPage);
+            _tabControl.TabPages.Add(generalPage);
+
             // --- TermLens tab ---
             var termLensPage = new TabPage("TermLens") { BackColor = Color.White };
             BuildTermLensTab(termLensPage);
@@ -170,6 +176,89 @@ namespace Supervertaler.Trados.Settings
         }
 
         /// <summary>
+        /// Builds the General tab — plugin-wide settings that are not specific to TermLens or AI.
+        /// </summary>
+        private void BuildGeneralTab(TabPage page)
+        {
+            // ─── Appearance section ─────────────────────────────────
+            var lblAppearance = new Label
+            {
+                Text = "Appearance",
+                Location = new Point(10, 12),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(50, 50, 50)
+            };
+
+            var lblUiScale = new Label
+            {
+                Text = "UI scale:",
+                Location = new Point(10, 40),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(60, 60, 60)
+            };
+
+            _cboUiScale = new ComboBox
+            {
+                Location = new Point(80, 37),
+                Width = 70,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            _cboUiScale.Items.AddRange(new object[] { "100%", "110%", "125%", "150%" });
+            var scalePercent = (int)Math.Round(_settings.UiScaleFactor * 100);
+            var scaleText = scalePercent + "%";
+            var idx = _cboUiScale.Items.IndexOf(scaleText);
+            _cboUiScale.SelectedIndex = idx >= 0 ? idx : 0;
+
+            var lblScaleNote = new Label
+            {
+                Text = "(restart required)",
+                Location = new Point(156, 40),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(140, 140, 140),
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic)
+            };
+
+            // ─── Privacy section ────────────────────────────────────
+            var sepPrivacy = new Label
+            {
+                Location = new Point(10, 72),
+                Height = 1,
+                Width = 500,
+                BorderStyle = BorderStyle.Fixed3D,
+                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
+            };
+
+            var lblPrivacy = new Label
+            {
+                Text = "Privacy",
+                Location = new Point(10, 82),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(50, 50, 50)
+            };
+
+            _chkUsageStats = new CheckBox
+            {
+                Text = "Share anonymous usage statistics (no personal data)",
+                Location = new Point(10, 108),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(60, 60, 60)
+            };
+
+            var tips = new ToolTip();
+            tips.SetToolTip(_chkUsageStats,
+                "Sends a single anonymous ping on startup (plugin version, OS, Trados version, locale).\n" +
+                "No personal data, translation content, or termbase info is ever collected.");
+
+            page.Controls.AddRange(new Control[]
+            {
+                lblAppearance, lblUiScale, _cboUiScale, lblScaleNote,
+                sepPrivacy, lblPrivacy, _chkUsageStats
+            });
+        }
+
+        /// <summary>
         /// Builds all TermLens controls inside the given TabPage.
         /// Layout is the same as the original flat form, but relative to the tab page.
         /// </summary>
@@ -183,7 +272,7 @@ namespace Supervertaler.Trados.Settings
             // Bottom: separator, auto-load, font size (fixed height)
             // Middle: DataGridView fills remaining space
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 138, Width = w, BackColor = Color.White };
-            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 170, BackColor = Color.White };
+            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 145, BackColor = Color.White };
             var gridPanel = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -577,14 +666,6 @@ namespace Supervertaler.Trados.Settings
                 ForeColor = Color.FromArgb(100, 100, 100)
             };
 
-            _chkUsageStats = new CheckBox
-            {
-                Text = "Share anonymous usage statistics (no personal data)",
-                Location = new Point(10, 142),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
-
             var tips = new ToolTip();
             tips.SetToolTip(_btnOpenTermbase,
                 "Open the selected termbase in the built-in termbase editor.");
@@ -605,9 +686,6 @@ namespace Supervertaler.Trados.Settings
             tips.SetToolTip(_chkCaseSensitive,
                 "When checked, terms only match if the case matches exactly.\n" +
                 "Individual termbases can override this using the Case column above.");
-            tips.SetToolTip(_chkUsageStats,
-                "Sends a single anonymous ping on startup (plugin version, OS, Trados version, locale).\n" +
-                "No personal data, translation content, or termbase info is ever collected.");
 
             // Add controls to their respective panels
             topPanel.Controls.AddRange(new Control[]
@@ -622,8 +700,7 @@ namespace Supervertaler.Trados.Settings
                 sep, _chkAutoLoad, _chkCaseSensitive,
                 lblFontSize, _nudFontSize, lblFontPt,
                 lblShortcutStyle, _cboShortcutStyle,
-                lblChordDelay, _nudChordDelay, lblChordMs,
-                _chkUsageStats
+                lblChordDelay, _nudChordDelay, lblChordMs
             });
 
             gridPanel.Controls.Add(_dgvTermbases);
@@ -876,6 +953,9 @@ namespace Supervertaler.Trados.Settings
             _chkCaseSensitive.Checked = _settings.CaseSensitiveMatching;
             _chkUsageStats.Checked = _settings.UsageStatisticsEnabled;
             _nudFontSize.Value = Math.Max(_nudFontSize.Minimum, Math.Min(_nudFontSize.Maximum, (decimal)_settings.PanelFontSize));
+            var curScaleText = ((int)Math.Round(_settings.UiScaleFactor * 100)) + "%";
+            var scaleIdx = _cboUiScale.Items.IndexOf(curScaleText);
+            _cboUiScale.SelectedIndex = scaleIdx >= 0 ? scaleIdx : 0;
             UpdateTermbaseInfo(_settings.TermbasePath);
             PopulateTermbaseList(_settings.TermbasePath);
 
@@ -1310,6 +1390,15 @@ namespace Supervertaler.Trados.Settings
             if (_settings.UsageStatisticsEnabled && string.IsNullOrEmpty(_settings.UsageStatisticsId))
                 _settings.UsageStatisticsId = System.Guid.NewGuid().ToString("D");
             _settings.PanelFontSize = (float)_nudFontSize.Value;
+
+            // Parse UI scale from dropdown (e.g. "125%" → 1.25f)
+            if (_cboUiScale.SelectedItem is string scaleStr)
+            {
+                scaleStr = scaleStr.TrimEnd('%');
+                if (int.TryParse(scaleStr, out var pct) && pct > 0)
+                    _settings.UiScaleFactor = pct / 100f;
+            }
+
             _settings.TermShortcutStyle = _cboShortcutStyle.SelectedIndex == 1 ? "repeated" : "sequential";
             _settings.ChordDelayMs = (int)_nudChordDelay.Value;
 
