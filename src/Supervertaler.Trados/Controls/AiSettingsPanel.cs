@@ -47,6 +47,7 @@ namespace Supervertaler.Trados.Controls
         private Label _lblSurroundingSegments;
         private NumericUpDown _nudSurroundingSegments;
         private CheckBox _chkIncludeTermMetadata;
+        private CheckBox _chkLogPrompts;
         private CheckedListBox _clbAiTermbases;
         private Label _lblAiContextHeader;
         private Label _lblAiTermbases;
@@ -467,6 +468,21 @@ namespace Supervertaler.Trados.Controls
                 "alongside matched terminology in the AI prompt.");
             Controls.Add(_chkIncludeTermMetadata);
 
+            _chkLogPrompts = new CheckBox
+            {
+                Text = "Log prompts and responses to Reports tab",
+                Location = new Point(16, 0), // positioned dynamically
+                AutoSize = true,
+                ForeColor = labelColor,
+                Checked = false
+            };
+            var logTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            logTip.SetToolTip(_chkLogPrompts,
+                "When enabled, every AI API call is logged to the Reports tab with\r\n" +
+                "the full prompt, response, estimated token counts, and cost.\r\n" +
+                "Useful for monitoring costs and debugging prompt behaviour.");
+            Controls.Add(_chkLogPrompts);
+
             _lblAiTermbases = new Label
             {
                 Text = "Termbases included in AI prompts:",
@@ -585,6 +601,9 @@ namespace Supervertaler.Trados.Controls
             _chkIncludeTermMetadata.Location = new Point(16, y);
             y += 28;
 
+            _chkLogPrompts.Location = new Point(16, y);
+            y += 28;
+
             _lblAiTermbases.Location = new Point(16, y);
             _lnkSelectAll.Location = new Point(_lblAiTermbases.Right + 8, y + 2);
             _lnkDeselectAll.Location = new Point(_lnkSelectAll.Right + 4, y + 2);
@@ -656,6 +675,7 @@ namespace Supervertaler.Trados.Controls
             _nudSurroundingSegments.Value = Math.Max(_nudSurroundingSegments.Minimum,
                 Math.Min(_nudSurroundingSegments.Maximum, settings.QuickLauncherSurroundingSegments));
             _chkIncludeTermMetadata.Checked = settings.IncludeTermMetadata;
+            _chkLogPrompts.Checked = settings.LogPromptsToReports;
         }
 
         /// <summary>
@@ -742,6 +762,7 @@ namespace Supervertaler.Trados.Controls
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;
             settings.QuickLauncherSurroundingSegments = (int)_nudSurroundingSegments.Value;
             settings.IncludeTermMetadata = _chkIncludeTermMetadata.Checked;
+            settings.LogPromptsToReports = _chkLogPrompts.Checked;
 
             // Build disabled AI termbase IDs from unchecked items
             var disabledIds = new List<long>();

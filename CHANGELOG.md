@@ -1,19 +1,20 @@
 # Changelog
 
-## [4.18.5] — 2026-03-23
-
-### Fixed
-- **Tracked changes no longer corrupt term additions** — Add Term (Ctrl+Alt+T), Quick-Add (Alt+Down/Up), Non-Translatable (Ctrl+Alt+N), QuickLauncher prompts, and Expand Selection now strip deleted tracked changes, adding only the final text
-- **QuickLauncher segment context** — QuickLauncher chat prompts and slot runner now pass clean segment text without tracked changes markup
-- **Prompt log expandable sections now visible** — the "Show system prompt...", "Show messages...", "Show response...", and "Copy all" links in the Reports tab were invisible due to a layout calculation bug; now correctly positioned and clickable
+## [4.18.6] — 2026-03-23
 
 ### Added
-- **Prompt name in Reports tab** — QuickLauncher entries now show the prompt template name in the header (e.g. "QuickLauncher · Explain in Context · 14:32:05") instead of generic "Chat"
-- **Clone prompt** — right-click any prompt in the Prompt Manager and select "Clone" to create a copy with "(2)" appended to the name
-- **QuickLauncher menu heading** — Ctrl+Q menu now shows "Supervertaler QuickLauncher" at the top; click it to open the QuickLauncher prompts folder in Windows Explorer
+- **Prompt inspector in Reports tab** — every AI API call can now be logged with the full system prompt, messages, response, token counts, and estimated cost; enable via "Log prompts and responses to Reports tab" in AI Settings
+- **Expandable prompt sections** — click "Show system prompt...", "Show messages...", or "Show response..." to view the full text; press Escape to collapse; "Copy" copies a single section, "Copy all" copies everything
+- **Batch translate and proofread logging** — batch operations now appear in the Reports tab when prompt logging is enabled
+- **Prompt name in Reports tab** — entries show the prompt template name (e.g. "QuickLauncher · Explain in Context · 14:32:05")
+- **Clone prompt** — right-click any prompt in the Prompt Manager and select "Clone" to create a copy with "(2)" appended
+- **QuickLauncher menu heading** — Ctrl+Q menu now shows "Supervertaler QuickLauncher" at the top; click it to open Settings → Prompts tab
 
-### Fixed (prompts)
-- **New prompts in subfolders now saved correctly** — creating a prompt while a subfolder (e.g. QuickLauncher/Trados-specific) was selected would create a wrongly-named folder with underscores instead of placing the file in the correct subfolder
+### Fixed
+- **Tracked changes no longer corrupt term additions** — Add Term, Quick-Add, Non-Translatable, QuickLauncher prompts, and Expand Selection now strip deleted tracked changes, adding only the final text
+- **QuickLauncher segment context** — QuickLauncher prompts now pass clean segment text without tracked changes markup
+- **Prompt log cards no longer squashed** — the resize handler was recalculating prompt log card heights using the proofreading layout logic, hiding all expandable sections
+- **New prompts in subfolders now saved correctly** — creating a prompt while a subfolder was selected would create a wrongly-named folder instead of placing the file in the correct subfolder
 
 ---
 

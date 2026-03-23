@@ -507,12 +507,13 @@ namespace Supervertaler.Trados.Controls
             }
 
             // Copy All link
+            var copyAllSize = TextRenderer.MeasureText("Copy all", smallFont);
             var lnkCopyAll = new LinkLabel
             {
                 Text = "Copy all",
                 Font = smallFont,
                 Location = new Point(8, yPos),
-                AutoSize = true,
+                Size = new System.Drawing.Size(copyAllSize.Width + 4, Math.Max(14, copyAllSize.Height)),
                 LinkColor = PromptHeaderColor,
                 ActiveLinkColor = PromptHeaderColor
             };
@@ -523,8 +524,18 @@ namespace Supervertaler.Trados.Controls
             };
             card.Controls.Add(lnkCopyAll);
 
-            var copyAllHeight = Math.Max(14, TextRenderer.MeasureText("Copy all", smallFont).Height);
-            card.Height = Math.Max(40, yPos + copyAllHeight + 8);
+            var copyAllHeight = Math.Max(14, copyAllSize.Height);
+            // Calculate height from actual control positions
+            int maxBottom = 0;
+            foreach (Control ctrl in card.Controls)
+            {
+                if (ctrl.Visible)
+                {
+                    int b = ctrl.Top + ctrl.Height;
+                    if (b > maxBottom) maxBottom = b;
+                }
+            }
+            card.Height = Math.Max(Math.Max(40, yPos + copyAllHeight + 8), maxBottom + 8);
 
             // Hover effect
             Action<Control> applyHover = null;
@@ -564,13 +575,14 @@ namespace Supervertaler.Trados.Controls
             int yPos, int textWidth, Font linkFont, Font contentFont)
         {
             var toggleText = $"Show {title.ToLowerInvariant()}...";
-            var toggleHeight = Math.Max(14, TextRenderer.MeasureText(toggleText, linkFont).Height);
+            var toggleSize = TextRenderer.MeasureText(toggleText, linkFont);
+            var toggleHeight = Math.Max(14, toggleSize.Height);
             var lnkToggle = new LinkLabel
             {
                 Text = toggleText,
                 Font = linkFont,
                 Location = new Point(8, yPos),
-                AutoSize = true,
+                Size = new System.Drawing.Size(Math.Max(80, toggleSize.Width + 4), toggleHeight),
                 LinkColor = PromptHeaderColor,
                 ActiveLinkColor = PromptHeaderColor,
                 Tag = "toggle"
@@ -593,17 +605,18 @@ namespace Supervertaler.Trados.Controls
                 Height = Math.Min(150, Math.Max(40, content.Split('\n').Length * 16 + 10))
             };
 
+            var copySize = TextRenderer.MeasureText("Copy", linkFont);
             var lnkCopy = new LinkLabel
             {
                 Text = "Copy",
                 Font = linkFont,
-                AutoSize = true,
+                Size = new System.Drawing.Size(copySize.Width + 4, Math.Max(14, copySize.Height)),
                 LinkColor = PromptHeaderColor,
                 ActiveLinkColor = PromptHeaderColor,
                 Visible = false,
                 Tag = "copy"
             };
-            lnkCopy.Location = new Point(lnkToggle.Right + 8, yPos);
+            lnkCopy.Location = new Point(8 + toggleSize.Width + 12, yPos);
             lnkCopy.Click += (s, e) =>
             {
                 try { Clipboard.SetText(content); }
@@ -622,6 +635,20 @@ namespace Supervertaler.Trados.Controls
                 // Recalculate card height
                 RecalcPromptCardHeight(capturedCard);
                 RelayoutCards();
+            };
+
+            // Escape key collapses the expanded section
+            txtContent.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Escape)
+                {
+                    txtContent.Visible = false;
+                    lnkCopy.Visible = false;
+                    lnkToggle.Text = $"Show {title.ToLowerInvariant()}...";
+                    RecalcPromptCardHeight(capturedCard);
+                    RelayoutCards();
+                    e.Handled = true;
+                }
             };
 
             card.Controls.Add(lnkToggle);
@@ -723,6 +750,18 @@ namespace Supervertaler.Trados.Controls
                 if (card == null) continue;
 
                 card.Location = new Point(4, yPos);
+
+                // Prompt log cards manage their own height — skip LayoutCard for them
+                if (card.Tag is PromptLogEntry)
+                {
+                    // Just update width to match panel
+                    var pw = _resultsPanel.ClientSize.Width
+                        - SystemInformation.VerticalScrollBarWidth - 24;
+                    if (pw < 100) pw = 300;
+                    card.Width = pw;
+                    yPos += card.Height + 4;
+                    continue;
+                }
 
                 // Find labels inside card (skip CheckBox controls)
                 Label lblSegNum = null, lblDesc = null, lblSugg = null;

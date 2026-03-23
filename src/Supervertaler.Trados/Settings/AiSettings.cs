@@ -135,6 +135,13 @@ namespace Supervertaler.Trados.Settings
         public bool IncludeTermMetadata { get; set; } = true;
 
         /// <summary>
+        /// When enabled, every AI API call is logged to the Reports tab with
+        /// the full prompt, response, estimated token counts, and cost.
+        /// </summary>
+        [DataMember(Name = "logPromptsToReports")]
+        public bool LogPromptsToReports { get; set; }
+
+        /// <summary>
         /// Sets the model for the given provider and makes it the active provider.
         /// </summary>
         public void SetProviderAndModel(string providerKey, string modelId)

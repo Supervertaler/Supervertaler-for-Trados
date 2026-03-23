@@ -137,7 +137,8 @@ namespace Supervertaler.Trados.Core
 
                         // Call LLM
                         var response = await client.SendPromptAsync(
-                            userPrompt, systemPrompt, maxTokens, cancellationToken);
+                            userPrompt, systemPrompt, maxTokens, cancellationToken,
+                            feature: Models.PromptLogFeature.Proofread);
 
                         // Parse response
                         var parsed = ProofreadingPrompt.ParseBatchResponse(
