@@ -107,13 +107,13 @@ namespace Supervertaler.Trados.Controls
             var lblApp = new Label
             {
                 Text = "App:",
-                Location = new Point(316, y + 3),
+                Location = new Point(310, y + 3),
                 AutoSize = true,
                 ForeColor = labelColor
             };
             _cboApp = new ComboBox
             {
-                Location = new Point(350, y),
+                Location = new Point(355, y),
                 Width = 130,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left

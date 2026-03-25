@@ -121,7 +121,7 @@ namespace Supervertaler.Trados
             header.Click += (s, e) =>
             {
                 using (var form = new Settings.TermLensSettingsForm(
-                    Settings.TermLensSettings.Load(), new Core.PromptLibrary(), defaultTab: 2))
+                    Settings.TermLensSettings.Load(), new Core.PromptLibrary(), defaultTab: 3))
                 {
                     form.ShowDialog();
                 }
