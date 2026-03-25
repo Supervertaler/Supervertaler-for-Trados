@@ -2,7 +2,7 @@ namespace Supervertaler.Trados.Models
 {
     /// <summary>
     /// Represents a prompt template loaded from the shared prompt library.
-    /// Stored as .svprompt files (Markdown + YAML frontmatter).
+    /// Stored as .md files (Markdown + YAML frontmatter). Legacy .svprompt files also supported.
     /// </summary>
     public class PromptTemplate
     {
@@ -22,8 +22,14 @@ namespace Supervertaler.Trados.Models
         /// <summary>The actual prompt text (everything after the YAML frontmatter).</summary>
         public string Content { get; set; } = "";
 
-        /// <summary>Full filesystem path to the .svprompt file.</summary>
+        /// <summary>Full filesystem path to the prompt file (.md or legacy .svprompt).</summary>
         public string FilePath { get; set; } = "";
+
+        /// <summary>
+        /// Document type (from YAML 'type:' field). Default "prompt".
+        /// Used to identify Supervertaler document types in plain .md files.
+        /// </summary>
+        public string Type { get; set; } = "prompt";
 
         /// <summary>
         /// Relative path from the prompts root directory.

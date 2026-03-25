@@ -13,7 +13,7 @@ namespace Supervertaler.Trados.Settings
     /// reads and writes.
     ///
     /// Folder layout under the root:
-    ///   prompt_library/     — .svprompt files shared between both products
+    ///   prompt_library/     — prompt .md files shared between both products
     ///   resources/          — supervertaler.db (shared termbase, if present)
     ///   workbench/          — Supervertaler Workbench-specific data
     ///     settings/         — Workbench settings files
@@ -68,7 +68,7 @@ namespace Supervertaler.Trados.Settings
 
         // ── Shared directories ───────────────────────────────────────
 
-        /// <summary>.svprompt files shared between Workbench and the Trados plugin.</summary>
+        /// <summary>Prompt .md files shared between Workbench and the Trados plugin.</summary>
         public static string PromptLibraryDir => Path.Combine(Root, "prompt_library");
 
         /// <summary>Shared resources folder (supervertaler.db lives here).</summary>

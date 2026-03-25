@@ -1178,7 +1178,7 @@ namespace Supervertaler.Trados.Controls
             for (int i = 2; i <= 99; i++)
             {
                 var candidate = $"{baseName} ({i})";
-                var candidatePath = Path.Combine(dir, candidate + ".svprompt");
+                var candidatePath = Path.Combine(dir, candidate + ".md");
                 if (!System.IO.File.Exists(candidatePath))
                 {
                     cloneName = candidate;

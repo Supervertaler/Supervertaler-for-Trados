@@ -10,7 +10,7 @@ namespace Supervertaler.Trados.Core
 {
     /// <summary>
     /// Manages the prompt template library: loading, saving, and built-in prompt seeding.
-    /// Prompts are stored as .svprompt files in the shared UserDataPath.PromptLibraryDir,
+    /// Prompts are stored as .md files (Markdown with YAML frontmatter) in the shared UserDataPath.PromptLibraryDir,
     /// which is the same folder Supervertaler Workbench uses — so prompts are automatically
     /// shared between both products.
     /// </summary>
@@ -216,11 +216,12 @@ namespace Supervertaler.Trados.Core
                         folder = Path.Combine(folder, SanitizeFileName(part));
                 }
                 Directory.CreateDirectory(folder);
-                filePath = Path.Combine(folder, SanitizeFileName(prompt.Name) + ".svprompt");
+                filePath = Path.Combine(folder, SanitizeFileName(prompt.Name) + ".md");
             }
 
             var sb = new StringBuilder();
             sb.AppendLine("---");
+            sb.AppendLine("type: prompt");
             sb.AppendLine("name: \"" + EscapeYamlString(prompt.Name) + "\"");
             if (!string.IsNullOrEmpty(prompt.Description))
                 sb.AppendLine("description: \"" + EscapeYamlString(prompt.Description) + "\"");
@@ -292,16 +293,32 @@ namespace Supervertaler.Trados.Core
                     : Path.Combine(PromptsDir, builtin.Domain);
                 Directory.CreateDirectory(folder);
 
-                var filePath = Path.Combine(folder, SanitizeFileName(builtin.Name) + ".svprompt");
+                var sanitisedName = SanitizeFileName(builtin.Name);
+
+                // Clean up old .svprompt version if it's still a built-in (not user-modified)
+                var oldSvpromptPath = Path.Combine(folder, sanitisedName + ".svprompt");
+                if (File.Exists(oldSvpromptPath))
+                {
+                    try
+                    {
+                        var oldContent = File.ReadAllText(oldSvpromptPath);
+                        if (oldContent.Contains("built_in: true"))
+                            File.Delete(oldSvpromptPath);
+                    }
+                    catch { /* ignore — file locked or permissions */ }
+                }
+
+                var filePath = Path.Combine(folder, sanitisedName + ".md");
                 if (!File.Exists(filePath))
                 {
                     var sb = new StringBuilder();
                     sb.AppendLine("---");
+                    sb.AppendLine("type: prompt");
                     sb.AppendLine("name: \"" + EscapeYamlString(builtin.Name) + "\"");
                     if (!string.IsNullOrEmpty(builtin.Description))
                         sb.AppendLine("description: \"" + EscapeYamlString(builtin.Description) + "\"");
                     if (!string.IsNullOrEmpty(builtin.Domain))
-                        sb.AppendLine("domain: \"" + EscapeYamlString(builtin.Domain) + "\"");
+                        sb.AppendLine("category: \"" + EscapeYamlString(builtin.Domain) + "\"");
                     sb.AppendLine("built_in: true");
                     sb.AppendLine("---");
                     sb.AppendLine();
@@ -367,15 +384,25 @@ namespace Supervertaler.Trados.Core
                     : Path.Combine(PromptsDir, builtin.Domain);
                 Directory.CreateDirectory(folder);
 
-                var filePath = Path.Combine(folder, SanitizeFileName(builtin.Name) + ".svprompt");
+                var sanitisedName = SanitizeFileName(builtin.Name);
+
+                // Clean up old .svprompt version
+                var oldSvpromptPath = Path.Combine(folder, sanitisedName + ".svprompt");
+                if (File.Exists(oldSvpromptPath))
+                {
+                    try { File.Delete(oldSvpromptPath); } catch { }
+                }
+
+                var filePath = Path.Combine(folder, sanitisedName + ".md");
 
                 var sb = new StringBuilder();
                 sb.AppendLine("---");
+                sb.AppendLine("type: prompt");
                 sb.AppendLine("name: \"" + EscapeYamlString(builtin.Name) + "\"");
                 if (!string.IsNullOrEmpty(builtin.Description))
                     sb.AppendLine("description: \"" + EscapeYamlString(builtin.Description) + "\"");
                 if (!string.IsNullOrEmpty(builtin.Domain))
-                    sb.AppendLine("domain: \"" + EscapeYamlString(builtin.Domain) + "\"");
+                    sb.AppendLine("category: \"" + EscapeYamlString(builtin.Domain) + "\"");
                 sb.AppendLine("built_in: true");
                 sb.AppendLine("---");
                 sb.AppendLine();
@@ -395,8 +422,8 @@ namespace Supervertaler.Trados.Core
             {
                 var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                // Scan .svprompt files first (preferred format)
-                foreach (var file in Directory.GetFiles(dir, "*.svprompt", SearchOption.AllDirectories))
+                // Scan .md files first (preferred format)
+                foreach (var file in Directory.GetFiles(dir, "*.md", SearchOption.AllDirectories))
                 {
                     try
                     {
@@ -414,8 +441,8 @@ namespace Supervertaler.Trados.Core
                     }
                 }
 
-                // Also scan .md files (legacy format) — skip if .svprompt version exists
-                foreach (var file in Directory.GetFiles(dir, "*.md", SearchOption.AllDirectories))
+                // Also scan .svprompt files (legacy format) — skip if .md version exists
+                foreach (var file in Directory.GetFiles(dir, "*.svprompt", SearchOption.AllDirectories))
                 {
                     try
                     {
@@ -557,6 +584,9 @@ namespace Supervertaler.Trados.Core
 
                 switch (key)
                 {
+                    case "type":
+                        prompt.Type = value;
+                        break;
                     case "name":
                         prompt.Name = value;
                         break;
