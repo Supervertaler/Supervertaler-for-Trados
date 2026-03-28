@@ -27,6 +27,12 @@ namespace Supervertaler.Trados.Core
         /// Used for cloning when reconstructing the target segment.
         /// </summary>
         public IAbstractMarkupData OriginalMarkup { get; set; }
+
+        /// <summary>
+        /// True when this standalone tag represents a line break (soft return).
+        /// Used to recover from LLMs that emit a literal '\n' instead of the &lt;tN/&gt; placeholder.
+        /// </summary>
+        public bool IsLineBreak { get; set; }
     }
 
     /// <summary>
@@ -139,7 +145,8 @@ namespace Supervertaler.Trados.Core
                     tagMap[tagNum] = new TagInfo
                     {
                         TagType = TagType.Standalone,
-                        OriginalMarkup = placeholder
+                        OriginalMarkup = placeholder,
+                        IsLineBreak = IsLineBreakTag(placeholder)
                     };
 
                     sb.Append("<t").Append(tagNum).Append("/>");
@@ -180,6 +187,41 @@ namespace Supervertaler.Trados.Core
 
                     sb.Append("<t").Append(tagNum).Append("/>");
                 }
+            }
+        }
+
+        // ─── Line-break Detection ────────────────────────────
+
+        /// <summary>
+        /// Returns true when a placeholder tag represents a soft return (line break),
+        /// as opposed to a formatting tag, field code, etc.
+        /// Checks TextEquivalent for newline characters and TagContent for br markup.
+        /// </summary>
+        private static bool IsLineBreakTag(IPlaceholderTag placeholder)
+        {
+            try
+            {
+                var props = placeholder.Properties;
+                if (props == null) return false;
+
+                // TextEquivalent is the most reliable indicator: soft returns have "\n" or "\r\n"
+                var te = props.TextEquivalent;
+                if (!string.IsNullOrEmpty(te) && (te.Contains("\n") || te.Contains("\r")))
+                    return true;
+
+                // TagContent fallback: Word soft returns contain "w:br",
+                // HTML line breaks contain "<br"
+                var tc = props.TagContent;
+                if (!string.IsNullOrEmpty(tc) &&
+                    (tc.IndexOf("w:br", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     tc.IndexOf("<br", StringComparison.OrdinalIgnoreCase) >= 0))
+                    return true;
+
+                return false;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -390,9 +432,16 @@ namespace Supervertaler.Trados.Core
                 {
                     if (!string.IsNullOrEmpty(pt.Text))
                     {
-                        var textClone = (IText)textTemplate.Clone();
-                        textClone.Properties.Text = pt.Text;
-                        container.Add(textClone);
+                        // If the LLM emitted a literal newline instead of a <tN/> placeholder,
+                        // split it and re-insert the appropriate line-break tag from the source.
+                        if (pt.Text.IndexOf('\n') >= 0 || pt.Text.IndexOf('\r') >= 0)
+                            InsertTextWithLineBreaks(container, pt.Text, tagMap, textTemplate);
+                        else
+                        {
+                            var textClone = (IText)textTemplate.Clone();
+                            textClone.Properties.Text = pt.Text;
+                            container.Add(textClone);
+                        }
                     }
                 }
                 else if (element is ParsedStandaloneTag st)
@@ -429,6 +478,53 @@ namespace Supervertaler.Trados.Core
                         // Unknown tag number — add children as plain content (skip the tag wrapper)
                         AddElementsToContainer(container, ot.Children, tagMap, textTemplate);
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Splits text at newline characters and inserts a cloned source line-break tag
+        /// between each piece. Called when the LLM emits a literal '\n' instead of the
+        /// &lt;tN/&gt; placeholder for a soft return.
+        ///
+        /// If the source segment contained no line-break tags, the newlines are simply
+        /// dropped (no bare '\n' is ever written into an IText node).
+        /// </summary>
+        private static void InsertTextWithLineBreaks(
+            IAbstractMarkupDataContainer container,
+            string text,
+            Dictionary<int, TagInfo> tagMap,
+            IText textTemplate)
+        {
+            // Find the first line-break tag in the source tag map
+            TagInfo lineBreakInfo = null;
+            foreach (var kv in tagMap)
+            {
+                if (kv.Value.IsLineBreak)
+                {
+                    lineBreakInfo = kv.Value;
+                    break;
+                }
+            }
+
+            // Normalise \r\n and bare \r to \n, then split
+            var normalised = text.Replace("\r\n", "\n").Replace("\r", "\n");
+            var parts = normalised.Split('\n');
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(parts[i]))
+                {
+                    var textClone = (IText)textTemplate.Clone();
+                    textClone.Properties.Text = parts[i];
+                    container.Add(textClone);
+                }
+
+                // Insert line-break tag between parts — not after the last one
+                if (i < parts.Length - 1 && lineBreakInfo != null)
+                {
+                    var tagClone = (IAbstractMarkupData)lineBreakInfo.OriginalMarkup.Clone();
+                    container.Add(tagClone);
                 }
             }
         }
