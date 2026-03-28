@@ -84,13 +84,19 @@ namespace Supervertaler.Trados.Core
         /// Sends a raw prompt to the LLM. Used by TranslateAsync and available
         /// for the AI Assistant tab.
         /// </summary>
+        /// <param name="suppressLog">
+        /// When true, the PromptCompleted event is NOT fired for this call.
+        /// Use this when the caller (e.g. BatchTranslator) will aggregate multiple
+        /// calls and fire a single consolidated log entry itself.
+        /// </param>
         public async Task<string> SendPromptAsync(
             string prompt,
             string systemPrompt = null,
             int? maxTokens = null,
             CancellationToken cancellationToken = default,
             PromptLogFeature? feature = null,
-            string promptName = null)
+            string promptName = null,
+            bool suppressLog = false)
         {
             var sw = Stopwatch.StartNew();
             string result = null;
@@ -129,9 +135,22 @@ namespace Supervertaler.Trados.Core
             finally
             {
                 sw.Stop();
-                if (feature.HasValue && feature.Value != PromptLogFeature.ConnectionTest)
+                if (!suppressLog && feature.HasValue && feature.Value != PromptLogFeature.ConnectionTest)
                     RaisePromptCompleted(feature.Value, systemPrompt, prompt, null, result, errorMsg, sw.Elapsed, promptName);
             }
+        }
+
+        /// <summary>
+        /// Fires the PromptCompleted event with a pre-built entry.
+        /// Used by BatchTranslator to emit a single aggregated log entry
+        /// after all sub-batches have completed.
+        /// </summary>
+        public static void FirePromptCompleted(PromptLogEntry entry)
+        {
+            var handler = PromptCompleted;
+            if (handler == null || entry == null) return;
+            try { handler(null, entry); }
+            catch { /* never let logging break the caller */ }
         }
 
         /// <summary>

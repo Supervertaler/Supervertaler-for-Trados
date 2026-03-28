@@ -112,6 +112,11 @@ namespace Supervertaler.Trados.Core
             int failed = 0;
             int skipped = 0;
 
+            // Aggregated prompt log accumulators — combined into one Reports entry at the end
+            int aggInputTokens = 0;
+            int aggOutputTokens = 0;
+            bool aggHasError = false;
+
             if (segments == null || segments.Count == 0)
             {
                 Completed?.Invoke(this, new BatchCompletedEventArgs
@@ -190,10 +195,15 @@ namespace Supervertaler.Trados.Core
                         // Build user prompt
                         var userPrompt = TranslationPrompt.BuildBatchUserPrompt(promptSegments);
 
-                        // Call LLM
+                        // Call LLM — suppress per-batch log entries; we fire one aggregated entry at the end
                         var response = await client.SendPromptAsync(
                             userPrompt, systemPrompt, maxTokens, cancellationToken,
-                            feature: Models.PromptLogFeature.BatchTranslate);
+                            feature: Models.PromptLogFeature.BatchTranslate,
+                            suppressLog: true);
+
+                        // Accumulate token counts for the aggregated log entry
+                        aggInputTokens += TokenEstimator.EstimateInputTokens(userPrompt, systemPrompt);
+                        aggOutputTokens += TokenEstimator.EstimateTokens(response);
 
                         // Parse response
                         var parsed = TranslationPrompt.ParseBatchResponse(response, batchCount);
@@ -252,6 +262,7 @@ namespace Supervertaler.Trados.Core
                     {
                         // Log the batch error and continue to next batch
                         failed += batchCount;
+                        aggHasError = true;
                         RaiseProgress(endIdx, segments.Count,
                             $"\u2717 Batch {batchNum + 1} failed: {ex.Message}",
                             true, sw.Elapsed);
@@ -260,6 +271,31 @@ namespace Supervertaler.Trados.Core
             }
 
             sw.Stop();
+
+            // Fire a single aggregated log entry for the entire Batch Translate operation
+            if (aggInputTokens > 0 || aggOutputTokens > 0)
+            {
+                var aggModelInfo = LlmModels.FindModel(model);
+                var aggEntry = new PromptLogEntry
+                {
+                    Timestamp = DateTime.Now,
+                    Feature = PromptLogFeature.BatchTranslate,
+                    PromptName = totalBatches > 1 ? $"{totalBatches} batches · {segments.Count} segments" : null,
+                    Provider = provider,
+                    Model = model,
+                    DisplayModel = aggModelInfo?.DisplayName ?? model,
+                    SystemPrompt = systemPrompt,
+                    UserPrompt = totalBatches > 1
+                        ? $"({totalBatches} batches combined — expand system prompt to see translation instructions)"
+                        : null,
+                    EstimatedInputTokens = aggInputTokens,
+                    EstimatedOutputTokens = aggOutputTokens,
+                    EstimatedCost = TokenEstimator.EstimateCost(model, aggInputTokens, aggOutputTokens),
+                    Duration = sw.Elapsed,
+                    IsError = aggHasError
+                };
+                LlmClient.FirePromptCompleted(aggEntry);
+            }
 
             Completed?.Invoke(this, new BatchCompletedEventArgs
             {

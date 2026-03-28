@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.18] — 2026-03-28
+
+### Changed
+- **Batch Translate reports consolidated** – a multi-batch translate operation now appears as a single entry in the Reports tab (showing combined token count, cost, and total duration) instead of one entry per sub-batch
+
+---
+
 ## [4.18.17] — 2026-03-27
 
 ### Added
