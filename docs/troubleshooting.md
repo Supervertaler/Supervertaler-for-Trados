@@ -134,7 +134,7 @@ See [Installation — Running on a Mac (Parallels)](installation.md#running-on-a
 
 ## Still having issues?
 
-1. Ask a question on the [Supervertaler Forum](https://github.com/orgs/Supervertaler/discussions) — the main community hub for both Supervertaler Workbench and Supervertaler for Trados
+1. Ask a question on the [Supervertaler Forum](https://translationtech.io/c/cat-ai-tools/supervertaler/6) — the official community forum for both Supervertaler Workbench and Supervertaler for Trados
 2. Check the [GitHub Issues](https://github.com/Supervertaler/Supervertaler-for-Trados/issues) for known bugs, feature requests, and workarounds
 3. Open a new issue to report a bug or request a feature, including:
    - Your Trados Studio version
