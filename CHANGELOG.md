@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.18.22] — 2026-03-29
+
+### Added
+- **QuickLauncher folder submenus** — context menu now mirrors your prompt library's folder structure instead of a flat list, making it easier to organise and find prompts
+- **New default prompts** — three Explain prompts (brief, detailed, terminology) and two Files prompts (current filename, segment file source) ship out of the box in dedicated subfolders
+- **Old explain prompts auto-cleaned** — retired explain prompt variants are automatically deleted on startup to avoid duplicates
+
+### Changed
+- **Domain → Category rename** — the `Domain` property on prompts has been renamed to `Category` throughout the UI and codebase for clarity
+- **Support links updated** — About dialog, support docs, and help pages now point to the Supervertaler Forum on TranslationTech; Groups.io and ProZ.com references removed
+
+---
+
 ## [4.18.21] — 2026-03-29
 
 ### Fixed

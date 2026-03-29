@@ -21,6 +21,17 @@ PLUGIN_XML = os.path.join(SRC_DIR, "Supervertaler.Trados.plugin.xml")
 MANIFEST_XML = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
 CSPROJ = os.path.join(SRC_DIR, "Supervertaler.Trados.csproj")
 
+# Matches any existing version value — normal (digits+dots) OR corrupted (anything non-XML)
+VERSION_VALUE = r"[^<\"]+"
+
+
+def validate_version(version):
+    """Ensure the version string looks like a real version number."""
+    if not re.match(r"^\d+\.\d+\.\d+$", version):
+        print(f"ERROR: '{version}' is not a valid version (expected format: X.Y.Z)")
+        print("       Example: python bump_version.py 4.19.0")
+        sys.exit(1)
+
 
 def bump_csproj(new_three):
     """Update .csproj <Version> and <InformationalVersion>."""
@@ -28,7 +39,7 @@ def bump_csproj(new_three):
         text = f.read()
 
     for tag in ("Version", "InformationalVersion"):
-        pattern = re.compile(rf"<{tag}>[\d.]+</{tag}>")
+        pattern = re.compile(rf"<{tag}>{VERSION_VALUE}</{tag}>")
         if not pattern.search(text):
             print(f"  WARNING: <{tag}> not found in .csproj")
             continue
@@ -45,7 +56,7 @@ def bump_manifest(new_four):
     with open(MANIFEST_XML, "r", encoding="utf-8") as f:
         text = f.read()
 
-    pattern = re.compile(r"<Version>[\d.]+</Version>")
+    pattern = re.compile(rf"<Version>{VERSION_VALUE}</Version>")
     if not pattern.search(text):
         print("  WARNING: <Version> not found in manifest")
         return
@@ -69,12 +80,12 @@ def bump_plugin_xml(new_four):
         text = raw.decode("utf-16-le")
 
     # Plugin version attribute (e.g. version="4.18.2.0")
-    ver_pattern = re.compile(r'(<plugin\s[^>]*?)version="[\d.]+"')
+    ver_pattern = re.compile(r'(<plugin\s[^>]*?)version="[^"]+"')
     c1 = len(ver_pattern.findall(text))
     text = ver_pattern.sub(rf'\1version="{new_four}"', text)
 
-    # Assembly binding references — match ANY version for Supervertaler.Trados
-    asm_pattern = re.compile(r"Supervertaler\.Trados, Version=[\d.]+,")
+    # Assembly binding references — match ANY version string for Supervertaler.Trados
+    asm_pattern = re.compile(r"Supervertaler\.Trados, Version=[^,]+,")
     c2 = len(asm_pattern.findall(text))
     text = asm_pattern.sub(f"Supervertaler.Trados, Version={new_four},", text)
 
@@ -92,16 +103,26 @@ def verify_versions(new_three, new_four):
     # Check .csproj
     with open(CSPROJ, "r", encoding="utf-8") as f:
         text = f.read()
-    match = re.search(r"<Version>([\d.]+)</Version>", text)
-    if match and match.group(1) != new_three:
-        errors.append(f".csproj <Version> is {match.group(1)}, expected {new_three}")
+    match = re.search(r"<Version>([^<]+)</Version>", text)
+    if not match:
+        errors.append(".csproj <Version> tag not found")
+    elif match.group(1) != new_three:
+        errors.append(f".csproj <Version> is '{match.group(1)}', expected '{new_three}'")
+
+    match = re.search(r"<InformationalVersion>([^<]+)</InformationalVersion>", text)
+    if not match:
+        errors.append(".csproj <InformationalVersion> tag not found")
+    elif match.group(1) != new_three:
+        errors.append(f".csproj <InformationalVersion> is '{match.group(1)}', expected '{new_three}'")
 
     # Check manifest
     with open(MANIFEST_XML, "r", encoding="utf-8") as f:
         text = f.read()
-    match = re.search(r"<Version>([\d.]+)</Version>", text)
-    if match and match.group(1) != new_four:
-        errors.append(f"manifest <Version> is {match.group(1)}, expected {new_four}")
+    match = re.search(r"<Version>([^<]+)</Version>", text)
+    if not match:
+        errors.append("manifest <Version> tag not found")
+    elif match.group(1) != new_four:
+        errors.append(f"manifest <Version> is '{match.group(1)}', expected '{new_four}'")
 
     # Check plugin.xml
     with open(PLUGIN_XML, "rb") as f:
@@ -110,9 +131,18 @@ def verify_versions(new_three, new_four):
         text = raw[2:].decode("utf-16-le")
     else:
         text = raw.decode("utf-16-le")
-    match = re.search(r'<plugin\s[^>]*?version="([\d.]+)"', text)
-    if match and match.group(1) != new_four:
-        errors.append(f"plugin.xml version is {match.group(1)}, expected {new_four}")
+    match = re.search(r'<plugin\s[^>]*?version="([^"]+)"', text)
+    if not match:
+        errors.append("plugin.xml plugin version attribute not found")
+    elif match.group(1) != new_four:
+        errors.append(f"plugin.xml version is '{match.group(1)}', expected '{new_four}'")
+
+    # Check assembly bindings
+    bad_bindings = re.findall(r"Supervertaler\.Trados, Version=([^,]+),", text)
+    for v in bad_bindings:
+        if v != new_four:
+            errors.append(f"plugin.xml has stale assembly binding: Version={v}")
+            break
 
     if errors:
         print("\nERROR: Version mismatch after bump!")
@@ -129,6 +159,10 @@ def main():
         sys.exit(1)
 
     new_three = sys.argv[1]  # e.g. "4.19.0"
+
+    # Validate BEFORE doing anything — reject flags and garbage input
+    validate_version(new_three)
+
     new_four = new_three + ".0"  # e.g. "4.19.0.0"
 
     print(f"Setting version to {new_three} ({new_four}):")
