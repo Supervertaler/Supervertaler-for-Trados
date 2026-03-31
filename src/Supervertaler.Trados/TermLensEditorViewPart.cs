@@ -1671,7 +1671,7 @@ namespace Supervertaler.Trados
         // ─── Term Picker dialog ─────────────────────────────────────
 
         /// <summary>
-        /// Called by TermPickerAction (Ctrl+Alt+G).
+        /// Called by TermPickerAction (Ctrl+Alt+Down).
         /// Opens a dialog showing all matched terms for the current segment.
         /// </summary>
         public static void HandleTermPicker()

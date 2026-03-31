@@ -6,7 +6,7 @@ The Term Picker is a compact overlay that shows all matched terms for the curren
 
 ## Opening the Term Picker
 
-Press **Ctrl+Alt+G** to open the Term Picker. It appears as a floating window above the editor.
+Press **Ctrl+Alt+Down** to open the Term Picker. It appears as a floating window above the editor.
 
 ## Colour-coded rows
 

@@ -47,7 +47,7 @@ As you navigate between segments in the Trados Studio editor, the TermLens panel
 - **Multi-word term support** — correctly matches phrases like "prior art" or "machine translation" as single units
 - **Click to insert** — click any translation to insert it at the cursor position in the target segment
 - **Alt+digit shortcuts** — press Alt+1 through Alt+9 (or Alt+0 for term 10) to instantly insert a matched term; two-digit chords supported for 10+ matches
-- **Term Picker dialog** — press Ctrl+Alt+G to browse all matched terms and their synonyms in a list, with expandable synonym rows
+- **Term Picker dialog** — press Ctrl+Alt+Down to browse all matched terms and their synonyms in a list, with expandable synonym rows
 - **F2 expand selection** — make a rough partial selection across word boundaries, press F2, and the selection snaps to complete words; great for verifying source-target alignment in long segments
 - **Add terms from the editor** — right-click to add a new term from the active segment's source/target text, with or without a confirmation dialog; partial selections are auto-expanded to full words
 - **Adjustable font size** — A+/A- buttons in the panel header for quick on-the-fly size changes, or set the exact size in Settings; persists across restarts

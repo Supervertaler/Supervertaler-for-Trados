@@ -143,10 +143,10 @@ namespace Supervertaler.Trados.Controls
             // ─── Default prompt indicator ────────────────
             _lblDefault = new Label
             {
-                Text = "Default prompt \u2014 use Clone to modify",
-                Location = new Point(100, y + 2),
+                Text = "(default prompt)",
+                Location = new Point(330, y + 2),
                 AutoSize = true,
-                ForeColor = Color.FromArgb(130, 130, 130),
+                ForeColor = Color.FromArgb(150, 150, 150),
                 Font = new Font("Segoe UI", 8f, FontStyle.Italic),
                 Visible = false // shown only for default prompts
             };

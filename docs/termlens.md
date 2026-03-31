@@ -83,9 +83,9 @@ The badge on each term chip shows exactly which key combination to use. See [Key
 Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** to insert them.
 {% endhint %}
 
-### Term Picker (Ctrl+Alt+G)
+### Term Picker (Ctrl+Alt+Down)
 
-For segments with many matches, press **Ctrl+Alt+G** to open the **Term Picker** dialogue. It shows all matched terms in a searchable list and lets you insert any term with a double-click or Enter.
+For segments with many matches, press **Ctrl+Alt+Down** to open the **Term Picker** dialogue. It shows all matched terms in a searchable list and lets you insert any term with a double-click or Enter.
 
 <figure><img src=".gitbook/assets/Sv_Term-Picker.png" alt=""><figcaption></figcaption></figure>
 

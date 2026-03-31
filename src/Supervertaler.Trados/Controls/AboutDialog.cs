@@ -202,7 +202,7 @@ namespace Supervertaler.Trados.Controls
                 ("Ctrl+Alt+T",    "Add term (dialog)"),
                 ("Ctrl+Alt+N",    "Quick-add non-translatable"),
                 ("Ctrl+T",        "Translate active segment"),
-                ("Ctrl+Alt+G",    "Term Picker"),
+                ("Ctrl+Alt+Down",  "Term Picker"),
                 ("Alt+1\u20269",  "Insert term from TermLens panel"),
                 ("F1",            "Context-sensitive help"),
             };

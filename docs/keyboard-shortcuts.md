@@ -24,7 +24,7 @@ All keyboard shortcuts available in Supervertaler for Trados, with Mac equivalen
 | `Alt+Up` | `Option+Up` | Quick-add term to project termbase |
 | `Ctrl+Alt+T` | `Control+Option+T` | Add term entry (opens full editor with definition, domain, notes, synonyms) |
 | `Ctrl+Alt+N` | `Control+Option+N` | Quick-add non-translatable term |
-| `Ctrl+Alt+G` | `Control+Option+G` | Open Term Picker |
+| `Ctrl+Alt+Down` | `Control+Option+Down` | Open Term Picker |
 | `Alt+1` ... `Alt+9` | `Option+1` ... `Option+9` | Insert term 1–9 by badge number |
 
 ## AI Translation
@@ -86,7 +86,7 @@ In both modes, when a segment has 9 or fewer matches, pressing Alt+N inserts imm
 {% endhint %}
 
 {% hint style="info" %}
-Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** (`Ctrl+Alt+G` / `Control+Option+G`) to insert them.
+Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** (`Ctrl+Alt+Down` / `Control+Option+Down`) to insert them.
 {% endhint %}
 
 ---
