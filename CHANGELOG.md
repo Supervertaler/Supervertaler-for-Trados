@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.38] — 2026-04-02
+
+### Improved
+- **Markdown table rendering in term notes/definitions** – wide tables (cells longer than 40 characters) now render as labelled paragraphs with full inline formatting (bold, italic, emoji, inline code) instead of a cramped monospace grid that stripped all formatting; compact tables still use the monospace layout
+
+---
+
 ## [4.18.37] — 2026-04-02
 
 ### Added

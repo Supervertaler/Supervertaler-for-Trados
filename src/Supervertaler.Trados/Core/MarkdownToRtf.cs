@@ -359,42 +359,103 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
-            // Calculate column widths
+            // Determine if this is a "wide" table (cells with long text that would
+            // overflow a monospace grid).  Threshold: any cell > 40 chars stripped.
             var colCount = rows.Max(r => r.Length);
-            var colWidths = new int[colCount];
-            foreach (var row in rows)
+            bool wideTable = rows.Any(r => r.Any(c => StripInlineMarkdown(c).Length > 40));
+
+            if (wideTable && rows.Count > 1 && colCount >= 2)
             {
-                for (int c = 0; c < row.Length; c++)
+                // ── Wide table: render as labelled rows with inline formatting ──
+                // Use the first row as column headers / labels.
+                var headers = rows[0];
+
+                for (int r = 1; r < rows.Count; r++)
                 {
-                    colWidths[c] = Math.Max(colWidths[c], StripInlineMarkdown(row[c]).Length);
+                    var row = rows[r];
+                    AppendPar(sb, ref firstBlock);
+
+                    // For 2-column tables, emit "Header: value" on separate lines
+                    // For 3+ column tables, emit "Col0" as bold title, then "ColN: value" lines
+                    if (colCount == 2)
+                    {
+                        // Bold first cell as label
+                        sb.Append(@"{\b ");
+                        AppendInlineRtf(sb, row.Length > 0 ? row[0] : "");
+                        sb.Append("} ");
+
+                        // Second cell as value with full inline markdown
+                        if (row.Length > 1)
+                            AppendInlineRtf(sb, row[1]);
+                    }
+                    else
+                    {
+                        // First cell as bold title line
+                        sb.Append(@"{\b ");
+                        AppendInlineRtf(sb, row.Length > 0 ? row[0] : "");
+                        sb.Append("}");
+
+                        // Remaining cells as "Header: value" lines
+                        for (int c = 1; c < colCount; c++)
+                        {
+                            sb.Append(@"\line ");
+                            // Header label
+                            var hdr = c < headers.Length ? headers[c] : "";
+                            if (!string.IsNullOrEmpty(hdr))
+                            {
+                                sb.Append(@"{\b ");
+                                AppendEscaped(sb, hdr + ": ");
+                                sb.Append("}");
+                            }
+                            // Cell value with inline markdown
+                            if (c < row.Length)
+                                AppendInlineRtf(sb, row[c]);
+                        }
+                    }
+
+                    // Separator between rows (except after last)
+                    if (r < rows.Count - 1)
+                    {
+                        sb.Append(@"\par ");
+                    }
                 }
             }
-
-            // Emit table in monospace
-            AppendPar(sb, ref firstBlock);
-            sb.Append("{").Append(CodeFont).Append(CodeSize).Append(@"\cf1 ");
-
-            for (int r = 0; r < rows.Count; r++)
+            else
             {
-                var row = rows[r];
-                var isHeader = (r == 0);
-
-                if (isHeader) sb.Append(@"{\b ");
-
-                for (int c = 0; c < colCount; c++)
+                // ── Compact table: monospace grid with inline formatting ────
+                var colWidths = new int[colCount];
+                foreach (var row in rows)
                 {
-                    var cell = c < row.Length ? StripInlineMarkdown(row[c]) : "";
-                    sb.Append("  ");
-                    AppendEscaped(sb, cell.PadRight(colWidths[c]));
+                    for (int c = 0; c < row.Length; c++)
+                        colWidths[c] = Math.Max(colWidths[c], StripInlineMarkdown(row[c]).Length);
                 }
 
-                if (isHeader) sb.Append("}");
+                AppendPar(sb, ref firstBlock);
+                sb.Append("{").Append(CodeFont).Append(CodeSize).Append(@"\cf1 ");
 
-                if (r < rows.Count - 1)
-                    sb.Append(@"\line ");
+                for (int r = 0; r < rows.Count; r++)
+                {
+                    var row = rows[r];
+                    var isHeader = (r == 0);
+
+                    if (isHeader) sb.Append(@"{\b ");
+
+                    for (int c = 0; c < colCount; c++)
+                    {
+                        var cell = c < row.Length ? StripInlineMarkdown(row[c]) : "";
+                        sb.Append("  ");
+                        AppendEscaped(sb, cell.PadRight(colWidths[c]));
+                    }
+
+                    if (isHeader) sb.Append("}");
+
+                    if (r < rows.Count - 1)
+                        sb.Append(@"\line ");
+                }
+
+                sb.Append("}").Append(BodySize).Append(@"\cf1 ");
             }
 
-            sb.Append("}").Append(BodySize).Append(@"\cf1 ");
             lines.Clear();
         }
 
