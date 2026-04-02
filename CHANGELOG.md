@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.18.37] — 2026-04-02
+
+### Added
+- **OpenRouter provider** – access 200+ models from OpenAI, Anthropic, Google, Mistral, and others with a single API key. Includes a curated dropdown of 8 recommended models (Claude Sonnet/Opus, GPT-5.4/Mini, Gemini 3.1 Pro/Flash, Mistral Small 4, Qwen 3.6 Plus Free) plus an editable model field for typing any OpenRouter model ID
+
+### Fixed
+- **AI Settings provider/model dropdowns overflowing the dialog** – the Provider and Model dropdowns could extend beyond the right edge of the Settings dialog due to incorrect anchor margin calculation; now properly sized to fit the dialog width and resize with it
+- **Model dropdown too narrow for descriptions** – the dropdown list now auto-sizes its width to fit the longest model description text
+
+---
+
 ## [4.18.36] — 2026-04-02
 
 ### Improved
