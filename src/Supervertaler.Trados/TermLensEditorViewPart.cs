@@ -1206,6 +1206,7 @@ namespace Supervertaler.Trados
                         {
                             // Force reload to rebuild index after save or delete
                             LoadTermbase(forceReload: true);
+                            LoadMultiTermTermbases();
                             UpdateFromActiveSegment();
                         }
                     }
@@ -1230,6 +1231,7 @@ namespace Supervertaler.Trados
                         // Term was saved (possibly with synonym changes) — force reload
                         // to rebuild the index including source synonym keys
                         LoadTermbase(forceReload: true);
+                        LoadMultiTermTermbases();
                         UpdateFromActiveSegment();
                     }
                     else if (result == DialogResult.Abort)
@@ -1351,6 +1353,7 @@ namespace Supervertaler.Trados
             }
 
             instance.LoadTermbase(forceReload: true);
+            instance.LoadMultiTermTermbases();
             instance.UpdateFromActiveSegment();
         }
 
@@ -1375,6 +1378,7 @@ namespace Supervertaler.Trados
             }
 
             instance.LoadTermbase(forceReload: true);
+            instance.LoadMultiTermTermbases();
             instance.UpdateFromActiveSegment();
         }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.35] — 2026-04-02
+
+### Fixed
+- **MultiTerm matches disappear after adding or editing a term** – adding a term via the dialog, editing a term via right-click, or saving AI Assistant settings triggered a full Supervertaler termbase reload that replaced the in-memory index without re-merging MultiTerm entries; the green MultiTerm chips would vanish until navigating to a different segment and back. Fixed by re-loading MultiTerm termbases after every full index rebuild. This bug has been present since MultiTerm support was introduced in v3.4.0.
+
+---
+
 ## [4.18.34] — 2026-04-02
 
 ### Improved
