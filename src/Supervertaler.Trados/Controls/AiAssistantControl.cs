@@ -51,6 +51,9 @@ namespace Supervertaler.Trados.Controls
         // Reports tab
         private ReportsControl _reportsControl;
 
+        // SuperMemory toolbar (inside Chat tab)
+        private SuperMemoryToolbar _superMemoryToolbar;
+
         private bool _isThinking;
 
         // Pending attachments for the next message
@@ -101,6 +104,12 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Raised when the user clicks the gear/settings button.</summary>
         public event EventHandler SettingsRequested;
 
+        /// <summary>Raised when the user clicks "Process Inbox" in the SuperMemory toolbar.</summary>
+        public event EventHandler ProcessInboxRequested;
+
+        /// <summary>Raised when the user clicks "Health Check" in the SuperMemory toolbar.</summary>
+        public event EventHandler HealthCheckRequested;
+
         /// <summary>
         /// Fired when the user changes chat font size via the A+/A- buttons.
         /// The ViewPart should persist the new size.
@@ -114,6 +123,15 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Exposes the ReportsControl for event wiring by the ViewPart.</summary>
         public ReportsControl ReportsControl => _reportsControl;
+
+        /// <summary>Exposes the SuperMemory toolbar for event wiring by the ViewPart.</summary>
+        public SuperMemoryToolbar SuperMemoryToolbar => _superMemoryToolbar;
+
+        /// <summary>Updates the SuperMemory inbox count display.</summary>
+        public void UpdateInboxCount(int count) => _superMemoryToolbar?.UpdateInboxCount(count);
+
+        /// <summary>Enables or disables the SuperMemory toolbar buttons.</summary>
+        public void SetSuperMemoryBusy(bool busy) => _superMemoryToolbar?.SetBusy(busy);
 
         public AiAssistantControl()
         {
@@ -278,6 +296,13 @@ namespace Supervertaler.Trados.Controls
                 BackColor = Color.FromArgb(220, 220, 220)
             };
             _contextStrip.Controls.Add(contextSep);
+
+            // ─── SuperMemory toolbar (below context strip) ─────────
+            _superMemoryToolbar = new SuperMemoryToolbar();
+            _superMemoryToolbar.ProcessInboxRequested += (s, e) =>
+                ProcessInboxRequested?.Invoke(this, EventArgs.Empty);
+            _superMemoryToolbar.HealthCheckRequested += (s, e) =>
+                HealthCheckRequested?.Invoke(this, EventArgs.Empty);
 
             // ─── Input panel (bottom) ─────────────────────────────
             _inputPanel = new Panel
@@ -511,6 +536,7 @@ namespace Supervertaler.Trados.Controls
             page.Controls.Add(_chatPanel);
             page.Controls.Add(_lblThinking);
             page.Controls.Add(_inputPanel);
+            page.Controls.Add(_superMemoryToolbar);
             page.Controls.Add(_contextStrip);
 
             // Layout input controls

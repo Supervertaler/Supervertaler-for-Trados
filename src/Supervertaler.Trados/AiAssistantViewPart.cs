@@ -155,12 +155,17 @@ namespace Supervertaler.Trados
             SegmentTagHandler.DiagnosticMessage = msg =>
                 SafeInvoke(() => _control.Value.BatchTranslateControl.AppendLog(msg, true));
 
+            // Wire SuperMemory toolbar events
+            _control.Value.ProcessInboxRequested += OnProcessInbox;
+            _control.Value.HealthCheckRequested += OnHealthCheck;
+
             // Initial context update
             UpdateContextDisplay();
             UpdateProviderDisplay();
             UpdateBatchProviderDisplay();
             UpdateBatchSegmentCounts();
             PopulateBatchPromptDropdown();
+            RefreshSuperMemoryInboxCount();
 
             // Restore persisted chat history
             LoadChatHistory();
@@ -944,6 +949,490 @@ namespace Supervertaler.Trados
                 return null;
 
             return PromptLibrary.ApplyVariables(prompt.Content, sourceLang, targetLang);
+        }
+
+        // ─── SuperMemory ─────────────────────────────────────────────
+
+        private void RefreshSuperMemoryInboxCount()
+        {
+            try
+            {
+                var inboxDir = Path.Combine(UserDataPath.SuperMemoryDir, "00_INBOX");
+                if (!Directory.Exists(inboxDir))
+                {
+                    _control.Value.UpdateInboxCount(0);
+                    return;
+                }
+                var files = Directory.GetFiles(inboxDir, "*.md", SearchOption.TopDirectoryOnly);
+                // Exclude files with "compiled: true" in their frontmatter
+                int count = 0;
+                foreach (var f in files)
+                {
+                    try
+                    {
+                        // Quick check: read first 500 chars for frontmatter
+                        var head = ReadFileHead(f, 500);
+                        if (head.IndexOf("compiled: true", StringComparison.OrdinalIgnoreCase) < 0)
+                            count++;
+                    }
+                    catch { count++; } // if can't read, count it
+                }
+                _control.Value.UpdateInboxCount(count);
+            }
+            catch
+            {
+                _control.Value.UpdateInboxCount(0);
+            }
+        }
+
+        private static string ReadFileHead(string path, int maxChars)
+        {
+            using (var sr = new StreamReader(path))
+            {
+                var buf = new char[maxChars];
+                int read = sr.Read(buf, 0, maxChars);
+                return new string(buf, 0, read);
+            }
+        }
+
+        private void OnProcessInbox(object sender, EventArgs e)
+        {
+            var inboxDir = Path.Combine(UserDataPath.SuperMemoryDir, "00_INBOX");
+            if (!Directory.Exists(inboxDir))
+            {
+                ShowSuperMemoryMessage("Your SuperMemory inbox folder does not exist yet.\n\n" +
+                    $"Create it at:\n`{inboxDir}`\n\nThen drop raw material (client briefs, glossaries, feedback notes) into it.");
+                return;
+            }
+
+            // Collect unprocessed inbox files
+            var files = Directory.GetFiles(inboxDir, "*.md", SearchOption.TopDirectoryOnly);
+            var inboxFiles = new List<Tuple<string, string>>(); // (path, content)
+            foreach (var f in files)
+            {
+                try
+                {
+                    var content = File.ReadAllText(f);
+                    if (content.IndexOf("compiled: true", StringComparison.OrdinalIgnoreCase) < 0)
+                        inboxFiles.Add(Tuple.Create(f, content));
+                }
+                catch { }
+            }
+
+            if (inboxFiles.Count == 0)
+            {
+                ShowSuperMemoryMessage("Your SuperMemory inbox is empty \u2014 nothing to process.\n\n" +
+                    $"Drop raw material (client briefs, glossaries, feedback notes, style guides) into:\n`{inboxDir}`");
+                return;
+            }
+
+            // Read the compile template
+            var templatePath = Path.Combine(UserDataPath.SuperMemoryDir, "06_TEMPLATES", "compile.md");
+            if (!File.Exists(templatePath))
+            {
+                ShowSuperMemoryMessage("Could not find the compilation template at:\n" +
+                    $"`{templatePath}`\n\nMake sure your SuperMemory vault contains the `06_TEMPLATES/compile.md` file.");
+                return;
+            }
+            var systemPrompt = File.ReadAllText(templatePath);
+
+            // Build user message with all inbox files
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Process the following {inboxFiles.Count} inbox file(s) into structured knowledge base articles:\n");
+            foreach (var item in inboxFiles)
+            {
+                var fileName = Path.GetFileName(item.Item1);
+                sb.AppendLine($"## File: {fileName}");
+                sb.AppendLine(item.Item2);
+                sb.AppendLine();
+            }
+            var userMessage = sb.ToString();
+
+            // Show status in chat
+            var fileNames = new List<string>();
+            foreach (var item in inboxFiles)
+                fileNames.Add(Path.GetFileName(item.Item1));
+            var displayText = $"\U0001F4E5 **SuperMemory: Process Inbox** \u2014 {inboxFiles.Count} file{(inboxFiles.Count != 1 ? "s" : "")}: {string.Join(", ", fileNames)}";
+
+            RunSuperMemoryAgent(systemPrompt, userMessage, displayText,
+                PromptLogFeature.SuperMemory, "SuperMemory: Compile",
+                response => PostProcessCompileResponse(response, inboxFiles));
+        }
+
+        private void OnHealthCheck(object sender, EventArgs e)
+        {
+            var vaultDir = UserDataPath.SuperMemoryDir;
+            if (!Directory.Exists(vaultDir))
+            {
+                ShowSuperMemoryMessage("Your SuperMemory vault folder does not exist yet.\n\n" +
+                    $"Create it at:\n`{vaultDir}`");
+                return;
+            }
+
+            // Read the lint template
+            var templatePath = Path.Combine(vaultDir, "06_TEMPLATES", "lint.md");
+            if (!File.Exists(templatePath))
+            {
+                ShowSuperMemoryMessage("Could not find the health check template at:\n" +
+                    $"`{templatePath}`\n\nMake sure your SuperMemory vault contains the `06_TEMPLATES/lint.md` file.");
+                return;
+            }
+            var systemPrompt = File.ReadAllText(templatePath);
+
+            // Collect vault content (skip .obsidian, .git, 06_TEMPLATES, 00_INBOX/_archive)
+            var sb = new System.Text.StringBuilder();
+            int fileCount = 0;
+            var skipDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { ".obsidian", ".git", "06_TEMPLATES" };
+
+            foreach (var dir in Directory.GetDirectories(vaultDir))
+            {
+                var dirName = Path.GetFileName(dir);
+                if (skipDirs.Contains(dirName)) continue;
+                CollectVaultFiles(dir, vaultDir, sb, ref fileCount, "_archive");
+            }
+            // Also collect any top-level .md files
+            foreach (var f in Directory.GetFiles(vaultDir, "*.md", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    var relPath = f.Substring(vaultDir.Length).TrimStart('\\', '/');
+                    sb.AppendLine($"## File: {relPath}");
+                    sb.AppendLine(File.ReadAllText(f));
+                    sb.AppendLine();
+                    fileCount++;
+                }
+                catch { }
+            }
+
+            if (fileCount == 0)
+            {
+                ShowSuperMemoryMessage("Your SuperMemory vault is empty \u2014 nothing to check.\n\n" +
+                    "Start by adding content via **Process Inbox** or the **Quick Add** shortcut (Ctrl+Alt+M).");
+                return;
+            }
+
+            var userMessage = $"Perform a health check on the following knowledge base ({fileCount} files):\n\n{sb}";
+            var displayText = $"\U0001F3E5 **SuperMemory: Health Check** \u2014 scanning {fileCount} file{(fileCount != 1 ? "s" : "")}";
+
+            // Cap the message to avoid exceeding token limits (~400K chars ≈ 100K tokens)
+            if (userMessage.Length > 400000)
+            {
+                userMessage = userMessage.Substring(0, 400000) +
+                    "\n\n[Truncated — vault too large to scan in one pass. The above is a partial scan.]";
+            }
+
+            RunSuperMemoryAgent(systemPrompt, userMessage, displayText,
+                PromptLogFeature.SuperMemory, "SuperMemory: Health Check",
+                response => PostProcessHealthCheckResponse(response));
+        }
+
+        private void CollectVaultFiles(string dir, string vaultRoot,
+            System.Text.StringBuilder sb, ref int count, string skipSubDir)
+        {
+            foreach (var f in Directory.GetFiles(dir, "*.md", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    var fileName = Path.GetFileName(f);
+                    // Skip example/template files — they're shipped scaffolding, not real content
+                    if (fileName.StartsWith("_EXAMPLE_", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var relPath = f.Substring(vaultRoot.Length).TrimStart('\\', '/');
+                    sb.AppendLine($"## File: {relPath}");
+                    sb.AppendLine(File.ReadAllText(f));
+                    sb.AppendLine();
+                    count++;
+                }
+                catch { }
+            }
+            foreach (var subDir in Directory.GetDirectories(dir))
+            {
+                var subDirName = Path.GetFileName(subDir);
+                if (string.Equals(subDirName, skipSubDir, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                CollectVaultFiles(subDir, vaultRoot, sb, ref count, skipSubDir);
+            }
+        }
+
+        private void RunSuperMemoryAgent(string systemPrompt, string userMessage,
+            string displayText, PromptLogFeature feature, string promptName,
+            Action<string> postProcess)
+        {
+            // Resolve provider / API key
+            var aiSettings = _settings?.AiSettings;
+            if (aiSettings == null)
+            {
+                AddErrorMessage("AI settings not configured. Open Settings \u2192 AI Settings to configure a provider.");
+                return;
+            }
+
+            var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+            string apiKey;
+            string baseUrl = null;
+            string model = aiSettings.GetSelectedModel();
+
+            if (provider == LlmModels.ProviderOllama)
+            {
+                apiKey = "ollama";
+                baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+            }
+            else if (provider == LlmModels.ProviderCustomOpenAi)
+            {
+                var profile = aiSettings.GetActiveCustomProfile();
+                if (profile == null)
+                {
+                    AddErrorMessage("No custom OpenAI profile configured.");
+                    return;
+                }
+                apiKey = profile.ApiKey;
+                baseUrl = profile.Endpoint;
+                model = profile.Model;
+            }
+            else
+            {
+                apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+            }
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                AddErrorMessage($"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.");
+                return;
+            }
+
+            // Switch to Chat tab and show status message
+            _control.Value.AddMessage(new ChatMessage
+            {
+                Role = ChatRole.Assistant,
+                Content = displayText
+            });
+            _control.Value.SetThinking(true);
+            _control.Value.SetSuperMemoryBusy(true);
+
+            // Cancel any pending chat request
+            _chatCts?.Cancel();
+            _chatCts = new CancellationTokenSource();
+            var ct = _chatCts.Token;
+
+            var capturedProvider = provider;
+            var capturedModel = model;
+            var capturedKey = apiKey;
+            var capturedBaseUrl = baseUrl;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    var client = new LlmClient(capturedProvider, capturedModel, capturedKey,
+                        capturedBaseUrl, ollamaTimeoutMinutes: aiSettings.OllamaTimeoutMinutes);
+                    var response = await client.SendPromptAsync(
+                        userMessage, systemPrompt,
+                        maxTokens: 16384, cancellationToken: ct,
+                        feature: feature, promptName: promptName);
+
+                    SafeInvoke(() =>
+                    {
+                        var responseMsg = new ChatMessage
+                        {
+                            Role = ChatRole.Assistant,
+                            Content = response?.Trim() ?? "(No response)"
+                        };
+                        _chatHistory.Add(responseMsg);
+                        _control.Value.AddMessage(responseMsg);
+                        _control.Value.SetThinking(false);
+                        _control.Value.SetSuperMemoryBusy(false);
+                        SaveChatHistory();
+
+                        // Run post-processing (e.g. write files from compile response)
+                        try
+                        {
+                            postProcess?.Invoke(response ?? "");
+                        }
+                        catch (Exception pex)
+                        {
+                            AddErrorMessage($"SuperMemory post-processing error: {pex.Message}");
+                        }
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    SafeInvoke(() =>
+                    {
+                        _control.Value.SetThinking(false);
+                        _control.Value.SetSuperMemoryBusy(false);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    SafeInvoke(() =>
+                    {
+                        _control.Value.SetThinking(false);
+                        _control.Value.SetSuperMemoryBusy(false);
+                        AddErrorMessage($"SuperMemory error: {ex.Message}");
+                    });
+                }
+            });
+        }
+
+        private void PostProcessCompileResponse(string response, List<Tuple<string, string>> inboxFiles)
+        {
+            if (string.IsNullOrEmpty(response)) return;
+
+            var vaultDir = UserDataPath.SuperMemoryDir;
+            var writtenFiles = new List<string>();
+
+            // Parse "### FILE: path" markers
+            var lines = response.Split('\n');
+            string currentPath = null;
+            var currentContent = new System.Text.StringBuilder();
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (line.StartsWith("### FILE:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Write previous file if any
+                    if (currentPath != null)
+                    {
+                        WriteVaultFile(vaultDir, currentPath, currentContent.ToString().Trim(), writtenFiles);
+                    }
+                    currentPath = line.Substring("### FILE:".Length).Trim();
+                    currentContent.Clear();
+                }
+                else
+                {
+                    currentContent.AppendLine(line);
+                }
+            }
+            // Write last file
+            if (currentPath != null)
+            {
+                WriteVaultFile(vaultDir, currentPath, currentContent.ToString().Trim(), writtenFiles);
+            }
+
+            // Archive processed inbox files
+            var archiveDir = Path.Combine(vaultDir, "00_INBOX", "_archive");
+            int archivedCount = 0;
+            foreach (var item in inboxFiles)
+            {
+                try
+                {
+                    Directory.CreateDirectory(archiveDir);
+                    var destPath = Path.Combine(archiveDir, Path.GetFileName(item.Item1));
+                    // Add compiled frontmatter to the archived file
+                    var content = item.Item2;
+                    if (content.StartsWith("---"))
+                    {
+                        var endIdx = content.IndexOf("---", 3, StringComparison.Ordinal);
+                        if (endIdx > 0)
+                        {
+                            content = content.Substring(0, endIdx) +
+                                $"compiled: true\ncompiled_date: {DateTime.Now:yyyy-MM-dd}\n" +
+                                content.Substring(endIdx);
+                        }
+                    }
+                    else
+                    {
+                        content = $"---\ncompiled: true\ncompiled_date: {DateTime.Now:yyyy-MM-dd}\n---\n\n{content}";
+                    }
+                    File.WriteAllText(destPath, content);
+                    File.Delete(item.Item1);
+                    archivedCount++;
+                }
+                catch { }
+            }
+
+            // Show summary
+            if (writtenFiles.Count > 0 || archivedCount > 0)
+            {
+                var summary = new System.Text.StringBuilder();
+                summary.AppendLine("**SuperMemory: Processing complete**\n");
+                if (writtenFiles.Count > 0)
+                {
+                    summary.AppendLine($"Wrote {writtenFiles.Count} file{(writtenFiles.Count != 1 ? "s" : "")}:");
+                    foreach (var f in writtenFiles)
+                        summary.AppendLine($"- `{f}`");
+                }
+                if (archivedCount > 0)
+                    summary.AppendLine($"\nArchived {archivedCount} inbox file{(archivedCount != 1 ? "s" : "")} to `00_INBOX/_archive/`.");
+
+                var summaryMsg = new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content = summary.ToString()
+                };
+                _chatHistory.Add(summaryMsg);
+                _control.Value.AddMessage(summaryMsg);
+                SaveChatHistory();
+            }
+
+            RefreshSuperMemoryInboxCount();
+        }
+
+        private void PostProcessHealthCheckResponse(string response)
+        {
+            if (string.IsNullOrEmpty(response)) return;
+
+            // Parse "### FILE:" markers — same format as compile
+            var vaultDir = UserDataPath.SuperMemoryDir;
+            var writtenFiles = new List<string>();
+
+            var lines = response.Split('\n');
+            string currentPath = null;
+            var currentContent = new System.Text.StringBuilder();
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (line.StartsWith("### FILE:", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (currentPath != null)
+                        WriteVaultFile(vaultDir, currentPath, currentContent.ToString().Trim(), writtenFiles);
+                    currentPath = line.Substring("### FILE:".Length).Trim();
+                    currentContent.Clear();
+                }
+                else if (currentPath != null)
+                {
+                    currentContent.AppendLine(line);
+                }
+            }
+            if (currentPath != null)
+                WriteVaultFile(vaultDir, currentPath, currentContent.ToString().Trim(), writtenFiles);
+
+            if (writtenFiles.Count > 0)
+            {
+                var summary = new System.Text.StringBuilder();
+                summary.AppendLine($"**Health Check: applied {writtenFiles.Count} fix{(writtenFiles.Count != 1 ? "es" : "")}**\n");
+                foreach (var f in writtenFiles)
+                    summary.AppendLine($"- `{f}`");
+                summary.AppendLine("\nReview the changes in Obsidian or with `git diff`. You can revert with `git checkout` if needed.");
+
+                var msg = new ChatMessage { Role = ChatRole.Assistant, Content = summary.ToString() };
+                _chatHistory.Add(msg);
+                _control.Value.AddMessage(msg);
+                SaveChatHistory();
+            }
+        }
+
+        private void WriteVaultFile(string vaultDir, string relativePath, string content, List<string> writtenFiles)
+        {
+            try
+            {
+                // Normalize path separators
+                relativePath = relativePath.Replace('/', '\\');
+                var fullPath = Path.Combine(vaultDir, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
+                File.WriteAllText(fullPath, content);
+                writtenFiles.Add(relativePath);
+            }
+            catch { }
+        }
+
+        private void ShowSuperMemoryMessage(string text)
+        {
+            _chatHistory.Add(new ChatMessage { Role = ChatRole.Assistant, Content = text });
+            _control.Value.AddMessage(new ChatMessage { Role = ChatRole.Assistant, Content = text });
+            SaveChatHistory();
         }
 
         // ─── Batch Translate ────────────────────────────────────────

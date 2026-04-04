@@ -12,7 +12,8 @@ namespace Supervertaler.Trados.Models
         Proofread,
         QuickLauncher,
         PromptGeneration,
-        ConnectionTest
+        ConnectionTest,
+        SuperMemory
     }
 
     /// <summary>

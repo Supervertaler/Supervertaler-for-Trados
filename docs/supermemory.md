@@ -18,7 +18,7 @@ The workflow has three phases:
 
 Drop raw material into the inbox: client briefs, style guides, glossaries, feedback notes, reference articles, or previous translations. SuperMemory accepts anything that helps you translate better.
 
-### 2. Compile
+### 2. Process
 
 The AI reads your raw material and writes structured knowledge base articles:
 
@@ -66,7 +66,7 @@ C:\Users\{you}\Supervertaler\supermemory\
 
 1. Open this folder as a vault in [Obsidian](https://obsidian.md/)
 2. Drop raw material (client briefs, glossaries, feedback) into `00_INBOX`
-3. Run the compilation agent to process your inbox into structured articles
+3. Click **Process Inbox** in the Supervertaler Assistant toolbar to organise your raw material into structured articles
 4. Watch your knowledge graph grow as connections form between clients, terms, and domains
 
 ## Quick Add (Ctrl+Alt+M)
@@ -109,6 +109,38 @@ To clear the active prompt, right-click it again and choose the same menu item (
 
 {% hint style="info" %}
 The active prompt is saved [per project](settings/project-settings.md). Different Trados projects can have different active prompts.
+{% endhint %}
+
+## Process Inbox
+
+The **Process Inbox** button in the Supervertaler Assistant (Chat tab toolbar) reads raw material from your `00_INBOX/` folder and uses AI to organise it into structured knowledge base articles — client profiles, terminology entries, domain knowledge, and style guides.
+
+### How to use
+
+1. Drop raw material into your `supermemory/00_INBOX/` folder: client briefs, glossaries, feedback notes, style guides, reference articles, or anything that helps you translate better
+2. Open the **Supervertaler Assistant** panel and look for the toolbar below the context bar
+3. The toolbar shows how many files are waiting (e.g. "3 files in inbox")
+4. Click **Process Inbox**
+5. The AI reads each file, creates structured articles in the appropriate folders, and archives the originals to `00_INBOX/_archive/`
+
+A summary of all created files appears in the chat when processing is complete.
+
+## Health Check
+
+The **Health Check** button scans your entire knowledge base for problems and fixes what it can:
+
+* **Conflicting terminology** — the same source term translated differently in different articles
+* **Broken links** — `[[backlinks]]` that point to articles that don't exist
+* **Orphaned articles** — articles that nothing links to (disconnected from the graph)
+* **Stale content** — articles not updated in more than 6 months
+* **Duplicate content** — overlapping articles that should be merged
+* **Missing cross-references** — terms or domains that should be linked but aren't
+* **Index accuracy** — statistics and listings that are out of date
+
+The AI produces a detailed report in the chat and automatically applies safe fixes (creating stub articles, updating indexes, fixing broken references). Changes that need human judgement are flagged for review.
+
+{% hint style="warning" %}
+**Important:** SuperMemory is a living, AI-maintained knowledge base. The AI can and will modify your vault files when you run Process Inbox or Health Check. Do not store your only copy of important reference material in the vault — keep originals elsewhere. Use version control (git) or regular backups so you can review and revert changes if needed.
 {% endhint %}
 
 ## Integration with Supervertaler
