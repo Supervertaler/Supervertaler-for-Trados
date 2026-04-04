@@ -277,10 +277,14 @@ namespace Supervertaler.Trados.Core
                 // (e.g. NL→EN project using an EN→NL termbase), swap source and target so that
                 // the TermMatcher indexes the correct language for segment lookup.
                 List<string> srcSynsForIndex;
+                // Normalize both to shortened form so that "English (United States)"
+                // and "English (US)" compare correctly.
+                var projNorm = LanguageUtils.ShortenLanguageName(projectSourceLang ?? "");
+                var tbNorm = LanguageUtils.ShortenLanguageName(entry.SourceLang ?? "");
                 bool isInverted = !string.IsNullOrEmpty(projectSourceLang)
                     && !string.IsNullOrEmpty(entry.SourceLang)
-                    && !projectSourceLang.StartsWith(entry.SourceLang, StringComparison.OrdinalIgnoreCase)
-                    && !entry.SourceLang.StartsWith(projectSourceLang, StringComparison.OrdinalIgnoreCase);
+                    && !projNorm.StartsWith(tbNorm, StringComparison.OrdinalIgnoreCase)
+                    && !tbNorm.StartsWith(projNorm, StringComparison.OrdinalIgnoreCase);
 
                 if (isInverted)
                 {

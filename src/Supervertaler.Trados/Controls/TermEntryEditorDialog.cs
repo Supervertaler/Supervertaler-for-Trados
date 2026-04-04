@@ -118,8 +118,15 @@ namespace Supervertaler.Trados.Controls
         {
             if (string.IsNullOrEmpty(projectSourceLang) || string.IsNullOrEmpty(termbaseSourceLang))
                 return false;
-            return !projectSourceLang.StartsWith(termbaseSourceLang, StringComparison.OrdinalIgnoreCase)
-                && !termbaseSourceLang.StartsWith(projectSourceLang, StringComparison.OrdinalIgnoreCase);
+
+            // Normalize both to shortened form so that "English (United States)" and
+            // "English (US)" compare correctly — Trados returns full names, the DB may
+            // store either form.
+            var projNorm = LanguageUtils.ShortenLanguageName(projectSourceLang);
+            var tbNorm = LanguageUtils.ShortenLanguageName(termbaseSourceLang);
+
+            return !projNorm.StartsWith(tbNorm, StringComparison.OrdinalIgnoreCase)
+                && !tbNorm.StartsWith(projNorm, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

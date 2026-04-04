@@ -152,9 +152,13 @@ namespace Supervertaler.Trados
                     var tbSrcLang = projectTermbase.SourceLang ?? "";
                     if (!string.IsNullOrEmpty(projSrcLang) && !string.IsNullOrEmpty(tbSrcLang))
                     {
+                        // Normalize both to shortened form so that "English (United States)"
+                        // and "English (US)" compare correctly.
+                        var projNorm = LanguageUtils.ShortenLanguageName(projSrcLang);
+                        var tbNorm = LanguageUtils.ShortenLanguageName(tbSrcLang);
                         bool match =
-                            projSrcLang.StartsWith(tbSrcLang, StringComparison.OrdinalIgnoreCase) ||
-                            tbSrcLang.StartsWith(projSrcLang, StringComparison.OrdinalIgnoreCase);
+                            projNorm.StartsWith(tbNorm, StringComparison.OrdinalIgnoreCase) ||
+                            tbNorm.StartsWith(projNorm, StringComparison.OrdinalIgnoreCase);
                         if (!match)
                         {
                             isInverted = true;

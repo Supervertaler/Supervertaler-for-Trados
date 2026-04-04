@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.18.39] — 2026-04-04
+
+### Fixed
+- **Term direction inversion broken for same-language locale pairs** – Quick-add (Alt+Up, Alt+Enter) and the term entry editor incorrectly swapped source/target terms in projects where source and target are variants of the same language (e.g. en-US → en-GB), because the language name comparison failed on format differences ("English (United States)" vs "English (US)"). Now normalises both names via `ShortenLanguageName` before comparing, so locale variants match correctly while genuinely reversed directions (e.g. NL→EN project with EN→NL termbase) still invert as expected.
+
+### Added
+- **SuperMemory help page** – new documentation page describing the upcoming self-organising, AI-maintained translation knowledge base feature
+
+---
+
 ## [4.18.38] — 2026-04-02
 
 ### Improved
