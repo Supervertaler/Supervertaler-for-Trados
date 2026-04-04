@@ -39,6 +39,13 @@ namespace Supervertaler.Trados.Models
         public bool IsNonTranslatable { get; set; }
 
         /// <summary>
+        /// Client code — a short identifier for the client this term belongs to
+        /// (e.g. "ACME", "GLOBEX"). Used to filter KB context and match
+        /// SuperMemory client profiles. Stored in the termbase_terms table.
+        /// </summary>
+        public string Client { get; set; }
+
+        /// <summary>
         /// Abbreviated form(s) of the source term (e.g., "GC" for "gas chromatography").
         /// Multiple variants can be pipe-separated: "GC|G.C.|gc".
         /// Each variant is indexed for matching — if any variant appears in a segment,

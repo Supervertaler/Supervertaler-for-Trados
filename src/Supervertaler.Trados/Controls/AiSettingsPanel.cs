@@ -47,6 +47,7 @@ namespace Supervertaler.Trados.Controls
         private Label _lblMaxSegments;
         private NumericUpDown _nudMaxSegments;
         private CheckBox _chkIncludeTermMetadata;
+        private CheckBox _chkIncludeSuperMemory;
         private CheckBox _chkLogPrompts;
         private Label _lblBatchSize;
         private NumericUpDown _nudBatchSize;
@@ -489,6 +490,21 @@ namespace Supervertaler.Trados.Controls
                 "Applies to Chat, QuickLauncher, and Batch Operations.");
             Controls.Add(_chkIncludeTermMetadata);
 
+            _chkIncludeSuperMemory = new CheckBox
+            {
+                Text = "Include SuperMemory knowledge base in AI context",
+                Location = new Point(16, 0), // positioned dynamically
+                AutoSize = true,
+                ForeColor = labelColor,
+                Checked = true
+            };
+            var smTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            smTip.SetToolTip(_chkIncludeSuperMemory,
+                "When enabled, relevant SuperMemory articles (client profiles, domain\r\n" +
+                "knowledge, style guides, terminology decisions) are automatically\r\n" +
+                "loaded and included in AI prompts for translations and chat.");
+            Controls.Add(_chkIncludeSuperMemory);
+
             _chkLogPrompts = new CheckBox
             {
                 Text = "Log prompts and responses to Reports tab",
@@ -701,6 +717,9 @@ namespace Supervertaler.Trados.Controls
             y += 30;
 
             _chkIncludeTermMetadata.Location = new Point(16, y);
+            y += 24;
+
+            _chkIncludeSuperMemory.Location = new Point(16, y);
             y += 28;
 
             _chkLogPrompts.Location = new Point(16, y);
@@ -826,6 +845,7 @@ namespace Supervertaler.Trados.Controls
             _nudSurroundingSegments.Value = Math.Max(_nudSurroundingSegments.Minimum,
                 Math.Min(_nudSurroundingSegments.Maximum, settings.QuickLauncherSurroundingSegments));
             _chkIncludeTermMetadata.Checked = settings.IncludeTermMetadata;
+            _chkIncludeSuperMemory.Checked = settings.IncludeSuperMemoryContext;
             _chkLogPrompts.Checked = settings.LogPromptsToReports;
             _nudBatchSize.Value = Math.Max(_nudBatchSize.Minimum,
                 Math.Min(_nudBatchSize.Maximum, settings.BatchSize > 0 ? settings.BatchSize : 20));
@@ -926,6 +946,7 @@ namespace Supervertaler.Trados.Controls
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;
             settings.QuickLauncherSurroundingSegments = (int)_nudSurroundingSegments.Value;
             settings.IncludeTermMetadata = _chkIncludeTermMetadata.Checked;
+            settings.IncludeSuperMemoryContext = _chkIncludeSuperMemory.Checked;
             settings.LogPromptsToReports = _chkLogPrompts.Checked;
             settings.BatchSize = (int)_nudBatchSize.Value;
 

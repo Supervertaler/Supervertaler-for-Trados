@@ -12,6 +12,8 @@ namespace Supervertaler.Trados.Controls
     /// </summary>
     public class SuperMemoryToolbar : Panel
     {
+        private Label _lblHeading;
+        private LinkLabel _lnkHelp;
         private Button _btnProcessInbox;
         private Button _btnHealthCheck;
         private Button _btnRefresh;
@@ -40,6 +42,30 @@ namespace Supervertaler.Trados.Controls
 
             var btnFont = new Font("Segoe UI", UiScale.FontSize(7.5f));
             var labelFont = new Font("Segoe UI", UiScale.FontSize(7f));
+
+            // ─── Heading label ───────────────────────────────────────
+            _lblHeading = new Label
+            {
+                Text = "SuperMemory",
+                Font = new Font("Segoe UI Semibold", UiScale.FontSize(7f)),
+                ForeColor = Color.FromArgb(90, 90, 90),
+                AutoSize = true,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            // ─── Help link ──────────────────────────────────────────
+            _lnkHelp = new LinkLabel
+            {
+                Text = "?",
+                Font = new Font("Segoe UI", UiScale.FontSize(7f)),
+                AutoSize = true,
+                LinkColor = Color.FromArgb(100, 140, 180),
+                ActiveLinkColor = Color.FromArgb(30, 90, 158),
+                VisitedLinkColor = Color.FromArgb(100, 140, 180),
+                TabStop = false
+            };
+            _lnkHelp.LinkClicked += (s, e) =>
+                HelpSystem.OpenHelp(HelpSystem.Topics.SuperMemory);
 
             // ─── Process Inbox button ────────────────────────────────
             _btnProcessInbox = new Button
@@ -135,6 +161,8 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_lblInboxCount);
             Controls.Add(_btnHealthCheck);
             Controls.Add(_btnProcessInbox);
+            Controls.Add(_lnkHelp);
+            Controls.Add(_lblHeading);
 
             // Manual layout — position controls left to right
             Resize += (s, e) => LayoutControls();
@@ -147,6 +175,14 @@ namespace Supervertaler.Trados.Controls
 
             var y = (Height - _btnProcessInbox.Height) / 2;
             var x = UiScale.Pixels(4);
+
+            _lblHeading.Location = new Point(x,
+                (Height - _lblHeading.Height) / 2);
+            x += _lblHeading.Width + UiScale.Pixels(2);
+
+            _lnkHelp.Location = new Point(x,
+                (Height - _lnkHelp.Height) / 2);
+            x += _lnkHelp.Width + UiScale.Pixels(6);
 
             _btnProcessInbox.Location = new Point(x, y);
             x += _btnProcessInbox.Width + UiScale.Pixels(2);

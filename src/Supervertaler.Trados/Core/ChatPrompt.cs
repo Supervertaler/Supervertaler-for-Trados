@@ -32,6 +32,9 @@ namespace Supervertaler.Trados.Core
 
         // Enhanced terminology
         public bool IncludeTermMetadata;       // include definitions, domains, notes
+
+        // SuperMemory KB context (pre-formatted prompt section, or null)
+        public string KbContext;
     }
 
     /// <summary>
@@ -89,6 +92,13 @@ namespace Supervertaler.Trados.Core
                     else
                         sb.Append("- Total segments: ").AppendLine(ctx.TotalSegmentCount.ToString());
                 }
+            }
+
+            // ── SuperMemory knowledge base context ─────────────────
+            if (!string.IsNullOrWhiteSpace(ctx.KbContext))
+            {
+                sb.AppendLine();
+                sb.AppendLine(ctx.KbContext);
             }
 
             // ── Document content (all source segments) ───────────────

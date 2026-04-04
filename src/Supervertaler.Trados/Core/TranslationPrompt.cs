@@ -92,7 +92,8 @@ namespace Supervertaler.Trados.Core
             string customSystemPrompt = null,
             List<string> documentSegments = null,
             int maxDocumentSegments = 500,
-            bool includeTermMetadata = true)
+            bool includeTermMetadata = true,
+            string kbContext = null)
         {
             var sb = new StringBuilder(4096);
 
@@ -118,7 +119,15 @@ namespace Supervertaler.Trados.Core
                 sb.Append(customPromptContent);
             }
 
-            // Layer 3: Termbase injection
+            // Layer 3: SuperMemory knowledge base context
+            if (!string.IsNullOrWhiteSpace(kbContext))
+            {
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.Append(kbContext);
+            }
+
+            // Layer 4: Termbase injection
             if (termbaseTerms != null && termbaseTerms.Count > 0)
             {
                 sb.AppendLine();
@@ -139,9 +148,11 @@ namespace Supervertaler.Trados.Core
                     else
                         sb.AppendLine("- " + term.SourceTerm + " \u2192 " + term.TargetTerm);
 
-                    // Include term metadata (domain, definition, notes)
+                    // Include term metadata (domain, definition, notes, client)
                     if (includeTermMetadata)
                     {
+                        if (!string.IsNullOrWhiteSpace(term.Client))
+                            sb.Append("  Client: ").AppendLine(term.Client);
                         if (!string.IsNullOrWhiteSpace(term.Domain))
                             sb.Append("  Domain: ").AppendLine(term.Domain);
                         if (!string.IsNullOrWhiteSpace(term.Definition))

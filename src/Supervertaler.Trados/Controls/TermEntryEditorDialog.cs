@@ -29,6 +29,7 @@ namespace Supervertaler.Trados.Controls
         private TextBox _txtDomain;
         private TextBox _txtNotes;
         private TextBox _txtUrl;
+        private TextBox _txtClient;
         private const int CollapsedHeight = 60;
         private const int ExpandedHeight = 120;
         private bool _definitionExpanded;
@@ -58,7 +59,7 @@ namespace Supervertaler.Trados.Controls
         {
             public TermEntry Entry;
             public TermbaseInfo Termbase;
-            public string Source, Target, Definition, Domain, Notes, Url;
+            public string Source, Target, Definition, Domain, Notes, Url, Client;
             public string SourceAbbr, TargetAbbr;
             public bool IsNonTranslatable;
             public bool IsInverted;
@@ -76,6 +77,7 @@ namespace Supervertaler.Trados.Controls
         public string Domain => _txtDomain.Text.Trim();
         public string Notes => _txtNotes.Text.Trim();
         public string Url => _txtUrl.Text.Trim();
+        public string Client => _txtClient.Text.Trim();
         public bool IsNonTranslatable => _chkNonTranslatable.Checked;
         public long TermId => _termId;
         public bool IsEditMode => _termId > 0;
@@ -153,6 +155,7 @@ namespace Supervertaler.Trados.Controls
                     Domain = entry.Domain ?? "",
                     Notes = entry.Notes ?? "",
                     Url = entry.Url ?? "",
+                    Client = entry.Client ?? "",
                     IsNonTranslatable = entry.IsNonTranslatable,
                     IsInverted = inverted
                 });
@@ -187,7 +190,7 @@ namespace Supervertaler.Trados.Controls
             HelpButton = true;
             HelpButtonClicked += OnHelpButtonClicked;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(580, 722);
+            ClientSize = new Size(580, 770);
             MinimumSize = new Size(500, 644);
             var formBg = Color.FromArgb(243, 243, 243);
             BackColor = formBg;
@@ -571,6 +574,24 @@ namespace Supervertaler.Trados.Controls
             _contentPanel.Controls.Add(_txtUrl);
             y += 28;
 
+            _contentPanel.Controls.Add(MakeLabel("Client (optional):", leftX, y, labelColor));
+            y += 18;
+
+            _txtClient = new TextBox
+            {
+                Location = new Point(leftX, y),
+                Width = _contentPanel.Width - 32,
+                BackColor = inputBg,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            var clientTip = new ToolTip { AutoPopDelay = 8000 };
+            clientTip.SetToolTip(_txtClient,
+                "Client code — a short identifier like ACME or GLOBEX.\n" +
+                "Used to filter SuperMemory knowledge base context\n" +
+                "and link terms to specific clients.");
+            _contentPanel.Controls.Add(_txtClient);
+            y += 28;
+
             // Non-translatable checkbox
             _chkNonTranslatable = new CheckBox
             {
@@ -672,6 +693,7 @@ namespace Supervertaler.Trados.Controls
             _txtDomain.Text = entry.Domain ?? "";
             _txtNotes.Text = entry.Notes ?? "";
             _txtUrl.Text = entry.Url ?? "";
+            _txtClient.Text = entry.Client ?? "";
             _chkNonTranslatable.Checked = entry.IsNonTranslatable;
         }
 
@@ -727,6 +749,7 @@ namespace Supervertaler.Trados.Controls
             ed.Domain = _txtDomain.Text.Trim();
             ed.Notes = _txtNotes.Text.Trim();
             ed.Url = _txtUrl.Text.Trim();
+            ed.Client = _txtClient.Text.Trim();
             ed.IsNonTranslatable = _chkNonTranslatable.Checked;
             // Synonym lists are stored by reference — already up to date
             ed.SourceSyns = new List<SynonymEntry>(_sourceSyns);
@@ -755,6 +778,7 @@ namespace Supervertaler.Trados.Controls
             _txtDomain.Text = ed.Domain;
             _txtNotes.Text = ed.Notes;
             _txtUrl.Text = ed.Url ?? "";
+            _txtClient.Text = ed.Client ?? "";
             _chkNonTranslatable.Checked = ed.IsNonTranslatable;
 
             // Load synonyms
@@ -1042,7 +1066,7 @@ namespace Supervertaler.Trados.Controls
                         isNonTranslatable: IsNonTranslatable,
                         sourceAbbreviation: SourceAbbreviation,
                         targetAbbreviation: TargetAbbreviation,
-                        url: Url);
+                        url: Url, client: Client);
                 }
                 else if (_termbase != null)
                 {
@@ -1055,7 +1079,7 @@ namespace Supervertaler.Trados.Controls
                         isNonTranslatable: IsNonTranslatable,
                         sourceAbbreviation: SourceAbbreviation,
                         targetAbbreviation: TargetAbbreviation,
-                        url: Url);
+                        url: Url, client: Client);
 
                     // Can't save synonyms without a term ID
                     if (newId <= 0)

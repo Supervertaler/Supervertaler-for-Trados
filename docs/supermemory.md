@@ -151,14 +151,53 @@ The AI produces a detailed report in the chat and automatically applies safe fix
 
 ## Integration with Supervertaler
 
-When translating, the AI consults your SuperMemory knowledge base before producing a translation. It checks:
+SuperMemory is automatically integrated into all AI-powered features. When you translate (batch or chat), the AI consults your knowledge base before producing a translation.
 
-* The **client profile** for language preferences and style rules
-* **Terminology articles** for approved translations (and knows which alternatives to avoid)
-* **Domain knowledge** for conventions and common pitfalls
-* **Style guides** for formatting and register
+### What the AI loads
 
-This means every translation is informed by your accumulated project knowledge — not just pattern matching, but real understanding.
+Before every translation, Supervertaler reads your vault and loads the most relevant articles:
+
+1. **Client profile** — The AI tries to match your Trados project name against client profiles in `01_CLIENTS/`. If your project is called "Acme Legal Contract 2026", it finds the Acme Corporation profile and loads their language preferences, terminology decisions, and style rules.
+2. **Domain knowledge** — The AI analyses your document to detect the domain (legal, medical, technical, marketing, etc.) and loads the matching article from `03_DOMAINS/` with conventions and common pitfalls.
+3. **Style guide** — The AI loads the most relevant style guide from `04_STYLE/`, preferring client-specific guides over general ones.
+4. **Terminology articles** — The AI loads term articles from `02_TERMINOLOGY/` that match your client, domain, or language pair. These include not just the approved translations, but also rejected alternatives and the reasoning behind each decision.
+
+### How it works with existing context
+
+SuperMemory adds an extra intelligence layer on top of the context you already use:
+
+| Context source | What it provides | How SuperMemory enhances it |
+|---|---|---|
+| **Termbases** (MultiTerm) | Flat term pairs: term A = term B | Adds the _why_: reasoning, rejected alternatives, client-specific overrides |
+| **Translation memories** | Previous translations for style anchoring | Adds domain conventions and style rules |
+| **Document content** | Document type detection | Adds specific domain pitfalls and formatting conventions |
+| **AutoPrompt** | AI-generated translation instructions | Informed by KB context for more accurate prompt generation |
+
+All of these work together. Termbases give the AI the terms; SuperMemory tells it _why_ those terms were chosen and what to watch out for.
+
+### Memory-aware chat
+
+The Supervertaler Assistant chat window is also memory-aware. When you ask the AI a question about a translation, it has access to your SuperMemory knowledge base alongside the document context, terminology, and TM matches. This means you can ask questions like "What register should I use for this client?" and the AI answers based on your actual KB articles, not generic assumptions.
+
+### Token budget
+
+To avoid overloading the AI's context window, SuperMemory is allocated a token budget (approximately 4000 tokens). If your vault contains more relevant content than fits in the budget, articles are prioritised: client profile first, then domain knowledge, then style guide, then terminology articles.
+
+## Obsidian Web Clipper
+
+The [Obsidian Web Clipper](https://obsidian.md/clipper) is a free browser extension that lets you clip web pages directly into your SuperMemory inbox. Install it for Chrome, Firefox, Safari, or Edge.
+
+### Setting up the Web Clipper
+
+1. Install the extension from [obsidian.md/clipper](https://obsidian.md/clipper)
+2. Make sure Obsidian is running with your SuperMemory vault open
+3. Click the Web Clipper icon in your browser toolbar, then the gear icon (settings)
+4. Create a new template (e.g. "supermemory") and set:
+   * **Note location:** `00_INBOX`
+   * **Vault:** select your supermemory vault
+5. Optionally add properties: `source_url` = `{{url}}`, `clipped` = `{{date}}`
+
+Now when you find a useful reference — a client style guide, a terminology resource, a domain article — click the clipper, hit save, and it drops straight into your inbox. Next time you click **Process Inbox**, the AI organises it into structured articles.
 
 ## Installing Obsidian
 

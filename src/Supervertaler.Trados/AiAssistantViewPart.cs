@@ -70,6 +70,9 @@ namespace Supervertaler.Trados
         // SuperMemory inbox watcher
         private FileSystemWatcher _inboxWatcher;
 
+        // SuperMemory KB reader (lazy: created once, cached for the session)
+        private SuperMemoryReader _kbReader;
+
         protected override IUIControl GetContentControl()
         {
             return _control.Value;
@@ -440,6 +443,9 @@ namespace Supervertaler.Trados
             var fileName = GetFileName();
 
             // 3. Build system prompt with full context
+            // Load SuperMemory KB context (if vault exists)
+            var kbPromptSection = LoadKbContextForPrompt(projectName, sourceLang, targetLang);
+
             var chatCtx = new ChatContext
             {
                 SourceLang = sourceLang,
@@ -455,7 +461,8 @@ namespace Supervertaler.Trados
                 TotalSegmentCount = totalSegmentCount,
                 MaxDocumentSegments = _settings?.AiSettings?.DocumentContextMaxSegments ?? 500,
                 SurroundingSegments = surroundingSegments,
-                IncludeTermMetadata = _settings?.AiSettings?.IncludeTermMetadata != false
+                IncludeTermMetadata = _settings?.AiSettings?.IncludeTermMetadata != false,
+                KbContext = kbPromptSection
             };
             var systemPrompt = ChatPrompt.BuildSystemPrompt(chatCtx);
 
@@ -957,6 +964,53 @@ namespace Supervertaler.Trados
         }
 
         // ─── SuperMemory ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Loads SuperMemory KB context for the current project/document.
+        /// Returns the formatted prompt section, or null if KB is empty/unavailable.
+        /// </summary>
+        private string LoadKbContextForPrompt(string projectName, string sourceLang, string targetLang)
+        {
+            try
+            {
+                // Check if SuperMemory context is enabled in settings
+                if (_settings?.AiSettings?.IncludeSuperMemoryContext == false)
+                    return null;
+
+                if (_kbReader == null)
+                    _kbReader = new SuperMemoryReader(UserDataPath.SuperMemoryDir);
+
+                if (!_kbReader.VaultExists) return null;
+
+                // Detect domain from document content
+                string domain = null;
+                try
+                {
+                    if (_activeDocument != null)
+                    {
+                        var docCtx = CollectDocumentContext();
+                        if (docCtx.Item1 != null && docCtx.Item1.Count > 0)
+                        {
+                            var analysis = DocumentAnalyzer.Analyze(docCtx.Item1);
+                            domain = analysis?.PrimaryDomain;
+                        }
+                    }
+                }
+                catch { /* domain detection is best-effort */ }
+
+                var ctx = _kbReader.LoadContext(
+                    projectName, domain, sourceLang, targetLang,
+                    tokenBudget: 4000);
+
+                if (ctx == null) return null;
+
+                return SuperMemoryReader.FormatForPrompt(ctx);
+            }
+            catch
+            {
+                return null; // KB is optional — never block translation
+            }
+        }
 
         private void RefreshSuperMemoryInboxCount()
         {
@@ -1619,11 +1673,29 @@ namespace Supervertaler.Trados
 
                 int batchSize = aiSettings.BatchSize > 0 ? aiSettings.BatchSize : 20;
 
+                // Load SuperMemory KB context
+                var projectName = GetProjectName();
+                var kbContext = LoadKbContextForPrompt(projectName, sourceLang, targetLang);
+
                 // Start the batch translation
                 batchControl.SetRunning(true);
+
+                var kbSummary = "";
+                if (kbContext != null)
+                {
+                    try
+                    {
+                        _kbReader?.RefreshIndex();
+                        var kbCtx = _kbReader?.LoadContext(projectName, null, sourceLang, targetLang);
+                        if (kbCtx != null)
+                            kbSummary = " | " + kbCtx.GetSummary();
+                    }
+                    catch { }
+                }
+
                 batchControl.AppendLog(
                     $"Starting: {segments.Count} segments, provider={provider}, model={model}, " +
-                    $"batch size={batchSize}");
+                    $"batch size={batchSize}{kbSummary}");
 
                 _batchCts = new CancellationTokenSource();
                 _batchTranslator = new BatchTranslator();
@@ -1642,7 +1714,7 @@ namespace Supervertaler.Trados
                             segments, sourceLang, targetLang,
                             aiSettings, termbaseTerms, batchSize, ct,
                             customPromptContent, customSystemPrompt,
-                            docSegments);
+                            docSegments, kbContext);
                     }
                     catch (Exception ex)
                     {

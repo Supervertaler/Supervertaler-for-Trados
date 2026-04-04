@@ -635,6 +635,12 @@ namespace Supervertaler.Trados.Controls
             var menu = new ContextMenuStrip();
             menu.Items.Add(label, null, (s, ev) =>
                 HelpSystem.OpenHelp(topic));
+            // Add SuperMemory help on Chat tab (where the toolbar lives)
+            if (_tabControl.SelectedIndex == 0)
+            {
+                menu.Items.Add("SuperMemory Help", null, (s, ev) =>
+                    HelpSystem.OpenHelp(HelpSystem.Topics.SuperMemory));
+            }
             menu.Items.Add("-");  // separator
             menu.Items.Add("About Supervertaler for Trados", null, (s, ev) =>
             {

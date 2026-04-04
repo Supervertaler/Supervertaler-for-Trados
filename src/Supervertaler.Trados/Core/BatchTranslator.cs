@@ -106,7 +106,8 @@ namespace Supervertaler.Trados.Core
             CancellationToken cancellationToken,
             string customPromptContent = null,
             string customSystemPrompt = null,
-            List<string> documentSegments = null)
+            List<string> documentSegments = null,
+            string kbContext = null)
         {
             var sw = Stopwatch.StartNew();
             int translated = 0;
@@ -136,7 +137,8 @@ namespace Supervertaler.Trados.Core
                 customPromptContent, termbaseTerms, customSystemPrompt,
                 includeDoc ? documentSegments : null,
                 maxDocSegs,
-                includeTermMeta);
+                includeTermMeta,
+                kbContext);
 
             // Resolve provider settings
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;

@@ -135,7 +135,7 @@ namespace Supervertaler.Trados.Core
             var sql = $@"
                 SELECT t.id, t.source_term, t.target_term, t.termbase_id,
                        t.source_lang, t.target_lang, t.definition, t.domain,
-                       t.notes, t.forbidden, t.case_sensitive,
+                       t.notes, t.forbidden, t.case_sensitive, t.client,
                        tb.name AS termbase_name,
                        tb.is_project_termbase,
                        COALESCE(tb.ranking, 99) AS ranking
@@ -210,7 +210,7 @@ namespace Supervertaler.Trados.Core
             var sql = $@"
                 SELECT t.id, t.source_term, t.target_term, t.termbase_id,
                        t.source_lang, t.target_lang, t.definition, t.domain,
-                       t.notes, t.forbidden, t.case_sensitive,
+                       t.notes, t.forbidden, t.case_sensitive, t.client,
                        tb.name AS termbase_name,
                        tb.is_project_termbase,
                        COALESCE(tb.ranking, 99) AS ranking
@@ -649,6 +649,9 @@ namespace Supervertaler.Trados.Core
             if (TryGetOrdinal(reader, "url", out ord) && !reader.IsDBNull(ord))
                 entry.Url = reader.GetString(ord);
 
+            if (TryGetOrdinal(reader, "client", out ord) && !reader.IsDBNull(ord))
+                entry.Client = reader.GetString(ord);
+
             return entry;
         }
 
@@ -739,7 +742,7 @@ namespace Supervertaler.Trados.Core
             string definition = "", string domain = "", string notes = "",
             bool isNonTranslatable = false,
             string sourceAbbreviation = null, string targetAbbreviation = null,
-            string url = null)
+            string url = null, string client = null)
         {
             var connStr = new SqliteConnectionStringBuilder
             {
@@ -775,11 +778,11 @@ namespace Supervertaler.Trados.Core
                     INSERT INTO termbase_terms
                         (source_term, target_term, termbase_id, source_lang, target_lang,
                          definition, domain, notes, forbidden, case_sensitive, is_nontranslatable,
-                         term_uuid, source_abbreviation, target_abbreviation, url)
+                         term_uuid, source_abbreviation, target_abbreviation, url, client)
                     VALUES
                         (@source, @target, @tbId, @srcLang, @tgtLang,
                          @def, @domain, @notes, 0, 0, @nt,
-                         @uuid, @srcAbbr, @tgtAbbr, @url);
+                         @uuid, @srcAbbr, @tgtAbbr, @url, @client);
                     SELECT last_insert_rowid();";
 
                 using (var cmd = new SqliteCommand(sql, conn))
@@ -797,6 +800,7 @@ namespace Supervertaler.Trados.Core
                     cmd.Parameters.AddWithValue("@srcAbbr", sourceAbbreviation ?? "");
                     cmd.Parameters.AddWithValue("@tgtAbbr", targetAbbreviation ?? "");
                     cmd.Parameters.AddWithValue("@url", url ?? "");
+                    cmd.Parameters.AddWithValue("@client", client ?? "");
 
                     var result = cmd.ExecuteScalar();
                     return result != null ? Convert.ToInt64(result) : -1;
@@ -975,7 +979,7 @@ namespace Supervertaler.Trados.Core
             string definition = "", string domain = "", string notes = "",
             bool isNonTranslatable = false,
             string sourceAbbreviation = null, string targetAbbreviation = null,
-            string url = null)
+            string url = null, string client = null)
         {
             var connStr = new SqliteConnectionStringBuilder
             {
@@ -1019,7 +1023,8 @@ namespace Supervertaler.Trados.Core
                         is_nontranslatable = @nt,
                         source_abbreviation = @srcAbbr,
                         target_abbreviation = @tgtAbbr,
-                        url         = @url
+                        url         = @url,
+                        client      = @client
                     WHERE id = @id";
 
                 using (var cmd = new SqliteCommand(sql, conn))
@@ -1033,6 +1038,7 @@ namespace Supervertaler.Trados.Core
                     cmd.Parameters.AddWithValue("@srcAbbr", sourceAbbreviation ?? "");
                     cmd.Parameters.AddWithValue("@tgtAbbr", targetAbbreviation ?? "");
                     cmd.Parameters.AddWithValue("@url", url ?? "");
+                    cmd.Parameters.AddWithValue("@client", client ?? "");
                     cmd.Parameters.AddWithValue("@id", termId);
 
                     return cmd.ExecuteNonQuery() > 0;
@@ -2001,11 +2007,13 @@ namespace Supervertaler.Trados.Core
                 bool hasDomain = HasColumn(conn, "termbase_terms", "domain");
                 bool hasNotes = HasColumn(conn, "termbase_terms", "notes");
                 bool hasNt = HasColumn(conn, "termbase_terms", "is_nontranslatable");
+                bool hasClient = HasColumn(conn, "termbase_terms", "client");
 
                 var cols = "id, source_term, target_term, source_lang, target_lang, termbase_id, definition";
                 if (hasDomain) cols += ", domain";
                 if (hasNotes) cols += ", notes";
                 if (hasNt) cols += ", is_nontranslatable";
+                if (hasClient) cols += ", client";
 
                 var sql = $"SELECT {cols} FROM termbase_terms WHERE id = @id";
                 using (var cmd = new SqliteCommand(sql, conn))
@@ -2041,6 +2049,11 @@ namespace Supervertaler.Trados.Core
                         if (hasNt)
                         {
                             entry.IsNonTranslatable = !reader.IsDBNull(col) && GetBool(reader, col);
+                            col++;
+                        }
+                        if (hasClient)
+                        {
+                            entry.Client = reader.IsDBNull(col) ? "" : reader.GetString(col);
                             col++;
                         }
 

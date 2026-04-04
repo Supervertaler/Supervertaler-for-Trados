@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.18.43] — 2026-04-04
+
+### Added
+- **SuperMemory knowledge base integration** — SuperMemory articles (client profiles, domain knowledge, style guides, terminology decisions) are now automatically loaded into both AI chat and batch translation prompts. Context is selected based on the active Trados project: client profiles are matched by project name, domain articles by document type, and style/terminology articles are always included. Token budget management (4 000 tokens) with priority-based trimming ensures prompts stay within limits
+- **Client detection** — fuzzy-matches the Trados project name against SuperMemory `01_CLIENTS/` profile frontmatter to automatically load the right client profile
+- **Domain detection** — reuses the existing document analyser to load relevant domain knowledge articles (legal, medical, technical, etc.)
+- **SuperMemory on/off toggle** — new "Include SuperMemory knowledge base in AI context" checkbox in AI Settings, enabled by default
+- **Client code field for termbases** — new optional "Client" metadata field on term entries (e.g. "ACME", "GLOBEX"); shown in the term editor dialog and included in AI prompts when present
+- **Inbox auto-refresh** — a FileSystemWatcher monitors the SuperMemory `00_INBOX` folder and automatically updates the inbox count when files are added externally (e.g. via the Obsidian Web Clipper)
+- **SuperMemory toolbar heading** — the toolbar strip now shows a "SuperMemory" label and a "?" help link that opens the SuperMemory documentation
+- **SuperMemory help links** — the Chat tab's help dropdown now includes a "SuperMemory Help" item; the toolbar "?" also links to the docs
+
+### Improved
+- **SuperMemory documentation** — rewrote the safety/backup section with practical advice (no git jargon); added Obsidian Web Clipper setup instructions; documented the AI context integration, auto-detection, and token budget
+
+---
+
 ## [4.18.40] — 2026-04-04
 
 ### Added

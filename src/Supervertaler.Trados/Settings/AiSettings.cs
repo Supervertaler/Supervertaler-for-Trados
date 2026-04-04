@@ -158,6 +158,14 @@ namespace Supervertaler.Trados.Settings
         public bool IncludeTermMetadata { get; set; } = true;
 
         /// <summary>
+        /// When enabled, SuperMemory knowledge base articles (client profiles,
+        /// domain knowledge, style guides, terminology reasoning) are automatically
+        /// loaded and included in the AI context for translations and chat.
+        /// </summary>
+        [DataMember(Name = "includeSuperMemoryContext")]
+        public bool IncludeSuperMemoryContext { get; set; } = true;
+
+        /// <summary>
         /// When enabled, every AI API call is logged to the Reports tab with
         /// the full prompt, response, estimated token counts, and cost.
         /// </summary>
