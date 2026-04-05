@@ -1446,24 +1446,42 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>
         /// Extracts tool_use blocks from Claude's response content array.
+        /// Uses bracket-counting to find each object in the content array,
+        /// then checks for "tool_use" type and extracts fields by name
+        /// (order-independent).
         /// </summary>
         private static List<ToolCall> ExtractToolUseCalls(string json)
         {
             var calls = new List<ToolCall>();
 
-            // Find all tool_use blocks in the content array
-            // Pattern: {"type":"tool_use","id":"...","name":"...","input":{...}}
-            var pattern = @"\{""type""\s*:\s*""tool_use""\s*,\s*""id""\s*:\s*""([^""]+)""\s*,\s*""name""\s*:\s*""([^""]+)""\s*,\s*""input""\s*:\s*(\{[^}]*\})\s*\}";
-            var matches = Regex.Matches(json, pattern, RegexOptions.Singleline);
+            // First, extract the content array
+            var contentArray = ExtractContentArray(json);
+            if (string.IsNullOrEmpty(contentArray) || contentArray == "[]")
+                return calls;
 
-            foreach (Match m in matches)
+            // Find each top-level object in the content array
+            var objects = ExtractTopLevelObjects(contentArray);
+            foreach (var obj in objects)
             {
-                calls.Add(new ToolCall
+                // Check if this is a tool_use block
+                var type = ExtractJsonFieldStatic(obj, "type");
+                if (type != "tool_use") continue;
+
+                var id = ExtractJsonFieldStatic(obj, "id");
+                var name = ExtractJsonFieldStatic(obj, "name");
+
+                // Extract "input" as a JSON object (may contain nested braces)
+                var inputJson = ExtractJsonObject(obj, "input");
+
+                if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
                 {
-                    Id = m.Groups[1].Value,
-                    Name = m.Groups[2].Value,
-                    InputJson = m.Groups[3].Value
-                });
+                    calls.Add(new ToolCall
+                    {
+                        Id = id,
+                        Name = name,
+                        InputJson = inputJson ?? "{}"
+                    });
+                }
             }
 
             return calls;
@@ -1471,33 +1489,114 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>
         /// Extracts the raw "content" JSON array from a Claude response.
+        /// Uses bracket-counting to handle nested objects correctly.
         /// </summary>
         private static string ExtractContentArray(string json)
         {
-            // Find "content" : [ ... ] — we need the full array including tool_use blocks
-            var match = Regex.Match(json, @"""content""\s*:\s*(\[.*?\])\s*[,}]",
-                RegexOptions.Singleline);
-            if (match.Success)
-                return match.Groups[1].Value;
+            // Find "content" followed by : and [
+            var keyIdx = json.IndexOf("\"content\"");
+            if (keyIdx < 0) return "[]";
 
-            // Fallback: try to find content array with nested objects
-            var start = json.IndexOf("\"content\"");
-            if (start < 0) return "[]";
-
-            var bracketStart = json.IndexOf('[', start);
+            var bracketStart = json.IndexOf('[', keyIdx + 9);
             if (bracketStart < 0) return "[]";
 
             // Count brackets to find matching close
             int depth = 0;
+            bool inString = false;
+            bool escaped = false;
             for (int i = bracketStart; i < json.Length; i++)
             {
-                if (json[i] == '[') depth++;
-                else if (json[i] == ']') depth--;
+                var c = json[i];
+                if (escaped) { escaped = false; continue; }
+                if (c == '\\') { escaped = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == '[') depth++;
+                else if (c == ']') depth--;
                 if (depth == 0)
                     return json.Substring(bracketStart, i - bracketStart + 1);
             }
 
             return "[]";
+        }
+
+        /// <summary>
+        /// Extracts top-level JSON objects from a JSON array string.
+        /// E.g. from '[{"a":1},{"b":2}]' returns ["{"a":1}", "{"b":2}"].
+        /// </summary>
+        private static List<string> ExtractTopLevelObjects(string arrayJson)
+        {
+            var results = new List<string>();
+            int depth = 0;
+            int objStart = -1;
+            bool inString = false;
+            bool escaped = false;
+
+            for (int i = 0; i < arrayJson.Length; i++)
+            {
+                var c = arrayJson[i];
+                if (escaped) { escaped = false; continue; }
+                if (c == '\\') { escaped = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+
+                if (c == '{')
+                {
+                    if (depth == 0) objStart = i;
+                    depth++;
+                }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0 && objStart >= 0)
+                    {
+                        results.Add(arrayJson.Substring(objStart, i - objStart + 1));
+                        objStart = -1;
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Extracts a JSON object value for a given key from a JSON string.
+        /// E.g. from '{"input": {"foo": "bar"}}' with key "input" returns '{"foo": "bar"}'.
+        /// Uses bracket-counting to handle nested objects.
+        /// </summary>
+        private static string ExtractJsonObject(string json, string key)
+        {
+            var keyPattern = "\"" + key + "\"";
+            var keyIdx = json.IndexOf(keyPattern);
+            if (keyIdx < 0) return null;
+
+            // Find the opening brace after the colon
+            var afterKey = keyIdx + keyPattern.Length;
+            var braceStart = json.IndexOf('{', afterKey);
+            if (braceStart < 0) return null;
+
+            // Verify there's only whitespace and colon between key and brace
+            var between = json.Substring(afterKey, braceStart - afterKey).Trim();
+            if (!between.StartsWith(":")) return null;
+
+            // Count braces to find matching close
+            int depth = 0;
+            bool inString = false;
+            bool escaped = false;
+            for (int i = braceStart; i < json.Length; i++)
+            {
+                var c = json[i];
+                if (escaped) { escaped = false; continue; }
+                if (c == '\\') { escaped = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == '{') depth++;
+                else if (c == '}') depth--;
+                if (depth == 0)
+                    return json.Substring(braceStart, i - braceStart + 1);
+            }
+
+            return null;
         }
 
         /// <summary>

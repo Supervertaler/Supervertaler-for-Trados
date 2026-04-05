@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.18.44] — 2026-04-05
+
+### Added
+- **Studio Tools** — the Supervertaler Assistant can now query your Trados Studio installation using natural language. Ask about your projects, translation memories, or project templates and the AI will look up the answer directly from your local Studio data. Uses Claude's tool use API to automatically call the right query behind the scenes — no special syntax needed, just ask naturally (e.g. "What projects do I have?", "Tell me about the Client Alpha project", "List my TMs"). The thinking indicator shows what tool is running (e.g. "Checking Trados projects…"). Currently supports four read-only tools: list projects (with optional status filter), get project details (languages, files, path), list translation memories, and list project templates. Claude-only for now — other providers continue to work as before without tool use
+- **Studio Tools help page** — new documentation page with feature overview, available tools table, and 15+ example questions organised by category
+
+---
+
 ## [4.18.43] — 2026-04-04
 
 ### Added

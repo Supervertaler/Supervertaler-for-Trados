@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PluginPackage xmlns="http://www.sdl.com/Plugins/PluginPackage/1.0">
   <PlugInName>Supervertaler for Trados</PlugInName>
-  <Version>4.18.43.0</Version>
+  <Version>4.18.44.0</Version>
   <Description>Terminology display and AI translation for Trados Studio by Supervertaler.</Description>
   <Author>Michael Beijer</Author>
   <RequiredProduct name="TradosStudio" minversion="18.0" maxversion="18.9" />
