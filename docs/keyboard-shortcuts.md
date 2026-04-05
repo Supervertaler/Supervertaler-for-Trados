@@ -55,7 +55,7 @@ Assign prompts to slots in **Settings → Prompts**. Select a QuickLauncher prom
 
 | Shortcut (Windows) | Shortcut (Mac) | Action |
 |---------------------|----------------|--------|
-| `Ctrl+Shift+F` | `Control+Shift+F` | Open SuperSearch -- searches for the selected source/target text across all project files |
+| `Alt+S` | `Option+S` | Open SuperSearch -- searches for the selected source/target text across all project files |
 
 ## Navigation and Display
 

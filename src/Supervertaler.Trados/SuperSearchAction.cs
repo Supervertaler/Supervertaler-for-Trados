@@ -18,7 +18,7 @@ namespace Supervertaler.Trados
     [ActionLayout(
         typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 10,
         DisplayType.Default, "", true)]
-    [Shortcut(Keys.Control | Keys.Shift | Keys.F)]
+    [Shortcut(Keys.Alt | Keys.S)]
     public class SuperSearchAction : AbstractAction
     {
         protected override void Execute()
@@ -47,7 +47,15 @@ namespace Supervertaler.Trados
                 }
                 catch { /* selection API may not be available in all contexts */ }
 
-                // Activate the SuperSearch panel and set the search text
+                // Activate the SuperSearch ViewPart panel (makes it visible even when auto-hidden/unpinned)
+                try
+                {
+                    var viewPart = SdlTradosStudio.Application.GetController<SuperSearchViewPart>();
+                    viewPart?.Activate();
+                }
+                catch { /* Activate may not be available in all Trados versions */ }
+
+                // Set the search text and trigger search
                 var control = SuperSearchViewPart.GetControl();
                 if (control != null)
                 {

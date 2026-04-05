@@ -3,7 +3,20 @@
 ## [4.18.48] — 2026-04-05
 
 ### Added
-- **SuperSearch** — new dockable ViewPart (View > Supervertaler SuperSearch) for cross-file search, find & replace, and segment navigation across all SDLXLIFF files in a project. Features include source/target/both search scope, case sensitivity, regex support, confirmation status display, click-to-navigate (opens files automatically), and Replace / Replace All in target text
+- **SuperSearch** — new dockable ViewPart (View > Supervertaler SuperSearch) for cross-file search, find & replace, and segment navigation across all SDLXLIFF files in a Trados project
+  - Searches all SDLXLIFF files in the target language folder (avoids duplicate results from the source language folder)
+  - Search scope: Source & Target, Source only, or Target only
+  - Case-sensitive and regex search options
+  - Results grid with File, Segment #, Source, Target, and Status columns
+  - Matching text highlighted in yellow in both the results grid and the preview pane
+  - **Preview pane** — single-click a result row to see the full source and target text in a detail pane below the grid, with large font and yellow match highlighting
+  - **Click-to-navigate** — double-click a result to jump to that segment in the Trados editor (active file); clear status message for cross-file segments
+  - **Find & Replace** — collapsible replace bar for target-only replacements; single replace (via Trados API, undoable) and Replace All (with two-step confirmation dialog for irreversible disk modifications)
+  - **File selection** — Files button to include/exclude specific project files from the search
+  - **Keyboard shortcut** — Alt+S opens SuperSearch; if text is selected in the editor, it auto-fills the search box and runs the search immediately
+  - **Right-click context menu** — SuperSearch option in the editor context menu
+  - Regex replace supports capture groups ($1, $2, etc.)
+  - Status bar shows result count, file count, and search time in milliseconds
 
 ---
 

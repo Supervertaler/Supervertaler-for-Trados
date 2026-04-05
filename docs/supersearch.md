@@ -16,12 +16,12 @@ There are three ways to open SuperSearch:
 | ------ | ----------- |
 | **View menu** | Go to **View > Supervertaler SuperSearch** |
 | **Right-click** | Right-click in the editor and choose **SuperSearch** from the context menu |
-| **Keyboard** | Press **Ctrl+Shift+F** |
+| **Keyboard** | Press **Alt+S** |
 
 The panel docks at the bottom of the editor by default, but you can drag it anywhere -- left, right, floating, or even to a second monitor. Trados remembers the position between sessions.
 
 {% hint style="info" %}
-**Quick search from the editor:** Select a word or phrase in the source or target segment, then press **Ctrl+Shift+F** (or right-click > **SuperSearch**). The selected text is automatically entered in the search box and the search runs immediately.
+**Quick search from the editor:** Select a word or phrase in the source or target segment, then press **Alt+S** (or right-click > **SuperSearch**). The selected text is automatically entered in the search box and the search runs immediately.
 {% endhint %}
 
 ## Searching
@@ -118,14 +118,14 @@ Regex replace supports capture groups. For example, search for `(\w+)\s+(\w+)` a
 
 | Shortcut | Action |
 | -------- | ------ |
-| **Ctrl+Shift+F** | Open SuperSearch (with selected text, if any) |
+| **Alt+S** | Open SuperSearch (with selected text, if any) |
 | **Enter** (in search box) | Start search |
 | **Enter** (in results grid) | Navigate to selected segment |
 | **Double-click** (result row) | Navigate to selected segment |
 
 ## Tips
 
-- Select a term in the editor and press **Ctrl+Shift+F** to instantly search for it across the entire project.
+- Select a term in the editor and press **Alt+S** to instantly search for it across the entire project.
 - Use **Source only** scope to find segments where a particular term appears, then check how it was translated across files.
 - Use **Target only** scope with Replace to fix a consistent mistranslation across the entire project.
 - Use the **Files** button to limit the search to specific files -- useful in large projects where you only want to search a subset.

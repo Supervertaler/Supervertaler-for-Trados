@@ -55,8 +55,10 @@ namespace Supervertaler.Trados.Core
             };
 
         /// <summary>
-        /// Finds all SDLXLIFF files in the project that contains the given file.
-        /// Walks up from the file to find the project root (directory containing .sdlproj).
+        /// Finds all SDLXLIFF files in the target language folder of the project.
+        /// Walks up from the active file to find the project root (directory containing .sdlproj),
+        /// then searches only in the target language subfolder (the one containing the active file).
+        /// This avoids returning duplicate results from both source and target language folders.
         /// </summary>
         public static List<string> FindProjectXliffFiles(string anyProjectFilePath)
         {
@@ -87,9 +89,30 @@ namespace Supervertaler.Trados.Core
             if (projectRoot == null)
                 return new List<string>();
 
+            // Determine the target language folder.
+            // Trados project structure: ProjectRoot/en-GB/file.sdlxliff
+            // The active file is always in the target language folder.
+            // Find the first directory below projectRoot in the active file's path.
+            string targetLangFolder = null;
+            var fileDir = Path.GetDirectoryName(anyProjectFilePath);
+            while (!string.IsNullOrEmpty(fileDir))
+            {
+                var parent = Path.GetDirectoryName(fileDir);
+                if (string.Equals(parent, projectRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetLangFolder = fileDir;
+                    break;
+                }
+                if (parent == fileDir) break;
+                fileDir = parent;
+            }
+
+            // Search only in the target language folder (not all project folders)
+            var searchDir = targetLangFolder ?? projectRoot;
+
             try
             {
-                return Directory.EnumerateFiles(projectRoot, "*.sdlxliff", SearchOption.AllDirectories)
+                return Directory.EnumerateFiles(searchDir, "*.sdlxliff", SearchOption.AllDirectories)
                     .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
@@ -190,7 +213,13 @@ namespace Supervertaler.Trados.Core
             {
                 ct.ThrowIfCancellationRequested();
 
-                var tuId = (unit as XmlElement)?.GetAttribute("id") ?? "";
+                var tuElement = unit as XmlElement;
+                var tuId = tuElement?.GetAttribute("id") ?? "";
+
+                // Skip non-translatable trans-units (structure paragraphs, locked content)
+                var translateAttr = tuElement?.GetAttribute("translate");
+                if (string.Equals(translateAttr, "no", StringComparison.OrdinalIgnoreCase))
+                    continue;
 
                 // Each trans-unit may contain multiple <seg-defs>/<seg> and
                 // corresponding <mrk mtype="seg"> in source/target.
@@ -199,11 +228,16 @@ namespace Supervertaler.Trados.Core
 
                 foreach (var seg in segments)
                 {
-                    segNum++;
                     var sourceText = seg.Item1;
                     var targetText = seg.Item2;
                     var segId = seg.Item3;
                     var status = seg.Item4;
+
+                    // Only count segments with actual content (skip empty structure segments)
+                    if (string.IsNullOrWhiteSpace(sourceText) && string.IsNullOrWhiteSpace(targetText))
+                        continue;
+
+                    segNum++;
 
                     bool matches = false;
 
@@ -247,12 +281,37 @@ namespace Supervertaler.Trados.Core
 
             if (sourceNode == null) return segments;
 
-            // Look for segment markers in source
-            var sourceMarkers = sourceNode.SelectNodes($".//{prefix}mrk[@mtype='seg']", nsMgr);
+            // SDLXLIFF puts segment markers in <seg-source>, not <source>.
+            // <source> has plain unsegmented text; <seg-source> has <mrk mtype="seg" mid="N">.
+            var segSourceNode = transUnit.SelectSingleNode($"{prefix}seg-source", nsMgr);
+            var sourceMarkers = segSourceNode?.SelectNodes($".//{prefix}mrk[@mtype='seg']", nsMgr);
+
+            // Fall back to checking <source> for markers (older formats)
+            if (sourceMarkers == null || sourceMarkers.Count == 0)
+                sourceMarkers = sourceNode.SelectNodes($".//{prefix}mrk[@mtype='seg']", nsMgr);
+
+            // Also check <target> for markers (in case seg-source is missing)
+            if (sourceMarkers == null || sourceMarkers.Count == 0)
+            {
+                var targetMarkers = targetNode?.SelectNodes($".//{prefix}mrk[@mtype='seg']", nsMgr);
+                if (targetMarkers != null && targetMarkers.Count > 0)
+                {
+                    // Use target markers to discover segment IDs, get source from <source>
+                    foreach (XmlNode tgtMrk in targetMarkers)
+                    {
+                        var mid = (tgtMrk as XmlElement)?.GetAttribute("mid") ?? "";
+                        var tgtText = GetInnerText(tgtMrk);
+                        var srcText = GetInnerText(sourceNode);
+                        var status = GetSegmentStatus(transUnit, mid, nsMgr);
+                        segments.Add(Tuple.Create(srcText, tgtText, mid, status));
+                    }
+                    return segments;
+                }
+            }
 
             if (sourceMarkers != null && sourceMarkers.Count > 0)
             {
-                // Multi-segment trans-unit
+                // Segmented trans-unit (one or more <mrk mtype="seg"> markers)
                 foreach (XmlNode srcMrk in sourceMarkers)
                 {
                     var mid = (srcMrk as XmlElement)?.GetAttribute("mid") ?? "";
@@ -276,15 +335,18 @@ namespace Supervertaler.Trados.Core
             }
             else
             {
-                // Single-segment trans-unit
+                // Truly unsegmented trans-unit (no markers anywhere)
                 var srcText = GetInnerText(sourceNode);
                 var tgtText = targetNode != null ? GetInnerText(targetNode) : "";
-                var tuId = (transUnit as XmlElement)?.GetAttribute("id") ?? "";
+
+                // Try to get the segment ID from seg-defs (the id attribute on the first sdl:seg)
+                var segDefs = transUnit.SelectSingleNode(".//sdl:seg-defs/sdl:seg", nsMgr);
+                var segId = (segDefs as XmlElement)?.GetAttribute("id") ?? "";
 
                 // Try to get status from seg-defs
                 var status = GetSegmentStatus(transUnit, null, nsMgr);
 
-                segments.Add(Tuple.Create(srcText, tgtText, tuId, status));
+                segments.Add(Tuple.Create(srcText, tgtText, segId, status));
             }
 
             return segments;

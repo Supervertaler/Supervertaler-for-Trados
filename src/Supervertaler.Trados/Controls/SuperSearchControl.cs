@@ -37,6 +37,13 @@ namespace Supervertaler.Trados.Controls
         // ─── Results grid ────────────────────────────────────────
         private DataGridView _grid;
 
+        // ─── Preview pane (below grid) ──────────────────────────
+        private Panel _previewPanel;
+        private RichTextBox _rtbPreviewSource;
+        private RichTextBox _rtbPreviewTarget;
+        private Label _lblPreviewSource;
+        private Label _lblPreviewTarget;
+
         // ─── Status bar ──────────────────────────────────────────
         private Label _lblStatus;
 
@@ -95,7 +102,7 @@ namespace Supervertaler.Trados.Controls
             _searchPanel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 34,
+                Height = 40,
                 BackColor = HeaderBg,
                 Padding = new Padding(4, 4, 4, 2)
             };
@@ -103,7 +110,7 @@ namespace Supervertaler.Trados.Controls
             _txtSearch = new TextBox
             {
                 Font = bodyFont,
-                Location = new Point(4, 5),
+                Location = new Point(4, 8),
                 Width = 200  // will be auto-sized on resize
             };
             _txtSearch.KeyDown += (s, e) =>
@@ -116,11 +123,11 @@ namespace Supervertaler.Trados.Controls
             };
             _searchPanel.Controls.Add(_txtSearch);
 
-            _btnSearch = CreateButton("Search", bodyFont, 56, 24);
+            _btnSearch = CreateButton("Search", bodyFont, 72, 26);
             _btnSearch.Click += (s, e) => FireSearch();
             _searchPanel.Controls.Add(_btnSearch);
 
-            _btnStop = CreateButton("Stop", bodyFont, 42, 24);
+            _btnStop = CreateButton("Stop", bodyFont, 46, 26);
             _btnStop.Visible = false;
             _btnStop.Click += (s, e) => StopRequested?.Invoke(this, EventArgs.Empty);
             _searchPanel.Controls.Add(_btnStop);
@@ -129,7 +136,7 @@ namespace Supervertaler.Trados.Controls
             {
                 Font = bodyFont,
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 120
+                Width = 145
             };
             _cboScope.Items.AddRange(new object[] { "Source & Target", "Source only", "Target only" });
             _cboScope.SelectedIndex = 0;
@@ -170,7 +177,7 @@ namespace Supervertaler.Trados.Controls
             };
             _searchPanel.Controls.Add(_chkShowReplace);
 
-            _btnFiles = CreateButton("Files", bodyFont, 50, 24);
+            _btnFiles = CreateButton("Files", bodyFont, 56, 26);
             var ttFiles = new ToolTip();
             ttFiles.SetToolTip(_btnFiles, "Select which files to include in the search");
             _btnFiles.Click += (s, e) => ShowFileSelectionDialog();
@@ -180,7 +187,7 @@ namespace Supervertaler.Trados.Controls
             {
                 Text = "?",
                 Font = bodyFont,
-                Size = new Size(24, 24),
+                Size = new Size(26, 26),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = SubtleColor,
                 BackColor = HeaderBg,
@@ -199,7 +206,7 @@ namespace Supervertaler.Trados.Controls
             _replacePanel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 30,
+                Height = 36,
                 BackColor = HeaderBg,
                 Padding = new Padding(4, 2, 4, 2),
                 Visible = false
@@ -221,11 +228,11 @@ namespace Supervertaler.Trados.Controls
             };
             _replacePanel.Controls.Add(_txtReplace);
 
-            _btnReplace = CreateButton("Replace", bodyFont, 60, 22);
+            _btnReplace = CreateButton("Replace", bodyFont, 76, 26);
             _btnReplace.Click += (s, e) => FireReplace();
             _replacePanel.Controls.Add(_btnReplace);
 
-            _btnReplaceAll = CreateButton("Replace All", bodyFont, 76, 22);
+            _btnReplaceAll = CreateButton("Replace All", bodyFont, 94, 26);
             _btnReplaceAll.Click += (s, e) => FireReplaceAll();
             _replacePanel.Controls.Add(_btnReplaceAll);
 
@@ -290,7 +297,7 @@ namespace Supervertaler.Trados.Controls
             _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
             // Row style
-            _grid.RowTemplate.Height = 22;
+            _grid.RowTemplate.Height = 24;
             _grid.DefaultCellStyle.ForeColor = TextColor;
             _grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(210, 230, 255);
             _grid.DefaultCellStyle.SelectionForeColor = TextColor;
@@ -333,19 +340,116 @@ namespace Supervertaler.Trados.Controls
             {
                 Name = "colStatus",
                 HeaderText = "Status",
-                Width = 80,
-                MinimumWidth = 50
+                Width = 130,
+                MinimumWidth = 80
             });
 
             _grid.CellDoubleClick += OnGridDoubleClick;
             _grid.KeyDown += OnGridKeyDown;
             _grid.CellPainting += OnCellPainting;
+            _grid.SelectionChanged += OnGridSelectionChanged;
 
+            // ═══════════════════════════════════════════════════════
+            // Preview pane (below grid, shows full source+target)
+            // ═══════════════════════════════════════════════════════
+            _previewPanel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 100,
+                BackColor = Color.White,
+                Padding = new Padding(0)
+            };
+
+            // Thin top border line
+            var previewBorder = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 1,
+                BackColor = BorderColor
+            };
+
+            // Use a TableLayoutPanel for reliable side-by-side layout
+            var previewTable = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                BackColor = Color.White,
+                Margin = new Padding(0),
+                Padding = new Padding(0),
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None
+            };
+            previewTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            previewTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            previewTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 18f));
+            previewTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+
+            // Source header + text
+            _lblPreviewSource = new Label
+            {
+                Text = "Source",
+                Dock = DockStyle.Fill,
+                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                ForeColor = SubtleColor,
+                Padding = new Padding(4, 2, 0, 0),
+                BackColor = Color.FromArgb(252, 252, 252)
+            };
+            _rtbPreviewSource = new RichTextBox
+            {
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                Font = new Font("Segoe UI", 11f),
+                ForeColor = TextColor,
+                BackColor = Color.White,
+                ScrollBars = RichTextBoxScrollBars.Vertical,
+                WordWrap = true,
+                DetectUrls = false
+            };
+
+            // Target header + text
+            _lblPreviewTarget = new Label
+            {
+                Text = "Target",
+                Dock = DockStyle.Fill,
+                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                ForeColor = SubtleColor,
+                Padding = new Padding(4, 2, 0, 0),
+                BackColor = Color.FromArgb(252, 252, 252)
+            };
+            _rtbPreviewTarget = new RichTextBox
+            {
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                Font = new Font("Segoe UI", 11f),
+                ForeColor = TextColor,
+                BackColor = Color.White,
+                ScrollBars = RichTextBoxScrollBars.Vertical,
+                WordWrap = true,
+                DetectUrls = false
+            };
+
+            previewTable.Controls.Add(_lblPreviewSource, 0, 0);
+            previewTable.Controls.Add(_lblPreviewTarget, 1, 0);
+            previewTable.Controls.Add(_rtbPreviewSource, 0, 1);
+            previewTable.Controls.Add(_rtbPreviewTarget, 1, 1);
+
+            _previewPanel.Controls.Add(previewTable);
+            _previewPanel.Controls.Add(previewBorder);
+
+            // Add controls in correct order for WinForms docking z-order:
+            // Grid (Fill) must be added LAST / be in FRONT of z-order
             Controls.Add(_grid);
+            Controls.Add(_previewPanel);
 
-            // Fix z-order: Dock=Top panels at top, grid fills rest, status at bottom
-            _replacePanel.SendToBack();
-            _searchPanel.SendToBack();
+            // Z-order for WinForms docking: back = docks first.
+            // Top panels: search (top), replace (below search)
+            // Bottom panels: status (bottom), preview (above status)
+            // Fill: grid fills remaining space (must be in front)
+            _replacePanel.SendToBack();   // second from back → docks below search
+            _searchPanel.SendToBack();    // very back → docks at top
+            _grid.BringToFront();         // front → fills remaining space
 
             ResumeLayout(false);
         }
@@ -357,25 +461,29 @@ namespace Supervertaler.Trados.Controls
             if (_searchPanel == null || _txtSearch == null) return;
 
             int w = _searchPanel.ClientSize.Width;
-            int y = 5;
+            int h = _searchPanel.ClientSize.Height;
+            int btnY = (h - _btnSearch.Height) / 2;         // vertically center buttons
+            int txtY = (h - _txtSearch.Height) / 2;          // vertically center text box
+            int chkY = (h - _chkCaseSensitive.Height) / 2;   // vertically center checkboxes
+            int cboY = (h - _cboScope.Height) / 2;            // vertically center combo
 
             // Right-anchored controls first (right to left)
-            _btnHelp.Location = new Point(w - _btnHelp.Width - 4, y);
-            _btnFiles.Location = new Point(_btnHelp.Left - _btnFiles.Width - 4, y);
+            _btnHelp.Location = new Point(w - _btnHelp.Width - 4, btnY);
+            _btnFiles.Location = new Point(_btnHelp.Left - _btnFiles.Width - 4, btnY);
 
             // Fixed controls from left after the search box
             int fixedLeft = _btnFiles.Left;
 
             // Position from right: chkShowReplace, chkRegex, chkCaseSensitive, cboScope, btnStop, btnSearch
-            // We lay these out right-to-left from fixedLeft
-            _chkShowReplace.Location = new Point(fixedLeft - _chkShowReplace.Width - 4, y + 2);
-            _chkRegex.Location = new Point(_chkShowReplace.Left - _chkRegex.Width - 2, y + 2);
-            _chkCaseSensitive.Location = new Point(_chkRegex.Left - _chkCaseSensitive.Width - 2, y + 2);
-            _cboScope.Location = new Point(_chkCaseSensitive.Left - _cboScope.Width - 6, y);
-            _btnStop.Location = new Point(_cboScope.Left - _btnStop.Width - 4, y);
-            _btnSearch.Location = new Point(_btnStop.Left - _btnSearch.Width - 2, y);
+            _chkShowReplace.Location = new Point(fixedLeft - _chkShowReplace.Width - 4, chkY);
+            _chkRegex.Location = new Point(_chkShowReplace.Left - _chkRegex.Width - 2, chkY);
+            _chkCaseSensitive.Location = new Point(_chkRegex.Left - _chkCaseSensitive.Width - 2, chkY);
+            _cboScope.Location = new Point(_chkCaseSensitive.Left - _cboScope.Width - 6, cboY);
+            _btnStop.Location = new Point(_cboScope.Left - _btnStop.Width - 4, btnY);
+            _btnSearch.Location = new Point(_btnStop.Left - _btnSearch.Width - 2, btnY);
 
-            // Search box fills available space
+            // Search text box fills available space
+            _txtSearch.Location = new Point(4, txtY);
             int searchRight = _btnSearch.Left - 4;
             _txtSearch.Width = Math.Max(80, searchRight - _txtSearch.Left);
         }
@@ -384,19 +492,20 @@ namespace Supervertaler.Trados.Controls
         {
             if (_replacePanel == null || _txtReplace == null) return;
 
-            int y = 3;
-            _txtReplace.Location = new Point(4, y);
+            int h = _replacePanel.ClientSize.Height;
+            int txtY = (h - _txtReplace.Height) / 2;
+            int btnY = (h - _btnReplace.Height) / 2;
 
-            // Align replace box width with search box
+            _txtReplace.Location = new Point(4, txtY);
             _txtReplace.Width = _txtSearch.Width;
 
-            _btnReplace.Location = new Point(_txtReplace.Right + 4, y);
-            _btnReplaceAll.Location = new Point(_btnReplace.Right + 2, y);
+            _btnReplace.Location = new Point(_txtReplace.Right + 4, btnY);
+            _btnReplaceAll.Location = new Point(_btnReplace.Right + 2, btnY);
 
             // The hint label is the last child
             var hint = _replacePanel.Controls[_replacePanel.Controls.Count - 1] as Label;
             if (hint != null)
-                hint.Location = new Point(_btnReplaceAll.Right + 6, y + 3);
+                hint.Location = new Point(_btnReplaceAll.Right + 6, btnY + 4);
         }
 
         // ─── File Selection ──────────────────────────────────────
@@ -444,8 +553,8 @@ namespace Supervertaler.Trados.Controls
             using (var dlg = new Form())
             {
                 dlg.Text = "SuperSearch \u2014 Select Files";
-                dlg.Size = new Size(500, 400);
-                dlg.MinimumSize = new Size(350, 250);
+                dlg.Size = new Size(600, 450);
+                dlg.MinimumSize = new Size(400, 250);
                 dlg.StartPosition = FormStartPosition.CenterParent;
                 dlg.FormBorderStyle = FormBorderStyle.Sizable;
                 dlg.ShowIcon = false;
@@ -488,8 +597,8 @@ namespace Supervertaler.Trados.Controls
                     Padding = new Padding(8, 6, 8, 6)
                 };
 
-                var btnSelectAll = CreateButton("Select All", dlg.Font, 72, 26);
-                btnSelectAll.Location = new Point(8, 7);
+                var btnSelectAll = CreateButton("Select All", dlg.Font, 90, 28);
+                btnSelectAll.Location = new Point(8, 6);
                 btnSelectAll.Click += (s, e) =>
                 {
                     for (int i = 0; i < clb.Items.Count; i++)
@@ -497,8 +606,8 @@ namespace Supervertaler.Trados.Controls
                 };
                 bottomPanel.Controls.Add(btnSelectAll);
 
-                var btnSelectNone = CreateButton("Select None", dlg.Font, 84, 26);
-                btnSelectNone.Location = new Point(btnSelectAll.Right + 4, 7);
+                var btnSelectNone = CreateButton("Select None", dlg.Font, 100, 28);
+                btnSelectNone.Location = new Point(btnSelectAll.Right + 4, 6);
                 btnSelectNone.Click += (s, e) =>
                 {
                     for (int i = 0; i < clb.Items.Count; i++)
@@ -506,9 +615,9 @@ namespace Supervertaler.Trados.Controls
                 };
                 bottomPanel.Controls.Add(btnSelectNone);
 
-                var btnOk = CreateButton("OK", dlg.Font, 60, 26);
+                var btnOk = CreateButton("OK", dlg.Font, 70, 28);
                 btnOk.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                btnOk.Location = new Point(bottomPanel.Width - btnOk.Width - 8, 7);
+                btnOk.Location = new Point(bottomPanel.Width - btnOk.Width - 8, 6);
                 btnOk.Click += (s, e) =>
                 {
                     _excludedFiles.Clear();
@@ -560,6 +669,8 @@ namespace Supervertaler.Trados.Controls
                 var row = _grid.Rows[idx];
                 row.Tag = r;
                 row.Cells["colFile"].ToolTipText = r.FilePath;
+                row.Cells["colSource"].ToolTipText = r.SourceText;
+                row.Cells["colTarget"].ToolTipText = r.TargetText;
             }
 
             _grid.ResumeLayout();
@@ -709,6 +820,50 @@ namespace Supervertaler.Trados.Controls
             textBrush.Dispose();
 
             e.Handled = true;
+        }
+
+        // ─── Preview Pane ────────────────────────────────────────
+
+        private void OnGridSelectionChanged(object sender, EventArgs e)
+        {
+            var result = GetSelectedResult();
+            if (result == null)
+            {
+                _rtbPreviewSource.Text = "";
+                _rtbPreviewTarget.Text = "";
+                return;
+            }
+
+            PopulatePreview(_rtbPreviewSource, result.SourceText);
+            PopulatePreview(_rtbPreviewTarget, result.TargetText);
+        }
+
+        /// <summary>
+        /// Sets the preview text and highlights the search term in yellow.
+        /// </summary>
+        private void PopulatePreview(RichTextBox rtb, string text)
+        {
+            rtb.Text = text ?? "";
+
+            if (string.IsNullOrEmpty(_highlightQuery) || string.IsNullOrEmpty(text))
+                return;
+
+            var comparison = _highlightCaseSensitive
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+
+            int pos = 0;
+            while (pos < text.Length)
+            {
+                int idx = text.IndexOf(_highlightQuery, pos, comparison);
+                if (idx < 0) break;
+
+                rtb.Select(idx, _highlightQuery.Length);
+                rtb.SelectionBackColor = Color.FromArgb(255, 235, 120);
+                pos = idx + _highlightQuery.Length;
+            }
+
+            rtb.Select(0, 0);
         }
 
         // ─── Private Helpers ─────────────────────────────────────

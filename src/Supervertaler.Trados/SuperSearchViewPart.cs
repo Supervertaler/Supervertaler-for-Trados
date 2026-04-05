@@ -235,47 +235,46 @@ namespace Supervertaler.Trados
 
         private void OnNavigateRequested(object sender, NavigateToSegmentEventArgs e)
         {
-            if (_activeDocument == null || _editorController == null) return;
-            if (string.IsNullOrEmpty(e.ParagraphUnitId)) return;
-
-            var result = _control.Value.GetSelectedResult();
-            if (result == null) return;
-
-            // Check if the file is already the active file in the document
-            var activeFilePath = GetActiveFilePath();
-            var isSameFile = activeFilePath != null &&
-                string.Equals(activeFilePath, result.FilePath, StringComparison.OrdinalIgnoreCase);
-
-            if (isSameFile)
+            // Must run on the UI thread — same pattern as AiAssistantViewPart.OnNavigateToSegment
+            SafeInvoke(() =>
             {
-                // Same file — navigate directly
+                if (_activeDocument == null || _editorController == null)
+                {
+                    _control.Value.SetStatus("No active document.");
+                    return;
+                }
+
+                var result = _control.Value.GetSelectedResult();
+                if (result == null) return;
+
+                var activeFilePath = GetActiveFilePath();
+                var isSameFile = activeFilePath != null &&
+                    string.Equals(activeFilePath, result.FilePath, StringComparison.OrdinalIgnoreCase);
+
+                if (!isSameFile)
+                {
+                    _control.Value.SetStatus(
+                        $"Open \"{result.FileName}\" in the editor first, then double-click to navigate.");
+                    return;
+                }
+
                 try
                 {
                     _activeDocument.SetActiveSegmentPair(
                         result.ParagraphUnitId, result.SegmentId, true);
+
+                    // Give focus back to the editor so the navigation is visible
+                    try { _editorController.Activate(); }
+                    catch { /* Activate may not be available */ }
+
+                    _control.Value.SetStatus(
+                        $"Navigated to segment #{result.SegmentNumber} in {result.FileName}");
                 }
                 catch (Exception ex)
                 {
-                    SafeInvoke(() => _control.Value.SetStatus($"Navigation failed: {ex.Message}"));
+                    _control.Value.SetStatus($"Navigation failed: {ex.Message}");
                 }
-            }
-            else
-            {
-                // Different file in the same project — try SetActiveSegmentPair.
-                // In a multi-file Trados document, this may switch the active file
-                // automatically if the segment belongs to another file.
-                try
-                {
-                    _activeDocument.SetActiveSegmentPair(
-                        result.ParagraphUnitId, result.SegmentId, true);
-                }
-                catch
-                {
-                    SafeInvoke(() => _control.Value.SetStatus(
-                        $"Could not navigate to segment in {result.FileName}. " +
-                        "Try opening the file in the editor first."));
-                }
-            }
+            });
         }
 
         private string GetActiveFilePath()
@@ -377,19 +376,43 @@ namespace Supervertaler.Trados
             // Group by file
             var fileGroups = targetMatches.GroupBy(r => r.FilePath).ToList();
 
-            var msg = $"Replace {targetMatches.Count} occurrence(s) in {fileGroups.Count} file(s)?\n\n" +
-                      "For the active file, changes go through the Trados API.\n" +
-                      "For other files, the SDLXLIFF is modified directly on disk \u2014 " +
-                      "reopen those files to see changes.\n\n" +
-                      "This action cannot be undone.";
+            var activeFilePath = GetActiveFilePath();
+            var hasNonActiveFiles = fileGroups.Any(g =>
+                activeFilePath == null ||
+                !string.Equals(g.Key, activeFilePath, StringComparison.OrdinalIgnoreCase));
+
+            var msg = $"Replace {targetMatches.Count} occurrence(s) in {fileGroups.Count} file(s)?\n\n";
+
+            if (hasNonActiveFiles)
+            {
+                msg += "WARNING: This will modify SDLXLIFF files directly on disk for files " +
+                       "not currently open in the editor. These changes CANNOT be undone.\n\n" +
+                       "Changes in the active file go through the Trados API and can be undone.\n\n" +
+                       "Save your project before proceeding.";
+            }
+            else
+            {
+                msg += "All changes go through the Trados API and can be undone with Ctrl+Z.";
+            }
 
             var dialogResult = MessageBox.Show(msg, "SuperSearch \u2014 Replace All",
                 MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
             if (dialogResult != DialogResult.OK) return;
 
+            // Second confirmation for irreversible disk modifications
+            if (hasNonActiveFiles)
+            {
+                var confirm = MessageBox.Show(
+                    "Are you sure? Changes to files on disk cannot be undone.\n\n" +
+                    "Make sure you have saved your project or have a backup.",
+                    "SuperSearch \u2014 Final Confirmation",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation,
+                    MessageBoxDefaultButton.Button2); // default to "No"
+                if (confirm != DialogResult.Yes) return;
+            }
+
             int replacedCount = 0;
             int errorCount = 0;
-            var activeFilePath = GetActiveFilePath();
 
             foreach (var group in fileGroups)
             {
