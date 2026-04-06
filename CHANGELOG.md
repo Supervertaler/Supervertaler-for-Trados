@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.50] — 2026-04-06
+
+### Fixed
+- **SuperMemory toolbar** — Health Check button stayed greyed out after any operation completed; now correctly restores to active blue like the other buttons
+
+---
+
 ## [4.18.49] — 2026-04-06
 
 ### Changed

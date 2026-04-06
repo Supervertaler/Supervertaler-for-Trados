@@ -257,6 +257,7 @@ namespace Supervertaler.Trados.Controls
                 _btnProcessInbox.ForeColor = _btnProcessInbox.Enabled
                     ? Color.FromArgb(30, 90, 158)
                     : Color.FromArgb(170, 170, 170);
+                _btnHealthCheck.ForeColor = Color.FromArgb(30, 90, 158);
                 _btnDistill.ForeColor = Color.FromArgb(30, 90, 158);
             }
             else
