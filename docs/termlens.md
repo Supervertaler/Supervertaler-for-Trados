@@ -1,3 +1,5 @@
+# TermLens
+
 {% hint style="info" %}
 You are viewing help for **Supervertaler for Trados** – the Trados Studio plugin. Looking for help with the standalone app? Visit [Supervertaler Workbench help](https://help.supervertaler.com).
 {% endhint %}
@@ -6,7 +8,7 @@ TermLens is an inline terminology display that shows the source text of the curr
 
 <figure><img src=".gitbook/assets/Sv_TermLens.png" alt=""><figcaption></figcaption></figure>
 
-## How It Works
+### How It Works
 
 When you select a segment in the Trados editor, TermLens analyses the source text against all active termbases and displays the result in a visual layout:
 
@@ -17,17 +19,17 @@ This gives you an at-a-glance overview of every term in the segment that has a t
 
 <figure><img src=".gitbook/assets/image (1).png" alt=""><figcaption></figcaption></figure>
 
-## Colour Coding
+### Colour Coding
 
 TermLens uses five background colours to distinguish term types:
 
-| Colour       | Meaning                                                        |
-| ------------ | -------------------------------------------------------------- |
-| **Blue**     | Regular Supervertaler termbase match                           |
-| **Purple**   | Abbreviation match (matched via source abbreviation, not the full term) |
-| **Pink**     | Project termbase match (higher priority)                       |
-| **Yellow**   | Non-translatable term (source = target)                        |
-| **Green**    | MultiTerm termbase match (`.sdltb`)                            |
+| Colour     | Meaning                                                                 |
+| ---------- | ----------------------------------------------------------------------- |
+| **Blue**   | Regular Supervertaler termbase match                                    |
+| **Purple** | Abbreviation match (matched via source abbreviation, not the full term) |
+| **Pink**   | Project termbase match (higher priority)                                |
+| **Yellow** | Non-translatable term (source = target)                                 |
+| **Green**  | MultiTerm termbase match (`.sdltb`)                                     |
 
 {% hint style="info" %}
 Designate one termbase as the **Project termbase** in settings to make its terms appear in pink. Project terms take visual priority over regular terms, making it easy to spot client-specific terminology.
@@ -37,40 +39,38 @@ Designate one termbase as the **Project termbase** in settings to make its terms
 **MultiTerm termbases** attached to your Trados project appear automatically as green chips. They are read-only – to edit MultiTerm terms, use Trados's built-in MultiTerm interface. See [MultiTerm Support](multiterm-support.md) for details.
 {% endhint %}
 
-## Chip Indicators
+### Chip Indicators
 
 In addition to colour coding, TermLens shows small indicators in the top-right corner of term chips:
 
-| Indicator | Meaning |
-| --------- | ------- |
-| **≡** (indigo) | The entry has synonyms (source-side, target-side, or both). Hover to see them. |
-| **●** (amber) | The entry has metadata – a definition, domain, notes, or URL. Hover to see details. |
+| Indicator      | Meaning                                                                             |
+| -------------- | ----------------------------------------------------------------------------------- |
+| **≡** (indigo) | The entry has synonyms (source-side, target-side, or both). Hover to see them.      |
+| **●** (amber)  | The entry has metadata – a definition, domain, notes, or URL. Hover to see details. |
 
 Both indicators can appear simultaneously. Hover over any term chip to see an interactive popup with full details, including source synonyms (prefixed with "Also:"), target synonyms (shown as bullet points), definitions, domain, notes, and clickable URLs. The popup stays open when you move the mouse into it, so you can click on links.
 
-### Markdown Rendering
+#### Markdown Rendering
 
 The **Notes** and **Definition** fields in the term popup support Markdown formatting. If the content contains Markdown syntax (tables, bold, italic, headings, bullet lists, code blocks), it is rendered with proper formatting instead of plain text. This is especially useful when AI-generated term notes include structured data like translation tables.
 
-<figure><img src=".gitbook/assets/Markdown formatting rendered in TermLens term popup.png" alt=""><figcaption>Markdown formatting rendered in TermLens term popup</figcaption></figure>
+<figure><img src=".gitbook/assets/Markdown formatting rendered in TermLens term popup.png" alt=""><figcaption><p>Markdown formatting rendered in TermLens term popup</p></figcaption></figure>
 
-<figure><img src=".gitbook/assets/Markdown in the Edit Term entry dialogueue.png" alt=""><figcaption>Markdown in the Edit Term entry dialogueue</figcaption></figure>
-
-### Resizable Popup
+#### Resizable Popup
 
 You can resize the term popup by dragging the grip in the bottom-right corner. The width is remembered for the rest of the session, so subsequent popups open at your preferred size.
 
-## Inserting Terms
+### Inserting Terms
 
-### Click to Insert
+#### Click to Insert
 
 Click any translation shown under a source word. The translation is inserted at the cursor position in the target field.
 
-### Keyboard Shortcuts (Alt+1 through Alt+9)
+#### Keyboard Shortcuts (Alt+1 through Alt+9)
 
 Each matched term in TermLens is assigned a **numbered badge**. Press **Alt+1** to insert the first match, **Alt+2** for the second, and so on up to **Alt+9**.
 
-### Shortcuts for Terms 10+
+#### Shortcuts for Terms 10+
 
 For terms numbered 10 and above, TermLens supports two shortcut styles (configurable in Settings):
 
@@ -83,13 +83,13 @@ The badge on each term chip shows exactly which key combination to use. See [Key
 Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** to insert them.
 {% endhint %}
 
-### Term Picker (Ctrl+Alt+Down)
+#### Term Picker (Ctrl+Alt+Down)
 
 For segments with many matches, press **Ctrl+Alt+Down** to open the **Term Picker** dialogueue. It shows all matched terms in a searchable list and lets you insert any term with a double-click or Enter.
 
 <figure><img src=".gitbook/assets/Sv_Term-Picker.png" alt=""><figcaption></figcaption></figure>
 
-## Right-Click Context Menu
+### Right-Click Context Menu
 
 Right-click any term in TermLens to access:
 
@@ -100,26 +100,26 @@ Right-click any term in TermLens to access:
 | **Mark as Non-Translatable** | Flag the term so it appears in yellow (source = target)                            |
 | **Mark as Translatable**     | Remove the non-translatable flag (shown when the term is already non-translatable) |
 
-## Quick-Add Terms
+### Quick-Add Terms
 
 You can add terms without opening a dialogueue:
 
-| Shortcut       | Action                                                                    |
-| -------------- | ------------------------------------------------------------------------- |
-| **Alt+Down**   | Quick-add the selected text to all write termbases                        |
-| **Alt+Up**     | Quick-add the selected text to the project termbase                       |
+| Shortcut       | Action                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| **Alt+Down**   | Quick-add the selected text to all write termbases                                       |
+| **Alt+Up**     | Quick-add the selected text to the project termbase                                      |
 | **Ctrl+Alt+T** | Open the Add Term Entry dialogue (full editor: definition, domain, notes, URL, synonyms) |
-| **Ctrl+Alt+N** | Quick-add the selected text as a non-translatable term                    |
+| **Ctrl+Alt+N** | Quick-add the selected text as a non-translatable term                                   |
 
 {% hint style="success" %}
 Quick-add shortcuts use the currently selected source text and the corresponding selected or clipboard target text. The term is added instantly without opening a dialogue.
 {% endhint %}
 
-## Font Size
+### Font Size
 
 Use the **A+** and **A-** buttons in the TermLens panel header to increase or decrease the font size. Changes apply immediately.
 
-## Tips
+### Tips
 
 * TermLens respects termbase activation –only terms from activated termbases are shown.
 * If you have many termbases, designate one as the **Project termbase** (shown in pink) to make its terms stand out.
@@ -129,7 +129,7 @@ Use the **A+** and **A-** buttons in the TermLens panel header to increase or de
 
 ***
 
-## See Also
+### See Also
 
 * [Adding & Editing Terms](termlens/adding-terms.md)
 * [Term Picker](termlens/term-picker.md)
