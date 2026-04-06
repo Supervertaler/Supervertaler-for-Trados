@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.54] — 2026-04-06
+
+### Fixed
+- **SuperSearch highlight truncation** — search matches in the results grid showed truncated text with ellipsis (e.g. "Da..." instead of "Dawn") because the highlight overlay used `EndEllipsis` text formatting; match text is now clipped cleanly
+
+---
+
 ## [4.18.53] — 2026-04-06
 
 ### Added

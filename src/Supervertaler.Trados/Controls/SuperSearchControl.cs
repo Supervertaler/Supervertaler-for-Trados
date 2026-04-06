@@ -775,6 +775,10 @@ namespace Supervertaler.Trados.Controls
             var flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                         TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
                         TextFormatFlags.SingleLine;
+            // Same flags but without EndEllipsis — used for highlight overlay so
+            // match text is clipped cleanly instead of showing "Da..." for "Dawn"
+            var highlightFlags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                                 TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
 
             // First, draw the full text
             TextRenderer.DrawText(e.Graphics, cellText, font, textRect, fgColor, flags);
@@ -810,7 +814,7 @@ namespace Supervertaler.Trados.Controls
                 {
                     e.Graphics.FillRectangle(highlightBrush, highlightRect);
                     TextRenderer.DrawText(e.Graphics, matchText, font, highlightRect,
-                        Color.FromArgb(50, 50, 50), flags);
+                        Color.FromArgb(50, 50, 50), highlightFlags);
                 }
 
                 pos = idx + _highlightQuery.Length;
