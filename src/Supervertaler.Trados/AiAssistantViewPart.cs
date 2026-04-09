@@ -209,6 +209,39 @@ namespace Supervertaler.Trados
             RefreshSuperMemoryInboxCount();
             StartInboxWatcher();
 
+            // Check the already-active bank at start-up too. If the user has
+            // a bank (e.g. one created before template bundling shipped, or
+            // pre-existing from Step 5i) that is missing canonical template
+            // files, offer to restore them now rather than waiting for the
+            // user to click Process Inbox and see a confusing error.
+            //
+            // Deferred via BeginInvoke so the MessageBox does not block
+            // Trados Studio's plugin-init message pump — without this, the
+            // whole Studio UI would freeze until the user dismisses the
+            // prompt at start-up.
+            try
+            {
+                var activeName = ActiveMemoryBankName;
+                if (_control.Value.IsHandleCreated)
+                {
+                    _control.Value.BeginInvoke(new Action(() =>
+                    {
+                        try { CheckAndOfferTemplateHealing(activeName); } catch { }
+                    }));
+                }
+                else
+                {
+                    _control.Value.HandleCreated += (s, e) =>
+                    {
+                        _control.Value.BeginInvoke(new Action(() =>
+                        {
+                            try { CheckAndOfferTemplateHealing(activeName); } catch { }
+                        }));
+                    };
+                }
+            }
+            catch { }
+
             // Restore persisted chat history
             LoadChatHistory();
         }
@@ -1163,10 +1196,107 @@ namespace Supervertaler.Trados
                     Role = ChatRole.Assistant,
                     Content = $"Switched to memory bank **{newName}**. The next chat turn will read from this bank."
                 });
+
+                // 6. Heal-on-activation: if the newly active bank is missing
+                //    any canonical template files (06_TEMPLATES/compile.md,
+                //    06_TEMPLATES/lint.md), offer to restore them from the
+                //    bundled defaults. This catches banks created before the
+                //    template bundling shipped, as well as any banks where the
+                //    user deleted a critical template by mistake.
+                CheckAndOfferTemplateHealing(newName);
             }
             catch (Exception ex)
             {
                 AddErrorMessage($"Could not switch memory bank: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Tracks which bank names have already been offered a template-heal
+        /// prompt during the current Trados session, so that switching between
+        /// two broken banks does not fire the dialog repeatedly. The set is
+        /// cleared whenever the plugin is reloaded (i.e. when Trados restarts).
+        /// </summary>
+        private readonly HashSet<string> _healPromptsShownThisSession =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Inspects the active bank for missing canonical template files
+        /// (compile.md, lint.md). If any are missing, shows a one-time
+        /// confirmation dialog offering to restore them from the built-in
+        /// defaults. Safe to call multiple times: subsequent calls for the
+        /// same bank are no-ops once the user has either healed it or
+        /// declined healing during the session.
+        /// </summary>
+        /// <param name="bankName">
+        /// Name of the bank being activated. Used as the key for the
+        /// per-session "already asked" tracker.
+        /// </param>
+        private void CheckAndOfferTemplateHealing(string bankName)
+        {
+            if (string.IsNullOrWhiteSpace(bankName)) return;
+
+            try
+            {
+                var bankDir = UserDataPath.GetMemoryBankDir(bankName);
+                if (!Directory.Exists(bankDir)) return;
+
+                var missing = UserDataPath.GetMissingCanonicalTemplates(bankDir);
+                if (missing.Count == 0) return;
+
+                // Only ask once per session per bank.
+                if (_healPromptsShownThisSession.Contains(bankName)) return;
+                _healPromptsShownThisSession.Add(bankName);
+
+                var parent = _control.Value.FindForm();
+                var missingList = string.Join(", ", missing);
+                var message =
+                    $"Memory bank \"{bankName}\" is missing the following template file(s) in 06_TEMPLATES:\n\n" +
+                    $"    {missingList}\n\n" +
+                    "These templates are the AI prompts that drive Process Inbox and Health Check. " +
+                    "Without them, those features cannot run against this bank.\n\n" +
+                    "Restore them from the built-in defaults now?";
+
+                var result = MessageBox.Show(
+                    parent,
+                    message,
+                    "Missing memory bank templates",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button1);
+
+                if (result != DialogResult.Yes)
+                {
+                    _control.Value.AddMessage(new ChatMessage
+                    {
+                        Role = ChatRole.Assistant,
+                        Content = $"Left memory bank **{bankName}** as-is. Process Inbox and Health Check will not work until the missing template files ({missingList}) are restored — switch away and back, or create a fresh bank, to see the restore prompt again."
+                    });
+                    return;
+                }
+
+                string writeError;
+                var count = UserDataPath.WriteMemoryBankTemplates(bankDir, overwrite: false, out writeError);
+                if (count > 0)
+                {
+                    _control.Value.AddMessage(new ChatMessage
+                    {
+                        Role = ChatRole.Assistant,
+                        Content = $"Restored {count} template file(s) to memory bank **{bankName}**. Process Inbox and Health Check will now work against this bank."
+                    });
+                }
+                else if (!string.IsNullOrEmpty(writeError))
+                {
+                    AddErrorMessage($"Could not restore templates: {writeError}");
+                }
+                else
+                {
+                    AddErrorMessage("Could not restore templates: no files were written. The bundled template resources may be missing from this build of the plugin.");
+                }
+            }
+            catch (Exception ex)
+            {
+                AddErrorMessage($"Could not check memory bank templates: {ex.Message}");
             }
         }
 
@@ -1338,19 +1468,40 @@ namespace Supervertaler.Trados
                     _control.Value.UpdateInboxCount(0);
                     return;
                 }
-                var files = Directory.GetFiles(inboxDir, "*.md", SearchOption.TopDirectoryOnly);
-                // Exclude files with "compiled: true" in their frontmatter
+
+                // Count every file in the inbox – not just .md – so the
+                // Process Inbox button lights up whenever the user has
+                // dropped anything in. Process Inbox itself handles only
+                // Markdown; it shows a routing message for TMX/DOCX/PDF/etc.
+                // pointing the user at Distill. See OnProcessInbox for the
+                // actual per-file-type logic.
+                //
+                // .md files with "compiled: true" in their frontmatter are
+                // excluded (they have already been processed into structured
+                // articles and are now just archived inbox receipts).
+                var files = Directory.GetFiles(inboxDir, "*", SearchOption.TopDirectoryOnly);
                 int count = 0;
                 foreach (var f in files)
                 {
                     try
                     {
-                        // Quick check: read first 500 chars for frontmatter
-                        var head = ReadFileHead(f, 500);
-                        if (head.IndexOf("compiled: true", StringComparison.OrdinalIgnoreCase) < 0)
+                        var ext = Path.GetExtension(f);
+                        if (string.Equals(ext, ".md", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Only count uncompiled .md files.
+                            var head = ReadFileHead(f, 500);
+                            if (head.IndexOf("compiled: true", StringComparison.OrdinalIgnoreCase) < 0)
+                                count++;
+                        }
+                        else
+                        {
+                            // Non-.md files are always counted – they indicate
+                            // material the user wants to hand off to Distill
+                            // (or a Markdown file they forgot to rename).
                             count++;
+                        }
                     }
-                    catch { count++; } // if can't read, count it
+                    catch { count++; } // if can't stat the file, count it
                 }
                 _control.Value.UpdateInboxCount(count);
             }
@@ -1370,7 +1521,11 @@ namespace Supervertaler.Trados
                 var inboxDir = Path.Combine(ActiveMemoryBankDir, "00_INBOX");
                 if (!Directory.Exists(inboxDir)) return;
 
-                _inboxWatcher = new FileSystemWatcher(inboxDir, "*.md")
+                // Watch every file type, not just *.md — users drop TMX, PDF,
+                // DOCX into the inbox too, and the Process Inbox button needs
+                // to reflect that (it will route non-.md files to Distill via
+                // a helpful message rather than silently ignoring them).
+                _inboxWatcher = new FileSystemWatcher(inboxDir, "*.*")
                 {
                     NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
                     IncludeSubdirectories = false,
@@ -1426,25 +1581,69 @@ namespace Supervertaler.Trados
                 return;
             }
 
-            // Collect unprocessed inbox files
-            var files = Directory.GetFiles(inboxDir, "*.md", SearchOption.TopDirectoryOnly);
-            var inboxFiles = new List<Tuple<string, string>>(); // (path, content)
-            foreach (var f in files)
+            // Collect everything in the inbox and split by extension. Process
+            // Inbox only consumes Markdown; other file types (TMX, DOCX, PDF,
+            // XLSX, …) are recognised and surfaced back to the user with a
+            // pointer at Distill, which is the feature that actually reads
+            // them. This stops the button from silently ignoring files the
+            // user deliberately placed in the inbox.
+            var allFiles = Directory.GetFiles(inboxDir, "*", SearchOption.TopDirectoryOnly);
+            var inboxFiles = new List<Tuple<string, string>>(); // (path, content) — .md only
+            var nonMdFiles = new List<string>();                // paths of everything else
+
+            foreach (var f in allFiles)
             {
-                try
+                var ext = Path.GetExtension(f);
+                if (string.Equals(ext, ".md", StringComparison.OrdinalIgnoreCase))
                 {
-                    var content = File.ReadAllText(f);
-                    if (content.IndexOf("compiled: true", StringComparison.OrdinalIgnoreCase) < 0)
-                        inboxFiles.Add(Tuple.Create(f, content));
+                    try
+                    {
+                        var content = File.ReadAllText(f);
+                        if (content.IndexOf("compiled: true", StringComparison.OrdinalIgnoreCase) < 0)
+                            inboxFiles.Add(Tuple.Create(f, content));
+                    }
+                    catch { }
                 }
-                catch { }
+                else
+                {
+                    nonMdFiles.Add(f);
+                }
             }
 
-            if (inboxFiles.Count == 0)
+            if (inboxFiles.Count == 0 && nonMdFiles.Count == 0)
             {
                 ShowSuperMemoryMessage($"The inbox for memory bank **{bankName}** is empty \u2014 nothing to process.\n\n" +
                     $"Drop raw material (client briefs, glossaries, feedback notes, style guides) into:\n`{inboxDir}`");
                 return;
+            }
+
+            if (inboxFiles.Count == 0 && nonMdFiles.Count > 0)
+            {
+                // Nothing Markdown to compile, but there are TMX/DOCX/PDF/etc.
+                // files sitting in the inbox. Point the user at Distill.
+                var nameList = string.Join(", ", nonMdFiles.Select(Path.GetFileName));
+                ShowSuperMemoryMessage(
+                    $"The inbox for memory bank **{bankName}** contains {nonMdFiles.Count} file(s), but none of them are Markdown notes:\n\n" +
+                    $"    {nameList}\n\n" +
+                    "**Process Inbox** reads Markdown briefs, notes, and feedback — it cannot extract knowledge from binary files like TMX, DOCX, PDF, or XLSX.\n\n" +
+                    "Click the **Distill** button instead and select these files there. Distill will read each file, extract client, domain, terminology, and style information from it, and write structured Markdown articles straight into the bank.");
+                return;
+            }
+
+            // We have Markdown to process. If there are also non-md files
+            // alongside it, warn about them so the user knows they weren't
+            // silently ignored, but continue processing the Markdown.
+            if (nonMdFiles.Count > 0)
+            {
+                var nameList = string.Join(", ", nonMdFiles.Select(Path.GetFileName));
+                _control.Value.AddMessage(new ChatMessage
+                {
+                    Role = ChatRole.Assistant,
+                    Content =
+                        $"Heads up: the inbox also contains {nonMdFiles.Count} non-Markdown file(s) that Process Inbox cannot handle:\n\n" +
+                        $"    {nameList}\n\n" +
+                        "I'll process the Markdown files now. For the others, run **Distill** afterwards — it can read TMX, DOCX, PDF, XLSX, and termbases directly."
+                });
             }
 
             // Read the compile template

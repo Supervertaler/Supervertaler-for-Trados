@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace Supervertaler.Trados.Settings
@@ -327,6 +328,20 @@ namespace Supervertaler.Trados.Settings
                 {
                     Directory.CreateDirectory(Path.Combine(target, folder));
                 }
+
+                // Populate 06_TEMPLATES with the bundled template files so the
+                // new bank is immediately usable by Process Inbox, Health Check,
+                // and the Obsidian-side query / translate-with-KB helpers.
+                // Failures here do not roll the bank back — the skeleton is the
+                // minimum viable state, and missing templates can be healed later
+                // via TryWriteMissingMemoryBankTemplates.
+                try
+                {
+                    string writeError;
+                    WriteMemoryBankTemplates(target, overwrite: false, out writeError);
+                }
+                catch { }
+
                 sanitisedName = safeName;
                 return true;
             }
@@ -335,6 +350,135 @@ namespace Supervertaler.Trados.Settings
                 error = "Could not create memory bank at\n  " + target + "\n\n" + ex.Message;
                 return false;
             }
+        }
+
+        // ── Memory bank templates (embedded resources) ───────────────────
+
+        /// <summary>
+        /// Logical-name prefix used for memory bank template embedded resources.
+        /// Defined in <c>Supervertaler.Trados.csproj</c> via the
+        /// <c>&lt;LogicalName&gt;</c> metadata of the <c>EmbeddedResource</c>
+        /// glob under <c>Resources/memory-bank-templates/</c>. A distinct
+        /// prefix is used so that one of the bundled templates can contain
+        /// spaces and parentheses in its filename without interfering with
+        /// the normal assembly-qualified resource naming.
+        /// </summary>
+        private const string TemplateResourcePrefix = "MemoryBankTemplate.";
+
+        /// <summary>
+        /// Canonical template filenames that downstream features depend on.
+        /// <see cref="GetMissingCanonicalTemplates"/> uses this list to decide
+        /// whether an existing bank needs its <c>06_TEMPLATES/</c> folder healed.
+        /// The bundled resource set may contain additional (non-canonical) files
+        /// as Obsidian-side helpers; those are still written on fresh create but
+        /// their absence on an existing bank does not trigger a heal prompt.
+        /// </summary>
+        public static readonly string[] CanonicalTemplateFiles = new[]
+        {
+            "compile.md",  // required by Process Inbox
+            "lint.md",     // required by Health Check
+        };
+
+        /// <summary>
+        /// Streams every embedded memory bank template resource into the
+        /// <c>06_TEMPLATES/</c> sub-folder of <paramref name="bankDir"/>.
+        /// Creates the folder if it does not yet exist.
+        /// </summary>
+        /// <param name="bankDir">Absolute path to the bank root directory.</param>
+        /// <param name="overwrite">
+        /// When true, existing template files are replaced. When false
+        /// (the default on both create and heal paths), files that already
+        /// exist on disk are left untouched — user edits to templates are
+        /// per-bank and must not be clobbered by a plugin upgrade.
+        /// </param>
+        /// <param name="error">
+        /// Human-readable error on total failure (e.g. cannot create the
+        /// <c>06_TEMPLATES/</c> folder). Individual per-file write failures
+        /// are swallowed so that one bad file does not prevent the rest
+        /// from being written.
+        /// </param>
+        /// <returns>
+        /// The number of files successfully written. Zero is not an error
+        /// when <paramref name="overwrite"/> is false and every file already
+        /// exists on disk.
+        /// </returns>
+        public static int WriteMemoryBankTemplates(string bankDir, bool overwrite, out string error)
+        {
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(bankDir))
+            {
+                error = "Bank directory path is empty.";
+                return 0;
+            }
+
+            var templatesDir = Path.Combine(bankDir, "06_TEMPLATES");
+            try
+            {
+                Directory.CreateDirectory(templatesDir);
+            }
+            catch (Exception ex)
+            {
+                error = "Could not create templates folder at\n  " + templatesDir + "\n\n" + ex.Message;
+                return 0;
+            }
+
+            int written = 0;
+            var asm = typeof(UserDataPath).Assembly;
+            var allResources = asm.GetManifestResourceNames();
+
+            foreach (var resource in allResources)
+            {
+                if (!resource.StartsWith(TemplateResourcePrefix, StringComparison.Ordinal))
+                    continue;
+
+                var fileName = resource.Substring(TemplateResourcePrefix.Length);
+                var destPath = Path.Combine(templatesDir, fileName);
+
+                if (File.Exists(destPath) && !overwrite)
+                    continue;
+
+                try
+                {
+                    using (var src = asm.GetManifestResourceStream(resource))
+                    {
+                        if (src == null) continue;
+                        using (var dst = new FileStream(destPath, FileMode.Create, FileAccess.Write))
+                        {
+                            src.CopyTo(dst);
+                        }
+                    }
+                    written++;
+                }
+                catch
+                {
+                    // Skip this file — individual failures must not block the rest.
+                }
+            }
+
+            return written;
+        }
+
+        /// <summary>
+        /// Inspects <paramref name="bankDir"/> and returns the names of any
+        /// <see cref="CanonicalTemplateFiles"/> that are missing from its
+        /// <c>06_TEMPLATES/</c> sub-folder. An empty list means the bank is
+        /// structurally sound; a non-empty list is the payload for the
+        /// heal-on-activation prompt in the AI Assistant view part.
+        /// </summary>
+        public static List<string> GetMissingCanonicalTemplates(string bankDir)
+        {
+            var missing = new List<string>();
+            if (string.IsNullOrWhiteSpace(bankDir)) return missing;
+
+            var templatesDir = Path.Combine(bankDir, "06_TEMPLATES");
+            foreach (var name in CanonicalTemplateFiles)
+            {
+                var path = Path.Combine(templatesDir, name);
+                if (!File.Exists(path))
+                    missing.Add(name);
+            }
+            return missing;
         }
 
         /// <summary>

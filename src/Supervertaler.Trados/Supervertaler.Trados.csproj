@@ -100,6 +100,17 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!-- Memory bank template files bundled as embedded resources. Streamed out
+       into each new bank's 06_TEMPLATES/ folder by UserDataPath.WriteMemoryBankTemplates.
+       LogicalName uses a distinct prefix so runtime code can locate them reliably
+       regardless of the filename (one of the bundled templates has spaces and
+       parentheses in its name). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\memory-bank-templates\*.md">
+      <LogicalName>MemoryBankTemplate.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- Copy compiled .plugin.resources sidecar to output (needed by Trados plugin framework) -->
   <Target Name="CopyPluginResources" AfterTargets="Build">
     <Copy SourceFiles="$(IntermediateOutputPath)Supervertaler.Trados.plugin.resources" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />

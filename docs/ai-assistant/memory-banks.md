@@ -101,13 +101,23 @@ The shared folder also means you can keep your memory banks in a cloud-synced lo
 
 Once a bank exists, you fill it with knowledge in one of several ways:
 
-1. **Drop raw material into `00_INBOX`** – client briefs, style guides, glossaries, feedback notes, reference articles, previous translations. Any Markdown, PDF, DOCX, or plain-text file.
-2. **Use [Quick Add](memory-banks/quick-add.md)** (Ctrl+Alt+M) to capture a terminology decision or correction while translating. Quick Add appends a short note to the inbox so you can keep working without context-switching.
-3. **Use [Distill](memory-banks/distill.md)** to extract knowledge from TMX files, Word documents, PDFs, or termbases and have the AI write structured articles from them.
-4. **Run [Process Inbox](memory-banks/process-inbox.md)** periodically. The AI reads everything in `00_INBOX` and files it into `01_CLIENTS`, `02_TERMINOLOGY`, `03_DOMAINS`, or `04_STYLE` as structured Markdown articles, interlinked with backlinks.
+1. **Drop Markdown notes into `00_INBOX`** – client briefs, glossaries, feedback notes, style guides, reference articles you have written down as `.md` files. These are compiled by Process Inbox.
+2. **Use [Distill](memory-banks/distill.md)** for everything that is **not** plain Markdown – TMX translation memories, DOCX style guides, PDF reference documents, XLSX/CSV glossaries, MultiTerm termbases. Distill reads each file and writes draft Markdown articles into `00_INBOX/`, ready for Process Inbox to compile.
+3. **Use [Quick Add](memory-banks/quick-add.md)** (Ctrl+Alt+M) to capture a terminology decision or correction while translating. Quick Add appends a short note to the inbox so you can keep working without context-switching.
+4. **Run [Process Inbox](memory-banks/process-inbox.md)** periodically. The AI reads every Markdown file in `00_INBOX` and files it into `01_CLIENTS`, `02_TERMINOLOGY`, `03_DOMAINS`, or `04_STYLE` as structured articles, interlinked with backlinks.
 5. **Run [Health Check](memory-banks/health-check.md)** when the bank starts to feel stale. It scans for conflicting terminology, broken links, stale content, and missing cross-references – and heals what it can.
 
 The result is a knowledge graph that grows with your work and that the AI consults before every translation.
+
+{% hint style="info" %}
+**Markdown vs binary files in the inbox.** Process Inbox is a Markdown compiler – it reads `.md` files only. Distill is the feature that reads binary formats (TMX, DOCX, PDF, XLSX, termbases) and turns them into Markdown. If you drop a TMX or PDF in `00_INBOX/` directly, Process Inbox will spot it and tell you to run Distill on it instead, rather than silently ignoring the file. See [Process Inbox](memory-banks/process-inbox.md#markdown-only-use-distill-for-everything-else) for the full table.
+{% endhint %}
+
+### Templates and the heal-on-activation prompt
+
+Process Inbox and Health Check are driven by AI prompts that live inside each bank under `06_TEMPLATES/` (`compile.md` and `lint.md` respectively). The plugin ships these template files as built-in defaults, and `+ New memory bank…` writes them automatically into every newly created bank.
+
+If you activate an older bank that is missing one of these template files – for example a bank you created before template bundling shipped, or one where you deleted a template by accident – the plugin shows a one-time *"Missing memory bank templates"* dialog offering to restore the missing files from the built-in defaults. Click **Yes** and the bank is fixed in place; click **No** and the plugin leaves the bank alone (you can switch away and back to see the prompt again). Existing template files are never overwritten – only missing ones are written – so your per-bank edits are safe.
 
 ## Features
 
