@@ -83,8 +83,55 @@ namespace Supervertaler.Trados
             // One-time migration from %LocalAppData%\Supervertaler.Trados\ → new location
             UserDataPath.MigrateIfNeeded();
 
+            // Multi-memory-bank migration: if a legacy single-bank folder exists and
+            // the new memory-banks/ root does not, ask the user to name their existing
+            // bank so it can be moved into the new layout. Silently skipped on fresh
+            // installs or installations that already use the multi-bank layout (e.g.
+            // because the Python Supervertaler Assistant migrated first).
+            MigrateLegacyMemoryBankIfNeeded();
+
             // Initialize licensing — loads cached state, triggers background validation
             LicenseManager.Instance.InitializeAsync();
+        }
+
+        // ── Multi-memory-bank migration ─────────────────────────────
+
+        /// <summary>
+        /// If <see cref="UserDataPath.NeedsLegacyBankMigration"/> reports true,
+        /// show the <see cref="LegacyMemoryBankMigrationDialog"/> and persist the
+        /// chosen bank name to <c>AiSettings.ActiveMemoryBankName</c> on success.
+        /// Wrapped in a try/catch so a misbehaving dialog never blocks plugin startup.
+        /// </summary>
+        private static void MigrateLegacyMemoryBankIfNeeded()
+        {
+            try
+            {
+                if (!UserDataPath.NeedsLegacyBankMigration)
+                    return;
+
+                using (var dlg = new LegacyMemoryBankMigrationDialog())
+                {
+                    if (dlg.ShowDialog() != DialogResult.OK)
+                        return; // User hit "Skip for now" — legacy folder stays put.
+
+                    var chosen = dlg.ChosenBankName;
+                    if (string.IsNullOrWhiteSpace(chosen))
+                        return;
+
+                    // Persist the chosen bank as the active one so every AI feature
+                    // that opens later in this session finds the right vault.
+                    var settings = TermLensSettings.Load();
+                    if (settings.AiSettings == null)
+                        settings.AiSettings = new AiSettings();
+                    settings.AiSettings.ActiveMemoryBankName = chosen;
+                    settings.Save();
+                }
+            }
+            catch
+            {
+                // Non-fatal — the user can still rename the folder manually and set
+                // the active bank from the settings dialog on a future session.
+            }
         }
 
         // ── Stale-plugin detection ───────────────────────────────────

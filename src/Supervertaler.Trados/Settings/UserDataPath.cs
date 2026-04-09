@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace Supervertaler.Trados.Settings
@@ -74,37 +76,217 @@ namespace Supervertaler.Trados.Settings
         /// <summary>Shared resources folder (supervertaler.db lives here).</summary>
         public static string ResourcesDir => Path.Combine(Root, "resources");
 
+        // ── Memory banks (multi-bank layout) ─────────────────────────
+        //
+        // The Supervertaler Assistant supports several memory banks side by side,
+        // each one a self-contained Obsidian-compatible vault. The on-disk layout is:
+        //
+        //     <Root>/memory-banks/<bank-name>/
+        //
+        // where <bank-name> is a filesystem-safe identifier (lowercase letters,
+        // digits, hyphens, underscores). The Python Supervertaler Assistant uses
+        // the same layout and the same naming rules, so banks created on either
+        // side are immediately visible to the other.
+        //
+        // Backward compatibility:
+        //   * Legacy installations have a single-bank layout at one of:
+        //         <Root>/memory-bank/     (v1 rename target)
+        //         <Root>/supermemory/     (original "SuperMemory" name)
+        //     These are detected via <see cref="HasLegacySingleBank"/> and surfaced
+        //     by the first-run migration dialog, which moves the whole folder into
+        //     <Root>/memory-banks/<user-chosen-name>/ on the user's first session
+        //     with a multi-bank-aware build.
+        //
+        //   * The obsolete single-bank property <see cref="MemoryBankDir"/> still
+        //     exists so that any out-of-tree callers keep compiling during the
+        //     transition. New code must use <see cref="GetMemoryBankDir"/> with an
+        //     explicit bank name (normally <c>AiSettings.ActiveMemoryBankName</c>).
+
+        /// <summary>Default bank name created on fresh installs with no legacy folder.</summary>
+        public const string DefaultMemoryBankName = "default";
+
         /// <summary>
-        /// Memory-bank folder (Obsidian-compatible Markdown, shared format with the
-        /// standalone Supervertaler Assistant). Default location is
-        /// <c>&lt;Root&gt;/memory-bank/</c>. For backward compatibility with the original
-        /// "SuperMemory" name, if an old <c>&lt;Root&gt;/supermemory/</c> folder exists and
-        /// the new location does not, the old path is returned so existing installations
-        /// keep working without manual migration.
+        /// Root folder containing all memory banks: <c>&lt;Root&gt;/memory-banks/</c>.
+        /// Individual banks live in subfolders named after their sanitized bank name.
         /// </summary>
-        public static string MemoryBankDir
+        public static string MemoryBanksRoot => Path.Combine(Root, "memory-banks");
+
+        /// <summary>
+        /// Resolves the on-disk path for a specific memory bank. The returned path
+        /// may or may not exist — callers should check with <see cref="Directory.Exists"/>
+        /// and surface a user-facing message if it does not.
+        /// </summary>
+        /// <param name="bankName">
+        /// Bank identifier. If null, empty or whitespace, falls back to
+        /// <see cref="DefaultMemoryBankName"/>. The name is sanitized via
+        /// <see cref="SanitizeBankName"/> to avoid accidental path traversal.
+        /// </param>
+        public static string GetMemoryBankDir(string bankName)
+        {
+            var safe = SanitizeBankName(bankName);
+            if (string.IsNullOrEmpty(safe))
+                safe = DefaultMemoryBankName;
+            return Path.Combine(MemoryBanksRoot, safe);
+        }
+
+        /// <summary>
+        /// Enumerates the names of memory banks currently present under
+        /// <see cref="MemoryBanksRoot"/>. Returns an empty list if the root does not
+        /// exist yet. The list is sorted alphabetically (case-insensitive) so the
+        /// toolbar dropdown shows banks in a stable order.
+        /// </summary>
+        public static List<string> ListMemoryBanks()
+        {
+            var result = new List<string>();
+            try
+            {
+                if (!Directory.Exists(MemoryBanksRoot))
+                    return result;
+
+                foreach (var dir in Directory.GetDirectories(MemoryBanksRoot))
+                {
+                    var name = Path.GetFileName(dir);
+                    if (string.IsNullOrEmpty(name)) continue;
+                    // Skip hidden/system folders (e.g. .trash created by Obsidian)
+                    if (name.StartsWith(".")) continue;
+                    result.Add(name);
+                }
+            }
+            catch
+            {
+                // Non-fatal — return whatever we managed to enumerate
+            }
+
+            result.Sort(StringComparer.OrdinalIgnoreCase);
+            return result;
+        }
+
+        /// <summary>
+        /// Normalises a user-typed bank name into a filesystem-safe identifier.
+        /// Mirrors the Python Assistant's rules exactly: converts to lowercase,
+        /// replaces whitespace with hyphens, and strips any character that is not
+        /// a lowercase letter, digit, hyphen or underscore. Returns an empty string
+        /// if nothing valid remains.
+        /// </summary>
+        public static string SanitizeBankName(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+
+            var sb = new StringBuilder(raw.Length);
+            foreach (var ch in raw.Trim().ToLowerInvariant())
+            {
+                if (char.IsLetterOrDigit(ch) && ch < 128)
+                    sb.Append(ch);
+                else if (ch == '-' || ch == '_')
+                    sb.Append(ch);
+                else if (char.IsWhiteSpace(ch))
+                    sb.Append('-');
+                // Everything else (punctuation, non-ASCII letters, …) is dropped.
+            }
+
+            // Collapse runs of hyphens/underscores and trim them from the ends.
+            var cleaned = sb.ToString().Trim('-', '_');
+            return cleaned;
+        }
+
+        /// <summary>
+        /// Path to the legacy single-bank folder, if one exists. Checks both the
+        /// v1 rename target (<c>memory-bank/</c>) and the original
+        /// <c>supermemory/</c> name. Returns null if neither is present.
+        /// </summary>
+        public static string LegacySingleBankPath
         {
             get
             {
-                var newPath = Path.Combine(Root, "memory-bank");
-                if (Directory.Exists(newPath)) return newPath;
+                var v1 = Path.Combine(Root, "memory-bank");
+                if (Directory.Exists(v1)) return v1;
 
-                var legacyPath = Path.Combine(Root, "supermemory");
-                if (Directory.Exists(legacyPath)) return legacyPath;
+                var v0 = Path.Combine(Root, "supermemory");
+                if (Directory.Exists(v0)) return v0;
 
-                // Neither exists yet – return the new canonical path so callers that
-                // create the folder on first use get the new name.
-                return newPath;
+                return null;
+            }
+        }
+
+        /// <summary>True when a legacy single-bank folder is present on disk.</summary>
+        public static bool HasLegacySingleBank => LegacySingleBankPath != null;
+
+        /// <summary>
+        /// True when the plugin should prompt the user to name their existing
+        /// single-bank vault and move it into the new multi-bank layout. This is
+        /// only the case when a legacy folder exists AND the multi-bank root does
+        /// not (to avoid asking again if the user already migrated from Python).
+        /// </summary>
+        public static bool NeedsLegacyBankMigration =>
+            HasLegacySingleBank && !Directory.Exists(MemoryBanksRoot);
+
+        /// <summary>
+        /// Moves the legacy single-bank folder into the new multi-bank layout at
+        /// <c>&lt;Root&gt;/memory-banks/&lt;newName&gt;/</c>. The operation is atomic
+        /// from the user's perspective: on success the legacy folder no longer
+        /// exists and <see cref="ListMemoryBanks"/> includes the new name. On
+        /// failure the legacy folder is left untouched and <paramref name="error"/>
+        /// describes what went wrong.
+        /// </summary>
+        public static bool TryMigrateLegacySingleBank(string newName, out string error)
+        {
+            error = null;
+            var src = LegacySingleBankPath;
+            if (src == null)
+            {
+                error = "No legacy memory-bank folder was found to migrate.";
+                return false;
+            }
+
+            var safeName = SanitizeBankName(newName);
+            if (string.IsNullOrEmpty(safeName))
+            {
+                error = "The name must contain at least one lowercase letter, digit, hyphen or underscore.";
+                return false;
+            }
+
+            var dst = GetMemoryBankDir(safeName);
+            if (Directory.Exists(dst))
+            {
+                error = "A memory bank named '" + safeName + "' already exists at:\n  " + dst;
+                return false;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(MemoryBanksRoot);
+                // Directory.Move fails across volumes, but src and dst live under the
+                // same Root so this is always a plain rename on the same volume.
+                Directory.Move(src, dst);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Could not move\n  " + src + "\nto\n  " + dst + "\n\n" + ex.Message;
+                return false;
             }
         }
 
         /// <summary>
+        /// Legacy single-bank property kept so out-of-tree callers compile during
+        /// the multi-bank transition. New code must call <see cref="GetMemoryBankDir"/>
+        /// with an explicit bank name (normally <c>AiSettings.ActiveMemoryBankName</c>).
+        /// This getter returns the legacy path when one exists, otherwise the
+        /// default bank under the new layout.
+        /// </summary>
+        [Obsolete("Use GetMemoryBankDir(bankName) with AiSettings.ActiveMemoryBankName. This shim exists only for the multi-bank transition.")]
+        public static string MemoryBankDir =>
+            LegacySingleBankPath ?? GetMemoryBankDir(DefaultMemoryBankName);
+
+        /// <summary>
         /// Legacy alias for <see cref="MemoryBankDir"/>. Kept so existing callers compile
         /// unchanged during the gradual SuperMemory → memory bank rename. New code should
-        /// use <see cref="MemoryBankDir"/>.
+        /// use <see cref="GetMemoryBankDir"/> with an explicit bank name.
         /// </summary>
-        [Obsolete("Use MemoryBankDir instead. This alias exists for the SuperMemory → memory bank rename transition.")]
+        [Obsolete("Use GetMemoryBankDir(bankName) instead. This alias exists for the SuperMemory → memory bank rename transition.")]
+#pragma warning disable CS0618
         public static string SuperMemoryDir => MemoryBankDir;
+#pragma warning restore CS0618
 
         // ── Trados-specific sub-directory ────────────────────────────
 

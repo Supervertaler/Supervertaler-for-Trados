@@ -29,10 +29,7 @@ namespace Supervertaler.Trados
     [Shortcut(Keys.Control | Keys.Alt | Keys.M)]
     public class SuperMemoryQuickAddAction : AbstractAction
     {
-        /// <summary>Sub-folder inside the shared user-data root where the vault lives.</summary>
-        private const string VaultFolder = "supermemory";
-
-        /// <summary>Terminology sub-folder inside the vault.</summary>
+        /// <summary>Terminology sub-folder inside every memory bank.</summary>
         private const string TermFolder = "02_TERMINOLOGY";
 
         protected override void Execute()
@@ -114,8 +111,14 @@ namespace Supervertaler.Trados
                     return;
                 }
 
-                // ── 1. Write .md to SuperMemory vault ────────────────
-                var vaultPath = Path.Combine(UserDataPath.Root, VaultFolder);
+                // ── 1. Write .md to the active memory bank ───────────
+                // Resolve the active bank from settings so Quick Add always writes
+                // to the same vault the AI Assistant is currently reading from.
+                var qaSettings = TermLensSettings.Load();
+                var bankName = qaSettings?.AiSettings?.ActiveMemoryBankName;
+                if (string.IsNullOrWhiteSpace(bankName))
+                    bankName = UserDataPath.DefaultMemoryBankName;
+                var vaultPath = UserDataPath.GetMemoryBankDir(bankName);
                 bool mdWritten = WriteTermArticle(vaultPath, dlg.Term, dlg.Correction, dlg.Notes);
 
                 // ── 2. Append to active prompt (if requested) ────────
@@ -128,9 +131,9 @@ namespace Supervertaler.Trados
                 // ── 3. Feedback ──────────────────────────────────────
                 var msg = new StringBuilder();
                 if (mdWritten)
-                    msg.AppendLine("✓  Added to SuperMemory vault.");
+                    msg.AppendLine($"✓  Added to memory bank \"{bankName}\".");
                 else
-                    msg.AppendLine("⚠  Could not write to SuperMemory vault.");
+                    msg.AppendLine($"⚠  Could not write to memory bank \"{bankName}\".");
 
                 if (dlg.AppendToPrompt)
                 {

@@ -243,6 +243,12 @@ namespace Supervertaler.Trados.Settings
                         s.AiSettings.SelectedPromptPath = "";
                     // CustomSystemPrompt is intentionally nullable (null = use default)
 
+                    // Ensure the active memory bank is populated. The OnDeserializing
+                    // hook pre-seeds this, but belt-and-braces for callers who build
+                    // AiSettings instances outside of the serializer.
+                    if (string.IsNullOrWhiteSpace(s.AiSettings.ActiveMemoryBankName))
+                        s.AiSettings.ActiveMemoryBankName = UserDataPath.DefaultMemoryBankName;
+
                     // Migrate: retired OpenAI models → GPT-5.4 Mini
                     var openAiModel = s.AiSettings.OpenAiModel;
                     if (openAiModel == "gpt-4.1" || openAiModel == "gpt-4.1-mini" ||

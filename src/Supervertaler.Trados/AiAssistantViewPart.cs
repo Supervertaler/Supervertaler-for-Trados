@@ -70,8 +70,38 @@ namespace Supervertaler.Trados
         // Memory-bank inbox watcher
         private FileSystemWatcher _inboxWatcher;
 
-        // Memory-bank reader (lazy: created once, cached for the session)
+        // Memory-bank reader (lazy: created once, cached for the session).
+        // Cached against _kbReaderBankName so that switching the active memory
+        // bank at runtime (Step 5 toolbar dropdown) forces a fresh reader on the
+        // next LoadKbContextForPrompt() call.
         private MemoryBankReader _kbReader;
+        private string _kbReaderBankName;
+
+        /// <summary>
+        /// Resolves the on-disk path of the active memory bank for the current
+        /// session. Reads <c>AiSettings.ActiveMemoryBankName</c> and falls back
+        /// to <see cref="UserDataPath.DefaultMemoryBankName"/> when settings are
+        /// not yet loaded or the field is blank.
+        /// </summary>
+        private string ActiveMemoryBankDir
+        {
+            get
+            {
+                var name = _settings?.AiSettings?.ActiveMemoryBankName;
+                if (string.IsNullOrWhiteSpace(name))
+                    name = UserDataPath.DefaultMemoryBankName;
+                return UserDataPath.GetMemoryBankDir(name);
+            }
+        }
+
+        /// <summary>
+        /// Human-friendly label for the active memory bank, used in log/toast
+        /// messages so translators can tell which bank they just acted on.
+        /// </summary>
+        private string ActiveMemoryBankName =>
+            string.IsNullOrWhiteSpace(_settings?.AiSettings?.ActiveMemoryBankName)
+                ? UserDataPath.DefaultMemoryBankName
+                : _settings.AiSettings.ActiveMemoryBankName;
 
         protected override IUIControl GetContentControl()
         {
@@ -1011,8 +1041,14 @@ namespace Supervertaler.Trados
                 if (_settings?.AiSettings?.IncludeSuperMemoryContext == false)
                     return null;
 
-                if (_kbReader == null)
-                    _kbReader = new MemoryBankReader(UserDataPath.MemoryBankDir);
+                // Re-create the reader if the active bank changed (Step 5 dropdown
+                // can swap banks without a restart). First run lands here too.
+                var bankName = ActiveMemoryBankName;
+                if (_kbReader == null || !string.Equals(_kbReaderBankName, bankName, StringComparison.Ordinal))
+                {
+                    _kbReader = new MemoryBankReader(ActiveMemoryBankDir);
+                    _kbReaderBankName = bankName;
+                }
 
                 if (!_kbReader.VaultExists) return null;
 
@@ -1050,7 +1086,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var inboxDir = Path.Combine(UserDataPath.MemoryBankDir, "00_INBOX");
+                var inboxDir = Path.Combine(ActiveMemoryBankDir, "00_INBOX");
                 if (!Directory.Exists(inboxDir))
                 {
                     _control.Value.UpdateInboxCount(0);
@@ -1085,7 +1121,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var inboxDir = Path.Combine(UserDataPath.MemoryBankDir, "00_INBOX");
+                var inboxDir = Path.Combine(ActiveMemoryBankDir, "00_INBOX");
                 if (!Directory.Exists(inboxDir)) return;
 
                 _inboxWatcher = new FileSystemWatcher(inboxDir, "*.md")
@@ -1134,10 +1170,12 @@ namespace Supervertaler.Trados
 
         private void OnProcessInbox(object sender, EventArgs e)
         {
-            var inboxDir = Path.Combine(UserDataPath.MemoryBankDir, "00_INBOX");
+            var bankDir = ActiveMemoryBankDir;
+            var bankName = ActiveMemoryBankName;
+            var inboxDir = Path.Combine(bankDir, "00_INBOX");
             if (!Directory.Exists(inboxDir))
             {
-                ShowSuperMemoryMessage("Your SuperMemory inbox folder does not exist yet.\n\n" +
+                ShowSuperMemoryMessage($"The inbox for memory bank **{bankName}** does not exist yet.\n\n" +
                     $"Create it at:\n`{inboxDir}`\n\nThen drop raw material (client briefs, glossaries, feedback notes) into it.");
                 return;
             }
@@ -1158,17 +1196,17 @@ namespace Supervertaler.Trados
 
             if (inboxFiles.Count == 0)
             {
-                ShowSuperMemoryMessage("Your SuperMemory inbox is empty \u2014 nothing to process.\n\n" +
+                ShowSuperMemoryMessage($"The inbox for memory bank **{bankName}** is empty \u2014 nothing to process.\n\n" +
                     $"Drop raw material (client briefs, glossaries, feedback notes, style guides) into:\n`{inboxDir}`");
                 return;
             }
 
             // Read the compile template
-            var templatePath = Path.Combine(UserDataPath.MemoryBankDir, "06_TEMPLATES", "compile.md");
+            var templatePath = Path.Combine(bankDir, "06_TEMPLATES", "compile.md");
             if (!File.Exists(templatePath))
             {
                 ShowSuperMemoryMessage("Could not find the compilation template at:\n" +
-                    $"`{templatePath}`\n\nMake sure your SuperMemory vault contains the `06_TEMPLATES/compile.md` file.");
+                    $"`{templatePath}`\n\nMake sure memory bank **{bankName}** contains the `06_TEMPLATES/compile.md` file.");
                 return;
             }
             var systemPrompt = File.ReadAllText(templatePath);
@@ -1198,11 +1236,12 @@ namespace Supervertaler.Trados
 
         private void OnHealthCheck(object sender, EventArgs e)
         {
-            var vaultDir = UserDataPath.MemoryBankDir;
+            var vaultDir = ActiveMemoryBankDir;
+            var bankName = ActiveMemoryBankName;
             if (!Directory.Exists(vaultDir))
             {
-                ShowSuperMemoryMessage("Your SuperMemory vault folder does not exist yet.\n\n" +
-                    $"Create it at:\n`{vaultDir}`");
+                ShowSuperMemoryMessage($"Memory bank **{bankName}** does not exist yet.\n\n" +
+                    $"Expected location:\n`{vaultDir}`");
                 return;
             }
 
@@ -1211,7 +1250,7 @@ namespace Supervertaler.Trados
             if (!File.Exists(templatePath))
             {
                 ShowSuperMemoryMessage("Could not find the health check template at:\n" +
-                    $"`{templatePath}`\n\nMake sure your SuperMemory vault contains the `06_TEMPLATES/lint.md` file.");
+                    $"`{templatePath}`\n\nMake sure memory bank **{bankName}** contains the `06_TEMPLATES/lint.md` file.");
                 return;
             }
             var systemPrompt = File.ReadAllText(templatePath);
@@ -1244,7 +1283,7 @@ namespace Supervertaler.Trados
 
             if (fileCount == 0)
             {
-                ShowSuperMemoryMessage("Your SuperMemory vault is empty \u2014 nothing to check.\n\n" +
+                ShowSuperMemoryMessage($"Memory bank **{bankName}** is empty \u2014 nothing to check.\n\n" +
                     "Start by adding content via **Process Inbox** or the **Quick Add** shortcut (Ctrl+Alt+M).");
                 return;
             }
@@ -1415,7 +1454,7 @@ namespace Supervertaler.Trados
         {
             if (string.IsNullOrEmpty(response)) return;
 
-            var vaultDir = UserDataPath.MemoryBankDir;
+            var vaultDir = ActiveMemoryBankDir;
             var writtenFiles = new List<string>();
 
             // Parse "### FILE: path" markers
@@ -1510,7 +1549,7 @@ namespace Supervertaler.Trados
         {
             if (string.IsNullOrEmpty(response)) return;
 
-            var vaultDir = UserDataPath.MemoryBankDir;
+            var vaultDir = ActiveMemoryBankDir;
             // Track files with their status (new vs updated)
             var fileResults = new List<Tuple<string, bool>>(); // (path, isNew)
 
@@ -1670,11 +1709,12 @@ date: <today's date YYYY-MM-DD>
                 selectedFiles = dlg.FileNames;
             }
 
-            var vaultDir = UserDataPath.MemoryBankDir;
+            var vaultDir = ActiveMemoryBankDir;
+            var bankName = ActiveMemoryBankName;
             if (!Directory.Exists(vaultDir))
             {
-                ShowSuperMemoryMessage("Your SuperMemory vault folder does not exist yet.\n\n" +
-                    $"Create it at:\n`{vaultDir}`");
+                ShowSuperMemoryMessage($"Memory bank **{bankName}** does not exist yet.\n\n" +
+                    $"Expected location:\n`{vaultDir}`");
                 return;
             }
 
@@ -1742,11 +1782,12 @@ date: <today's date YYYY-MM-DD>
         /// </summary>
         public void DistillTermbase(string termbaseName, string formattedTerms)
         {
-            var vaultDir = UserDataPath.MemoryBankDir;
+            var vaultDir = ActiveMemoryBankDir;
+            var bankName = ActiveMemoryBankName;
             if (!Directory.Exists(vaultDir))
             {
-                ShowSuperMemoryMessage("Your SuperMemory vault folder does not exist yet.\n\n" +
-                    $"Create it at:\n`{vaultDir}`");
+                ShowSuperMemoryMessage($"Memory bank **{bankName}** does not exist yet.\n\n" +
+                    $"Expected location:\n`{vaultDir}`");
                 return;
             }
 
@@ -1774,7 +1815,7 @@ date: <today's date YYYY-MM-DD>
         {
             if (string.IsNullOrEmpty(response)) return;
 
-            var vaultDir = UserDataPath.MemoryBankDir;
+            var vaultDir = ActiveMemoryBankDir;
             var writtenFiles = new List<string>();
 
             // Parse "### FILE: path" markers (same format as compile)

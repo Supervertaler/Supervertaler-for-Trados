@@ -128,8 +128,9 @@ namespace Supervertaler.Trados.Settings
         private void OnDeserializing(StreamingContext context)
         {
             // Pre-seed defaults that DataContractSerializer would otherwise leave at 0
-            // when the key is absent from an older settings.json.
+            // or null when the key is absent from an older settings.json.
             _quickLauncherSurroundingSegments = 5;
+            ActiveMemoryBankName = UserDataPath.DefaultMemoryBankName;
         }
 
         /// <summary>
@@ -173,6 +174,18 @@ namespace Supervertaler.Trados.Settings
         /// </summary>
         [DataMember(Name = "includeSuperMemoryInAutoPrompt")]
         public bool IncludeSuperMemoryInAutoPrompt { get; set; } = true;
+
+        /// <summary>
+        /// Name of the memory bank that is currently active for AI context, Quick
+        /// Add, Process Inbox, Health Check and Distill. Matches a subfolder name
+        /// under <c>&lt;Root&gt;/memory-banks/</c>. When empty or when the named bank
+        /// no longer exists, the plugin falls back to
+        /// <see cref="UserDataPath.DefaultMemoryBankName"/>. Mirrors the Python
+        /// Assistant's <c>last_active_bank</c> field but is kept independent so a
+        /// translator can have different banks active in Trados and Workbench.
+        /// </summary>
+        [DataMember(Name = "activeMemoryBankName")]
+        public string ActiveMemoryBankName { get; set; } = UserDataPath.DefaultMemoryBankName;
 
         /// <summary>
         /// Incognito mode: when enabled, the AI anonymises all personal and project
