@@ -566,7 +566,18 @@ namespace Supervertaler.Trados.Controls
             {
                 Dock = DockStyle.Top,
                 AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowOnly,
+                // GrowAndShrink, not GrowOnly. The chat panel can be resized
+                // wider over the course of a session, which causes bubbles
+                // to re-layout shorter (less text wrapping) via
+                // RelayoutBubbles. With GrowOnly, the FlowLayoutPanel's
+                // Height would stay at the previous larger value, leaving
+                // an inflated AutoScrollMinSize on the parent and a scroll
+                // bar that lets the user scroll past the actual content
+                // into ghost white space at the bottom — and any code that
+                // computes a scroll target from _messageFlow.Height would
+                // land in that white space too. GrowAndShrink keeps the
+                // panel's size in lockstep with its actual content.
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
                 BackColor = Color.White,
@@ -1252,19 +1263,30 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>
         /// Scrolls the chat panel so that the most recently added bubble is
-        /// fully visible at the bottom of the viewport. The previous
-        /// implementation called <see cref="Panel.ScrollControlIntoView"/>
-        /// which only moves the minimum amount needed to make the target
-        /// visible — for a long bubble added below the viewport that meant
-        /// the user only saw the top of it. This helper computes the real
-        /// bottom of the message flow after a forced layout pass and sets
-        /// <see cref="Panel.AutoScrollPosition"/> directly.
+        /// visible. Uses <see cref="Panel.ScrollControlIntoView"/> on the
+        /// last child of the message flow, which is the WinForms-recommended
+        /// API for "make this control visible". It handles all the
+        /// coordinate-space conversions (parent padding, dock offsets) and
+        /// clamps to the actual scroll range — both of which my previous
+        /// hand-rolled <c>AutoScrollPosition = Math.Max(0, _messageFlow.Height
+        /// - _chatPanel.ClientSize.Height)</c> got wrong, because
+        /// <c>_messageFlow.Height</c> is inflated whenever the chat panel
+        /// has been resized smaller during the session and bubbles got
+        /// re-laid out at greater heights (a separate fix changes the
+        /// panel's <see cref="AutoSizeMode"/> from <c>GrowOnly</c> to
+        /// <c>GrowAndShrink</c> to address that root cause too).
+        ///
+        /// The previous "chat bounces back when I scroll to the bottom" bug
+        /// was caused by the thinking-bubble animation timer calling this
+        /// method every 2 seconds. With that per-tick re-scroll removed
+        /// (see <see cref="SetThinking(bool)"/>), single-shot
+        /// <c>ScrollControlIntoView</c> works correctly.
         ///
         /// Respects <see cref="_userScrolledUp"/> — if the user has manually
-        /// scrolled away from the bottom by more than ~50px, this is a no-op
-        /// so reading older content is not interrupted by progress messages
-        /// or thinking-bubble animation ticks. The user can re-engage
-        /// auto-scroll by scrolling back to the bottom themselves.
+        /// scrolled away from the bottom by more than ~50 px, this is a
+        /// no-op so reading older content is not interrupted by progress
+        /// messages or thinking-bubble animation ticks. The user can
+        /// re-engage auto-scroll by scrolling back to the bottom themselves.
         /// </summary>
         private void ScrollChatToBottom()
         {
@@ -1274,24 +1296,13 @@ namespace Supervertaler.Trados.Controls
             Action scroll = () =>
             {
                 if (_chatPanel == null || _messageFlow == null) return;
-
-                // Force the FlowLayoutPanel's AutoSize to recompute now —
-                // without this the new bubble's height is not yet reflected
-                // in _messageFlow.Height and the scroll target is stale.
-                _messageFlow.PerformLayout();
-
-                // AutoScrollPosition is one of the more confusing WinForms
-                // APIs: when read it returns negative values, but when
-                // written it expects positive values representing where in
-                // the virtual scroll area the visible viewport's top-left
-                // should be anchored. Setting Y to a value past the
-                // maximum just clamps to the maximum, which is the bottom.
-                var target = Math.Max(0, _messageFlow.Height - _chatPanel.ClientSize.Height);
+                if (_messageFlow.Controls.Count == 0) return;
 
                 _suppressScrollEvent = true;
                 try
                 {
-                    _chatPanel.AutoScrollPosition = new Point(0, target);
+                    var lastControl = _messageFlow.Controls[_messageFlow.Controls.Count - 1];
+                    _chatPanel.ScrollControlIntoView(lastControl);
                 }
                 finally
                 {
