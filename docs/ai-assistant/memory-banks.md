@@ -4,71 +4,41 @@ description: Self-organising, AI-maintained translation knowledge bases
 
 # Memory banks
 
-A **memory bank** is a self-organising translation knowledge base that replaces traditional translation memories and term bases with a living, AI-maintained wiki. Instead of rigid fuzzy matching, a memory bank gives the AI full contextual understanding of your clients, terminology decisions, domain conventions, and style preferences.
+A **memory bank** is a self-organising translation knowledge base – a living, AI-maintained wiki of everything the Supervertaler Assistant should know about a client, a domain, or a project. It captures the things a translation memory cannot: why a term was picked, what alternatives were rejected, what a client prefers, what the domain's common pitfalls are, how the style guide wants things phrased.
 
-Memory banks are the knowledge layer the Supervertaler Assistant consults before every translation, before every chat reply, and whenever you run Process Inbox, Distill, or Health Check.
+A memory bank is one of several [context sources](context-awareness.md) the assistant consults when it translates a segment, drafts a prompt, or answers a chat message. Unlike a translation memory or a termbase, which give the AI dense pairs of source and target text, a memory bank gives it the **reasoning** behind those pairs – the decisions, the caveats, and the accumulated institutional knowledge for a specific piece of work.
+
+Each bank is built on [Obsidian](https://obsidian.md/) and stored as interlinked Markdown files on disk, so it is human-readable, portable, and future-proof. You can edit it in any text editor, version-control it with Git, and sync it between machines with Dropbox or OneDrive.
 
 <figure><img src="../.gitbook/assets/Sv_SuperMemory-Graph.png" alt="Memory bank knowledge graph in Obsidian"><figcaption><p>A memory bank knowledge graph showing interconnected clients, terminology, and domain knowledge</p></figcaption></figure>
 
-## How it works
+## How knowledge is organised
 
-A memory bank is built on [Obsidian](https://obsidian.md/) and stores all knowledge as interlinked Markdown files – human-readable, portable, and future-proof.
+Every memory bank has the same seven-folder skeleton. The skeleton is created automatically when you make a new bank, and it is shared byte-for-byte with the Python Supervertaler Assistant – so a bank created in Trados works unchanged in the standalone app and vice versa.
 
-The workflow has three phases:
+| Folder | Contents |
+| ------ | -------- |
+| `00_INBOX`       | Raw material – drop zone for unprocessed briefs, feedback notes, glossaries, reference articles |
+| `01_CLIENTS`     | Client profiles: language preferences, style rules, terminology decisions, project history |
+| `02_TERMINOLOGY` | Term articles with approved translations, rejected alternatives, and the reasoning behind each choice |
+| `03_DOMAINS`     | Domain-specific conventions and common pitfalls (legal, medical, technical, marketing, financial) |
+| `04_STYLE`       | Style guides, formatting rules, register notes, localisation conventions |
+| `05_INDICES`     | Auto-generated indexes and maps of content |
+| `06_TEMPLATES`   | Reusable templates for new articles |
 
-### 1. Ingest
+The assistant loads content from `01_CLIENTS`, `02_TERMINOLOGY`, `03_DOMAINS`, and `04_STYLE` as context before each AI call. `00_INBOX`, `05_INDICES`, and `06_TEMPLATES` are workflow folders – they do not feed the AI directly, they support the processing pipeline. See [AI Integration](memory-banks/ai-integration.md) for the full loading algorithm.
 
-Drop raw material into the inbox: client briefs, style guides, glossaries, feedback notes, reference articles, or previous translations. Use [Quick Add](memory-banks/quick-add.md) to capture terms while translating, or [Distill](memory-banks/distill.md) to extract knowledge from TMX files, Word documents, PDFs, and termbases.
+## Creating and switching banks
 
-### 2. Process
+### Where banks live on disk
 
-The AI reads your raw material and writes structured knowledge base articles:
-
-* **Client profiles** – language preferences, terminology decisions, style rules, project history
-* **Terminology articles** – approved translations with rejected alternatives and the reasoning behind each choice
-* **Domain knowledge** – conventions, common pitfalls, and reference material for specific fields (legal, medical, technical, marketing)
-* **Style guides** – formatting rules, register, localisation conventions
-
-Every article is interlinked with backlinks, so you can navigate from a client to their preferred terms to the domain those terms belong to.
-
-### 3. Maintain
-
-Your memory bank periodically scans itself for inconsistencies: conflicting terminology, broken links, stale content, missing cross-references. It heals itself – like a librarian who keeps the shelves organised.
-
-## Why a memory bank?
-
-| Traditional TM/TB                | Memory bank                                         |
-| -------------------------------- | --------------------------------------------------- |
-| Fuzzy matching on surface text   | Contextual understanding of _why_ terms were chosen |
-| Static – requires manual updates | Self-healing – AI maintains and interlinks          |
-| Opaque – hard to audit decisions | Every decision traceable to a readable `.md` file   |
-| Locked to one tool               | Portable Markdown – works with any editor           |
-| Segments in isolation            | Connected knowledge graph                           |
-
-## Folder structure
-
-Each memory bank organises its knowledge into six folders:
-
-| Folder           | Contents                                                     |
-| ---------------- | ------------------------------------------------------------ |
-| `00_INBOX`       | Raw material – drop zone for unprocessed content             |
-| `01_CLIENTS`     | Client profiles and preferences                              |
-| `02_TERMINOLOGY` | Term articles with translations, alternatives, and reasoning |
-| `03_DOMAINS`     | Domain-specific conventions and pitfalls                     |
-| `04_STYLE`       | Style guides and formatting rules                            |
-| `05_INDICES`     | Auto-generated indexes and maps of content                   |
-
-## Multiple banks
-
-You can keep several memory banks side by side – for example, one per major client, or one per domain – and switch between them from the Memory bank dropdown in the Supervertaler Assistant toolbar. The active bank is the one the AI consults until you pick another; switching is immediate, with no restart required.
-
-All of your memory banks live under a single parent folder (the **memory banks folder**) which defaults to:
+All of your memory banks live under a single parent folder – the **memory banks folder** – which defaults to:
 
 ```
 C:\Users\{you}\Supervertaler\memory-banks\
 ```
 
-Each bank is a subfolder with the six-folder skeleton shown above:
+Each bank is a subfolder with the seven-folder skeleton shown above:
 
 ```
 memory-banks\
@@ -83,18 +53,61 @@ memory-banks\
     └── …
 ```
 
-Create, rename, and delete banks from **Settings → Memory banks**. The dropdown in the toolbar lists every bank it finds under the memory banks folder.
+A fresh install ships with one empty bank named `default`. You can keep that as your only bank, rename it (see below), or add others alongside it.
 
-## Getting started
+### Switching banks
 
-A new install ships with one empty memory bank named `default` under the memory banks folder listed above.
+The **Memory Bank** dropdown in the Supervertaler Assistant toolbar lists every bank it finds under the memory banks folder. The one you pick is the **active bank** – the assistant reads from it until you choose another. Switching is immediate: the next chat turn, the next batch translation, and the next Process Inbox run all use the new bank. No restart needed, and your chat history is preserved across the switch.
 
-1. Open the `default` folder as a vault in [Obsidian](https://obsidian.md/) – see [Obsidian Setup](memory-banks/obsidian-setup.md) for installation and configuration
-2. Drop raw material (client briefs, glossaries, feedback) into `00_INBOX`
-3. Click **[Process Inbox](memory-banks/process-inbox.md)** in the Supervertaler Assistant toolbar to organise your raw material into structured articles
-4. Watch your knowledge graph grow as connections form between clients, terms, and domains
+The active bank persists across Trados sessions. If you close Trados with `acme-legal` selected, it will still be `acme-legal` when you reopen.
 
-When you want a separate knowledge base for a different client or domain, open **Settings → Memory banks** and click **Create new bank**.
+### Creating a new bank
+
+To create a new bank without leaving the chat panel:
+
+1. Click the **Memory Bank** dropdown in the Supervertaler Assistant toolbar.
+2. Scroll to the bottom of the list and choose **+ New memory bank…**
+3. A small dialog appears asking for a short name. Valid names are lowercase letters, digits, hyphens, or underscores – for example, `legal`, `medical`, `acme-corp`, `eu_procurement`. As you type, the dialog shows a live preview of the folder name that will be created.
+4. Click **Create**. The new bank is created on disk with the full seven-folder skeleton, the dropdown refreshes to show it, and the assistant switches to it immediately.
+
+A confirmation banner appears in the chat summarising what was created.
+
+### Renaming and deleting banks
+
+Renaming and deleting banks from inside the plugin is not yet available. Until those land, you can rename or delete a bank folder directly under `memory-banks\` using File Explorer, with Trados closed. Be sure to update `AiSettings.ActiveMemoryBankName` in your settings file if you rename the active bank, or simply switch to another bank from the toolbar dropdown the next time you open Trados.
+
+## Why run several banks
+
+A single `default` bank is enough if you work with one client or one domain. But most working translators will benefit from splitting their knowledge across several banks – one per major client, or one per domain, or one per language pair – because:
+
+- **Context stays sharp.** The AI's context window is finite. A focused bank for a single client fits entirely in the prompt; a monolithic bank covering ten clients either exceeds the budget or has to be aggressively pruned before loading, losing detail.
+- **Switching is instant.** When you move from translating a pharma clinical trial to a tech product manual, you want the AI to forget the pharma terminology immediately. Switching banks does that in one click.
+- **Confidentiality is structural.** A bank for Client A physically cannot leak into a translation for Client B because the folders are separate on disk. No accidental cross-contamination.
+- **Backups and syncing are per-client.** You can version-control, archive, or share a single client bank without exposing your other clients' data.
+
+Typical layouts:
+
+- **One bank per major client** – `acme-legal`, `novartis`, `eu-commission`, plus a small `default` for one-off work.
+- **One bank per domain** – `legal`, `medical`, `technical`, `marketing`.
+- **One bank per language pair** – `nl-en`, `de-en`, `fr-en` if your domains are similar across clients but the style and terminology vary by direction.
+
+## Sharing banks with the Python Supervertaler Assistant
+
+Memory banks are stored in the **shared Supervertaler data folder** – the same folder the Python Supervertaler Assistant uses – so banks created on either side are immediately visible to the other. The folder layout, skeleton, and naming rules are identical byte-for-byte. You can create a bank in the Python assistant, drop files into its inbox from the web clipper, and then switch to it from the Trados plugin; both products will see the same articles.
+
+The shared folder also means you can keep your memory banks in a cloud-synced location (OneDrive, Dropbox, iCloud) and have the same banks available on any machine where either product is installed.
+
+## Working with a memory bank
+
+Once a bank exists, you fill it with knowledge in one of several ways:
+
+1. **Drop raw material into `00_INBOX`** – client briefs, style guides, glossaries, feedback notes, reference articles, previous translations. Any Markdown, PDF, DOCX, or plain-text file.
+2. **Use [Quick Add](memory-banks/quick-add.md)** (Ctrl+Alt+M) to capture a terminology decision or correction while translating. Quick Add appends a short note to the inbox so you can keep working without context-switching.
+3. **Use [Distill](memory-banks/distill.md)** to extract knowledge from TMX files, Word documents, PDFs, or termbases and have the AI write structured articles from them.
+4. **Run [Process Inbox](memory-banks/process-inbox.md)** periodically. The AI reads everything in `00_INBOX` and files it into `01_CLIENTS`, `02_TERMINOLOGY`, `03_DOMAINS`, or `04_STYLE` as structured Markdown articles, interlinked with backlinks.
+5. **Run [Health Check](memory-banks/health-check.md)** when the bank starts to feel stale. It scans for conflicting terminology, broken links, stale content, and missing cross-references – and heals what it can.
+
+The result is a knowledge graph that grows with your work and that the AI consults before every translation.
 
 ## Features
 
@@ -108,6 +121,12 @@ When you want a separate knowledge base for a different client or domain, open *
 | **[AI Integration](memory-banks/ai-integration.md)** | How the memory bank enhances translations and chat |
 | **[Obsidian Setup](memory-banks/obsidian-setup.md)** | Installing Obsidian and the Web Clipper |
 
+## Related
+
+- **[Context Awareness](context-awareness.md)** – the full menu of context sources the assistant uses, with memory banks as one section among several.
+- **[AI Integration](memory-banks/ai-integration.md)** – the loading algorithm, token budget, and article prioritisation when a memory bank is consulted by the AI.
+- **[AI Settings](../settings/ai-settings.md)** – toggles for enabling or disabling memory bank context.
+
 ## Learn more
 
-The memory bank design is inspired by Andrej Karpathy's [LLM Knowledge Base](https://venturebeat.com/data/karpathy-shares-llm-knowledge-base-architecture-that-bypasses-rag-with-an) architecture. Templates for the six-folder skeleton are available on [GitHub](https://github.com/Supervertaler/Supervertaler-SuperMemory) (the repo still uses the project's original name).
+The memory bank design is inspired by Andrej Karpathy's [LLM Knowledge Base](https://venturebeat.com/data/karpathy-shares-llm-knowledge-base-architecture-that-bypasses-rag-with-an) architecture. Templates for the seven-folder skeleton are available on [GitHub](https://github.com/Supervertaler/Supervertaler-SuperMemory) (the repository still uses the project's original name).

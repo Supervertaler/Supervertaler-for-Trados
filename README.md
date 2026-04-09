@@ -2,7 +2,7 @@
 
 **Terminology insight, AI translation, and knowledge management for Trados Studio**
 
-Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings terminology management, AI-powered translation, cross-file search, and a translation knowledge base directly into Trados Studio. It includes **TermLens** (inline terminology), **SuperSearch** (cross-file search & replace), **AI Assistant** (project-aware chat), **Batch Translate & Proofread**, **SuperMemory** (AI-maintained knowledge base), and **Clipboard Mode** (use any web-based AI without an API key). It relates to Supervertaler Workbench as follows:
+Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings terminology management, AI-powered translation, cross-file search, and a translation knowledge base directly into Trados Studio. It includes **TermLens** (inline terminology), **SuperSearch** (cross-file search & replace), **AI Assistant** (project-aware chat), **Batch Translate & Proofread**, **Memory banks** (AI-maintained translation knowledge bases), and **Clipboard Mode** (use any web-based AI without an API key). It relates to Supervertaler Workbench as follows:
 
 - Supervertaler Workbench – free, open-source, standalone tool (Windows/Mac/Linux)
 - Supervertaler for Trados – paid plugin (Windows-based, but can run on Mac/Linux via virtualisation, e.g., using Parallels Desktop)
@@ -182,29 +182,34 @@ Clipboard Mode lets you translate or proofread segments using **any web-based AI
 - **Works in both modes** – available for both Translate and Proofread workflows
 - **Same quality controls** – uses the same prompts, terminology injection, document context, and tag handling as API-based batch operations
 
-## SuperMemory – AI-maintained translation knowledge base
+## Memory banks – AI-maintained translation knowledge bases
 
-SuperMemory is a self-organising translation knowledge base that replaces traditional translation memories and term bases with a living, AI-maintained wiki. Built on [Obsidian](https://obsidian.md/), it stores all knowledge as interlinked Markdown files – human-readable, portable, and future-proof.
+A **memory bank** is a self-organising translation knowledge base – a living, AI-maintained wiki of everything the assistant should know about a client, a domain, or a project. It captures the things a translation memory cannot: why a term was picked, what alternatives were rejected, what a client prefers, what the domain's common pitfalls are, how the style guide wants things phrased.
 
-Instead of rigid fuzzy matching, SuperMemory gives the AI full contextual understanding of your clients, terminology decisions, domain conventions, and style preferences.
+Memory banks are one of several context sources the Supervertaler Assistant consults before every translation, chat message, and AutoPrompt run. Unlike termbases and TMs – which give the AI dense pairs of source and target text – memory banks give it the **reasoning** behind those pairs. They are complementary, not a replacement.
 
-<img alt="SuperMemory knowledge graph in Obsidian showing interconnected clients, terminology, and domain knowledge" src="screenshots/Sv_SuperMemory-Graph.png" />
+Each bank is built on [Obsidian](https://obsidian.md/) and stored as interlinked Markdown files on disk, so it is human-readable, portable, and future-proof.
+
+<img alt="Memory bank knowledge graph in Obsidian showing interconnected clients, terminology, and domain knowledge" src="screenshots/Sv_SuperMemory-Graph.png" />
 
 ### How it works
 
 1. **Ingest** – drop raw material into the inbox: client briefs, style guides, glossaries, feedback notes, or previous translations. Use **Quick Add** (Ctrl+Alt+M) to capture terms while translating, or **Distill** to extract knowledge from TMX files, Word documents, PDFs, and termbases.
 2. **Process** – the AI reads your raw material and writes structured knowledge base articles: client profiles, terminology articles with reasoning, domain knowledge, and style guides. Every article is interlinked with backlinks.
-3. **Maintain** – SuperMemory periodically scans itself for inconsistencies, conflicting terminology, broken links, and stale content. It heals itself – like a librarian who keeps the shelves organised.
+3. **Maintain** – the active bank periodically scans itself for inconsistencies, conflicting terminology, broken links, and stale content. It heals itself – like a librarian who keeps the shelves organised.
 
 ### Features
 
-- **Quick Add** – capture terms and corrections while translating (Ctrl+Alt+M); opens a dialogue to annotate the entry before saving to the inbox
-- **Process Inbox** – AI organises raw material into structured KB articles filed in the correct vault folders
-- **Health Check** – scans and repairs the knowledge base: conflicting terminology, broken links, missing cross-references
-- **Distill** – AI-powered knowledge extraction from translation files (TMX, DOCX, PDF, Excel, termbases); also available via right-click on any termbase in Settings
-- **Active Prompt** – per-project prompt that Quick Add automatically appends terminology to
-- **AI Integration** – SuperMemory context is automatically included in all AI translations and chat; the AI loads client profiles, domain knowledge, style guides, and terminology articles before every translation
-- **Obsidian graph view** – visualise the connections between clients, terms, and domains as an interactive knowledge graph
+- **Multiple banks side by side** – keep one bank per client, per domain, or per language pair; switch between them instantly from the Memory Bank dropdown in the Supervertaler Assistant toolbar. The active bank is persisted across Trados sessions.
+- **Create from the toolbar** – pick "+ New memory bank…" at the bottom of the dropdown; enter a short name; the bank is created on disk with the full seven-folder skeleton and activated in one click.
+- **Shared with the Python Supervertaler Assistant** – memory banks live in the shared Supervertaler data folder, so a bank created in either product is immediately visible to the other.
+- **Quick Add** – capture terms and corrections while translating (Ctrl+Alt+M); opens a dialogue to annotate the entry before saving to the inbox.
+- **Process Inbox** – AI organises raw material into structured KB articles filed in the correct vault folders.
+- **Health Check** – scans and repairs the knowledge base: conflicting terminology, broken links, missing cross-references.
+- **Distill** – AI-powered knowledge extraction from translation files (TMX, DOCX, PDF, Excel, termbases); also available via right-click on any termbase in Settings.
+- **Active Prompt** – per-project prompt that Quick Add automatically appends terminology to.
+- **AI Integration** – memory bank context is automatically included in all AI translations and chat alongside your termbases, TM matches, and document content; the AI loads client profiles, domain knowledge, style guides, and terminology articles before every translation.
+- **Obsidian graph view** – visualise the connections between clients, terms, and domains as an interactive knowledge graph.
 
 ## Requirements
 

@@ -194,8 +194,23 @@ The AI Assistant is a separate dockable ViewPart (`AiAssistantViewPart` + `AiAss
 
 - **Separate dockable ViewPart** — fully native Trados dockable panel. Users can dock it right, bottom, floating, or on a second monitor. Position/size persists across sessions automatically.
 - **The "AI Assistant" tab is a launcher** — shows an "Open AI Assistant" button that activates the dockable panel.
-- **Project-aware context** — the assistant has access to: current segment (source + target), termbase terms (filterable per-termbase via AI Context settings), and TM fuzzy matches (toggleable).
+- **Project-aware context** — the assistant has access to: current segment (source + target), termbase terms (filterable per-termbase via AI Context settings), TM fuzzy matches (toggleable), and the active memory bank (see below).
 - **Multimodal image support** — users can paste (Ctrl+V), drag-drop, or browse images. Each provider uses its native vision API format (OpenAI content arrays, Claude image blocks, Gemini inline_data, Ollama images array).
 - **Markdown rendering** — `MarkdownToRtf` converts LLM markdown output to RTF for display in `ChatBubble` RichTextBox controls.
 - **Apply to target** — right-click assistant responses to insert text into the active Trados segment.
 - **AI Context control** — `AiSettings.DisabledAiTermbaseIds` filters which termbases contribute terms to prompts; `AiSettings.IncludeTmMatches` toggles TM match injection into the system prompt.
+
+### Memory banks / multi-bank support (implemented)
+
+Memory banks are self-organising translation knowledge bases stored as interlinked Markdown files under `<Root>/memory-banks/<bank-name>/`. They share the exact on-disk layout (including the seven-folder skeleton: `00_INBOX`, `01_CLIENTS`, `02_TERMINOLOGY`, `03_DOMAINS`, `04_STYLE`, `05_INDICES`, `06_TEMPLATES`) with the Python Supervertaler Assistant, so banks created in either product are immediately visible to the other.
+
+- **Multiple banks** — users can keep several banks side by side (one per client, per domain, or per language pair). The active bank is persisted in `AiSettings.ActiveMemoryBankName` and survives Trados restarts.
+- **Toolbar dropdown** — the `SuperMemoryToolbar` Memory Bank combo lists every bank under `<Root>/memory-banks/` (via `UserDataPath.ListMemoryBanks()`) with the active one selected. Switching is immediate: `AiAssistantViewPart.OnMemoryBankChanged` persists the new bank, invalidates the cached `MemoryBankReader`, restarts the inbox watcher, and drops a confirmation banner into the chat.
+- **Create from the dropdown** — the last entry in the combo is a `"+ New memory bank…"` sentinel. Selecting it reverts the combo to the previously active bank (via the `_lastRealSelection` tracker) and fires a `NewMemoryBankRequested` event. `AiAssistantViewPart.OnNewMemoryBankRequested` shows a small modal dialog with a live sanitisation preview, calls `UserDataPath.TryCreateMemoryBank`, and reuses `OnMemoryBankChanged` to switch to the new bank.
+- **Sanitisation rules** — `UserDataPath.SanitizeBankName` mirrors the Python assistant's `sanitise_bank_name` exactly: lowercase, whitespace → hyphen, strip anything outside `[a-z0-9-_]`, trim leading/trailing separators. Names are filesystem identifiers, not display labels.
+- **Legacy migration** — `UserDataPath.TryMigrateLegacySingleBank` moves pre-multi-bank `<Root>/memory-bank/` or `<Root>/supermemory/` folders into the new layout on first run, surfaced via a first-run dialog.
+- **Not yet implemented (Step 5i phase B)** — rename and delete banks from inside the plugin. Workaround: rename/delete the folder under `memory-banks/` directly with Trados closed.
+
+### Context composition (open design question)
+
+Memory banks are **one of several context sources** the assistant consults, alongside termbases, TM matches, document content, and segment metadata. The docs framing ("replaces traditional TM/TB") was a marketing simplification that got rewritten in Step 6 – memory banks complement the other sources, they do not replace them. Whether stacking all sources at once is additive or noisy is an open question that needs empirical testing with real projects. See `notes/multi-bank-context-composition.md` for the memo.
