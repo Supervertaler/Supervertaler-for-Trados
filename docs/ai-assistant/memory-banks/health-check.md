@@ -34,4 +34,4 @@ Health Check runs against the **active** memory bank only. If you keep several b
 
 * [Process Inbox](process-inbox.md)
 * [Distill](distill.md)
-* [Memory banks](../memory-banks.md)
+* [SuperMemory](../memory-banks.md)

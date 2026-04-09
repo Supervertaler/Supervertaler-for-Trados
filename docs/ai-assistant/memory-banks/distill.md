@@ -20,9 +20,9 @@ description: Extract knowledge from translation files using AI
 
 ## How to use
 
-### From the Memory banks toolbar
+### From the SuperMemory toolbar
 
-1. Click the **Distill** button (⚗) on the Memory banks toolbar in the Supervertaler Assistant panel
+1. Click the **Distill** button (⚗) on the SuperMemory toolbar in the Supervertaler Assistant panel
 2. Select one or more files in the file picker dialogue
 3. The AI analyses the content and creates draft articles in the active memory bank's `00_INBOX` folder
 4. Review the draft articles in Obsidian, then click **[Process Inbox](process-inbox.md)** to compile them into the knowledge base

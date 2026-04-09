@@ -32,5 +32,5 @@ Right-click any translation prompt in the tree and choose **Set as active prompt
 * [AI Settings](ai-settings.md)
 * [Batch Translate](../batch-translate.md)
 * [AI Proofreader](../ai-proofreader.md)
-* [Memory banks](../ai-assistant/memory-banks.md)
+* [SuperMemory](../ai-assistant/memory-banks.md)
 * [Keyboard Shortcuts](../keyboard-shortcuts.md)

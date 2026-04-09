@@ -34,4 +34,4 @@ The term lands in whichever memory bank is currently selected in the toolbar dro
 
 * [Active Prompt](active-prompt.md)
 * [Process Inbox](process-inbox.md)
-* [Memory banks](../memory-banks.md)
+* [SuperMemory](../memory-banks.md)

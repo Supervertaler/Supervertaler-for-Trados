@@ -50,6 +50,6 @@ To install plugins: **Settings → Community plugins → Browse**.
 
 ## See Also
 
-* [Memory banks](../memory-banks.md)
+* [SuperMemory](../memory-banks.md)
 * [Process Inbox](process-inbox.md)
 * [User Data Folder](../../data-folder.md)

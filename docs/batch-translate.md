@@ -120,5 +120,5 @@ AI translation is a first draft. After a batch run:
 * [AI Proofreader](ai-proofreader.md)
 * [Supervertaler Assistant](ai-assistant.md)
 * [TermLens](termlens.md)
-* [Memory banks](ai-assistant/memory-banks.md)
+* [SuperMemory](ai-assistant/memory-banks.md)
 * [Keyboard Shortcuts](keyboard-shortcuts.md)

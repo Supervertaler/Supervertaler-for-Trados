@@ -9,7 +9,7 @@ The **Process Inbox** button in the Supervertaler Assistant toolbar reads raw Ma
 ## How to use
 
 1. Drop **Markdown notes** into the active memory bank's `00_INBOX/` folder: client briefs, glossaries, feedback notes, style guides, reference articles, or anything else you have written down as plain `.md` text.
-2. Open the **Supervertaler Assistant** panel and look for the Memory banks toolbar below the context bar.
+2. Open the **Supervertaler Assistant** panel and look for the SuperMemory toolbar below the context bar.
 3. The toolbar shows how many files are waiting in the active bank (e.g. "3 files in inbox").
 4. Click **Process Inbox**.
 5. The AI reads each Markdown file, creates structured articles in the appropriate folders, and archives the originals to `00_INBOX/_archive/`.
@@ -67,5 +67,5 @@ The restore is non-destructive: existing template files in the bank are never ov
 
 - [Distill](distill.md) – extract knowledge from translation files (TMX, DOCX, PDF, termbases)
 - [Health Check](health-check.md) – scan and repair the active memory bank
-- [Memory banks](../memory-banks.md) – overview of memory banks and their folder structure
+- [SuperMemory](../memory-banks.md) – overview of SuperMemory and memory banks
 - [Obsidian Setup](obsidian-setup.md) – installing Obsidian and the Web Clipper

@@ -4,7 +4,7 @@ description: How SuperMemory is loaded into the AI context – the algorithm, ra
 
 # AI Integration
 
-This page is the technical deep dive into **how** SuperMemory — Supervertaler's self-organising translation knowledge base system — loads the active memory bank into the AI context. For the broader picture of all context sources, start with [Context Awareness](../context-awareness.md). For what SuperMemory and memory banks *are* and how to create one, start with [SuperMemory and memory banks](../memory-banks.md).
+This page is the technical deep dive into **how** SuperMemory — Supervertaler's self-organising translation knowledge base system — loads the active memory bank into the AI context. For the broader picture of all context sources, start with [Context Awareness](../context-awareness.md). For what SuperMemory is and how to create and switch memory banks, start with [SuperMemory](../memory-banks.md).
 
 When SuperMemory context is enabled in [AI Settings](../../settings/ai-settings.md), every AI call – chat messages, batch translations, single-segment translations, AutoPrompt runs – triggers a fresh load of the active memory bank before the prompt is sent. The load is deterministic, fast, and scoped to the current project and document.
 
@@ -17,7 +17,7 @@ Before every AI call, Supervertaler reads the active memory bank and loads the m
 3. **Style guide.** The assistant loads the most relevant style guide from `04_STYLE/`, preferring client-specific guides (e.g. `acme-style.md`) over general ones (e.g. `general-en-gb.md`).
 4. **Terminology articles.** The assistant loads term articles from `02_TERMINOLOGY/` that match your client, domain, or language pair. These include not just the approved translations, but also rejected alternatives and the reasoning behind each decision – the kind of context a flat termbase entry does not carry.
 
-Only articles from the **active** memory bank are loaded. If you keep separate banks per client or domain, switch to the relevant one from the Memory Bank dropdown in the toolbar before translating. See [Memory banks → Creating and switching banks](../memory-banks.md#creating-and-switching-banks) for the switching workflow.
+Only articles from the **active** memory bank are loaded. If you keep separate banks per client or domain, switch to the relevant one from the Memory Bank dropdown in the toolbar before translating. See [SuperMemory → Creating and switching banks](../memory-banks.md#creating-and-switching-banks) for the switching workflow.
 
 Workflow folders – `00_INBOX`, `05_INDICES`, and `06_TEMPLATES` – are **not** loaded into the AI context. `00_INBOX` is a processing queue, `05_INDICES` holds auto-generated maps, and `06_TEMPLATES` holds templates for new articles.
 
@@ -72,7 +72,7 @@ Both are enabled by default. Disabling them does not delete your memory banks �
 ## See Also
 
 - [Context Awareness](../context-awareness.md) – The full menu of context sources, including memory banks as one section among several
-- [Memory banks](../memory-banks.md) – What a memory bank is, how to create one, and the folder layout
+- [SuperMemory](../memory-banks.md) – What SuperMemory is, what memory banks are, and how to create one
 - [AI Settings](../../settings/ai-settings.md) – Toggles for memory bank context
 - [Supervertaler Assistant](../../ai-assistant.md) – Overview of the chat panel
 - [Batch Translate](../../batch-translate.md) – Batch translation with full context

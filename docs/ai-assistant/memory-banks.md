@@ -1,8 +1,8 @@
 ---
-description: SuperMemory — Supervertaler's self-organising translation knowledge base system
+description: Supervertaler's self-organising translation knowledge base system, organised into memory banks
 ---
 
-# SuperMemory and memory banks
+# SuperMemory
 
 **SuperMemory** is Supervertaler's self-organising translation knowledge base system – a [Karpathy-inspired](https://venturebeat.com/data/karpathy-shares-llm-knowledge-base-architecture-that-bypasses-rag-with-an) feature that captures the reasoning behind your translation decisions and makes it available to the AI on every translation. Where a translation memory gives the AI previous wordings and a termbase gives it approved term pairs, SuperMemory gives it the _why_: client preferences, rejected alternatives, domain conventions, style rules, and the accumulated institutional knowledge for each piece of work.
 

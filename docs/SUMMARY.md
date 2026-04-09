@@ -21,7 +21,7 @@
   * [Studio Tools](ai-assistant/studio-tools.md)
   * [Incognito Mode](ai-assistant/incognito-mode.md)
   * [Providers and Models](ai-assistant/providers.md)
-  * [Memory banks](ai-assistant/memory-banks.md)
+  * [SuperMemory](ai-assistant/memory-banks.md)
     * [Quick Add](ai-assistant/memory-banks/quick-add.md)
     * [Process Inbox](ai-assistant/memory-banks/process-inbox.md)
     * [Health Check](ai-assistant/memory-banks/health-check.md)

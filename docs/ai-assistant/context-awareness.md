@@ -101,7 +101,7 @@ You can control exactly what context the assistant receives. In the settings dia
 
 - [Supervertaler Assistant](../ai-assistant.md) – Overview
 - [AI Settings](../settings/ai-settings.md) – Configure context options
-- [Memory banks](memory-banks.md) – Self-organising translation knowledge bases
-- [Memory banks → AI Integration](memory-banks/ai-integration.md) – The loading algorithm and token budget for memory bank context
+- [SuperMemory](memory-banks.md) – Supervertaler's self-organising translation knowledge base system
+- [SuperMemory → AI Integration](memory-banks/ai-integration.md) – The loading algorithm and token budget for SuperMemory context
 - [File Attachments](file-attachments.md) – Add images and documents to a chat turn
 - [TermLens](../termlens.md) – How termbase terms are matched and loaded

@@ -109,4 +109,4 @@ Terms beyond 45 have no keyboard shortcut. Use the **Term Picker** (`Ctrl+Alt+Do
 - [Supervertaler Assistant](ai-assistant.md)
 - [SuperSearch](supersearch.md)
 - [Batch Translate](batch-translate.md)
-- [Memory banks](ai-assistant/memory-banks.md)
+- [SuperMemory](ai-assistant/memory-banks.md)
