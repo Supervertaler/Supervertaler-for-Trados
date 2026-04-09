@@ -2163,8 +2163,15 @@ date: <today's date YYYY-MM-DD>
                 return;
             }
 
-            // Extract text from each file
+            // Extract text from each file. We track full source paths in
+            // parallel so PostProcessDistillResponse can archive any source
+            // file that lives inside the active bank's 00_INBOX/ folder
+            // after a successful distill — that closes the loop on "user
+            // dropped a TMX in the inbox, ran Distill, and now wants the
+            // source file to follow the same archive workflow as the
+            // Markdown files Process Inbox writes from it".
             var fileContents = new List<Tuple<string, string>>(); // (filename, extractedText)
+            var sourceFilePaths = new List<string>();             // full paths, parallel to fileContents
             var errors = new List<string>();
 
             foreach (var filePath in selectedFiles)
@@ -2173,6 +2180,7 @@ date: <today's date YYYY-MM-DD>
                 {
                     var text = DocumentTextExtractor.ExtractText(filePath);
                     fileContents.Add(Tuple.Create(Path.GetFileName(filePath), text));
+                    sourceFilePaths.Add(filePath);
                 }
                 catch (Exception ex)
                 {
@@ -2218,7 +2226,7 @@ date: <today's date YYYY-MM-DD>
 
             RunSuperMemoryAgent(DistillSystemPrompt, userMessage, displayText,
                 PromptLogFeature.SuperMemory, "SuperMemory: Distill",
-                response => PostProcessDistillResponse(response, fileNames));
+                response => PostProcessDistillResponse(response, sourceFilePaths, archiveInboxSources: true));
         }
 
         /// <summary>
@@ -2249,14 +2257,41 @@ date: <today's date YYYY-MM-DD>
             }
 
             var displayText = $"\u2697 **SuperMemory: Distill Termbase** \u2014 {termbaseName}";
-            var fileNames = new List<string> { termbaseName };
+            // For the termbase shortcut there is no source file on disk to
+            // archive — the source is the live termbase database. Pass the
+            // termbase name through as a synthetic "path"; the archive
+            // logic in PostProcessDistillResponse will see it is not a real
+            // file and skip it. archiveInboxSources defaults to false.
+            var sourceFilePaths = new List<string> { termbaseName };
 
             RunSuperMemoryAgent(DistillSystemPrompt, userMessage, displayText,
                 PromptLogFeature.SuperMemory, "SuperMemory: Distill",
-                response => PostProcessDistillResponse(response, fileNames));
+                response => PostProcessDistillResponse(response, sourceFilePaths));
         }
 
-        private void PostProcessDistillResponse(string response, List<string> sourceFileNames)
+        /// <summary>
+        /// Parses a Distill AI response into Markdown articles, writes them
+        /// into the active bank, and (optionally) archives any source files
+        /// that were sitting inside the bank's <c>00_INBOX/</c> folder.
+        /// </summary>
+        /// <param name="response">Raw AI response containing <c>### FILE: path</c> markers.</param>
+        /// <param name="sourceFilePaths">
+        /// Full paths (or synthetic display names for the termbase shortcut)
+        /// of the files that fed this Distill run. Used both for the chat
+        /// summary and — when <paramref name="archiveInboxSources"/> is true —
+        /// for the inbox archive sweep.
+        /// </param>
+        /// <param name="archiveInboxSources">
+        /// When true, after a successful distill (i.e. at least one Markdown
+        /// article was written), each entry in <paramref name="sourceFilePaths"/>
+        /// is checked for being directly inside the active bank's
+        /// <c>00_INBOX/</c> folder. Matching files are moved to
+        /// <c>00_INBOX/_archive/</c>, mirroring how Process Inbox archives
+        /// the Markdown files it compiles. False (the default) is used by
+        /// <see cref="DistillTermbase"/> where the "source" is a live database
+        /// rather than a file on disk.
+        /// </param>
+        private void PostProcessDistillResponse(string response, List<string> sourceFilePaths, bool archiveInboxSources = false)
         {
             if (string.IsNullOrEmpty(response)) return;
 
@@ -2286,20 +2321,110 @@ date: <today's date YYYY-MM-DD>
             if (currentPath != null)
                 WriteVaultFile(vaultDir, currentPath, currentContent.ToString().Trim(), writtenFiles);
 
+            // Archive any source files that came from inside the bank's inbox.
+            // Only fires when (a) the caller asked us to archive (file picker
+            // path, not the termbase shortcut) and (b) the AI actually wrote
+            // at least one Markdown article — if the distill produced nothing
+            // we want the source files to stay in the inbox so the user can
+            // retry without losing them.
+            int archivedCount = 0;
+            var archivedNames = new List<string>();
+            if (archiveInboxSources && writtenFiles.Count > 0 && sourceFilePaths != null)
+            {
+                var archiveDir = Path.Combine(vaultDir, "00_INBOX", "_archive");
+                foreach (var sourcePath in sourceFilePaths)
+                {
+                    if (!IsDirectlyInsideInbox(sourcePath, vaultDir)) continue;
+                    if (!File.Exists(sourcePath)) continue;
+                    try
+                    {
+                        Directory.CreateDirectory(archiveDir);
+                        var fileName = Path.GetFileName(sourcePath);
+                        var destPath = Path.Combine(archiveDir, fileName);
+
+                        // If a file with the same name already exists in the
+                        // archive (e.g. the user re-distilled the same file),
+                        // append a timestamp suffix rather than overwriting.
+                        if (File.Exists(destPath))
+                        {
+                            var stem = Path.GetFileNameWithoutExtension(fileName);
+                            var ext = Path.GetExtension(fileName);
+                            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                            destPath = Path.Combine(archiveDir, $"{stem}.{stamp}{ext}");
+                        }
+
+                        File.Move(sourcePath, destPath);
+                        archivedCount++;
+                        archivedNames.Add(fileName);
+                    }
+                    catch
+                    {
+                        // Per-file failures are non-fatal — the rest of the
+                        // distill still succeeded, the user can clean up
+                        // manually if a file is locked by another process.
+                    }
+                }
+            }
+
             // Show summary
             if (writtenFiles.Count > 0)
             {
+                // Use display names for the "Distilled X into N articles" line.
+                // For the file-picker path these are real filenames; for the
+                // termbase shortcut they are the synthetic termbase name.
+                var displayNames = new List<string>();
+                if (sourceFilePaths != null)
+                {
+                    foreach (var p in sourceFilePaths)
+                        displayNames.Add(Path.GetFileName(p));
+                }
+
                 var summary = new System.Text.StringBuilder();
                 summary.AppendLine("**SuperMemory: Distill complete**\n");
-                summary.AppendLine($"Distilled {string.Join(", ", sourceFileNames)} into {writtenFiles.Count} article{(writtenFiles.Count != 1 ? "s" : "")}:");
+                summary.AppendLine($"Distilled {string.Join(", ", displayNames)} into {writtenFiles.Count} article{(writtenFiles.Count != 1 ? "s" : "")}:");
                 foreach (var f in writtenFiles)
                     summary.AppendLine($"- `{f}`");
+
+                if (archivedCount > 0)
+                {
+                    summary.AppendLine($"\nArchived {archivedCount} source file{(archivedCount != 1 ? "s" : "")} from `00_INBOX/` to `00_INBOX/_archive/`: {string.Join(", ", archivedNames)}.");
+                }
+
                 summary.AppendLine("\nOpen Obsidian to review the new articles.");
 
                 var msg = new ChatMessage { Role = ChatRole.Assistant, Content = summary.ToString() };
                 _chatHistory.Add(msg);
                 _control.Value.AddMessage(msg);
                 SaveChatHistory();
+
+                // Make sure the inbox count tile reflects the archived files
+                // straight away (the FileSystemWatcher will catch up too, but
+                // an explicit refresh removes the half-second flicker).
+                if (archivedCount > 0)
+                    RefreshSuperMemoryInboxCount();
+            }
+        }
+
+        /// <summary>
+        /// True when <paramref name="filePath"/> sits directly in
+        /// <c>&lt;bankDir&gt;/00_INBOX/</c> (not in a sub-folder, not in
+        /// <c>_archive/</c>, not anywhere else on disk). Used by
+        /// <see cref="PostProcessDistillResponse"/> to decide whether a
+        /// Distill source file is part of the inbox lifecycle and should
+        /// be archived after processing.
+        /// </summary>
+        private static bool IsDirectlyInsideInbox(string filePath, string bankDir)
+        {
+            if (string.IsNullOrEmpty(filePath) || string.IsNullOrEmpty(bankDir)) return false;
+            try
+            {
+                var inboxDir = Path.GetFullPath(Path.Combine(bankDir, "00_INBOX"));
+                var fileDir = Path.GetFullPath(Path.GetDirectoryName(filePath) ?? "");
+                return string.Equals(fileDir, inboxDir, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
             }
         }
 

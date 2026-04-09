@@ -261,7 +261,11 @@ namespace Supervertaler.Trados.Controls
             {
                 Dock = DockStyle.Fill,
                 Font = new Font("Segoe UI", UiScale.FontSize(7.5f)),
-                ForeColor = Color.FromArgb(100, 100, 100),
+                // Material Design Green 800 — distinctive on the light grey
+                // strip without being garish. Makes the language pair and
+                // current source segment visually stand out as the most
+                // important "where am I right now" hint in the panel.
+                ForeColor = Color.FromArgb(46, 125, 50),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Text = "No document open",
                 AutoEllipsis = true
