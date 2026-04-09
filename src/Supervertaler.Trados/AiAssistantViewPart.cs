@@ -1169,6 +1169,11 @@ namespace Supervertaler.Trados
             if (string.Equals(newName, oldName, StringComparison.Ordinal))
                 return;
 
+            // User-initiated action (dropdown selection) — re-engage
+            // auto-scroll so the "Switched to memory bank X" confirmation
+            // and any follow-up heal prompt chat messages land in view.
+            _control.Value.ReengageAutoScroll();
+
             try
             {
                 // 1. Persist the new active bank to settings
@@ -1309,6 +1314,11 @@ namespace Supervertaler.Trados
         /// </summary>
         private void OnNewMemoryBankRequested(object sender, EventArgs e)
         {
+            // User-initiated action (+ New memory bank sentinel) — re-engage
+            // auto-scroll so the "Created memory bank X" confirmation lands
+            // in view after the dialog closes.
+            _control.Value.ReengageAutoScroll();
+
             var parent = _control.Value.FindForm();
             string rawName;
 
@@ -1571,6 +1581,10 @@ namespace Supervertaler.Trados
 
         private void OnProcessInbox(object sender, EventArgs e)
         {
+            // User-initiated action — re-engage auto-scroll so the progress
+            // message and the response land in view.
+            _control.Value.ReengageAutoScroll();
+
             var bankDir = ActiveMemoryBankDir;
             var bankName = ActiveMemoryBankName;
             var inboxDir = Path.Combine(bankDir, "00_INBOX");
@@ -1687,6 +1701,11 @@ namespace Supervertaler.Trados
 
         private void OnHealthCheck(object sender, EventArgs e)
         {
+            // User-initiated action — re-engage auto-scroll so the progress
+            // bubble and the response land in view even if the user had
+            // scrolled up to read history from a previous Health Check run.
+            _control.Value.ReengageAutoScroll();
+
             var vaultDir = ActiveMemoryBankDir;
             var bankName = ActiveMemoryBankName;
             if (!Directory.Exists(vaultDir))
@@ -2248,6 +2267,10 @@ date: <today's date YYYY-MM-DD>
 
         private void OnDistill(object sender, EventArgs e)
         {
+            // User-initiated action — re-engage auto-scroll so the progress
+            // bubble and the response land in view.
+            _control.Value.ReengageAutoScroll();
+
             string[] selectedFiles;
             using (var dlg = new OpenFileDialog())
             {
