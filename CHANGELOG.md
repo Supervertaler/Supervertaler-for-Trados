@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.19.1] — 2026-04-10
+
+### Fixed
+
+- **Chat scroll rewrite.** Disabled `FlowLayoutPanel.AutoSize` and switched to manual height management, fixing the long-standing "messages disappear into ghost white space" bug on long chat histories. Users no longer need to click **Clear** before every chat message.
+- **Health Check always shows a completion summary.** When the AI reports issues without auto-fixing any files (no `### FILE:` markers in the response), the chat now shows a clear *"Health Check complete — no changes applied"* message instead of leaving the user guessing whether the operation finished.
+- **User-initiated actions re-engage auto-scroll.** Clicking Send, Health Check, Process Inbox, Distill, or switching memory banks now resets the "user scrolled up" flag so the progress bubble and response land in view — even if the user had been scrolled up reading history.
+
+### Changed
+
+- **SuperMemory is off by default for new installations.** `IncludeSuperMemoryContext` and `IncludeSuperMemoryInAutoPrompt` now default to `false`. Most translators should start with the simpler workflow (TermLens glossaries + AI context awareness) and opt into SuperMemory once they have a populated bank. Existing users are unaffected — their saved `true` values are preserved.
+- **Quick Add dialog redesigned (Ctrl+Alt+M).** The field labels are now language-aware: "Source term (Dutch):" and "Target term (English):" instead of the old "Term / pattern (what's wrong):" and "Correction (correct English form):". New "Save as raw note" checkbox lets you dump ambiguous or context-dependent knowledge into `00_INBOX/` for the AI to compile via Process Inbox, instead of forcing it into a rigid source→target pair. Structured articles now use `→` in their filenames instead of `vs`.
+- **SuperMemory page renamed to "SuperMemory" in GitBook.** The help page title, sidebar label, and all cross-references now consistently use "SuperMemory" as the heading (was "Memory banks"). URL is preserved at `/memory-banks` for backwards compatibility.
+
+---
+
 ## [4.19.0] — 2026-04-09
 
 Headline release: **SuperMemory multi-bank support**. You can now keep several self-contained translation knowledge bases side by side (one per client, per domain, per language pair) and switch between them in a single click from the Supervertaler Assistant toolbar. The two-level terminology ("SuperMemory" = system, "memory bank" = container) is now reflected consistently across the UI, docs, and help system.

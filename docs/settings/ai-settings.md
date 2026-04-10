@@ -173,6 +173,22 @@ Batch Operations do not use this setting because each batch already contains a g
 **Tip:** For the best results, enable all context options. The more information the AI has about your project, document, terminology, and previous translations, the more accurate and consistent its suggestions will be.
 {% endhint %}
 
+### SuperMemory context
+
+These two toggles control whether [SuperMemory](../ai-assistant/memory-banks.md) knowledge base articles are included in the AI context.
+
+#### Include memory bank in AI context
+
+When enabled, the AI loads client profiles, domain knowledge, style guides, and terminology reasoning from the active memory bank before every translation and chat message. This gives the AI the _reasoning_ behind your terminology decisions, not just the terms themselves.
+
+{% hint style="warning" %}
+**Off by default.** SuperMemory is a power-user feature that most translators should opt into deliberately. The simpler workflow – TermLens glossaries + the AI context options above – covers the majority of needs. Enable this toggle once you have a populated memory bank and want the AI to consult it.
+{% endhint %}
+
+#### Use memory bank when generating prompts (AutoPrompt)
+
+When enabled, SuperMemory articles are included in the [AutoPrompt](../generate-prompt.md) meta-prompt so that generated translation prompts reflect your established client conventions, terminology reasoning, and style guides. Only effective when "Include memory bank in AI context" is also enabled.
+
 ## Prompt logging
 
 ### Log prompts and responses to Reports tab

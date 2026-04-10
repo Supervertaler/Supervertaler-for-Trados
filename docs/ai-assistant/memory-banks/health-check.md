@@ -22,6 +22,13 @@ The AI produces a detailed report in the chat and automatically applies safe fix
 
 Health Check runs against the **active** memory bank only. If you keep several banks side by side, run it once per bank.
 
+## Completion summary
+
+When Health Check finishes, a summary bubble always appears at the bottom of the chat so you know the operation is done:
+
+- **"Health Check: applied N changes"** – the AI auto-fixed N files. The summary lists each updated or newly created file. Scroll up to read the full report, and open Obsidian to review the changes.
+- **"Health Check complete – no changes applied"** – the AI scanned the bank and wrote its report above but did not auto-fix any files. Any issues it flagged are for your review.
+
 {% hint style="warning" %}
 **Important:** The AI can and will create, update, and reorganise files in the active memory bank when you run Health Check. To stay safe:
 
