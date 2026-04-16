@@ -55,7 +55,28 @@ Depending on the content of your raw material, Process Inbox creates articles in
 | `03_DOMAINS` | Domain knowledge | Conventions, common pitfalls, reference material |
 | `04_STYLE` | Style guides | Formatting rules, register, localisation conventions |
 
-Each article includes YAML frontmatter with metadata (type, client, domain, languages, date) and backlinks to related articles, building up an interconnected knowledge graph.
+Each article includes rich YAML frontmatter with metadata and backlinks to related articles, building up an interconnected knowledge graph. The frontmatter fields are:
+
+| Field | Purpose |
+|-------|---------|
+| `type` | Article type — `terminology`, `client`, `domain`, `style`, or `template` |
+| `domain` | Subject area (e.g. Legal, Medical, Marketing) |
+| `client` | Client name when applicable |
+| `language_pair` | Source → target language codes |
+| `confidence` | `high` / `medium` / `low` — set by the AI based on the authority of the source material. Low-confidence articles are flagged for human review by [Health Check](health-check.md). |
+| `sources` | Original filenames the article was derived from, for traceability. Terminology articles always quote exact source and target terms verbatim. |
+| `tldr` | One-sentence summary for fast scanning in Obsidian previews and the master indices below |
+| `created` / `updated` | Timestamps maintained automatically |
+
+## Automatic indexes
+
+After every successful Process Inbox run, three master index files are refreshed in the bank's `05_INDICES/` folder:
+
+* `master-terminology.md` — a flat table of all source → target term decisions across the bank, with domain, client, confidence, and status columns
+* `client-summary.md` — one section per client with their `tldr` or first paragraph
+* `domain-summary.md` — one section per domain with their `tldr` or first paragraph
+
+These indexes are built by scanning frontmatter directly — no extra LLM call — and complete in under a second. Open them in Obsidian to browse the whole bank at a glance. [Health Check](health-check.md) refreshes them as well.
 
 ## Templates and the heal-on-activation prompt
 

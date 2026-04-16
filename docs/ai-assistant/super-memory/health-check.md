@@ -11,10 +11,12 @@ The **Health Check** button scans the active memory bank for problems and fixes 
 * **Conflicting terminology** -- the same source term translated differently in different articles
 * **Broken links** -- `[[backlinks]]` that point to articles that don't exist
 * **Orphaned articles** -- articles that nothing links to (disconnected from the graph)
-* **Stale content** -- articles not updated in more than 6 months
+* **Stale content** -- articles not updated in more than four weeks that have newer siblings on related topics are flagged, and when a newer article contradicts an older one the older article is flagged as potentially superseded
 * **Duplicate content** -- overlapping articles that should be merged
 * **Missing cross-references** -- terms or domains that should be linked but aren't
-* **Index accuracy** -- statistics and listings that are out of date
+* **Low confidence** -- articles carrying `confidence: low` in their frontmatter are reported as needing human verification (see [Process Inbox](process-inbox.md#enriched-frontmatter) for the confidence scoring)
+* **Missing frontmatter fields** -- articles created before the enriched-frontmatter schema shipped have missing `tldr`, `confidence`, `sources`, etc. filled in automatically by inferring values from the article content and folder location
+* **Index accuracy** -- the `05_INDICES/` master files (master-terminology, client-summary, domain-summary) are refreshed so they reflect the current contents of the bank
 
 ## How it works
 

@@ -53,6 +53,7 @@ Right-click any assistant response bubble to access:
 | **Copy**            | Copies the raw Markdown to the clipboard, preserving tables and formatting  |
 | **Apply to target** | Inserts the plain text (Markdown stripped) into the active target segment    |
 | **Save as Prompt...** | Saves the response as a reusable prompt template                          |
+| **Save to memory bank** | Saves the question + response as an inbox note in the active memory bank so useful answers are not lost. Run [Process Inbox](ai-assistant/super-memory/process-inbox.md) afterwards to compile it into the knowledge base. |
 
 If you select text within a bubble before right-clicking, **Copy** and **Apply to target** operate on the selection only.
 
