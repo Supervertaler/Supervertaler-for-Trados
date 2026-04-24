@@ -36,8 +36,18 @@ The installer offers three options for where to place the plugin. Each option st
 **"This computer for all users"** : Installs to: `C:\ProgramData\Trados\Trados Studio\18\Plugins\Packages\` : The shared **ProgramData** folder. The plugin is available to every Windows user account on this machine. Use this on shared workstations where multiple people log in with their own Windows accounts and all need the plugin. Rarely needed for most translators.
 
 {% hint style="info" %}
-**Which should I choose?** For most users, **just accept the default** ("All your domain computers") and click Next. On a personal computer this behaves identically to "This computer for me only". The important thing is to use the **same option every time** you update – switching between options can leave old copies behind.
+**Which should I choose?** For most users, **"This computer for me only"** is the cleanest choice – the plugin lives in your Windows user profile (Local) and stays there. **"All your domain computers"** (the installer default) behaves identically on a personal/home machine; the only difference is on corporate Active Directory networks, where Roaming follows your account to other PCs on the same domain. Use **"This computer for all users"** only if multiple Windows accounts on the same machine all need the plugin – this is rare for translators.
 {% endhint %}
+
+#### "Remove this plugin from all installation folders" checkbox
+
+When you double-click a `.sdlplugin` and the installer detects that Supervertaler is **already installed** in any of the three locations above, a new option appears below the radio buttons:
+
+> ☑ **Remove this plugin from all installation folders** _(recommended if you installed manually or multiple times)_
+
+**Always leave this checkbox ticked.** It tells the Trados Plugin Installer to remove every existing Supervertaler copy from Roaming, Local, and ProgramData before placing the fresh install in the location you've selected. This avoids the multi-scope-orphan problem where Trados ends up with two or more copies of the plugin in different folders and the wrong version loads on next start.
+
+The checkbox does not appear on a first-time install (there's nothing to clean up). It only shows up when the installer detects existing files. If you have any doubt about historical leftovers from manual installs or multiple install attempts, this checkbox is the simplest way to start clean.
 
 ### Verify Installation
 
@@ -111,6 +121,10 @@ Trados Studio **must be fully closed** before installing or updating manually. I
 
 {% hint style="info" %}
 From **v4.19.24** onwards the in-plugin updater is install-scope aware – it writes updates back to the same scope (Roaming, Local, or ProgramData) as the original install, so this scenario does not occur for automatic updates. The steps below remain useful if you have inherited a multi-scope install from an earlier version, or have placed `.sdlplugin` files manually in different locations.
+{% endhint %}
+
+{% hint style="success" %}
+**Easiest fix:** download the latest `.sdlplugin` from the [App Store page](https://appstore.rws.com/plugin/432), close Trados, double-click the file, and tick the **"Remove this plugin from all installation folders"** checkbox when it appears in the installer. The Trados Plugin Installer will sweep all three install scopes and replace everything with the fresh copy in one step. Manual cleanup steps below are only needed if that path doesn't work for some reason.
 {% endhint %}
 
 If Trados still loads an older version of the plugin after installing a new one, an old copy may be lingering in a different installation location. Check all three plugin folders and remove any old `Supervertaler for Trados.sdlplugin` (in `Packages`) and `Supervertaler.Trados` folder (in `Unpacked`):
