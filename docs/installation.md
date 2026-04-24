@@ -41,13 +41,11 @@ The installer offers three options for where to place the plugin. Each option st
 
 #### "Remove this plugin from all installation folders" checkbox
 
-When you double-click a `.sdlplugin` and the installer detects that Supervertaler is **already installed** in any of the three locations above, a new option appears below the radio buttons:
+The Trados Plugin Installer shows a checkbox below the install-scope radio buttons:
 
 > ☑ **Remove this plugin from all installation folders** _(recommended if you installed manually or multiple times)_
 
-**Always leave this checkbox ticked.** It tells the Trados Plugin Installer to remove every existing Supervertaler copy from Roaming, Local, and ProgramData before placing the fresh install in the location you've selected. This avoids the multi-scope-orphan problem where Trados ends up with two or more copies of the plugin in different folders and the wrong version loads on next start.
-
-The checkbox does not appear on a first-time install (there's nothing to clean up). It only shows up when the installer detects existing files. If you have any doubt about historical leftovers from manual installs or multiple install attempts, this checkbox is the simplest way to start clean.
+It is ticked by default. **Always leave it ticked.** Before placing the fresh install in the location you've selected, the installer sweeps all three locations (Roaming, Local, ProgramData) and removes any existing Supervertaler copies. On a first-time install there's nothing to remove and the checkbox is a harmless no-op; on an upgrade or after a previous manual install, it prevents the multi-scope-orphan problem where Trados ends up with two copies of the plugin in different folders and loads the wrong one on next start.
 
 ### Verify Installation
 
