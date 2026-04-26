@@ -25,8 +25,20 @@ namespace Supervertaler.Trados.Core
         /// <summary>Display name of the termbase.</summary>
         public string TermbaseName { get; set; }
 
-        /// <summary>"source" if the source term matched, "target" if the target term matched.</summary>
+        /// <summary>
+        /// "source" if the existing entry's source_term column matched, "target"
+        /// if its target_term column matched. Always relative to the termbase's
+        /// own storage direction, NOT the project direction — see TermbaseInverted.
+        /// </summary>
         public string MatchType { get; set; }
+
+        /// <summary>
+        /// True when this match's termbase is declared in the inverse direction
+        /// of the project (e.g. EN→NL termbase, NL→EN project). Callers use this
+        /// to decide which of (project source, project target) to write into the
+        /// existing entry's source-language vs target-language synonym slots.
+        /// </summary>
+        public bool TermbaseInverted { get; set; }
     }
 
     /// <summary>
@@ -41,9 +53,20 @@ namespace Supervertaler.Trados.Core
         /// or the same target term (but different source) across the given write termbases.
         /// Returns an empty list when there are no merge candidates.
         /// </summary>
+        /// <param name="projectSourceLang">
+        /// Language of <paramref name="sourceTerm"/> as supplied by the caller.
+        /// When provided, this method makes a PER-TERMBASE decision about whether
+        /// the search needs to look at the swapped columns to match how that
+        /// termbase stores its rows. Without this, reverse-direction termbases
+        /// silently miss every match because the SQL would compare DB English
+        /// columns against project Dutch text and vice versa. Mirrors the per-
+        /// termbase swap that <see cref="TermbaseReader.InsertTermBatch"/> does.
+        /// When null, the search runs in caller-supplied direction (legacy behaviour).
+        /// </param>
         public static List<MergeMatch> FindMergeMatches(
             string dbPath, string sourceTerm, string targetTerm,
-            List<TermbaseInfo> termbases)
+            List<TermbaseInfo> termbases,
+            string projectSourceLang = null)
         {
             var matches = new List<MergeMatch>();
 
@@ -65,6 +88,29 @@ namespace Supervertaler.Trados.Core
 
                 foreach (var tb in termbases)
                 {
+                    // Decide per-termbase whether this termbase stores rows in the
+                    // inverse direction of the project. If so, swap the search
+                    // parameters so the SQL compares the right columns.
+                    string searchSource = sourceTerm;
+                    string searchTarget = targetTerm;
+                    bool isInverted = false;
+                    if (!string.IsNullOrEmpty(projectSourceLang)
+                        && !string.IsNullOrEmpty(tb.SourceLang))
+                    {
+                        var projNorm = LanguageUtils.ShortenLanguageName(projectSourceLang);
+                        var tbNorm = LanguageUtils.ShortenLanguageName(tb.SourceLang);
+                        bool directionMatches =
+                            !string.IsNullOrEmpty(projNorm) && !string.IsNullOrEmpty(tbNorm) &&
+                            (projNorm.StartsWith(tbNorm, StringComparison.OrdinalIgnoreCase) ||
+                             tbNorm.StartsWith(projNorm, StringComparison.OrdinalIgnoreCase));
+                        if (!directionMatches)
+                        {
+                            isInverted = true;
+                            searchSource = targetTerm;
+                            searchTarget = sourceTerm;
+                        }
+                    }
+
                     const string sql = @"
                         SELECT id, source_term, target_term
                         FROM termbase_terms
@@ -80,8 +126,8 @@ namespace Supervertaler.Trados.Core
                     using (var cmd = new SqliteCommand(sql, conn))
                     {
                         cmd.Parameters.AddWithValue("@tbId", tb.Id);
-                        cmd.Parameters.AddWithValue("@source", sourceTerm.Trim());
-                        cmd.Parameters.AddWithValue("@target", targetTerm.Trim());
+                        cmd.Parameters.AddWithValue("@source", searchSource.Trim());
+                        cmd.Parameters.AddWithValue("@target", searchTarget.Trim());
 
                         using (var reader = cmd.ExecuteReader())
                         {
@@ -90,9 +136,9 @@ namespace Supervertaler.Trados.Core
                                 var existingSource = reader.IsDBNull(1) ? "" : reader.GetString(1);
                                 var existingTarget = reader.IsDBNull(2) ? "" : reader.GetString(2);
 
-                                // Determine whether the source or target matched
+                                // MatchType is relative to termbase storage direction.
                                 bool sourceMatched = string.Equals(
-                                    existingSource.Trim(), sourceTerm.Trim(),
+                                    existingSource.Trim(), searchSource.Trim(),
                                     StringComparison.OrdinalIgnoreCase);
 
                                 matches.Add(new MergeMatch
@@ -102,7 +148,8 @@ namespace Supervertaler.Trados.Core
                                     TargetTerm = existingTarget,
                                     TermbaseId = tb.Id,
                                     TermbaseName = tb.Name ?? "",
-                                    MatchType = sourceMatched ? "source" : "target"
+                                    MatchType = sourceMatched ? "source" : "target",
+                                    TermbaseInverted = isInverted
                                 });
                             }
                         }

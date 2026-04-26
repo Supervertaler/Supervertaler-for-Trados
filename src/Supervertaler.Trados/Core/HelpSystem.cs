@@ -30,6 +30,7 @@ namespace Supervertaler.Trados.Core
             public const string GettingStarted     = "getting-started/getting-started";
             public const string TermLensPanel      = "features/termlens";
             public const string AddTermDialog      = "features/termlens/adding-terms";
+            public const string TermLensPopup      = "features/termlens/termlens-popup";
             public const string TermPickerDialog   = "features/termlens/term-picker";
             public const string AiAssistantChat    = "features/ai-assistant";
             public const string StudioTools        = "features/ai-assistant/studio-tools";

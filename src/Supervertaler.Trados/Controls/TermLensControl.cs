@@ -293,10 +293,55 @@ namespace Supervertaler.Trados.Controls
                 return;
             }
 
-            var tokens = _matcher.Tokenize(sourceText);
+            int maxBlockWidth = _flowPanel.ClientSize.Width
+                - _flowPanel.Padding.Horizontal
+                - UiScale.Pixels(4); // margin allowance
+            if (maxBlockWidth < 60) maxBlockWidth = 60;
 
+            var built = BuildSegmentBlocks(sourceText, maxBlockWidth);
             int matchCount = 0;
             int wordCount = 0;
+            foreach (var ctrl in built)
+            {
+                _flowPanel.Controls.Add(ctrl);
+                if (ctrl is TermBlock) matchCount++;
+                wordCount++;
+            }
+
+            MatchCount = matchCount;
+
+            _statusLabel.Text = (matchCount > 0
+                ? $"\u2713 Found {matchCount} terms in {wordCount} words"
+                : $"{wordCount} words, no matches") + _multiTermStatusSuffix;
+
+            _flowPanel.ResumeLayout(true);
+        }
+
+        /// <summary>
+        /// Builds TermBlock / WordLabel widgets for a source segment using the
+        /// already-loaded matcher and project-termbase context. Matched-source
+        /// tokens become TermBlocks (in match order, ShortcutIndex 0..N-1);
+        /// unmatched tokens become WordLabels.
+        ///
+        /// Edit / Delete / NonTranslatable events always bubble up to this
+        /// control's events so the existing right-click menu wiring works
+        /// regardless of where the block is hosted. The TermInsertRequested
+        /// bubble is opt-in via <paramref name="wireInsertBubble"/>: the docked
+        /// panel passes true so chip clicks reach the existing
+        /// OnTermInsertRequested handler; the floating popup passes false and
+        /// wires its own handler so mouse clicks and Enter share a single
+        /// well-defined insertion path (otherwise the bubble fires alongside
+        /// the popup's own close-and-insert flow and the term gets inserted
+        /// twice).
+        /// </summary>
+        public List<Control> BuildSegmentBlocks(string sourceText, int maxBlockWidth,
+            bool wireInsertBubble = true)
+        {
+            var result = new List<Control>();
+            if (string.IsNullOrWhiteSpace(sourceText) || _matcher == null)
+                return result;
+
+            var tokens = _matcher.Tokenize(sourceText);
             int shortcutIndex = 0;
 
             foreach (var token in tokens)
@@ -304,45 +349,22 @@ namespace Supervertaler.Trados.Controls
                 if (token.IsLineBreak)
                     continue;
 
-                wordCount++;
-
                 if (token.HasMatch)
                 {
-                    // A term is "project" if any of its entries come from the project termbase
                     bool isProject = false;
                     if (_projectTermbaseId >= 0)
                     {
                         foreach (var m in token.Matches)
-                        {
-                            if (m.TermbaseId == _projectTermbaseId)
-                            {
-                                isProject = true;
-                                break;
-                            }
-                        }
+                            if (m.TermbaseId == _projectTermbaseId) { isProject = true; break; }
                     }
 
-                    // Check if any entry is non-translatable
                     bool isNonTranslatable = false;
                     foreach (var m in token.Matches)
-                    {
-                        if (m.IsNonTranslatable)
-                        {
-                            isNonTranslatable = true;
-                            break;
-                        }
-                    }
+                        if (m.IsNonTranslatable) { isNonTranslatable = true; break; }
 
-                    // Check if all entries are from MultiTerm (no Supervertaler entries)
                     bool isMultiTerm = true;
                     foreach (var m in token.Matches)
-                    {
-                        if (!m.IsMultiTerm)
-                        {
-                            isMultiTerm = false;
-                            break;
-                        }
-                    }
+                        if (!m.IsMultiTerm) { isMultiTerm = false; break; }
 
                     // Sort entries: non-MultiTerm first (Supervertaler takes priority),
                     // then project termbase entries, then by ranking ASC
@@ -352,9 +374,7 @@ namespace Supervertaler.Trados.Controls
                         sortedEntries = new List<TermEntry>(sortedEntries);
                         sortedEntries.Sort((a, b) =>
                         {
-                            // Non-MultiTerm entries first
                             if (a.IsMultiTerm != b.IsMultiTerm) return a.IsMultiTerm ? 1 : -1;
-                            // Project termbase entries first
                             if (_projectTermbaseId >= 0)
                             {
                                 bool aProj = a.TermbaseId == _projectTermbaseId;
@@ -365,11 +385,6 @@ namespace Supervertaler.Trados.Controls
                         });
                     }
 
-                    int maxBlockWidth = _flowPanel.ClientSize.Width
-                        - _flowPanel.Padding.Horizontal
-                        - UiScale.Pixels(4); // margin allowance
-                    if (maxBlockWidth < 60) maxBlockWidth = 60; // sane minimum
-
                     var block = new TermBlock(token.Text, sortedEntries, shortcutIndex, isProject, isNonTranslatable, isMultiTerm, token.AbbreviationMatchIds)
                     {
                         Font = Font,
@@ -377,32 +392,22 @@ namespace Supervertaler.Trados.Controls
                         Margin = new Padding(UiScale.Pixels(2), UiScale.Pixels(1), UiScale.Pixels(2), UiScale.Pixels(1))
                     };
 
-                    block.TermInsertRequested += (s, args) => TermInsertRequested?.Invoke(s, args);
+                    if (wireInsertBubble)
+                        block.TermInsertRequested += (s, args) => TermInsertRequested?.Invoke(s, args);
                     block.TermEditRequested += (s, args) => TermEditRequested?.Invoke(s, args);
                     block.TermDeleteRequested += (s, args) => TermDeleteRequested?.Invoke(s, args);
                     block.TermNonTranslatableToggled += (s, args) => TermNonTranslatableToggled?.Invoke(s, args);
-                    _flowPanel.Controls.Add(block);
 
-                    matchCount++;
+                    result.Add(block);
                     shortcutIndex++;
                 }
                 else
                 {
-                    var label = new WordLabel(token.Text)
-                    {
-                        Font = Font,
-                    };
-                    _flowPanel.Controls.Add(label);
+                    result.Add(new WordLabel(token.Text) { Font = Font });
                 }
             }
 
-            MatchCount = matchCount;
-
-            _statusLabel.Text = (matchCount > 0
-                ? $"\u2713 Found {matchCount} terms in {wordCount} words"
-                : $"{wordCount} words, no matches") + _multiTermStatusSuffix;
-
-            _flowPanel.ResumeLayout(true);
+            return result;
         }
 
         /// <summary>

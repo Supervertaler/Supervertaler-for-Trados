@@ -22,7 +22,6 @@ namespace Supervertaler.Trados.Controls
         private readonly List<MergeMatch> _matches;
         private readonly string _newSource;
         private readonly string _newTarget;
-        private readonly bool _isInverted;
 
         /// <summary>
         /// The list of merge matches the user is responding to.
@@ -32,23 +31,19 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// Creates the merge prompt dialog.
         /// </summary>
-        /// <param name="matches">Merge candidates (source/target in DB direction).</param>
-        /// <param name="newSource">The new term's source (in DB direction).</param>
-        /// <param name="newTarget">The new term's target (in DB direction).</param>
-        /// <param name="isInverted">
-        /// True when the project's language direction is the inverse of the
-        /// termbase's language direction (e.g. NL→EN project using an EN→NL
-        /// termbase). When true, "source" and "target" labels are swapped in
-        /// the UI so the dialog matches the translator's perspective.
-        /// </param>
+        /// <param name="matches">Merge candidates. Each carries TermbaseInverted
+        /// indicating whether its termbase stores rows in the inverse direction
+        /// of the project, used to display the existing entry in project direction.</param>
+        /// <param name="newSource">The new term's source, in PROJECT direction
+        /// (what the translator typed in the source column).</param>
+        /// <param name="newTarget">The new term's target, in PROJECT direction
+        /// (what the translator typed in the target column).</param>
         public MergePromptDialog(
-            List<MergeMatch> matches, string newSource, string newTarget,
-            bool isInverted = false)
+            List<MergeMatch> matches, string newSource, string newTarget)
         {
             _matches = matches ?? new List<MergeMatch>();
             _newSource = newSource ?? "";
             _newTarget = newTarget ?? "";
-            _isInverted = isInverted;
 
             BuildUI();
         }
@@ -71,10 +66,9 @@ namespace Supervertaler.Trados.Controls
             int contentWidth = 460;
             int y = 16;
 
-            // When the termbase is inverted, swap source/target for display
-            // so the dialog matches the translator's project direction.
-            var displayNewSource = _isInverted ? _newTarget : _newSource;
-            var displayNewTarget = _isInverted ? _newSource : _newTarget;
+            // The new term is supplied in project direction — display directly.
+            var displayNewSource = _newSource;
+            var displayNewTarget = _newTarget;
 
             // --- "You are adding:" label ---
             var addingLabel = new Label
@@ -114,13 +108,17 @@ namespace Supervertaler.Trados.Controls
             string matchDescription;
             string synonymAction;
 
-            // Display the existing match in project direction
-            var displayMatchSource = _isInverted ? match.TargetTerm : match.SourceTerm;
-            var displayMatchTarget = _isInverted ? match.SourceTerm : match.TargetTerm;
+            // Display the existing match in project direction. When the termbase
+            // is inverted relative to the project (e.g. EN→NL termbase, NL→EN
+            // project), swap source/target so the translator sees their own
+            // language pair, not the termbase's storage direction.
+            var displayMatchSource = match.TermbaseInverted ? match.TargetTerm : match.SourceTerm;
+            var displayMatchTarget = match.TermbaseInverted ? match.SourceTerm : match.TargetTerm;
 
-            // When inverted, the DB match types are reversed from the project perspective:
-            // a DB "source" match means the project-target matched, and vice versa.
-            var effectiveMatchType = _isInverted
+            // MatchType is relative to termbase storage. When the termbase is
+            // inverted, a DB "source" match means the project-target column
+            // matched, and vice versa.
+            var effectiveMatchType = match.TermbaseInverted
                 ? (match.MatchType == "source" ? "target" : "source")
                 : match.MatchType;
 

@@ -77,24 +77,23 @@ namespace Supervertaler.Trados
         {
             _currentInstance = this;
 
-            // Ctrl-tap filter: pressing and releasing Ctrl alone opens the Term Picker
+            // Ctrl-tap filter: pressing and releasing Ctrl alone opens the
+            // floating TermLens popup. Faster than the picker dialog and
+            // shows the segment in context, so Ctrl-tap is the preferred
+            // primary trigger. The picker dialog is still reachable via
+            // Ctrl+Shift+T for users who want the list-based UI.
             if (_ctrlTapFilter == null)
             {
-                _ctrlTapFilter = new CtrlTapFilter(() => HandleTermPicker());
+                _ctrlTapFilter = new CtrlTapFilter(() => HandleTermLensPopup());
                 System.Windows.Forms.Application.AddMessageFilter(_ctrlTapFilter);
             }
 
-            // License check — show/hide activation overlay based on tier
-            LicenseManager.Instance.LicenseStateChanged += (s, e) =>
-            {
-                _control.Value.BeginInvoke(new Action(() =>
-                {
-                    if (LicenseManager.Instance.HasTier1Access)
-                        _control.Value.HideLicenseRequired();
-                    else
-                        _control.Value.ShowLicenseRequired();
-                }));
-            };
+            // License check — show/hide activation overlay based on tier.
+            // Named handler (not a lambda) so Dispose can unsubscribe; the
+            // singletons LicenseManager.Instance / _control would otherwise
+            // hold dead view-part instances alive across document reopens
+            // and fan out every license-state notification to all of them.
+            LicenseManager.Instance.LicenseStateChanged += OnLicenseStateChanged;
 
             // Check for plugin updates in the background.
             // Runs regardless of license state — even expired-trial users should
@@ -861,6 +860,22 @@ namespace Supervertaler.Trados
         public static List<MultiTermTermbaseConfig> GetMultiTermConfigs()
         {
             return _currentInstance?._multiTermConfigs ?? new List<MultiTermTermbaseConfig>();
+        }
+
+        private void OnLicenseStateChanged(object sender, EventArgs e)
+        {
+            // Marshal to the panel's UI thread; LicenseManager fires on
+            // whichever thread updated the license state.
+            if (_control.IsValueCreated && _control.Value.IsHandleCreated)
+            {
+                _control.Value.BeginInvoke(new Action(() =>
+                {
+                    if (LicenseManager.Instance.HasTier1Access)
+                        _control.Value.HideLicenseRequired();
+                    else
+                        _control.Value.ShowLicenseRequired();
+                }));
+            }
         }
 
         private void OnSettingsRequested(object sender, EventArgs e)
@@ -1889,6 +1904,100 @@ namespace Supervertaler.Trados
             });
         }
 
+        // ─── TermLens Popup (Ctrl-tap / Ctrl+Alt+G) ─────────────────
+
+        private static TermLensPopupForm _currentPopup;
+
+        /// <summary>
+        /// Called by Ctrl-tap (CtrlTapFilter), TermLensPopupAction (Ctrl+Alt+G).
+        /// Opens a borderless floating version of the docked TermLens panel
+        /// for the active segment. Acts as a toggle: if the popup is already
+        /// open, the second Ctrl-tap closes it. Cycling between matches is
+        /// done with arrow keys / Tab inside the popup, not by re-pressing
+        /// the open shortcut.
+        /// </summary>
+        public static void HandleTermLensPopup()
+        {
+            var instance = _currentInstance;
+            if (instance == null || instance._activeDocument == null) return;
+
+            // Already open → close (toggle behaviour). Use arrow keys / Tab
+            // inside the popup to cycle the highlighted match.
+            if (_currentPopup != null && !_currentPopup.IsDisposed)
+            {
+                _currentPopup.Close();
+                return;
+            }
+
+            // Same source-text extraction the QuickAdd actions use.
+            string sourceText = instance._activeDocument.ActiveSegmentPair?.Source != null
+                ? SegmentTagHandler.GetFinalText(instance._activeDocument.ActiveSegmentPair.Source)
+                : "";
+            if (string.IsNullOrWhiteSpace(sourceText)) return;
+
+            // No matches → no popup, matching HandleTermPicker's behaviour.
+            if (_control.Value.MatchCount == 0)
+            {
+                // MatchCount reflects what's currently rendered in the docked
+                // panel for the active segment, so we can short-circuit without
+                // running the matcher again.
+                return;
+            }
+
+            instance.SafeInvoke(() =>
+            {
+                // Find the WinForms Form that hosts the docked TermLens panel —
+                // this is the Trados main window from a Win32 perspective. Used
+                // for two things: (a) Show(owner) so the popup is owned by it
+                // and the Z-order / focus-return relationship is well-defined;
+                // (b) re-activated explicitly just before the insert runs so
+                // focus lands back on the target cell instead of getting lost
+                // during the popup's teardown.
+                var ownerForm = _control.Value.FindForm();
+
+                Action<int> insertWithFocusReturn = oneBasedIndex =>
+                {
+                    if (ownerForm != null && ownerForm.IsHandleCreated && !ownerForm.IsDisposed)
+                        ownerForm.Activate();
+                    instance.InsertTermByIndex(oneBasedIndex);
+                };
+
+                var popup = new TermLensPopupForm(
+                    _control.Value, sourceText, insertWithFocusReturn);
+
+                _currentPopup = popup;
+                popup.FormClosed += (s, e) =>
+                {
+                    if (_currentPopup == popup) _currentPopup = null;
+                };
+
+                popup.PositionNear(Cursor.Position);
+                if (ownerForm != null)
+                    popup.Show(ownerForm);
+                else
+                    popup.Show();
+                // Show(owner) activates the popup — no need for an extra Activate().
+            });
+        }
+
+        /// <summary>
+        /// Called by TermLensPopupForm when the user presses "E" on a
+        /// highlighted match. Opens the term-entry editor through the same
+        /// code path as the docked panel's right-click "Edit Term…" menu —
+        /// the popup snapshots the entry data before it disposes itself, so
+        /// this just re-uses OnTermEditRequested with synthesized event args.
+        /// </summary>
+        public static void HandleEditCurrentTerm(TermEntry entry, IReadOnlyList<TermEntry> allEntries)
+        {
+            var instance = _currentInstance;
+            if (instance == null || entry == null) return;
+            instance.OnTermEditRequested(null, new TermEditEventArgs
+            {
+                Entry = entry,
+                AllEntries = allEntries
+            });
+        }
+
         // ─────────────────────────────────────────────────────────────
 
         public override void Dispose()
@@ -1911,6 +2020,34 @@ namespace Supervertaler.Trados
 
             if (_editorController != null)
                 _editorController.ActiveDocumentChanged -= OnActiveDocumentChanged;
+
+            // Unsubscribe everything wired to a static singleton in Initialize.
+            // Without this, dead view-part instances stay reachable through the
+            // singleton's invocation lists across document close/reopen cycles,
+            // and every term-insert / right-click action gets dispatched to all
+            // of them — i.e. the term gets inserted N times instead of once
+            // (root cause of the v4.19.30 popup-double-insert bug, which the
+            // popup fix sidestepped by skipping the bubble entirely; the docked
+            // panel still went through this code path until now).
+            //
+            // IsValueCreated checks avoid forcing the Lazy<T> singletons into
+            // existence here purely to call -= on something we never subscribed
+            // to. The -= operator itself is a safe no-op when the delegate
+            // isn't in the invocation list, so the early-return-on-unlicensed
+            // path in Initialize doesn't need a parallel branch here.
+            LicenseManager.Instance.LicenseStateChanged -= OnLicenseStateChanged;
+
+            if (_mainPanel.IsValueCreated)
+                _mainPanel.Value.SettingsRequested -= OnSettingsRequested;
+
+            if (_control.IsValueCreated)
+            {
+                _control.Value.TermInsertRequested -= OnTermInsertRequested;
+                _control.Value.TermEditRequested -= OnTermEditRequested;
+                _control.Value.TermDeleteRequested -= OnTermDeleteRequested;
+                _control.Value.TermNonTranslatableToggled -= OnTermNonTranslatableToggled;
+                _control.Value.FontSizeChanged -= OnFontSizeChanged;
+            }
 
             base.Dispose();
         }
@@ -2267,5 +2404,6 @@ namespace Supervertaler.Trados
 
             return null;
         }
+
     }
 }

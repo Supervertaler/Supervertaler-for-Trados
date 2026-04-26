@@ -36,6 +36,7 @@ namespace Supervertaler.Trados.Controls
         private static readonly Color SeparatorColor = Color.FromArgb(180, 180, 180);
 
         private bool _isHovered;
+        private bool _isCurrent;
         private readonly List<TermEntry> _entries;
         private readonly string _sourceText;
         private readonly int _shortcutIndex; // -1 = no shortcut
@@ -142,6 +143,23 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public bool IsAbbreviationMatch =>
             PrimaryEntry != null && _abbreviationMatchIds.Contains(PrimaryEntry.Id);
+
+        /// <summary>
+        /// True when this block is the keyboard-focused match in the TermLens
+        /// popup. Drawn with a coloured ring around the source word so the
+        /// user can see which match Enter will insert. The docked panel never
+        /// sets this — only the popup uses it.
+        /// </summary>
+        public bool IsCurrent
+        {
+            get => _isCurrent;
+            set
+            {
+                if (_isCurrent == value) return;
+                _isCurrent = value;
+                Invalidate();
+            }
+        }
 
         /// <summary>
         /// Number of extra translations to show in the +N badge.
@@ -286,6 +304,23 @@ namespace Supervertaler.Trados.Controls
             // Source text — plain, no background (ellipsis if clamped)
             float y = 3;
             var sourceHeight = g.MeasureString(_sourceText, SourceFont).Height;
+            var sourceWidth = g.MeasureString(_sourceText, SourceFont).Width;
+
+            // Current-match indicator (popup only): tight rounded rectangle around
+            // the source word, drawn before the text so the text sits on top.
+            if (_isCurrent)
+            {
+                float drawnSourceWidth = Math.Min(sourceWidth, Width - 8);
+                var ringRect = new RectangleF(2, y - 1, drawnSourceWidth + 4, sourceHeight + 2);
+                using (var ringBrush = new SolidBrush(Color.FromArgb(255, 240, 196))) // soft amber fill
+                using (var ringPath = RoundedRect(Rectangle.Round(ringRect), 3))
+                using (var ringPen = new Pen(Color.FromArgb(217, 119, 6), 1.5f)) // amber stroke
+                {
+                    g.FillPath(ringBrush, ringPath);
+                    g.DrawPath(ringPen, ringPath);
+                }
+            }
+
             using (var brush = new SolidBrush(Color.FromArgb(40, 40, 40)))
             using (var sf = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
             {

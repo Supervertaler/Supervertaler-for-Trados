@@ -141,14 +141,20 @@ namespace Supervertaler.Trados
                     return;
                 }
 
-                // Swap source/target if project direction doesn't match the project termbase direction.
-                // Keep originals for the in-memory index update.
+                // sourceText / targetText stay in project direction throughout.
+                // FindMergeMatches and InsertTerm each do their own per-termbase
+                // direction handling — for InsertTerm we compute the swap once
+                // just before the call.
                 var indexSourceText = sourceText;
                 var indexTargetText = targetText;
+
+                string projSrcLang = "";
+                try { projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? ""; }
+                catch { /* leave empty if unavailable */ }
+
                 bool isInverted = false;
                 try
                 {
-                    var projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? "";
                     var tbSrcLang = projectTermbase.SourceLang ?? "";
                     if (!string.IsNullOrEmpty(projSrcLang) && !string.IsNullOrEmpty(tbSrcLang))
                     {
@@ -159,28 +165,26 @@ namespace Supervertaler.Trados
                         bool match =
                             projNorm.StartsWith(tbNorm, StringComparison.OrdinalIgnoreCase) ||
                             tbNorm.StartsWith(projNorm, StringComparison.OrdinalIgnoreCase);
-                        if (!match)
-                        {
-                            isInverted = true;
-                            var tmp = sourceText;
-                            sourceText = targetText;
-                            targetText = tmp;
-                        }
+                        isInverted = !match;
                     }
                 }
-                catch { /* leave sourceText/targetText as-is if language info unavailable */ }
+                catch { /* leave isInverted=false if language info unavailable */ }
 
-                // Check for existing entries with matching source or target
+                // Check for existing entries with matching source or target.
+                // projSrcLang lets FindMergeMatches swap search columns to match
+                // a reverse-direction termbase's storage layout — without it,
+                // matches in such termbases are silently missed.
                 try
                 {
                     var mergeMatches = TermMergeChecker.FindMergeMatches(
                         settings.TermbasePath, sourceText, targetText,
-                        new List<Models.TermbaseInfo> { projectTermbase });
+                        new List<Models.TermbaseInfo> { projectTermbase },
+                        projectSourceLang: projSrcLang);
 
                     if (mergeMatches.Count > 0)
                     {
                         using (var mergeDlg = new MergePromptDialog(
-                            mergeMatches, sourceText, targetText, isInverted))
+                            mergeMatches, sourceText, targetText))
                         {
                             var mergeResult = mergeDlg.ShowDialog();
 
@@ -189,17 +193,24 @@ namespace Supervertaler.Trados
 
                             if (mergeResult == DialogResult.Yes || mergeResult == DialogResult.Retry)
                             {
-                                // Add as synonym to the matched entry
+                                // Add as synonym to the matched entry. The "source"/
+                                // "target" tag on AddSynonym refers to the termbase's
+                                // storage direction — when the termbase is inverted
+                                // relative to the project, project source goes in the
+                                // target column and vice versa.
                                 foreach (var match in mergeMatches)
                                 {
+                                    var termSourceCol = match.TermbaseInverted ? targetText : sourceText;
+                                    var termTargetCol = match.TermbaseInverted ? sourceText : targetText;
+
                                     if (match.MatchType == "source")
                                         TermbaseReader.AddSynonym(
                                             settings.TermbasePath, match.TermId,
-                                            targetText, "target");
+                                            termTargetCol, "target");
                                     else
                                         TermbaseReader.AddSynonym(
                                             settings.TermbasePath, match.TermId,
-                                            sourceText, "source");
+                                            termSourceCol, "source");
                                 }
 
                                 // Full reload to pick up synonym changes
@@ -227,12 +238,17 @@ namespace Supervertaler.Trados
                         }
                     }
 
-                    // Normal insert into project termbase
+                    // Normal insert into project termbase. Swap into termbase
+                    // storage direction at the point of insertion — we keep the
+                    // project-direction text upstream so the merge flow and the
+                    // index-update notification both see what the translator typed.
+                    var insertSourceText = isInverted ? targetText : sourceText;
+                    var insertTargetText = isInverted ? sourceText : targetText;
                     var newId = TermbaseReader.InsertTerm(
                         settings.TermbasePath,
                         settings.ProjectTermbaseId,
-                        sourceText,
-                        targetText,
+                        insertSourceText,
+                        insertTargetText,
                         projectTermbase.SourceLang,
                         projectTermbase.TargetLang,
                         ""); // No definition for quick-add

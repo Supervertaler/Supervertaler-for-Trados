@@ -1,5 +1,105 @@
 # Changelog
 
+## [4.19.36] – 2026-04-26
+
+### Changed (Term Picker shortcut → Ctrl+Shift+T)
+
+- **The Term Picker dialogue is now opened via Ctrl+Shift+T (was Ctrl+Shift+L since v4.19.28).** Ctrl+Shift+L collides with Trados Studio's own termbase-entry-listing shortcut, so the user-facing combo had to move. Ctrl-tap remains the preferred trigger for the lighter floating TermLens popup; Ctrl+Alt+G remains the popup's keyboard fallback. Plugin-internal action ID is unchanged (`TermLens_TermPicker`) so any user-customised shortcut remappings survive. Docs updated across keyboard-shortcuts.md, termlens.md, term-picker.md, termlens-popup.md and CLAUDE.md.
+
+---
+
+## [4.19.35] – 2026-04-26
+
+### Added (TermLens popup – E opens the term-entry editor)
+
+- **Pressing E on the highlighted match opens the term-entry editor.** Mirrors the docked panel's right-click "Edit Term…" menu but on a single keystroke, so the editor is reachable without leaving the keyboard. The popup snapshots the entry data, closes itself, then routes through the same `OnTermEditRequested` handler the docked panel uses — so the editor sees the same single-/multi-entry flow it always has, including the multi-termbase editing case for entries that exist in more than one termbase. Read-only MultiTerm entries are skipped (same rule as the right-click menu).
+
+### Changed (TermLens popup – keyboard-only, fewer surprises)
+
+- **Removed the "?" help button.** v4.19.33's button never worked reliably (off-screen in v4.19.33, focus-stealing the popup itself in v4.19.34) and was at odds with the popup's keyboard-only design anyway. F1 plumbing removed too — Trados Studio's own F1 binding takes precedence over application-level message filters and beating it would need a Win32 low-level keyboard hook, more complexity than this is worth. Help for the popup is one click away on the [GitBook docs site](https://supervertaler.gitbook.io/trados/features/termlens/termlens-popup).
+- **Popup no longer auto-dismisses on focus loss.** v4.19.34 closed the popup whenever focus moved off it, which meant the chip-hover tooltip (the metadata `TermPopup`) silently killed the popup the moment the mouse passed over a chip — reported by a user moving the mouse toward the now-removed "?" button. Closing is now exclusively via Esc, Enter (after insert), Ctrl-tap (toggle), Ctrl+Alt+G (toggle), or clicking a chip (insert).
+- Footer hint updated to `← → cycle  ·  Enter insert  ·  E edit  ·  Esc close`.
+
+---
+
+## [4.19.34] – 2026-04-26
+
+### Fixed (TermLens popup – help affordances)
+
+- **The "?" help button is now actually visible.** v4.19.33 added a manually-positioned Label with `Anchor = Top | Right` whose initial Location was computed against the form's pre-resize 560 px width, then `ResizeToContent` shrank the form before the anchor distance was committed — the button silently ended up off-screen to the right. Replaced with a docked bottom-bar Panel that contains the keyboard hint (`Dock = Fill`) and the "?" button (`Dock = Right`); no manual coordinates, no anchor math.
+- **F1 inside the popup now opens the TermLens popup help page instead of the Trados Studio help site.** Trados has an Application-level message filter for F1 that fires before `Form.ProcessCmdKey`, so v4.19.33's `case Keys.F1` handler in `ProcessCmdKey` was never reached. Added a `PopupF1Filter : IMessageFilter` (same pattern as `CtrlTapFilter`) registered once on plugin startup that consumes F1 key-down events when the popup is open and focused, before Trados sees them. The `ProcessCmdKey` handler stays as a fallback in case the application filter chain ever misses.
+
+---
+
+## [4.19.33] – 2026-04-26
+
+### Added (TermLens popup – help affordances)
+
+- **Help is now reachable from the popup itself.** A small "?" button in the top-right corner of the popup opens the dedicated help page (https://supervertaler.gitbook.io/trados/features/termlens/termlens-popup) in the default browser, and F1 does the same — keeping parity with the existing dialogs (Add Term, Settings) that have both a visible question-mark affordance and a keyboard equivalent. The popup stays open so the user can read the docs and come back to picking a term.
+
+### Docs
+
+- New help page **TermLens popup** under TermLens describing when to use the popup vs the Term Picker dialogue, the keyboard model, and a side-by-side comparison.
+- Keyboard-shortcut reference, TermLens overview, and Term Picker page updated to reflect the v4.19.28 shortcut swap (Ctrl-tap → popup, Ctrl+Shift+L → Term Picker dialogue, Ctrl+Alt+G now the popup's fallback). Stale references in CLAUDE.md cleaned up.
+
+---
+
+## [4.19.32] – 2026-04-26
+
+### Fixed (TermLens – handler leak across document close/reopen cycles)
+
+- **Term-insert / right-click actions in the docked TermLens panel no longer fan out to dead view-part instances.** `TermLensEditorViewPart.Initialize` subscribed seven event handlers to static singletons (`_control.Value` for `TermInsertRequested` / `TermEditRequested` / `TermDeleteRequested` / `TermNonTranslatableToggled` / `FontSizeChanged`, `_mainPanel.Value.SettingsRequested`, `LicenseManager.Instance.LicenseStateChanged`) but `Dispose` only unsubscribed the per-document handlers — so each time Trados tore down and recreated the view-part (document close/reopen, project switch, layout change), the new instance added another set of subscribers while the old set stayed reachable through the singleton's invocation lists. The dead instances continued to dispatch, so a single chip click in the docked panel could fire `Selection.Target.Replace` two, three, or N times depending on how many times the view-part had been recreated in the session — root cause behind the v4.19.30 popup-double-insert bug, which the popup fix sidestepped by skipping the bubble entirely without addressing the leak itself. `Dispose` now unsubscribes all seven (using `Lazy<T>.IsValueCreated` checks to avoid forcing the singletons into existence purely to call `-=`), and the `LicenseStateChanged` lambda was extracted to a named `OnLicenseStateChanged` method so it can be unsubscribed at all.
+
+---
+
+## [4.19.31] – 2026-04-26
+
+### Fixed (TermLens popup – focus returns to target after insert)
+
+- **After picking a term from the floating TermLens popup, focus now returns to the target cell.** Previously the popup was a borderless modeless form opened with `Show()` followed by `popup.Activate()`, which stole focus from the Trados editor on open and gave Windows no owner relationship to use when assigning focus on close — so the target cell was left without keyboard focus, leaving the user with no caret to keep typing in. The popup is now opened via `Show(ownerForm)` where `ownerForm` is the WinForms host of the docked TermLens panel (i.e. the Trados main window from a Win32 perspective), the same pattern the existing Term Picker dialog uses with `ShowDialog(parent)`. The insertion callback also explicitly calls `ownerForm.Activate()` immediately before `Selection.Target.Replace` runs, so the editor is the foreground window when Trados processes the replace and the target cell is re-focused.
+
+---
+
+## [4.19.30] – 2026-04-25
+
+### Fixed (TermLens popup – term inserted twice)
+
+- **Selecting a term from the floating TermLens popup no longer inserts it twice.** Reported by a user — picking "tank vessel" produced "tank vesseltank vessel" in the target. Root cause: the popup's chips bubbled their `TermInsertRequested` event to the docked panel's existing `OnTermInsertRequested` handler (insertion #1) AND the popup also wired a close-on-insert handler that ran in the same chain. When combined with a separate handler-leak in `TermLensEditorViewPart.Initialize` (the `OnTermInsertRequested` subscription accumulates across view-part lifecycles because `Dispose` doesn't unsubscribe), the bubble path could fire the insertion two or more times per chip click. `TermLensControl.BuildSegmentBlocks` now takes an opt-out `wireInsertBubble` parameter so the popup can request blocks with no bubble wiring; the popup wires its own single handler that funnels both mouse-click and keyboard Enter through one `RequestInsert(oneBased)` method, which uses an `_pendingInsertOneBased` guard to make the insertion exactly-once and defers it to `FormClosed` so focus has returned to the Trados editor before `Selection.Target.Replace` runs. The handler-leak in `TermLensEditorViewPart` itself is untouched in this release — see follow-up issue. The docked panel's chip-click flow is unchanged (still uses the bubble).
+
+---
+
+## [4.19.29] – 2026-04-25
+
+### Changed (TermLens popup – Ctrl-tap is now a toggle)
+
+- **Ctrl-tap now toggles the floating TermLens popup open / closed instead of cycling.** Previously the second Ctrl-tap advanced the highlighted "current" match, on the theory that it kept the user on a single key for both opening and stepping. In practice closing was the more common follow-up — once the right term was visible the user wanted out — so the second press now closes the popup. Cycling stays on the keyboard via Right / Down / Tab (next) and Left / Up / Shift+Tab (previous).
+
+---
+
+## [4.19.28] – 2026-04-25
+
+### Changed (TermLens shortcuts swapped)
+
+- **Ctrl-tap now opens the floating TermLens popup; the Term Picker dialog moves to Ctrl+Shift+L.** After v4.19.27 the new floating popup proved fast enough to deserve the most ergonomic shortcut, so it inherits Ctrl-tap from the Term Picker dialog. The picker dialog (list-based UI) remains available on Ctrl+Shift+L for users who prefer that style. Ctrl+Alt+G is now the explicit-key fallback for the popup (was the picker's fallback).
+
+---
+
+## [4.19.27] – 2026-04-25
+
+### Added (TermLens popup – keyboard-only term insertion)
+
+- **New Ctrl+Shift+L shortcut opens a borderless TermLens popup** that mirrors the docked TermLens panel for the active segment. Aimed at small-screen / laptop workflows where keeping the docked panel always-visible costs too much vertical space, and at translators who want to insert terms without ever reaching for the mouse. The popup reuses the docked panel's already-loaded matcher and termbase index (no reload), renders the same `TermBlock` chips with the same colour scheme, and routes mouse-click insertions through the existing TermLens insertion flow. One match is highlighted as "current" with an amber ring around the source word; arrow keys (Right/Down/Tab and Left/Up/Shift+Tab) cycle the highlight, Enter inserts the current match into the target segment and closes the popup, Escape and click-outside close without inserting. Re-pressing Ctrl+Shift+L while the popup is open advances the highlight instead of stacking a second popup, so the user can stay on a single shortcut while skimming through matches. Initial highlight is always match #1 for predictability. The popup positions itself near the cursor and clamps to the working area; long segments wrap and scroll inside a capped popup width.
+
+---
+
+## [4.19.26] – 2026-04-25
+
+### Fixed (merge prompt – reversed-direction termbases)
+
+- **Quick-Add (Alt+Down / context menu / Alt+Up) now offers the merge prompt for partial duplicates in reverse-direction termbases.** Regression introduced in v4.19.13 when the per-termbase swap was moved inside `InsertTermBatch`: `TermMergeChecker.FindMergeMatches` was left searching with project-direction text, so for any termbase declared in the inverse direction of the project (e.g. an EN→NL termbase used in an NL→EN project), the SQL compared the DB English column against the new Dutch text and vice versa – every potential merge candidate was silently missed and a near-duplicate entry was created instead. `FindMergeMatches` now takes an optional `projectSourceLang` and applies the same per-termbase column swap that `InsertTermBatch` does internally; each match carries a new `MergeMatch.TermbaseInverted` flag so the dialogue and the `AddSynonym` calls can land the new text in the correct source-language vs target-language slot of the existing entry. Reported by a user who noticed Quick-Adding "even more preferably between" against an EN→NL PATENTS termbase that already held a "still more preferably between" entry for the same Dutch source – the merge prompt no longer fired and a separate row was created. `MergePromptDialog` was also reworked to expect callers to pass new-term text in project direction (it previously expected termbase-storage direction, which became inconsistent across callers after v4.19.13) and to use per-match `TermbaseInverted` for the existing-entry display, so the dialogue's "You are adding…" line and synonym question now read in project direction even when the termbase is reversed. `QuickAddProjectTermAction` (Alt+Up, single project termbase) was already pre-swapping at the top of the method – its merge flow worked but is now aligned with the new convention; the swap moved local to the `InsertTerm` call.
+
+---
+
 ## [4.19.25] – 2026-04-23
 
 ### Fixed (term-entry editor – critical, reversed-direction termbases)

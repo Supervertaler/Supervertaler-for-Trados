@@ -150,9 +150,10 @@ namespace Supervertaler.Trados
                 }
 
                 // Capture the project source language — TermbaseReader.InsertTermBatch
-                // uses it to decide PER-TERMBASE whether to swap source/target so
-                // each write termbase gets its text in the right columns regardless
-                // of the mix of declared directions in the batch.
+                // and TermMergeChecker.FindMergeMatches both use it to decide
+                // PER-TERMBASE whether to swap source/target so each write termbase
+                // gets its text in (and gets searched on) the right columns
+                // regardless of the mix of declared directions in the batch.
                 //
                 // HISTORY: Previously this method swapped sourceText/targetText ONCE,
                 // based on writeTermbases[0]. That meant any write termbase in the
@@ -160,48 +161,34 @@ namespace Supervertaler.Trados
                 // text in the wrong columns — which corrupted the PATENTS termbase
                 // for a user who had other write termbases of the opposite direction
                 // active at various times. The per-termbase swap now happens inside
-                // InsertTermBatch itself.
-                //
-                // We still need a best-guess "isInverted" flag for the merge dialog's
-                // explanatory text and for TermEntry objects we build in memory —
-                // that reflects whether the project direction matches the FIRST write
-                // termbase, which is good enough for UI-level labeling.
+                // InsertTermBatch and FindMergeMatches themselves.
                 string projSrcLang = "";
                 try { projSrcLang = doc.ActiveFile?.SourceFile?.Language?.DisplayName ?? ""; }
                 catch { /* leave empty if unavailable */ }
 
-                bool isInverted = false;
-                try
-                {
-                    var tbSrcLang = writeTermbases[0].SourceLang ?? "";
-                    if (!string.IsNullOrEmpty(projSrcLang) && !string.IsNullOrEmpty(tbSrcLang))
-                    {
-                        var projNorm = LanguageUtils.ShortenLanguageName(projSrcLang);
-                        var tbNorm = LanguageUtils.ShortenLanguageName(tbSrcLang);
-                        bool match =
-                            projNorm.StartsWith(tbNorm, StringComparison.OrdinalIgnoreCase) ||
-                            tbNorm.StartsWith(projNorm, StringComparison.OrdinalIgnoreCase);
-                        isInverted = !match;
-                    }
-                }
-                catch { /* leave isInverted=false if language info unavailable */ }
-
                 // sourceText / targetText are always kept in project direction from
-                // here on. InsertTermBatch will per-termbase decide whether to flip
+                // here on. Downstream callees per-termbase decide whether to flip
                 // them into the termbase's storage direction.
                 var indexSourceText = sourceText;
                 var indexTargetText = targetText;
 
-                // Check for existing entries with matching source or target
+                // Check for existing entries with matching source or target.
+                // Pass projSrcLang so FindMergeMatches can per-termbase swap the
+                // search columns to match each termbase's storage direction —
+                // without this, reverse-direction termbases silently miss every
+                // match (the SQL would compare DB English columns against project
+                // Dutch text and vice versa). Mirrors the per-termbase swap that
+                // InsertTermBatch does internally.
                 try
                 {
                     var mergeMatches = TermMergeChecker.FindMergeMatches(
-                        settings.TermbasePath, sourceText, targetText, writeTermbases);
+                        settings.TermbasePath, sourceText, targetText, writeTermbases,
+                        projectSourceLang: projSrcLang);
 
                     if (mergeMatches.Count > 0)
                     {
                         using (var mergeDlg = new MergePromptDialog(
-                            mergeMatches, sourceText, targetText, isInverted))
+                            mergeMatches, sourceText, targetText))
                         {
                             var mergeResult = mergeDlg.ShowDialog();
 
@@ -210,17 +197,25 @@ namespace Supervertaler.Trados
 
                             if (mergeResult == DialogResult.Yes || mergeResult == DialogResult.Retry)
                             {
-                                // Add as synonym to each matched entry
+                                // Add as synonym to each matched entry. The "source"/
+                                // "target" language tag on AddSynonym refers to the
+                                // termbase's storage direction, not the project's —
+                                // when the termbase is inverted relative to the project,
+                                // the project source text belongs in the target column
+                                // and vice versa.
                                 foreach (var match in mergeMatches)
                                 {
+                                    var termSourceCol = match.TermbaseInverted ? targetText : sourceText;
+                                    var termTargetCol = match.TermbaseInverted ? sourceText : targetText;
+
                                     if (match.MatchType == "source")
                                         TermbaseReader.AddSynonym(
                                             settings.TermbasePath, match.TermId,
-                                            targetText, "target");
+                                            termTargetCol, "target");
                                     else
                                         TermbaseReader.AddSynonym(
                                             settings.TermbasePath, match.TermId,
-                                            sourceText, "source");
+                                            termSourceCol, "source");
                                 }
 
                                 // Insert normally into termbases that had no match
