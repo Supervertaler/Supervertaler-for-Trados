@@ -161,7 +161,7 @@ Terms can be marked as **non-translatable** (brand names, product codes, abbrevi
 - **Right-click menu**: "Mark as Non-Translatable" / "Mark as Translatable" toggle on any term chip. Uses `TermbaseReader.SetNonTranslatable()` for a lightweight DB update.
 - **Add Term dialog**: "Non-translatable" checkbox auto-fills target = source and makes target read-only when checked. Pre-populates from `TermEntry.IsNonTranslatable` in edit mode.
 - **Alt+digit insertion**: Works unchanged — inserts `TargetTerm` which equals `SourceTerm` for non-translatables.
-- **Term Picker** (Ctrl tap or Ctrl+Alt+G): Shows yellow background for non-translatable matches.
+- **TermLens popup** (Ctrl tap or Ctrl+Alt+G) and **Term Picker** dialogue (Ctrl+Shift+T): Show yellow background for non-translatable matches.
 - **Termbase Editor**: "NT" checkbox column for toggling per-term.
 - **DB migration**: `MigrateSchema()` uses `PRAGMA table_info` to detect the column and `ALTER TABLE ADD COLUMN` if missing. Called from `Open()` (via `HasColumn`) and all static write methods. Idempotent and backward-compatible with older Supervertaler databases.
 - **Action ID**: `TermLens_QuickAddNonTranslatable` — do NOT rename (users may have custom shortcut overrides).

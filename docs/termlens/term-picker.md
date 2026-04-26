@@ -4,9 +4,11 @@ You are viewing help for **Supervertaler for Trados** – the Trados Studio plug
 
 The Term Picker is a compact overlay that shows all matched terms for the current segment in a sortable, keyboard-navigable list. It is useful when TermLens shows many matches and you want a quick overview without scrolling.
 
+<figure><img src="../.gitbook/assets/Supervertaler-for-Trados-Term-Picker.png" alt=""><figcaption><p>Term Picker dialogue with all matched terms for the current segment</p></figcaption></figure>
+
 ## Opening the Term Picker
 
-Press **Ctrl+Shift+L** to open the Term Picker. It appears as a floating window above the editor.
+Press **Ctrl+Shift+T** to open the Term Picker. It appears as a floating window above the editor.
 
 {% hint style="info" %}
 Looking for the memoQ-style Ctrl-tap behaviour? That now opens the [TermLens popup](termlens-popup.md) — a more compact in-context view of the same matches. The Term Picker dialogue described on this page is the list-based alternative for users who prefer a tabular UI.

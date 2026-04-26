@@ -48,7 +48,7 @@ The popup uses the same chip rendering, colour scheme, and metadata indicators a
 
 Both show the same matches for the active segment. Pick whichever fits your style:
 
-| | TermLens popup (Ctrl tap) | [Term Picker dialogue](term-picker.md) (Ctrl+Shift+L) |
+| | TermLens popup (Ctrl tap) | [Term Picker dialogue](term-picker.md) (Ctrl+Shift+T) |
 |---|---|---|
 | Layout | Source segment with chips underneath each matched word | Sortable, scrollable table |
 | Best for | Skimming matches in segment context | Many matches that benefit from sorting / typing-to-jump |
