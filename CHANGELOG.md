@@ -1,5 +1,31 @@
 # Changelog
 
+## [4.19.73] – 2026-05-06
+
+### Fixed (Proofread: report numbering drifted from the Trados grid after merges/splits)
+
+- **In projects with merged or split segments, the segment numbers shown on Reports-tab issue cards no longer matched the numbers Trados shows in the editor grid.** Every merge added a one-segment offset to all subsequent rows, so on a project with three merges the last segment of the file was reported with a number that was 3 lower than the editor grid said. Reported by Daniel McCosh on a real client project.
+- Root cause at [`AiAssistantViewPart.cs`](src/Supervertaler.Trados/AiAssistantViewPart.cs:4310): the v4.8.0 multi-file alignment logic numbered segments by counting iterations through `_activeDocument.SegmentPairs` (`fileSegIdx++` per pair) and only used the parsed segment ID as a heuristic for detecting file boundaries. Iteration count and Trados' own segment IDs diverge after a merge: Trados retires the higher ID of the merged pair (so the editor jumps from 3 to 5), but the iteration count keeps marching 1, 2, 3, 4, 5… → off-by-N from then on. Splits had a similar issue.
+- Fix uses `pair.Properties.Id.Id` directly as the per-file segment number when it parses as an int, which is exactly the number Trados shows in the grid and which it preserves correctly across merges and splits. Falls back to the iteration counter only when the segment ID isn't parseable (older formats / exotic filters).
+
+### Fixed (AutoPrompt: blank-line bloat in saved prompts)
+
+- **AutoPrompt-generated prompts were arriving in the Edit Prompt dialog with two or three blank lines between sections** instead of a single blank line. Reported by Michael with a screenshot showing the gaps around `1. ROLE`, `2. TECHNICAL DOMAIN`, etc. Cause: `PromptGenerator.ParseGeneratedPrompt` only `.Trim()`s the AI's response between the `===PROMPT_START===` / `===PROMPT_END===` delimiters, and the meta-prompt didn't tell the model to use single blank-line separators – so the model fell back to its default "looks pretty" spacing, which means 2-3 blank lines around section headings.
+- Fix at [`PromptGenerator.cs`](src/Supervertaler.Trados/Core/PromptGenerator.cs) now collapses 3+ consecutive newlines to a single blank line in `ParseGeneratedPrompt`, and the meta-prompt under "OUTPUT INSTRUCTIONS" now spells it out: *"Use exactly ONE blank line between sections, paragraphs, and list blocks. Never insert two or more consecutive blank lines."* Belt-and-braces: the regex catches model output that ignores the instruction; the instruction nudges newer / better models toward the right output without the regex having to clean up.
+
+### Fixed (Batch operations: focus steal back to Translation Results between batches – proper fix)
+
+- **The v4.19.66 batch-boundary fix was not enough on slow runs and on the very last batch.** Re-Activating the Supervertaler Assistant viewpart only at the START of the next "Translating batch N+1" message was timed correctly for fast runs (steal happens in the gap, Activate happens after the steal) but lost the race on slow API calls (where the steal landed mid-gap and stuck) and on the last batch (no next-batch message to counter the steal at all – user ended up on Translation Results when the run finished).
+- Fix at [`AiAssistantViewPart.cs OnBatchProgress`](src/Supervertaler.Trados/AiAssistantViewPart.cs:3476) now also activates on `"✓ Batch X complete"` messages and uses the same dual sync + deferred `BeginInvoke` `Activate()` pattern that already worked for `OnNavigateToSegment` (v4.19.71). [`OnBatchCompleted`](src/Supervertaler.Trados/AiAssistantViewPart.cs:3567) at end of run also gets the dual Activate. The deferred call runs after Trados' queued focus steal and reliably wins.
+
+---
+
+## [4.19.72] – 2026-05-06
+
+(Folded into 4.19.73 – no separate AppStore release. Same fixes ship in 4.19.73.)
+
+---
+
 ## [4.19.71] – 2026-05-06
 
 ### Fixed (Reports tab: clicking an issue card kicked focus to Translation Results)
