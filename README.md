@@ -9,6 +9,8 @@ Supervertaler for Trados is a Trados Studio plugin (.sdlplugin) that brings term
 
 **Screencasts:** [Supervertaler for Trados playlist on YouTube](https://www.youtube.com/playlist?list=PLKzCjqTaOj20o4zyXAWmOR-e3ZHG4_NLU)
 
+**Documentation:** [supervertaler.gitbook.io/help](https://supervertaler.gitbook.io/help) – the unified help site for both Supervertaler for Trados and Supervertaler Workbench. Source Markdown lives in [Supervertaler-Help](https://github.com/Supervertaler/Supervertaler-Help) (formerly served from this repo's `docs/` directory; moved out so docs and plugin code can evolve independently).
+
 ## Pricing
 
 | Plan | Price | Features |
