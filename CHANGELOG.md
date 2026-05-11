@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.19.93] – 2026-05-11
+
+### Fixed (Prompt Editor: "Default:" label still touching "Copy to clipboard" after v4.19.92)
+
+- v4.19.92 pushed `_lblDefaultMode` from x=385 to x=415 but the autoscaled "Copy to clipboard" checkbox is wider in practice than the metric suggested, so the label was still butting up against the checkbox with no visible gap. Pushed `_lblDefaultMode` from x=415 to x=435 and `_cboDefaultMode` from x=470 / width=105 to x=490 / width=100. Combo ends at x=590, still 10 px from the 600 px dialog edge, with no functional change.
+
+
 ## [4.19.92] – 2026-05-11
 
 ### Fixed (Prompt Editor: "Default:" label clipped by the "Copy to clipboard" checkbox)

@@ -201,13 +201,14 @@ namespace Supervertaler.Trados.Controls
             };
             Controls.Add(_chkModeClipboard);
 
-            // "Default:" + combo. Pushed further right than initial layout
-            // because "Copy to clipboard" autoscales to ~145 px on Segoe UI
-            // 9 pt and was visually overlapping the Default label.
+            // "Default:" + combo. Pushed further right because the autoscaled
+            // "Copy to clipboard" checkbox is wider in practice (~155 px) than
+            // a naive metric suggests — at x=415 the label was still butting
+            // up against the previous checkbox with no visible gap.
             _lblDefaultMode = new Label
             {
                 Text = "Default:",
-                Location = new Point(415, y + 3),
+                Location = new Point(435, y + 3),
                 AutoSize = true,
                 ForeColor = labelColor,
                 Visible = false
@@ -216,8 +217,8 @@ namespace Supervertaler.Trados.Controls
 
             _cboDefaultMode = new ComboBox
             {
-                Location = new Point(470, y),
-                Width = 105,
+                Location = new Point(490, y),
+                Width = 100,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Visible = false,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
