@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.19.98] – 2026-05-12
+
+### Fixed (Proof-read report segments scrambled after ticking an issue's checkbox – [#28](https://github.com/Supervertaler/Supervertaler-for-Trados/issues/28))
+
+- A user reported that after running a proof-read and ticking a checkbox in the report to mark an issue as addressed, the remaining issue cards reordered non-sequentially (e.g. 844, 633, 623, 493, 494, 495). Until the first checkbox click the segments were in order; the click-then-relayout cycle scrambled them.
+- Root cause: `List<T>.Sort` in .NET is not stable. The comparer in `OnResultsPanelResize` (`ReportsControl.cs`) sorted prompt-log cards by timestamp (newest first) and returned `0` for any pair of issue cards, expecting them to keep their original insertion order. An unstable sort is free to reorder equal-keyed elements – and did, the moment a card was removed.
+- Fix: explicit `SegmentNumber` tie-break for two issue cards. Equal-class issue cards now have a deterministic order regardless of how they sit in `_resultsPanel.Controls`, so any future removal path that triggers a relayout keeps the report sequential.
+
+
 ## [4.19.97] – 2026-05-11
 
 ### Added (Supervertaler blue icon on every plugin dialog title bar)
