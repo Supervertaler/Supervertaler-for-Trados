@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.19.105] – 2026-05-14
+
+### Changed (Mistral list trimmed to two models)
+
+- **Removed Mistral Nemo from the curated list.** Mistral Nemo (`open-mistral-nemo`) is a July 2024 model, since superseded; for translators it offered no real benefit over Mistral Small – similar (negligible) cost, lower quality, and the "open weights" angle is moot when it's called through Mistral's hosted API anyway (the Ollama provider covers genuinely local models). The Mistral list is now a clean two-tier split: **Mistral Large** (flagship – `mistral-large-latest`) and **Mistral Small** (fast, cost-effective workhorse – `mistral-small-latest`), both of which auto-track to the current release via their `-latest` aliases. Anyone still on `open-mistral-nemo` keeps working by entering it in the Model ID field.
+
+
 ## [4.19.104] – 2026-05-14
 
 ### Changed (Gemini model lineup refresh)

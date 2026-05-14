@@ -42,7 +42,6 @@ namespace Supervertaler.Trados.Core
             // Mistral AI
             { "mistral-large-latest",         (2.00m,  6.00m)  },
             { "mistral-small-latest",         (0.10m,  0.30m)  },
-            { "open-mistral-nemo",            (0.15m,  0.15m)  },
 
             // Ollama (local) – free
             { "translategemma:12b",        (0m, 0m) },

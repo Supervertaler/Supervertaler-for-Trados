@@ -129,12 +129,6 @@ namespace Supervertaler.Trados.Core
                 Id = "mistral-small-latest", DisplayName = "Mistral Small",
                 Description = "Fast and cost-effective – great for large batch jobs",
                 Provider = LlmProvider.Mistral
-            },
-            new LlmModelInfo
-            {
-                Id = "open-mistral-nemo", DisplayName = "Mistral Nemo",
-                Description = "Open, multilingual – good general-purpose translation",
-                Provider = LlmProvider.Mistral
             }
         };
 
