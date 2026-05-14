@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.19.106] – 2026-05-14
+
+### Changed (Claude list trimmed; Opus pricing corrected)
+
+- **Removed Claude Opus 4.6 from the curated list.** Opus 4.7 is a step-change improvement over 4.6 at the same price, so keeping the previous flagship around was pure redundancy – same reasoning as the recent Gemma and Mistral Nemo trims. The Claude list is now a clean three: **Sonnet 4.6** (recommended), **Haiku 4.5** (fast/cheap), **Opus 4.7** (highest quality). Removed from both the Claude and OpenRouter lists; anyone still on Opus 4.6 keeps working via the Model ID field.
+- **Fixed stale Claude Opus pricing in the cost estimator.** `TokenEstimator` had Opus at $15 / $75 per 1M tokens; the correct rate is **$5 / $25** (as Anthropic's docs and this changelog's own v4.19-era Opus 4.7 entry both state), so Opus cost estimates were running ~3× too high. Sonnet ($3/$15) and Haiku ($1/$5) were already correct.
+
+
 ## [4.19.105] – 2026-05-14
 
 ### Changed (Mistral list trimmed to two models)
