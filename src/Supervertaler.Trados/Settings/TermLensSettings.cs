@@ -213,9 +213,24 @@ namespace Supervertaler.Trados.Settings
         /// Whether the user has already been asked about usage statistics.
         /// Once true, the opt-in dialog is not shown again (the user can
         /// still change the setting in Settings at any time).
+        ///
+        /// Legacy v1 flag - kept for backwards compatibility with old settings
+        /// files but no longer checked. The opt-in dialog now uses
+        /// UsageStatisticsAskedV2 so that users who saw the old "Yes, share?"
+        /// framing get a second chance under the new "default-on, switch off
+        /// here if you'd rather not" framing.
         /// </summary>
         [DataMember(Name = "usageStatisticsAsked")]
         public bool UsageStatisticsAsked { get; set; } = false;
+
+        /// <summary>
+        /// Whether the user has been asked about usage statistics under the
+        /// rewritten dialog (v2: informational, default-on, opt-out). Defaults
+        /// to false so every existing user sees the new dialog once after
+        /// updating, regardless of what they answered to the old one.
+        /// </summary>
+        [DataMember(Name = "usageStatisticsAskedV2")]
+        public bool UsageStatisticsAskedV2 { get; set; } = false;
 
         // ─── AI settings ────────────────────────────────────────────
         /// <summary>

@@ -1713,8 +1713,9 @@ namespace Supervertaler.Trados.Settings
             _settings.CaseSensitiveMatching = _chkCaseSensitive.Checked;
             _settings.UsageStatisticsEnabled = _chkUsageStats.Checked;
             _settings.SuperSearchInAssistantTab = _chkSuperSearchInTab.Checked;
-            // Mark as asked so the opt-in dialog won't show again
+            // Mark as asked (both v1 and v2 flags) so the opt-in dialog won't show again
             _settings.UsageStatisticsAsked = true;
+            _settings.UsageStatisticsAskedV2 = true;
             // Generate anonymous ID on first opt-in
             if (_settings.UsageStatisticsEnabled && string.IsNullOrEmpty(_settings.UsageStatisticsId))
                 _settings.UsageStatisticsId = System.Guid.NewGuid().ToString("D");

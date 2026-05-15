@@ -2123,7 +2123,9 @@ namespace Supervertaler.Trados
         private void ShowUsageStatisticsOptIn(TermLensControl ctrl)
         {
             var settings = TermLensSettings.Load();
-            if (settings.UsageStatisticsAsked)
+            // Use the v2 flag so users who answered the old opt-in dialog get
+            // shown the rewritten (informational, default-on) dialog once.
+            if (settings.UsageStatisticsAskedV2)
                 return;
 
             System.Threading.Tasks.Task.Run(async () =>
@@ -2142,7 +2144,11 @@ namespace Supervertaler.Trados
                         {
                             var result = dlg.ShowDialog();
                             settings.UsageStatisticsAsked = true;
-                            settings.UsageStatisticsEnabled = (result == DialogResult.Yes);
+                            settings.UsageStatisticsAskedV2 = true;
+                            // Default-on: anything except an explicit "Turn it off"
+                            // (DialogResult.No) is treated as keeping stats enabled.
+                            // This covers Yes, Enter, Esc, and the X-close button.
+                            settings.UsageStatisticsEnabled = (result != DialogResult.No);
                             if (settings.UsageStatisticsEnabled && string.IsNullOrEmpty(settings.UsageStatisticsId))
                                 settings.UsageStatisticsId = Guid.NewGuid().ToString("D");
                             settings.Save();
@@ -2153,6 +2159,7 @@ namespace Supervertaler.Trados
                             if (_settings != null)
                             {
                                 _settings.UsageStatisticsAsked   = settings.UsageStatisticsAsked;
+                                _settings.UsageStatisticsAskedV2 = settings.UsageStatisticsAskedV2;
                                 _settings.UsageStatisticsEnabled = settings.UsageStatisticsEnabled;
                                 _settings.UsageStatisticsId      = settings.UsageStatisticsId;
                             }

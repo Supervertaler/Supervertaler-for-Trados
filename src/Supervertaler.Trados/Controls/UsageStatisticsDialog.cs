@@ -6,12 +6,16 @@ using System.Windows.Forms;
 namespace Supervertaler.Trados.Controls
 {
     /// <summary>
-    /// One-time opt-in dialog for anonymous usage statistics.
-    /// Shown once after install/update; the user's choice is saved and can be
-    /// changed at any time in Settings.
+    /// One-time anonymous-usage-statistics notice. Shown once after install or
+    /// update under the v2 framing: informational, default-on, opt-out.
     ///
-    /// DialogResult.Yes  = user opted in
-    /// DialogResult.No   = user declined
+    ///   - Yes button / Enter / Esc / X-close all return DialogResult.Yes
+    ///     (user keeps stats on - the default).
+    ///   - Only an explicit click on "Turn it off" returns DialogResult.No.
+    ///
+    /// Copy is deliberately written as a personal note from the developer
+    /// rather than a corporate disclaimer, since the data collected is
+    /// genuinely anonymous and minimal.
     /// </summary>
     internal sealed class UsageStatisticsDialog : Form
     {
@@ -35,7 +39,7 @@ namespace Supervertaler.Trados.Controls
             MinimizeBox = false;
             ShowInTaskbar = false;
             HelpButton = true;
-            ClientSize = new Size(460, 260);
+            ClientSize = new Size(460, 240);
             Font = new Font("Segoe UI", 9F);
 
             HelpButtonClicked += (s, e) =>
@@ -47,7 +51,7 @@ namespace Supervertaler.Trados.Controls
 
             var lblTitle = new Label
             {
-                Text = "Help improve Supervertaler",
+                Text = "Anonymous usage statistics",
                 Location = new Point(20, 16),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
@@ -56,23 +60,21 @@ namespace Supervertaler.Trados.Controls
 
             var lblBody = new Label
             {
-                Text = "Would you like to share anonymous usage statistics to help " +
-                       "improve the plugin?\n\n" +
-                       "Only the following is sent – once per session, on startup:\n" +
-                       "  •  Plugin version\n" +
-                       "  •  OS and Trados Studio version\n" +
-                       "  •  System locale\n\n" +
-                       "No personal data, translation content, or termbase info is " +
-                       "ever collected. You can change this at any time in Settings.",
+                Text = "Supervertaler for Trados sends one anonymous ping at startup so I " +
+                       "can see how many people use the plugin. No personal data, no " +
+                       "translation content, no termbase info — just plugin version, OS, " +
+                       "Trados version, and system locale.\n\n" +
+                       "If you'd rather not, switch it off below or any time in Settings.\n\n" +
+                       "— Michael",
                 Location = new Point(20, 46),
-                Size = new Size(420, 140),
+                Size = new Size(420, 130),
                 ForeColor = Color.FromArgb(50, 50, 50)
             };
 
             var lnkLearnMore = new LinkLabel
             {
                 Text = "Learn more about what is collected",
-                Location = new Point(20, 188),
+                Location = new Point(20, 184),
                 AutoSize = true,
                 LinkColor = Color.FromArgb(37, 99, 235),
                 ForeColor = Color.FromArgb(37, 99, 235)
@@ -85,24 +87,29 @@ namespace Supervertaler.Trados.Controls
 
             var btnYes = new Button
             {
-                Text = "Yes, share statistics",
+                Text = "Keep it on",
                 DialogResult = DialogResult.Yes,
-                Location = new Point(170, 224),
-                Size = new Size(140, 32),
+                Location = new Point(190, 200),
+                Size = new Size(120, 32),
                 FlatStyle = FlatStyle.System
             };
 
             var btnNo = new Button
             {
-                Text = "No thanks",
+                Text = "Turn it off",
                 DialogResult = DialogResult.No,
-                Location = new Point(320, 224),
+                Location = new Point(320, 200),
                 Size = new Size(120, 32),
                 FlatStyle = FlatStyle.System
             };
 
+            // Both Enter (AcceptButton) and Esc (CancelButton) are wired to
+            // "Keep it on" so any non-explicit close defaults to keeping stats
+            // enabled. The X-close button isn't routed through CancelButton -
+            // it returns DialogResult.Cancel - and the calling code treats
+            // anything that isn't an explicit DialogResult.No as "keep on".
             AcceptButton = btnYes;
-            CancelButton = btnNo;
+            CancelButton = btnYes;
 
             Controls.AddRange(new Control[] { lblTitle, lblBody, lnkLearnMore, btnYes, btnNo });
 

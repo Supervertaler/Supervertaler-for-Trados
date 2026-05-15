@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.19.108] – 2026-05-15
+
+### Changed (Usage-statistics dialog rewritten: informational, default-on)
+
+- The first-run anonymous-usage-statistics dialog has been rewritten from "Would you like to opt in?" to a polite informational note: *"Supervertaler for Trados sends one anonymous ping at startup so I can see how many people use the plugin. No personal data, no translation content, no termbase info — just plugin version, OS, Trados version, and system locale. If you'd rather not, switch it off below or any time in Settings. — Michael"*. The default action (Enter, Esc, X-close, or the bold "Keep it on" button) keeps stats enabled; only an explicit "Turn it off" click switches them off. The underlying telemetry behaviour is unchanged – same single anonymous ping at startup with the same payload (plugin version, OS, Trados version, locale, virtualization host).
+- A new `usageStatisticsAskedV2` flag controls whether the dialog has been shown. The legacy `usageStatisticsAsked` flag stays in settings for backwards compatibility but is no longer checked, so every existing user – including those who clicked No to the previous opt-in dialog – gets the rewritten dialog once after updating, and their previous answer is treated as "you weren't asked under this framing yet." Users who already had stats on stay on (just see the new dialog confirming); users who said No previously get a fresh ask under the new framing (default-on, click "Turn it off" to keep stats off).
+- *Background:* the previous opt-in dialog produced near-zero opt-ins – the live stats dashboard showed essentially one active user (me, on dev installs) across the whole plugin user base – because asking users to actively share data they don't benefit from gets near-universal "no thanks." The new framing is honest about what is collected (still: nothing personal, just version + OS + locale once per session) but defaults to enabled so the data actually reflects real plugin usage instead of the opt-in cohort.
+
+
 ## [4.19.107] – 2026-05-14
 
 ### Changed (Grok list trimmed to one current model)
