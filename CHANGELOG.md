@@ -1,5 +1,28 @@
 # Changelog
 
+## [4.19.113] – 2026-05-17
+
+### Added (↻ refresh button in TermLens header + automatic refresh when the shared SQLite database is modified by another process — typically the Supervertaler Workbench desktop app)
+
+Companion to the Workbench v1.10.68 / v1.10.69 refresh feature. When both products are open against the same `supervertaler.db` and the user edits terms in Workbench, the Trados plugin's in-memory term index goes stale until the user manually presses F5 (`RefreshTermbaseAction`). Symptoms identical to the Workbench-side bug it mirrors: TermLens keeps showing terms that have been deleted in the other tool, misses newly-added ones, and right-clicking a stale term to edit pops up an empty dialog because the underlying `term_id` no longer exists.
+
+**Two pieces ship together:**
+
+**1. Visible ↻ button in the TermLens header.** Placed left of the existing `A` / `A` font zoomer, styled to match the SuperMemoryToolbar refresh button (24×24 px, light-gray glyph, hover effect, click-feedback). Clicking it raises a new `TermLensControl.RefreshRequested` event; the host (`TermLensEditorViewPart.OnTermLensRefreshRequested`) routes it through `NotifyTermAdded()` — the same code path F5 has always used, so we get the full reload (settings re-read, `LoadTermbase(forceReload: true)`, MultiTerm re-detect, segment redraw) without forking the logic. Brief visual cue: button flips to `✓` and disables for 500 ms so the click registers even when the reload is sub-second. Tooltip explains the use case explicitly and mentions the F5 equivalent. `TermLensControl.CurrentDbPath` exposed so the watcher (below) knows what file to monitor.
+
+**2. Automatic refresh via `FileSystemWatcher`.** Installed on the active `supervertaler.db` at the end of `Initialize()`, right after the existing `LoadTermbase` / `LoadMultiTermTermbases` chain. Three layers of "don't misfire" gating, matching the Workbench v1.10.69 implementation:
+
+ - **2-second debounce** — `_dbDebounceTimer` (re)starts on every `Changed` / `Created` / `Renamed` event; the actual reload only runs once the file has been quiet for 2 s, so a burst of writes (typical: INSERT + activation-table update + SELECT-verify) collapses into one reload.
+ - **Snapshot gating** — before reloading, the handler queries five cheap aggregates (`COUNT` + `MAX(id)` from `termbases`; `COUNT` + `MAX(id)` + `MAX(modified_date)` from `termbase_terms`) and compares to the snapshot taken at the end of the last own-reload. If nothing in the termbase tables changed (e.g. it was a TM write that happened to touch the same `.db` file), the reload is skipped entirely.
+ - **Own-write integration** — every reload path (`NotifyTermAdded` / `NotifyTermInserted` / `NotifyTermDeleted`) refreshes the snapshot at the end via `RefreshTermbaseDbSnapshot`. So an own-write updates the snapshot synchronously; when the watcher debounce fires ~2 s later for that same write, the comparison sees no change and the reload is correctly skipped. **Zero spurious rebuilds from own-writes.**
+
+The watcher is wrapped in `try / catch` at setup and teardown sites — failure (network drive, exotic filesystem, missing `FileSystemWatcher` permissions) is non-fatal: F5 and the new ↻ button still work as manual fallbacks. Teardown happens cleanly on `Dispose` so we don't leak watchers across document close / reopen cycles. Also re-installed by `NotifyTermAdded` in case Settings just pointed at a different `supervertaler.db`.
+
+End-user effect: edit terms in Workbench → switch to Trados → display already reflects the change (within ~2 s of the Workbench write completing), no F5 / ↻ click needed. The button still lives in the header for the explicit "do it now" trigger and for cases where the watcher couldn't be installed.
+
+Diagnostic output goes to `System.Diagnostics.Debug.WriteLine` (visible in DebugView): `[TermLens] DB auto-refresh: watching supervertaler.db (2s debounce)` on setup, `[TermLens] DB changed externally — auto-refreshing index (termbases:X→Y, terms:N→M)` on each actual refresh, snapshot failures and watcher-setup failures also logged.
+
+
 ## [4.19.112] – 2026-05-17
 
 ### Changed (All in-app help links repointed at the new help.supervertaler.com site)

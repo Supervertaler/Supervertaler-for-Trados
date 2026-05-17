@@ -68,6 +68,35 @@ namespace Supervertaler.Trados
         // --- Ctrl-tap Term Picker (memoQ-style) ---
         private static CtrlTapFilter _ctrlTapFilter;
 
+        // ───────────────────────────────────────────────────────────────
+        // v4.19.113: Termbase DB file watcher (cross-process auto-refresh)
+        // ───────────────────────────────────────────────────────────────
+        // When the same SQLite database is open in Workbench and a user
+        // edits terms there (or in any other process), the plugin's
+        // in-memory term index goes stale until the next manual
+        // NotifyTermAdded(). Mirrors the Workbench v1.10.69
+        // _setup_termbase_db_watcher pattern:
+        //   1. FileSystemWatcher on the DB file. fileChanged restarts
+        //      a 2-second debounce timer.
+        //   2. When the timer fires, snapshot the termbase tables
+        //      (COUNT + MAX(id) on termbases; COUNT + MAX(id) +
+        //      MAX(modified_date) on termbase_terms) and compare to the
+        //      snapshot taken at the end of the last own-reload.
+        //   3. Only reload if the snapshot genuinely differs — so
+        //      routine TM / project-metadata writes that tick the file
+        //      mtime don't cause a visible TermLens flicker.
+        //   4. Every own-reload path (NotifyTermAdded / Inserted /
+        //      Deleted) refreshes the snapshot afterwards, so when the
+        //      watcher debounce later fires for the same write, the
+        //      comparison sees no change and skips → zero spurious
+        //      rebuilds from own-writes.
+        private FileSystemWatcher _dbWatcher;
+        private System.Windows.Forms.Timer _dbDebounceTimer;
+        private string _watchedDbPath;
+        // Snapshot tuple: (termbasesCount, termbasesMaxId, termsCount,
+        // termsMaxId, termsMaxModified). Compared as-is.
+        private Tuple<long, long, long, long, string> _dbSnapshot;
+
         protected override IUIControl GetContentControl()
         {
             return _mainPanel.Value;
@@ -180,6 +209,23 @@ namespace Supervertaler.Trados
 
             // Load MultiTerm termbases from the active Trados project (if any)
             LoadMultiTermTermbases();
+
+            // v4.19.113: wire the new ↻ refresh button in the TermLens
+            // header to the same reload path F5 uses, and install a
+            // FileSystemWatcher on the SQLite DB so cross-process edits
+            // (typically by the Workbench desktop app sharing the same
+            // DB) auto-trigger a reload after a 2-second debounce.
+            try
+            {
+                _control.Value.RefreshRequested -= OnTermLensRefreshRequested;
+                _control.Value.RefreshRequested += OnTermLensRefreshRequested;
+            }
+            catch { /* control not yet realised */ }
+            try
+            {
+                SetupTermbaseDbWatcher();
+            }
+            catch { /* watcher is best-effort; F5 + ↻ still work */ }
 
             // Start periodic check for MultiTerm config changes (e.g. user
             // toggles Enabled in Project Settings → Termbases mid-session)
@@ -1615,6 +1661,270 @@ namespace Supervertaler.Trados
             instance.LoadTermbase(forceReload: true);
             instance.LoadMultiTermTermbases();
             instance.UpdateFromActiveSegment();
+
+            // v4.19.113: refresh the file-watcher's snapshot so this
+            // own-write doesn't cause a redundant rebuild ~2 s later
+            // when the FileSystemWatcher debounce fires. Also re-attach
+            // the watcher in case the DB path itself changed (e.g. user
+            // pointed Settings at a different supervertaler.db).
+            try { instance.RefreshTermbaseDbSnapshot(); } catch { }
+            try { instance.SetupTermbaseDbWatcher(); } catch { }
+        }
+
+        // ───────────────────────────────────────────────────────────────
+        // v4.19.113: ↻ refresh button handler (wired in Initialize)
+        // ───────────────────────────────────────────────────────────────
+        private void OnTermLensRefreshRequested(object sender, EventArgs e)
+        {
+            // Same code path as the F5 keyboard shortcut and AddTermAction.
+            // Static so it can be reused; instance method here just defers
+            // to it. Wrapped in try/catch so a click on the button can
+            // never tear down the panel.
+            try
+            {
+                NotifyTermAdded();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TermLens] Refresh button failed: {ex.Message}");
+            }
+        }
+
+        // ───────────────────────────────────────────────────────────────
+        // v4.19.113: Termbase DB file watcher implementation
+        // ───────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Install (or re-install on path change) a FileSystemWatcher on
+        /// the currently-loaded supervertaler.db. Called from Initialize
+        /// right after LoadTermbase, and again from NotifyTermAdded in
+        /// case settings changes pointed at a different DB.
+        /// </summary>
+        private void SetupTermbaseDbWatcher()
+        {
+            // Resolve the path the TermLensControl is actually using right
+            // now (set inside its LoadTermbase). If empty, no termbase
+            // loaded yet → nothing to watch; we'll be called again the
+            // next time LoadTermbase succeeds.
+            var path = _control.Value.CurrentDbPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                TeardownTermbaseDbWatcher();
+                _watchedDbPath = null;
+                return;
+            }
+
+            // Already watching this exact path? Snapshot only; no need to
+            // rebuild the watcher.
+            if (string.Equals(_watchedDbPath, path, StringComparison.OrdinalIgnoreCase) &&
+                _dbWatcher != null)
+            {
+                _dbSnapshot = SnapshotTermbaseDb(path);
+                return;
+            }
+
+            TeardownTermbaseDbWatcher();
+
+            var dir = Path.GetDirectoryName(path);
+            var name = Path.GetFileName(path);
+            if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(name)) return;
+
+            try
+            {
+                _dbWatcher = new FileSystemWatcher(dir, name)
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                    IncludeSubdirectories = false,
+                    EnableRaisingEvents = true
+                };
+
+                // 2-second debounce so a batch of related writes (e.g. an
+                // INSERT followed by a SELECT-verify, or several
+                // back-to-back deletes) collapses into a single
+                // snapshot-compare-and-maybe-reload.
+                _dbDebounceTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+                _dbDebounceTimer.Tick += OnDbDebounceFire;
+
+                FileSystemEventHandler trigger = (s, e) =>
+                {
+                    // FileSystemWatcher fires on a thread pool thread; marshal
+                    // to the UI thread before touching the WinForms timer.
+                    if (_control.IsValueCreated && _control.Value.InvokeRequired)
+                    {
+                        try
+                        {
+                            _control.Value.BeginInvoke(new Action(() =>
+                            {
+                                if (_dbDebounceTimer == null) return;
+                                _dbDebounceTimer.Stop();
+                                _dbDebounceTimer.Start();
+                            }));
+                        }
+                        catch { /* control gone */ }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (_dbDebounceTimer == null) return;
+                            _dbDebounceTimer.Stop();
+                            _dbDebounceTimer.Start();
+                        }
+                        catch { }
+                    }
+                };
+                _dbWatcher.Changed += trigger;
+                _dbWatcher.Created += trigger;
+                _dbWatcher.Renamed += (s, e) => trigger(s, e);
+
+                _watchedDbPath = path;
+                _dbSnapshot = SnapshotTermbaseDb(path);
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TermLens] DB auto-refresh: watching {name} (2s debounce)");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TermLens] DB auto-refresh setup failed: {ex.Message} – F5 / ↻ still work");
+                TeardownTermbaseDbWatcher();
+            }
+        }
+
+        private void TeardownTermbaseDbWatcher()
+        {
+            try
+            {
+                if (_dbWatcher != null)
+                {
+                    _dbWatcher.EnableRaisingEvents = false;
+                    _dbWatcher.Dispose();
+                    _dbWatcher = null;
+                }
+            }
+            catch { }
+            try
+            {
+                if (_dbDebounceTimer != null)
+                {
+                    _dbDebounceTimer.Stop();
+                    _dbDebounceTimer.Dispose();
+                    _dbDebounceTimer = null;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Debounce timer fired — the DB file has been quiet for 2 s.
+        /// Snapshot-gate the reload so non-termbase writes (TM saves,
+        /// project metadata) don't cause a visible TermLens flicker.
+        /// </summary>
+        private void OnDbDebounceFire(object sender, EventArgs e)
+        {
+            try { _dbDebounceTimer?.Stop(); } catch { }
+
+            try
+            {
+                var path = _watchedDbPath;
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+
+                var fresh = SnapshotTermbaseDb(path);
+                if (fresh == null)
+                {
+                    // Couldn't snapshot (DB locked mid-write?) — be safe and
+                    // reload. Worst case is one extra sub-second rebuild.
+                    System.Diagnostics.Debug.WriteLine(
+                        "[TermLens] DB snapshot failed, reloading to be safe");
+                    NotifyTermAdded();
+                    return;
+                }
+
+                if (Equals(fresh, _dbSnapshot))
+                {
+                    // File mtime ticked but the termbase tables didn't change
+                    // (probably a TM / project-metadata write). Skip.
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TermLens] DB changed externally — auto-refreshing index " +
+                    $"(termbases:{_dbSnapshot?.Item1.ToString() ?? "?"}→{fresh.Item1}, " +
+                    $"terms:{_dbSnapshot?.Item3.ToString() ?? "?"}→{fresh.Item3})");
+
+                // NotifyTermAdded does the full reload (settings re-read,
+                // LoadTermbase forceReload, MultiTerm refresh, segment
+                // update) and refreshes the snapshot at the end.
+                NotifyTermAdded();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TermLens] DB auto-refresh failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Refresh the cached snapshot in-place (used after an own-write
+        /// reload so the watcher's pending fire sees no change and skips).
+        /// </summary>
+        private void RefreshTermbaseDbSnapshot()
+        {
+            var path = _watchedDbPath;
+            if (string.IsNullOrEmpty(path)) path = _control.Value.CurrentDbPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+            _dbSnapshot = SnapshotTermbaseDb(path);
+        }
+
+        /// <summary>
+        /// Cheap aggregate query against the termbase tables. Returns
+        /// (termbasesCount, termbasesMaxId, termsCount, termsMaxId,
+        /// termsMaxModified). The tuple is value-compared by the watcher
+        /// to decide whether the termbase data actually changed (vs the
+        /// file mtime just ticking because of an unrelated TM / project
+        /// write that also lives in the same .db).
+        /// </summary>
+        private static Tuple<long, long, long, long, string> SnapshotTermbaseDb(string dbPath)
+        {
+            try
+            {
+                var connStr = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                {
+                    DataSource = dbPath,
+                    Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly
+                }.ToString();
+                using (var conn = new Microsoft.Data.Sqlite.SqliteConnection(connStr))
+                {
+                    conn.Open();
+                    long tbCount = 0, tbMaxId = 0, termsCount = 0, termsMaxId = 0;
+                    string termsMaxMod = "";
+                    using (var cmd = new Microsoft.Data.Sqlite.SqliteCommand(
+                        "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM termbases", conn))
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        if (r.Read())
+                        {
+                            tbCount = r.GetInt64(0);
+                            tbMaxId = r.GetInt64(1);
+                        }
+                    }
+                    using (var cmd = new Microsoft.Data.Sqlite.SqliteCommand(
+                        "SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(modified_date), '') FROM termbase_terms", conn))
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        if (r.Read())
+                        {
+                            termsCount = r.GetInt64(0);
+                            termsMaxId = r.GetInt64(1);
+                            termsMaxMod = r.IsDBNull(2) ? "" : r.GetString(2);
+                        }
+                    }
+                    return Tuple.Create(tbCount, tbMaxId, termsCount, termsMaxId, termsMaxMod);
+                }
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // ─── Context sharing for AI Assistant ─────────────────────
@@ -1656,6 +1966,12 @@ namespace Supervertaler.Trados
                 _control.Value.AddTermToIndex(entry);
 
             instance.UpdateFromActiveSegment();
+
+            // v4.19.113: keep the file-watcher snapshot in sync so the
+            // own-write fileChanged event that's about to fire doesn't
+            // cause a redundant full reload. Without this we'd run the
+            // full LoadTermbase ~2 s after every Ctrl+E quick-add.
+            try { instance.RefreshTermbaseDbSnapshot(); } catch { }
         }
 
         /// <summary>
@@ -1669,6 +1985,9 @@ namespace Supervertaler.Trados
 
             _control.Value.RemoveTermFromIndex(termId);
             instance.UpdateFromActiveSegment();
+
+            // v4.19.113: own-delete snapshot refresh (see NotifyTermInserted).
+            try { instance.RefreshTermbaseDbSnapshot(); } catch { }
         }
 
         /// <summary>
@@ -2109,7 +2428,12 @@ namespace Supervertaler.Trados
                 _control.Value.TermDeleteRequested -= OnTermDeleteRequested;
                 _control.Value.TermNonTranslatableToggled -= OnTermNonTranslatableToggled;
                 _control.Value.FontSizeChanged -= OnFontSizeChanged;
+                _control.Value.RefreshRequested -= OnTermLensRefreshRequested; // v4.19.113
             }
+
+            // v4.19.113: tear down the DB file watcher so we don't leak it
+            // across document close/reopen cycles.
+            try { TeardownTermbaseDbWatcher(); } catch { }
 
             base.Dispose();
         }

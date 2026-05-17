@@ -20,6 +20,7 @@ namespace Supervertaler.Trados.Controls
         private readonly Label _statusLabel;
         private readonly Panel _headerPanel;
         private readonly Label _headerLabel;
+        private Button _btnRefresh; // v4.19.113 – ↻ in header, fires RefreshRequested
 
         private TermMatcher _matcher;
         private TermbaseReader _reader;
@@ -58,6 +59,27 @@ namespace Supervertaler.Trados.Controls
         /// The ViewPart should persist the new size and refresh the segment display.
         /// </summary>
         public event EventHandler FontSizeChanged;
+
+        /// <summary>
+        /// v4.19.113: fired when the user clicks the ↻ refresh button in the
+        /// header. The view part is expected to call
+        /// <see cref="TermLensEditorViewPart.NotifyTermAdded"/> (or equivalent
+        /// full-reload) to rebuild the in-memory term index from disk.
+        /// Mirrors the Workbench v1.10.68 refresh button so users get the
+        /// same affordance on both products when the shared SQLite database
+        /// has been modified by the other side.
+        /// </summary>
+        public event EventHandler RefreshRequested;
+
+        /// <summary>
+        /// v4.19.113: path of the SQLite termbase file currently loaded.
+        /// Exposed so the ViewPart's file watcher knows what to watch.
+        /// Empty string before <see cref="LoadTermbase"/> succeeds.
+        /// </summary>
+        public string CurrentDbPath
+        {
+            get { return _currentDbPath ?? string.Empty; }
+        }
 
         public TermLensControl()
         {
@@ -168,6 +190,48 @@ namespace Supervertaler.Trados.Controls
                 Padding = new Padding(0, 0, UiScale.Pixels(4), 0)
             };
             _headerPanel.Controls.Add(_statusLabel);
+
+            // ─── Refresh button (v4.19.113) ──────────────────────────
+            // Drops the in-memory term index and reloads from disk.
+            // Useful after editing terms in the Workbench (or any other
+            // process) while the same SQLite DB is open here. F5 already
+            // does the same thing via RefreshTermbaseAction, but the
+            // visible button matches the affordance Workbench v1.10.68
+            // added and is more discoverable than a keyboard shortcut.
+            // Auto-refresh via FileSystemWatcher (TermLensEditorViewPart
+            // v4.19.113) covers the unattended case; this button is the
+            // explicit fallback / "yes, do it now" trigger. Matches the
+            // SuperMemoryToolbar refresh button style (↻ glyph, gray,
+            // 24×24, hover effect) so the visual language is consistent
+            // across the plugin's panels.
+            _btnRefresh = new Button
+            {
+                Text = "↻", // ↻ clockwise arrow
+                Font = new Font("Segoe UI", UiScale.FontSize(9.5f)),
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = Color.FromArgb(100, 100, 100),
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand,
+                Dock = DockStyle.Right,
+                Size = new Size(UiScale.Pixels(24), UiScale.Pixels(24)),
+                TabStop = false,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty,
+                UseCompatibleTextRendering = true
+            };
+            _btnRefresh.FlatAppearance.BorderSize = 0;
+            _btnRefresh.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnRefresh.Click += OnRefreshClicked;
+            fontButtonTip.SetToolTip(_btnRefresh,
+                "Refresh termbases from disk (F5)\n" +
+                "\n" +
+                "Reloads the in-memory term index from the database.\n" +
+                "Use this after editing terms in another tool (e.g. the\n" +
+                "Supervertaler Workbench desktop app sharing the same\n" +
+                "database) – without it, TermLens may keep showing\n" +
+                "deleted entries or miss newly-added ones until the\n" +
+                "active document changes.");
+            _headerPanel.Controls.Add(_btnRefresh);
 
             // Main flow panel for term blocks
             _flowPanel = new FlowLayoutPanel
@@ -538,6 +602,39 @@ namespace Supervertaler.Trados.Controls
             var newSize = Math.Max(Font.Size - 0.5f, 7f);
             Font = new Font(Font.FontFamily, newSize, Font.Style);
             FontSizeChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        // v4.19.113 – ↻ refresh button click handler.
+        // Brief visual cue (button flips to ✓ + disables for 500 ms) so
+        // the user sees the click registered even when the reload is
+        // sub-second. Mirrors the Workbench v1.10.68 UX.
+        private void OnRefreshClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                _btnRefresh.Enabled = false;
+                _btnRefresh.Text = "✓";
+                RefreshRequested?.Invoke(this, EventArgs.Empty);
+            }
+            finally
+            {
+                var restoreTimer = new System.Windows.Forms.Timer { Interval = 500 };
+                restoreTimer.Tick += (s, _) =>
+                {
+                    restoreTimer.Stop();
+                    restoreTimer.Dispose();
+                    try
+                    {
+                        if (_btnRefresh != null && !_btnRefresh.IsDisposed)
+                        {
+                            _btnRefresh.Enabled = true;
+                            _btnRefresh.Text = "↻";
+                        }
+                    }
+                    catch { /* widget gone */ }
+                };
+                restoreTimer.Start();
+            }
         }
 
         // ─── License gating ────────────────────────────────────────
