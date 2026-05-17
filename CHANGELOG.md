@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.19.114] – 2026-05-17
+
+### Fixed (v4.19.113 ↻ refresh button was clipped against the floating gear icon overlay; bumped TermLens header right-padding to give it breathing room)
+
+A user reported that the new ↻ refresh button added in v4.19.113 was being visually clipped against the ⚙ settings gear icon to its right. Investigation: there are two layered controls sharing the same horizontal strip at the top of the TermLens panel:
+
+ - **`MainPanelControl`** (outer wrapper) floats the ⚙ gear (26 px wide) and ? help (26 px wide) buttons **absolutely** at the top-right via `PositionTopButtons`, sitting at `X = Width - 54` and `X = Width - 28` respectively. These are drawn on top of the inner panel.
+ - **`TermLensControl._headerPanel`** (inner) hosts the `A` / `A` font buttons, the status label, and (since v4.19.113) the new ↻ refresh button — all `Dock = DockStyle.Right`. The inner panel reserved `Padding.Right = 56 px` to leave space for the gear+help overlay.
+
+The old 56-px reservation just covered the 54-px combined gear+help footprint, with 2 px to spare. v4.19.113's new 24-px refresh button docked at the right edge of the inner content area, putting its right edge at `Width − 56` — only 2 px clear of the gear icon's left edge at `Width − 54`. At 100% DPI this read as "the buttons are touching"; at 150% Windows scaling the gap closed to 4 raw pixels, indistinguishable from clipping.
+
+**Fix.** Bumped `_headerPanel.Padding.Right` from `UiScale.Pixels(56)` to `UiScale.Pixels(84)` — `26(help) + 26(gear) + 24(refresh) + 8(slack)` = 84 px reserved. The refresh button's right edge now sits at `Width − 84`, with a comfortable 30-px gap to the gear icon's left edge at `Width − 54`. At 150% DPI the gap scales to ~46 raw pixels, well clear of any visual collision.
+
+No other layout was affected — the font buttons and status label are docked inside the same right-padded area and shift left in lockstep with the padding bump.
+
+
 ## [4.19.113] – 2026-05-17
 
 ### Added (↻ refresh button in TermLens header + automatic refresh when the shared SQLite database is modified by another process — typically the Supervertaler Workbench desktop app)

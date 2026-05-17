@@ -91,12 +91,24 @@ namespace Supervertaler.Trados.Controls
             // size button has comfortable vertical clearance at high DPI. At
             // 28 px the bottom of the bold A was clipping when the plugin
             // was hosted by Trados at 150% Windows display scaling.
+            //
+            // Right padding accounts for the gear + help icons that the
+            // outer MainPanelControl floats absolutely on top of this header
+            // at coords (Width-54) and (Width-28) respectively. Without
+            // enough right padding, any Dock=Right control inside _headerPanel
+            // gets pushed under that overlay and appears clipped.
+            //
+            // v4.19.114: bumped from 56 → 84 px to make room for the v4.19.113
+            // ↻ refresh button (24 px wide) immediately to the LEFT of the
+            // gear icon. Was: 56 ≈ 26(help) + 26(gear) + 4(slack). Now:
+            // 84 ≈ 26 + 26 + 24(refresh) + 8(slack), so the refresh button
+            // gets a clear position before the floating gear icon starts.
             _headerPanel = new Panel
             {
                 Dock = DockStyle.Top,
                 Height = UiScale.Pixels(32),
                 BackColor = Color.FromArgb(245, 245, 245),
-                Padding = new Padding(UiScale.Pixels(6), UiScale.Pixels(2), UiScale.Pixels(56), UiScale.Pixels(2))
+                Padding = new Padding(UiScale.Pixels(6), UiScale.Pixels(2), UiScale.Pixels(84), UiScale.Pixels(2))
             };
 
             _headerLabel = new Label
