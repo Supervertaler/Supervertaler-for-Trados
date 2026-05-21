@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.5] – 2026-05-21
+
+### Fixed
+
+- **Overview button icon now renders.** The previous icon used an emoji (📊) outside the button font's range, so it showed as an empty box. Replaced with a glyph (☰) from the same character block as the other toolbar icons.
+- **Overview and Summary buttons respond to the first click.** Like the other dock-pane buttons, they now use the Studio first-click-eaten workaround, so a single click works even when the AI Assistant pane was not the active pane (previously the first click was swallowed and you had to click twice).
+
 ## [4.20.4] – 2026-05-21
 
 ### Added

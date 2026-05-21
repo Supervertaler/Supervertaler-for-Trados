@@ -238,8 +238,13 @@ namespace Supervertaler.Trados.Controls
                 "archived after a successful distill.");
 
             // ─── Overview button ────────────────────────────────────
-            _btnOverview = MakeActionButton("\U0001F4CA Overview", btnFont); // 📊
+            // ☰ (U+2630) renders in the same Misc-Symbols block as the Distill
+            // alembic; the earlier 📊 (U+1F4CA) is an astral emoji the button
+            // font can't render and showed as a tofu box.
+            _btnOverview = MakeActionButton("☰ Overview", btnFont); // ☰
             _btnOverview.Click += (s, e) => OverviewRequested?.Invoke(this, EventArgs.Empty);
+            // Studio 2026 first-click-eaten workaround – see Core/ClickThrough.cs.
+            ClickThrough.Attach(_btnOverview, () => OverviewRequested?.Invoke(this, EventArgs.Empty));
             tip.SetToolTip(_btnOverview,
                 "Open a scannable HTML overview of the active memory bank:\n" +
                 "a searchable terminology table, conflicting-term and stub\n" +
@@ -249,6 +254,7 @@ namespace Supervertaler.Trados.Controls
             // ─── AI Summary button ──────────────────────────────────
             _btnSummary = MakeActionButton("✨ Summary", btnFont); // ✨
             _btnSummary.Click += (s, e) => AiSummaryRequested?.Invoke(this, EventArgs.Empty);
+            ClickThrough.Attach(_btnSummary, () => AiSummaryRequested?.Invoke(this, EventArgs.Empty));
             tip.SetToolTip(_btnSummary,
                 "Ask the AI for a short plain-English profile of the active\n" +
                 "memory bank: what it covers, where it is strong or thin, and\n" +

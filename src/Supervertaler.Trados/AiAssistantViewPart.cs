@@ -2317,7 +2317,7 @@ namespace Supervertaler.Trados
                         new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
 
                     SafeInvoke(() => ShowSuperMemoryMessage(
-                        $"\U0001F4CA **Memory bank overview** generated for **{capturedName}** " +
+                        $"☰ **Memory bank overview** generated for **{capturedName}** " +
                         $"({index.Count} notes) and opened in your browser.\n\n`{path}`"));
                 }
                 catch (Exception ex)
