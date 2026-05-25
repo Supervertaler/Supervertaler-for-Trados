@@ -126,7 +126,7 @@ namespace Supervertaler.Trados.Controls
 
             _headerLabel = new Label
             {
-                Text      = "Supervertaler Assistant now supports several memory banks",
+                Text      = "Supervertaler now supports several memory banks",
                 Font      = new Font("Segoe UI", 11f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(30, 30, 120),
                 Location  = new Point(16, 16),

@@ -221,7 +221,7 @@ namespace Supervertaler.Trados.Controls
             // and round-trip re-import. Sits between Batch Operations and
             // Reports because it's part of the same "do something with the
             // whole document" workflow family.
-            var importExportPage = new TabPage("Import / Export") { BackColor = Color.White };
+            var importExportPage = new TabPage("Import/Export") { BackColor = Color.White };
             _importExportControl = new ImportExportControl { Dock = DockStyle.Fill };
             importExportPage.Controls.Add(_importExportControl);
             _tabControl.TabPages.Add(importExportPage);
@@ -799,7 +799,7 @@ namespace Supervertaler.Trados.Controls
                     // Reports in v4.20.7; Reports and SuperSearch indices
                     // bumped accordingly.
                     topic = HelpSystem.Topics.ImportExport;
-                    label = "Import / Export Help";
+                    label = "Import/Export Help";
                     break;
                 case 3:
                     topic = HelpSystem.Topics.AiProofreaderReports;
@@ -811,7 +811,7 @@ namespace Supervertaler.Trados.Controls
                     break;
                 default:
                     topic = HelpSystem.Topics.AiAssistantChat;
-                    label = "Supervertaler Assistant Help";
+                    label = "Supervertaler Help";
                     break;
             }
 

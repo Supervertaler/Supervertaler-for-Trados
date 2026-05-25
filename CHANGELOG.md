@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.20.21] – 2026-05-25
+
+### Changed
+
+- **Renamed the dockable panel from "Supervertaler Assistant" to "Supervertaler"** in every user-visible string: the Trados panel title (set via the `ViewPart` attribute), the chat-bubble name (`Supervertaler` instead of `Supervertaler Assistant`), the help-menu top item (`Supervertaler Help`), the legacy-memory-bank first-run dialog header, the "Saved on ... from Supervertaler" memory-bank line, and the QuickLauncher context-menu action (`Send to Supervertaler`). Internal class names and the Lemon Squeezy licence-variant constants are unchanged (variants are contractually bound to existing subscriptions; touching them would invalidate already-issued licences).
+- **Renamed the in-panel tab "Import / Export" to "Import/Export"** (no spaces around the slash). Updated the tab title, the tab's heading label, and the matching help-menu item ("Import/Export Help").
+
+
 ## [4.20.20] – 2026-05-25
 
 ### Added

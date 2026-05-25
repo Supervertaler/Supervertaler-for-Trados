@@ -118,7 +118,7 @@ namespace Supervertaler.Trados.Controls
             // so we don't add a per-tab help button here.
             var lblHeader = new Label
             {
-                Text = "Import / Export",
+                Text = "Import/Export",
                 Location = new Point(leftMargin, y),
                 AutoSize = true,
                 Font = new Font("Segoe UI", UiScale.FontSize(11f), FontStyle.Bold),

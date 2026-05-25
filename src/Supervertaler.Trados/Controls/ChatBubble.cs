@@ -441,7 +441,7 @@ namespace Supervertaler.Trados.Controls
             // Draw avatar circle + name above the bubble
             var avatarBg = _isUser ? UserAvatarBg : AssistantAvatarBg;
             var avatarText = "AI";
-            var nameText = _isUser ? "You" : "Supervertaler Assistant";
+            var nameText = _isUser ? "You" : "Supervertaler";
             var avatarX = _bubbleRect.X;
             var avatarY = _bubbleRect.Y - AvatarHeaderHeight;
 

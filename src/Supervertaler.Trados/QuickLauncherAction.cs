@@ -445,7 +445,7 @@ namespace Supervertaler.Trados
                     var target = settings?.AiSettings?.QuickLauncherTarget ?? "TradosAssistant";
                     return string.Equals(target, "WorkbenchSidekick", StringComparison.OrdinalIgnoreCase)
                         ? "&Send to Supervertaler Workbench Chat"
-                        : "&Send to Supervertaler Assistant";
+                        : "&Send to Supervertaler";
             }
         }
 

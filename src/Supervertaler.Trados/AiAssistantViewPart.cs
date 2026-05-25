@@ -28,7 +28,7 @@ namespace Supervertaler.Trados
     /// </summary>
     [ViewPart(
         Id = "AiAssistantViewPart",
-        Name = "Supervertaler Assistant",
+        Name = "Supervertaler",
         Description = "AI-powered translation assistant with chat and batch translate",
         Icon = "TermLensIcon"
     )]
@@ -1396,7 +1396,7 @@ namespace Supervertaler.Trados
 
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("# Chat – saved to memory bank");
-                sb.AppendLine($"*Saved on {DateTime.Now:yyyy-MM-dd HH:mm} from Supervertaler Assistant*");
+                sb.AppendLine($"*Saved on {DateTime.Now:yyyy-MM-dd HH:mm} from Supervertaler*");
                 sb.AppendLine();
 
                 if (!string.IsNullOrWhiteSpace(userQuestion))
