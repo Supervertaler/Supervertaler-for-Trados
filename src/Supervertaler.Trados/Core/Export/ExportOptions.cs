@@ -18,7 +18,21 @@ namespace Supervertaler.Trados.Core.Export
         StackedSourceTop,
 
         /// <summary>Target paragraph above source paragraph, segment by segment.</summary>
-        StackedTargetTop
+        StackedTargetTop,
+
+        /// <summary>Compact AI-friendly Markdown format that matches the
+        /// Supervertaler Workbench's "AI-readable" segment-export style.
+        /// One block per segment, separated by blank lines:
+        ///   <code>
+        ///   [SEGMENT 0001]
+        ///   EN: source text
+        ///   NL: target text
+        ///   </code>
+        /// Some LLMs reportedly parse this format more reliably than
+        /// markdown tables. Re-importable; the segment-anchor regex
+        /// keys off the bracketed number. Only meaningful with the
+        /// Markdown format — DOCX / HTML fall back to StackedSourceTop.</summary>
+        Bracketed
     }
 
     public class ExportOptions

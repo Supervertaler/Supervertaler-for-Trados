@@ -31,6 +31,12 @@ namespace Supervertaler.Trados.Core.Export
         private static readonly Regex LabelLineRe = new Regex(@"^\*\*(Source|Target)\b[^*]*\*\*\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
         private static readonly Regex StatusLineRe = new Regex(@"^\*\*Status:\*\*\s*(.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
         private static readonly Regex TableRowRe = new Regex(@"^\|\s*(\d+)\s*(?:<!--\s*sv-seg:\d+\s*-->)?\s*\|(.*)\|\s*$", RegexOptions.Multiline);
+        // v4.20.20: bracketed-layout anchors. The number is zero-padded
+        // (e.g. "0001") but the regex accepts any digit run for safety.
+        private static readonly Regex BracketedAnchorRe = new Regex(@"^\[SEGMENT\s+(\d+)\]\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        // Within a bracketed block: a line that starts with 2 letters,
+        // a colon, then the text. Captures (lang-code, body).
+        private static readonly Regex BracketedLangLineRe = new Regex(@"^([A-Za-z]{2,3}):\s*(.*)$", RegexOptions.Multiline);
 
         public List<ImportedSegment> Parse(string filePath)
         {
@@ -49,8 +55,70 @@ namespace Supervertaler.Trados.Core.Export
                 if (fromTable.Count > 0) return fromTable;
             }
 
+            // v4.20.20: bracketed [SEGMENT NNNN] layout. Recognisable by
+            // its bracketed anchor lines; falls through to stacked if no
+            // anchors match (shared parser shape with stacked but
+            // different anchor / body conventions).
+            if (BracketedAnchorRe.IsMatch(text))
+            {
+                var fromBracketed = ParseBracketedLayout(text);
+                if (fromBracketed.Count > 0) return fromBracketed;
+            }
+
             // Stacked layout fallback.
             return ParseStackedLayout(text);
+        }
+
+        private static List<ImportedSegment> ParseBracketedLayout(string text)
+        {
+            var segments = new List<ImportedSegment>();
+            // Collect anchors with their positions.
+            var anchors = new List<KeyValuePair<int, int>>();
+            foreach (Match m in BracketedAnchorRe.Matches(text))
+            {
+                int num;
+                if (int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out num))
+                    anchors.Add(new KeyValuePair<int, int>(m.Index, num));
+            }
+            if (anchors.Count == 0) return segments;
+
+            // Walk each anchor → next anchor, parse the EN: / NL: pair.
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                int blockStart = anchors[i].Key;
+                int blockEnd = (i + 1 < anchors.Count) ? anchors[i + 1].Key : text.Length;
+                int number = anchors[i].Value;
+                var blockText = text.Substring(blockStart, blockEnd - blockStart);
+
+                // First two ANY-language colon-prefixed lines = source then target.
+                // Status: lines are skipped from source/target capture (matched
+                // separately further down).
+                string sourceBody = null;
+                string targetBody = null;
+                foreach (Match lm in BracketedLangLineRe.Matches(blockText))
+                {
+                    var code = lm.Groups[1].Value.Trim();
+                    var body = lm.Groups[2].Value.Trim();
+                    // Skip the "Status" pseudo-prefix the renderer emits.
+                    if (string.Equals(code, "Status", System.StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (sourceBody == null) { sourceBody = body; continue; }
+                    if (targetBody == null) { targetBody = body; break; }
+                }
+                if (targetBody == null) continue; // need at least a target
+
+                var seg = new ImportedSegment
+                {
+                    Number = number,
+                    SourceText = sourceBody ?? "",
+                    TargetText = targetBody
+                };
+                // Status line, if present anywhere in the block.
+                var statusMatch = Regex.Match(blockText, @"^Status:\s*(.+)$", RegexOptions.Multiline);
+                if (statusMatch.Success) seg.Status = statusMatch.Groups[1].Value.Trim();
+                segments.Add(seg);
+            }
+            return segments;
         }
 
         private static List<ImportedSegment> ParseTableLayout(string text)

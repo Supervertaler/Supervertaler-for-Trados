@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.20.20] – 2026-05-25
+
+### Added
+
+- **New "Bracketed `[SEGMENT NNNN]`" layout** for Markdown exports. Matches the Supervertaler Workbench's "AI-readable" segment-export style:
+  ```
+  [SEGMENT 0001]
+  EN: <b>MASHUP APPLICATION PROCESSING SYSTEM</b>
+  NL: <b>MASHUP-APPLICATIEVERWERKINGSSYSTEEM</b>
+
+  [SEGMENT 0002]
+  ...
+  ```
+  One block per segment, blank-line separated, with 2-letter ISO language codes labelling each language line. Re-importable just like the other layouts — the bracketed segment-number is the anchor. Some LLMs reportedly handle this format more reliably than markdown tables.
+- **Available as the 4th option in the Layout dropdown** on the Import / Export tab: *Bracketed [SEGMENT NNNN] (AI-friendly, Markdown only)*. The Markdown renderer + importer both understand it; DOCX and HTML fall back to Stacked source-on-top (the bracketed format only makes sense as plain text).
+- **Multi-file affordance preserved**: when the bilingual file spans multiple source files, a `## 📄 File: <name>` heading appears before the first segment of each new file, same as the other stacked layouts.
+
+
 ## [4.20.19] – 2026-05-25
 
 ### Added

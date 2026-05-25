@@ -29,6 +29,9 @@ namespace Supervertaler.Trados.Core.Export
                 case ExportLayout.StackedTargetTop:
                     AppendStackedLayout(sb, segments, options, targetFirst: true);
                     break;
+                case ExportLayout.Bracketed:
+                    AppendBracketedLayout(sb, segments, options);
+                    break;
                 case ExportLayout.StackedSourceTop:
                 default:
                     AppendStackedLayout(sb, segments, options, targetFirst: false);
@@ -174,6 +177,117 @@ namespace Supervertaler.Trados.Core.Export
                   .Append(" | ").Append(EscapeForTableCell(seg.Notes ?? ""))
                   .Append(" |\n");
             }
+        }
+
+        /// <summary>Compact AI-friendly layout matching the Supervertaler
+        /// Workbench's "AI-readable" segment-export style. One block per
+        /// segment, blank-line separated, with 2-letter language codes
+        /// labelling each language line. Some LLMs handle this format
+        /// more reliably than a markdown table. Re-importable via the
+        /// matching <c>ParseBracketedLayout</c> path in MarkdownImporter.
+        /// </summary>
+        private static void AppendBracketedLayout(StringBuilder sb, List<ExportSegment> segments,
+            ExportOptions opts)
+        {
+            // Compute zero-padding width from the maximum segment number
+            // so all anchors line up: 1..9 → 4 digits, 10..99 → 4 digits,
+            // etc. Minimum 4 (matches Workbench convention "0001").
+            int maxNum = 0;
+            foreach (var seg in segments)
+                if (seg.Number > maxNum) maxNum = seg.Number;
+            int pad = System.Math.Max(4, maxNum.ToString(CultureInfo.InvariantCulture).Length);
+            var padFmt = "D" + pad.ToString(CultureInfo.InvariantCulture);
+
+            var srcCode = LanguageDisplayToCode(opts.SourceLanguageDisplay);
+            var tgtCode = LanguageDisplayToCode(opts.TargetLanguageDisplay);
+
+            // v4.20.20: same multi-file affordance the other layouts have.
+            bool multiFile = HasMultipleSourceFiles(segments);
+            string previousFile = null;
+
+            foreach (var seg in segments)
+            {
+                if (multiFile)
+                {
+                    var thisFile = seg.SourceFileName ?? "";
+                    if (!string.Equals(thisFile, previousFile, System.StringComparison.Ordinal))
+                    {
+                        sb.Append("## 📄 File: ").Append(thisFile).Append("\n\n");
+                        previousFile = thisFile;
+                    }
+                }
+
+                sb.Append('[').Append("SEGMENT ").Append(seg.Number.ToString(padFmt, CultureInfo.InvariantCulture)).Append(']').Append('\n');
+                // Source line. Use a flat language code so the format
+                // stays compact and AI-parseable. EscapeForMarkdown
+                // collapses CRLFs but leaves the prose alone.
+                sb.Append(srcCode).Append(": ").Append(EscapeForMarkdown(seg.SourceText)).Append('\n');
+                sb.Append(tgtCode).Append(": ").Append(EscapeForMarkdown(seg.TargetText ?? "")).Append('\n');
+                if (!string.IsNullOrEmpty(seg.DisplayStatus))
+                    sb.Append("Status: ").Append(seg.DisplayStatus).Append('\n');
+                sb.Append('\n');
+            }
+        }
+
+        /// <summary>Map a language display name (e.g. "English (US)",
+        /// "Dutch (NL)") to its 2-letter ISO 639-1 code (e.g. "EN", "NL").
+        /// Used by the Bracketed layout to label the source / target
+        /// lines compactly, matching the Supervertaler Workbench
+        /// convention. Falls back to the first two letters of the display
+        /// name uppercased when the language isn't in the small lookup
+        /// table — covers every common European pair we ship, and gives
+        /// a sensible best-effort prefix for everything else.</summary>
+        private static string LanguageDisplayToCode(string display)
+        {
+            if (string.IsNullOrWhiteSpace(display)) return "??";
+            // Match on the base name before any " (variant)" suffix.
+            var s = display.Trim();
+            int paren = s.IndexOf('(');
+            if (paren > 0) s = s.Substring(0, paren).Trim();
+            switch (s.ToLowerInvariant())
+            {
+                case "english": return "EN";
+                case "dutch":
+                case "nederlands": return "NL";
+                case "german":
+                case "deutsch": return "DE";
+                case "french":
+                case "français":
+                case "francais": return "FR";
+                case "spanish":
+                case "español":
+                case "espanol": return "ES";
+                case "italian":
+                case "italiano": return "IT";
+                case "portuguese":
+                case "português":
+                case "portugues": return "PT";
+                case "russian": return "RU";
+                case "chinese": return "ZH";
+                case "japanese": return "JA";
+                case "korean": return "KO";
+                case "arabic": return "AR";
+                case "polish": return "PL";
+                case "swedish": return "SV";
+                case "danish": return "DA";
+                case "norwegian": return "NO";
+                case "finnish": return "FI";
+                case "czech": return "CS";
+                case "hungarian": return "HU";
+                case "romanian": return "RO";
+                case "bulgarian": return "BG";
+                case "greek": return "EL";
+                case "turkish": return "TR";
+                case "hebrew": return "HE";
+                case "ukrainian": return "UK";
+                case "vietnamese": return "VI";
+                case "thai": return "TH";
+                case "indonesian": return "ID";
+            }
+            // Fallback: first 2 chars uppercased. Not always the ISO code
+            // but predictable and reversible.
+            var fallback = s.Length >= 2 ? s.Substring(0, 2) : (s + "?");
+            return fallback.ToUpperInvariant();
         }
 
         /// <summary>Same multi-file detector the DocxRenderer uses — true

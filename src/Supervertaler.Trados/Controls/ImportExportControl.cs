@@ -211,6 +211,7 @@ namespace Supervertaler.Trados.Controls
             _cmbLayout.Items.Add("Supervertaler Bilingual Table (5 columns, round-trippable)");
             _cmbLayout.Items.Add("Stacked — source on top, target below");
             _cmbLayout.Items.Add("Stacked — target on top, source below");
+            _cmbLayout.Items.Add("Bracketed [SEGMENT NNNN] (AI-friendly, Markdown only)");
             _cmbLayout.SelectedIndex = 0;
             Controls.Add(_cmbLayout);
             y += UiScale.Pixels(32);
@@ -861,6 +862,7 @@ namespace Supervertaler.Trados.Controls
                 case 0: return ExportLayout.Table;
                 case 1: return ExportLayout.StackedSourceTop;
                 case 2: return ExportLayout.StackedTargetTop;
+                case 3: return ExportLayout.Bracketed;
                 default: return ExportLayout.Table;
             }
         }
