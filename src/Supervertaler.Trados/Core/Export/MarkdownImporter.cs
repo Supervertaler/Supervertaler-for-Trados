@@ -66,13 +66,25 @@ namespace Supervertaler.Trados.Core.Export
                 var cells = rest.Split('|');
                 if (cells.Length < 2) continue;
 
+                // v4.20.19: detect 6-column layout (multi-file mode).
+                // 5-col: # | Source | Target | Status | Notes        → cells = [Src, Tgt, Status, Notes]
+                // 6-col: # | Source | Target | File | Status | Notes → cells = [Src, Tgt, File, Status, Notes]
+                // Heuristic: if we have 5 or more cells, assume 6-column
+                // and skip the File column (which is informational on
+                // re-import — the manifest's per-segment SourceFileId is
+                // the authoritative routing key, not what the table says).
+                bool multiFile = cells.Length >= 5;
                 var seg = new ImportedSegment
                 {
                     Number = num,
                     SourceText = UnescapeCell(cells[0]),
                     TargetText = UnescapeCell(cells[1]),
-                    Status = cells.Length > 2 ? UnescapeCell(cells[2]) : "",
-                    Notes = cells.Length > 3 ? UnescapeCell(cells[3]) : ""
+                    Status = multiFile
+                        ? (cells.Length > 3 ? UnescapeCell(cells[3]) : "")
+                        : (cells.Length > 2 ? UnescapeCell(cells[2]) : ""),
+                    Notes = multiFile
+                        ? (cells.Length > 4 ? UnescapeCell(cells[4]) : "")
+                        : (cells.Length > 3 ? UnescapeCell(cells[3]) : "")
                 };
                 rows.Add(seg);
             }

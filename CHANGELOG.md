@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.19] – 2026-05-25
+
+### Added
+
+- **Markdown bilingual export now shows per-file attribution in multi-file projects.** A user noted the Markdown version lacked any indication of which file each segment came from, while the DOCX version had a dedicated File column + yellow section-break rows between files. Brought to parity:
+  - **Table layout**: when the export spans more than one source file, the table grows a 6th **File** column and a section-break row (`| | **📄 File: <name>** | | | | |`) precedes the first segment of each new file. Single-file exports are unchanged.
+  - **Stacked layouts** (source-on-top / target-on-top): a `## 📄 File: <name>` heading appears before the first segment of each new file.
+- **Re-import handles the new 6-column Markdown table** transparently. The importer auto-detects 5- vs 6-column rows by cell count and shifts its parser to read Status / Notes from the right offset. Older 5-column files (and 6-column files with extra layout) keep parsing cleanly.
+
+
 ## [4.20.18] – 2026-05-25
 
 ### Added
