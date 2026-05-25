@@ -68,7 +68,9 @@ namespace Supervertaler.Trados.Core.Export
                     ParagraphUnitId = seg.ParagraphUnitId ?? "",
                     SegmentId = seg.SegmentId ?? "",
                     SourceHash = seg.SourceHash ?? "",
-                    Status = seg.Status ?? ""
+                    Status = seg.Status ?? "",
+                    SourceFileId = seg.SourceFileId ?? "",
+                    SourceFileName = seg.SourceFileName ?? ""
                 });
             }
             return m;

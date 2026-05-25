@@ -30,7 +30,22 @@ namespace Supervertaler.Trados.Controls
         // Config controls.
         private ComboBox _cmbFormat;
         private ComboBox _cmbLayout;
+        private CheckBox _chkStrictTagCheck;
         private Label _lblSegmentCount;
+
+        // Multi-file controls (shown only when active document contains
+        // more than one file). Hidden + collapsed when single-file.
+        private Label _lblFilesHeading;
+        private Panel _pnlFiles;                       // scrollable container for the per-file checkbox rows
+        private readonly List<CheckBox> _fileCheckBoxes = new List<CheckBox>();
+        private Button _btnHelp;                       // top-right "?" → opens help.supervertaler.com page
+        private Button _btnSelectActive;
+        private Button _btnSelectAll;
+        private Button _btnSelectNone;
+        private Label _lblOutputMode;
+        private RadioButton _rbCombineOne;
+        private RadioButton _rbSeparatePerFile;
+        private string _activeFileId;          // file id we treat as "the active one" for the [Active] quick-select
 
         // Action buttons.
         private Button _btnExport;
@@ -83,12 +98,19 @@ namespace Supervertaler.Trados.Controls
             BackColor = Color.White;
             Font = new Font("Segoe UI", UiScale.FontSize(8.5f));
 
+            // Enable vertical scrolling so the tab still works on laptop-
+            // sized screens where the log textbox would otherwise be off
+            // the bottom of the panel. AutoScrollMinSize is set after all
+            // child controls are added (see the bottom of this method)
+            // so WinForms knows how tall the virtual canvas needs to be.
+            AutoScroll = true;
+
             var bodyFont = new Font("Segoe UI", UiScale.FontSize(8.5f));
             var labelColor = Color.FromArgb(60, 60, 60);
             int leftMargin = UiScale.Pixels(12);
             int y = UiScale.Pixels(10);
 
-            // ─── Header ──────────────────────────────────────────────
+            // ─── Header + contextual "?" help button ─────────────────
             var lblHeader = new Label
             {
                 Text = "Import / Export",
@@ -98,6 +120,47 @@ namespace Supervertaler.Trados.Controls
                 ForeColor = Color.FromArgb(20, 20, 20)
             };
             Controls.Add(lblHeader);
+
+            // Help button: small circular "?" that opens the dedicated
+            // Import / Export help page on help.supervertaler.com. Pinned
+            // to the right edge of the panel via the Right anchor so it
+            // stays at the top-right corner as the tab resizes.
+            _btnHelp = new Button
+            {
+                Text = "?",
+                Location = new Point(0, y - UiScale.Pixels(2)),  // X assigned after width is known
+                Size = new Size(UiScale.Pixels(24), UiScale.Pixels(24)),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", UiScale.FontSize(10f), FontStyle.Bold),
+                ForeColor = Color.FromArgb(60, 90, 140),
+                BackColor = Color.FromArgb(240, 244, 250),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                UseVisualStyleBackColor = false
+            };
+            _btnHelp.FlatAppearance.BorderColor = Color.FromArgb(180, 200, 220);
+            _btnHelp.FlatAppearance.BorderSize = 1;
+            // Initial position. OnResize repositions it relative to the
+            // actual control width (the Right anchor then keeps it pinned
+            // as the user resizes).
+            _btnHelp.Location = new Point(
+                Math.Max(leftMargin + UiScale.Pixels(120), 540 - UiScale.Pixels(16) - _btnHelp.Width),
+                y - UiScale.Pixels(2));
+            _btnHelp.Click += (s, e) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                        "https://help.supervertaler.com/trados/import-export/")
+                    { UseShellExecute = true });
+                }
+                catch { /* nothing we can do if the browser launch fails */ }
+            };
+            var tipHelp = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            tipHelp.SetToolTip(_btnHelp, "Open the Import / Export help page (browser)");
+            Controls.Add(_btnHelp);
+
             y += UiScale.Pixels(28);
 
             var lblBlurb = new Label
@@ -112,6 +175,29 @@ namespace Supervertaler.Trados.Controls
             };
             Controls.Add(lblBlurb);
             y += UiScale.Pixels(36);
+
+            // Tag-handling hint. Inline formatting (bold, italic, field
+            // codes, page numbers) is serialised as numbered <t1>...</t1>
+            // / <t2/> placeholders in the cell text. The proofreader can
+            // move the markers around the translated text; on re-import
+            // Trados puts the corresponding tags back where they ended up.
+            // Removing a marker drops that formatting; mismatched or
+            // unknown markers fall back to plain-text writeback with a
+            // warning in the log.
+            var lblTagCaveat = new Label
+            {
+                Text = "Inline formatting shows as <b>...</b>, <i>...</i>, <u>...</u> markers " +
+                       "(or <t1>...</t1> for field codes / page numbers). Reorder markers around " +
+                       "your translation; remove a pair to drop that formatting.",
+                Location = new Point(leftMargin, y),
+                AutoSize = false,
+                Width = UiScale.Pixels(540),
+                Height = UiScale.Pixels(56),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f), FontStyle.Italic),
+                ForeColor = Color.FromArgb(60, 90, 140)
+            };
+            Controls.Add(lblTagCaveat);
+            y += UiScale.Pixels(60);
 
             // ─── Format row ──────────────────────────────────────────
             var lblFormat = new Label
@@ -164,6 +250,167 @@ namespace Supervertaler.Trados.Controls
             _cmbLayout.SelectedIndex = 0;
             Controls.Add(_cmbLayout);
             y += UiScale.Pixels(32);
+
+            // ─── Strict tag-integrity check ──────────────────────────
+            // Default ON: re-import refuses to apply a segment when the
+            // proofreader's edit has fewer tag markers than the source has
+            // tags — applying it would create a Trados QA failure (source
+            // tags must appear in target). Power users can toggle this off
+            // when they're intentionally stripping tags.
+            _chkStrictTagCheck = new CheckBox
+            {
+                Text = "Refuse to apply edits that drop source-required tags (recommended)",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor,
+                Checked = true
+            };
+            var strictTip = new ToolTip { AutoPopDelay = 14000, InitialDelay = 300 };
+            strictTip.SetToolTip(_chkStrictTagCheck,
+                "When ON (default): if the proofreader's edit has fewer tag markers " +
+                "than the source segment has tags, that segment is reported as a " +
+                "tag-mismatch issue and NOT written to Trados. Applying it would " +
+                "create a Trados QA failure (source tags must appear in target).\r\n\r\n" +
+                "When OFF: tag-mismatched edits are applied verbatim with a per-segment " +
+                "warning in the log. Only turn this off if you're intentionally " +
+                "stripping tags and you know the consequences.");
+            Controls.Add(_chkStrictTagCheck);
+            y += UiScale.Pixels(24);
+
+            // ─── Multi-file controls (hidden when single-file) ───────
+            // Trados projects can have many files; users can also open
+            // multiple files together as a "merged" document. When the
+            // active document contains more than one file, we surface a
+            // checklist + output-mode chooser. Single-file documents
+            // hide all of this and behave like before.
+            _lblFilesHeading = new Label
+            {
+                Text = "Files to export:",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold),
+                ForeColor = labelColor,
+                Visible = false
+            };
+            Controls.Add(_lblFilesHeading);
+            y += UiScale.Pixels(20);
+
+            // Panel of CheckBox rows (replaces CheckedListBox in v4.20.8 —
+            // CheckedListBox's distinct "highlighted" vs "checked" states
+            // confused users; a plain checkbox per row has no such
+            // ambiguity. Auto-scrolls vertically when the file count
+            // exceeds the visible area.
+            _pnlFiles = new Panel
+            {
+                Location = new Point(leftMargin, y),
+                Width = UiScale.Pixels(540),
+                Height = UiScale.Pixels(110),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                AutoScroll = true,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = SystemColors.Window,
+                Visible = false
+            };
+            Controls.Add(_pnlFiles);
+            y += _pnlFiles.Height + UiScale.Pixels(4);
+
+            // Quick-select buttons row.
+            _btnSelectActive = new Button
+            {
+                Text = "Active only",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowOnly,
+                MinimumSize = new Size(UiScale.Pixels(90), UiScale.Pixels(24)),
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont,
+                Visible = false
+            };
+            _btnSelectActive.Click += (s, e) => SelectActiveFileOnly();
+            var selectActiveTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            selectActiveTip.SetToolTip(_btnSelectActive,
+                "Select only the file your cursor is currently on in the Trados editor. " +
+                "Quick way to export just the one file you're actively translating from " +
+                "a multi-file merged document, without unchecking the others manually.");
+            Controls.Add(_btnSelectActive);
+
+            _btnSelectAll = new Button
+            {
+                Text = "All",
+                Location = new Point(_btnSelectActive.Right + UiScale.Pixels(6), y),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowOnly,
+                MinimumSize = new Size(UiScale.Pixels(60), UiScale.Pixels(24)),
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont,
+                Visible = false
+            };
+            _btnSelectAll.Click += (s, e) => CheckAllFiles(true);
+            Controls.Add(_btnSelectAll);
+
+            _btnSelectNone = new Button
+            {
+                Text = "None",
+                Location = new Point(_btnSelectAll.Right + UiScale.Pixels(6), y),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowOnly,
+                MinimumSize = new Size(UiScale.Pixels(60), UiScale.Pixels(24)),
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont,
+                Visible = false
+            };
+            _btnSelectNone.Click += (s, e) => CheckAllFiles(false);
+            Controls.Add(_btnSelectNone);
+            y += UiScale.Pixels(32);
+
+            // Output mode radios.
+            _lblOutputMode = new Label
+            {
+                Text = "Output:",
+                Location = new Point(leftMargin, y + UiScale.Pixels(2)),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor,
+                Visible = false
+            };
+            Controls.Add(_lblOutputMode);
+
+            _rbCombineOne = new RadioButton
+            {
+                Text = "Combine into one DOCX",
+                Location = new Point(leftMargin + UiScale.Pixels(60), y),
+                AutoSize = true,
+                Font = bodyFont,
+                Checked = true,
+                Visible = false
+            };
+            Controls.Add(_rbCombineOne);
+
+            _rbSeparatePerFile = new RadioButton
+            {
+                Text = "Separate DOCX per file",
+                // .Right at construction time hasn't been widened by
+                // AutoSize yet, so we'd end up overlapping the previous
+                // radio. Use a fixed offset that's wide enough for the
+                // "Combine into one DOCX" label at typical font/dpi.
+                Location = new Point(leftMargin + UiScale.Pixels(60) + UiScale.Pixels(190), y),
+                AutoSize = true,
+                Font = bodyFont,
+                Visible = false
+            };
+            Controls.Add(_rbSeparatePerFile);
+
+            // Belt-and-suspenders: once Combine has been auto-sized,
+            // re-anchor Separate to flush-right of it. Same pattern as
+            // the Copy/Paste fix in BatchTranslateControl.
+            _rbCombineOne.SizeChanged += (s, e) =>
+            {
+                _rbSeparatePerFile.Location = new Point(
+                    _rbCombineOne.Right + UiScale.Pixels(16),
+                    _rbSeparatePerFile.Location.Y);
+            };
+            y += UiScale.Pixels(28);
 
             // ─── Segment count + action buttons ──────────────────────
             _lblSegmentCount = new Label
@@ -286,9 +533,18 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_lblLog);
             y += UiScale.Pixels(18);
 
+            // Log textbox. Fixed minimum height instead of stretching to
+            // fill the bottom — with the panel set to AutoScroll, anchoring
+            // to Bottom would compute the wrong height (Bottom would mean
+            // bottom-of-viewport, but the panel's content extends beyond
+            // the viewport on smaller screens). OnResize keeps the textbox
+            // wide enough to fill the available horizontal space; the
+            // height is fixed at 160 px so the panel below can scroll.
+            int logH = UiScale.Pixels(160);
             _txtLog = new TextBox
             {
                 Location = new Point(leftMargin, y),
+                Height = logH,
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
@@ -297,9 +553,15 @@ namespace Supervertaler.Trados.Controls
                 ForeColor = Color.FromArgb(60, 60, 60),
                 BorderStyle = BorderStyle.FixedSingle,
                 WordWrap = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             Controls.Add(_txtLog);
+            y += logH + UiScale.Pixels(8);
+
+            // Tell WinForms how tall the virtual canvas needs to be so
+            // AutoScroll can decide when to show the scrollbar. Width = 0
+            // means "use the viewport width" (no horizontal scrolling).
+            AutoScrollMinSize = new Size(0, y);
 
             ResumeLayout(false);
 
@@ -310,15 +572,167 @@ namespace Supervertaler.Trados.Controls
         private void OnResize(object sender, EventArgs e)
         {
             if (_txtLog == null) return;
-            int rightPad = UiScale.Pixels(24);
+            // Subtract a bit extra to leave room for the vertical scrollbar
+            // that AutoScroll may show when the panel is too small for its
+            // content.
+            int rightPad = UiScale.Pixels(40);
             int wAvail = Math.Max(UiScale.Pixels(100), Width - rightPad);
 
             _lvHistory.Width = wAvail;
             _txtLog.Width = wAvail;
-            _txtLog.Height = Math.Max(UiScale.Pixels(60), Height - _txtLog.Top - UiScale.Pixels(8));
+
+            // Pin the "?" help button to the top-right corner. Anchor =
+            // Top|Right alone preserves the right-distance from the
+            // initial layout, but the initial layout uses a fallback
+            // width — this corrects it to the real control width.
+            if (_btnHelp != null)
+            {
+                _btnHelp.Left = Math.Max(UiScale.Pixels(160),
+                    Width - UiScale.Pixels(16) - _btnHelp.Width);
+            }
         }
 
         // ─── Public API ───────────────────────────────────────────────
+
+        /// <summary>Whether strict tag-integrity checking is enabled in the
+        /// UI. The ViewPart consults this before deciding whether to honour
+        /// a TagMismatch diff classification (strict ON = skip mismatched
+        /// segments; strict OFF = apply verbatim with a warning).</summary>
+        public bool StrictTagIntegrityCheck => _chkStrictTagCheck?.Checked ?? true;
+
+        /// <summary>Multi-file output mode. SeparatePerFile = produce one
+        /// DOCX per selected file; CombineOne = one DOCX containing all
+        /// selected files joined with section breaks + file column.
+        /// Single-file documents ignore this value (always single output).</summary>
+        public MultiFileOutputMode SelectedOutputMode =>
+            (_rbSeparatePerFile?.Checked ?? false) ? MultiFileOutputMode.SeparatePerFile
+                                                   : MultiFileOutputMode.CombineOne;
+
+        /// <summary>Fires whenever the user ticks / unticks files in the
+        /// multi-file list. The ViewPart uses this to refresh the
+        /// segment count to "X selected / Y total".</summary>
+        public event EventHandler FileSelectionChanged;
+
+        /// <summary>Replace the multi-file list with the given entries. Pass
+        /// an empty enumerable (or null) to hide the multi-file UI entirely
+        /// — that's what single-file documents do. <paramref name="activeFileId"/>
+        /// is the file id we treat as "the active one" for the [Active only]
+        /// quick-select button.</summary>
+        public void SetFileList(IEnumerable<FileEntry> files, string activeFileId)
+        {
+            SafeInvoke(() =>
+            {
+                _activeFileId = activeFileId ?? "";
+
+                // Tear down the previous row set.
+                foreach (var cb in _fileCheckBoxes) { try { cb.CheckedChanged -= OnFileCheckChanged; } catch { } cb.Dispose(); }
+                _fileCheckBoxes.Clear();
+                _pnlFiles.Controls.Clear();
+
+                var list = files == null ? new List<FileEntry>() : new List<FileEntry>(files);
+                bool multi = list.Count > 1;
+
+                int rowH = UiScale.Pixels(22);
+                int rowY = UiScale.Pixels(2);
+                int rowX = UiScale.Pixels(4);
+                int rowW = Math.Max(UiScale.Pixels(200), _pnlFiles.Width - UiScale.Pixels(24));
+                foreach (var f in list)
+                {
+                    var cb = new CheckBox
+                    {
+                        Text = f?.ToString() ?? "",
+                        Tag = f,
+                        Location = new Point(rowX, rowY),
+                        Width = Math.Max(UiScale.Pixels(200), rowW),
+                        Height = rowH,
+                        AutoEllipsis = true,
+                        Checked = true,                   // default: every file checked
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        Font = _pnlFiles.Font,
+                        UseVisualStyleBackColor = true,
+                        // No tab-stop = no keyboard focus rectangle. Combined
+                        // with FlatStyle.System (native renderer), the row
+                        // never shows the blue "selected" highlight that
+                        // CheckedListBox had — clicking just toggles the
+                        // box, full stop.
+                        TabStop = false,
+                        FlatStyle = FlatStyle.System
+                    };
+                    cb.CheckedChanged += OnFileCheckChanged;
+                    _pnlFiles.Controls.Add(cb);
+                    _fileCheckBoxes.Add(cb);
+                    rowY += rowH;
+                }
+
+                _lblFilesHeading.Visible = multi;
+                _pnlFiles.Visible = multi;
+                _btnSelectActive.Visible = multi;
+                _btnSelectAll.Visible = multi;
+                _btnSelectNone.Visible = multi;
+                _lblOutputMode.Visible = multi;
+                _rbCombineOne.Visible = multi;
+                _rbSeparatePerFile.Visible = multi;
+            });
+        }
+
+        private void OnFileCheckChanged(object sender, EventArgs e)
+        {
+            FileSelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>True when the multi-file UI (file list + Active/All/None
+        /// + Combine/Separate radios) is currently visible — i.e. the active
+        /// document has more than one file merged in the editor. Lets the
+        /// caller distinguish "empty selection because single-file" from
+        /// "empty selection because user clicked None" without poking at
+        /// the private controls.</summary>
+        public bool IsMultiFileUiVisible
+        {
+            get { return _pnlFiles != null && _pnlFiles.Visible; }
+        }
+
+        /// <summary>Return the FileIds the user has currently checked. Empty
+        /// list when the UI is hidden (single-file documents) or when the
+        /// user has unchecked everything.</summary>
+        public List<string> GetSelectedFileIds()
+        {
+            var ids = new List<string>();
+            if (_pnlFiles == null || !_pnlFiles.Visible) return ids;
+            foreach (var cb in _fileCheckBoxes)
+            {
+                if (!cb.Checked) continue;
+                var entry = cb.Tag as FileEntry;
+                if (entry != null) ids.Add(entry.FileId);
+            }
+            return ids;
+        }
+
+        private void SelectActiveFileOnly()
+        {
+            if (_pnlFiles == null) return;
+            // Suppress per-box CheckedChanged so we fire one event at the end.
+            foreach (var cb in _fileCheckBoxes)
+            {
+                cb.CheckedChanged -= OnFileCheckChanged;
+                var entry = cb.Tag as FileEntry;
+                cb.Checked = entry != null
+                    && string.Equals(entry.FileId, _activeFileId, StringComparison.Ordinal);
+                cb.CheckedChanged += OnFileCheckChanged;
+            }
+            FileSelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void CheckAllFiles(bool checkedState)
+        {
+            if (_pnlFiles == null) return;
+            foreach (var cb in _fileCheckBoxes)
+            {
+                cb.CheckedChanged -= OnFileCheckChanged;
+                cb.Checked = checkedState;
+                cb.CheckedChanged += OnFileCheckChanged;
+            }
+            FileSelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
 
         public void UpdateSegmentCount(int total)
         {
@@ -478,6 +892,29 @@ namespace Supervertaler.Trados.Controls
             public string Format { get; set; }
             public string FilePath { get; set; }
         }
+
+        public class FileEntry
+        {
+            public string FileId { get; set; }
+            public string FileName { get; set; }
+            public int SegmentCount { get; set; }
+
+            // CheckedListBox renders items via ToString.
+            public override string ToString() =>
+                $"{FileName}   ({SegmentCount} segments)";
+        }
+    }
+
+    public enum MultiFileOutputMode
+    {
+        /// <summary>One bilingual DOCX containing all selected files with
+        /// a file column and yellow-highlighted section breaks between
+        /// files. Round-trippable as a single file.</summary>
+        CombineOne,
+
+        /// <summary>One bilingual DOCX per selected source file. Each
+        /// gets its own sidecar manifest. Re-import works per file.</summary>
+        SeparatePerFile
     }
 
     public class ExportRequestedEventArgs : EventArgs

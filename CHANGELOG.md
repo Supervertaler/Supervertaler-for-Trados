@@ -1,5 +1,83 @@
 # Changelog
 
+## [4.20.16] – 2026-05-25
+
+### Added
+
+- **Contextual "?" help button on the Import / Export tab.** Top-right corner, anchored to the right edge so it follows panel resizes. Click to open the dedicated [Import / Export help page](https://help.supervertaler.com/trados/import-export/) on help.supervertaler.com — covers formats, layouts, semantic tag markers, multi-file mode, round-trip rules, and the re-import workflow in one place.
+
+## [4.20.15] – 2026-05-25
+
+### Fixed
+
+- **Import / Export tab now scrolls vertically on smaller screens.** A user reported that on laptop monitors the log textbox sat below the bottom of the panel and was unreachable. Set `AutoScroll = true` on the control + computed `AutoScrollMinSize` from the final content height so the scrollbar appears whenever the tab is shorter than its content. The log textbox now has a fixed 160 px minimum height (instead of stretching to fill the panel) so the layout is well-defined regardless of viewport size.
+- **Inline-formatting caveat label fits on big-monitor too.** Even at 72 px the four-line paragraph clipped its final phrase on wider monitors (where the text re-flowed differently). Dropped the "rendered in matching bold/italic/underline for preview" sentence (it's already obvious from looking at the table) and the label is now 56 px / three lines.
+
+## [4.20.14] – 2026-05-25
+
+### Fixed
+
+- **Inline-formatting caveat on the Import / Export tab no longer truncates.** The descriptive blurb above the format/layout pickers was clipped at "Text inside semantic markers is rendered" because the label's height (46 px) couldn't hold the full four-line paragraph. Bumped to 72 px and tightened the wording.
+
+## [4.20.13] – 2026-05-25
+
+### Fixed
+
+- **Re-import diff no longer over-reports changes for tag-bearing segments.** A user noted that after exporting 1267 segments and editing literally one word in the bilingual DOCX, the re-import dialog claimed 124 changes to apply. Root cause: the export side serialised each target through `SegmentTagHandler.Serialize()` + `BilingualTagNamer.ApplySemanticNames()` (so cells contain `<b>SEVT</b>` etc.), but the diff-comparison side fetched the current target via plain `pair.Target.ToString()` (which yields `SEVT`). Every segment whose target contained any inline cf-bold / cf-italic / cf-underline formatting therefore read as "changed" even when the proofreader hadn't touched it. `SnapshotCurrentTargets()` now uses the same serialisation pipeline as the exporter, so the diff is apples-to-apples and only actual edits get counted. The writeback path was already converting semantic markers back through `ResolveSemanticNames` + `ReconstructTarget`, so no change needed there.
+
+## [4.20.12] – 2026-05-25
+
+### Fixed
+
+- **Bilingual DOCX table now fills the page width.** v4.20.11 used fixed-DXA column widths (9000 twips ≈ 6.25") which kept the table inside the page edge but left the right half of wider pages (A4 landscape, US Letter landscape, narrow-margin layouts) empty. Switched to percentage-based widths: `TableWidth = Pct 5000` (= 100% of section width) plus per-column percentages summing to 5000, with `TableLayout = Fixed` still on top to keep long content from blowing columns out. Table now expands to fill whatever the page gives it.
+
+## [4.20.11] – 2026-05-25
+
+### Fixed
+
+- **Bilingual DOCX table no longer overruns the page.** v4.20.10 used percentage-width columns with the default `auto` table layout, which let Word stretch the table past the page edge when content (long file names, long source paragraphs) demanded it – the Status column got clipped to "Transla" in multi-file exports. Switched to fixed-DXA column widths (9000 twips total ≈ 6.25", fits A4 portrait + US Letter with default margins) plus a proper `<w:tblGrid>` and `TableLayout = Fixed` so Word respects the declared widths regardless of content length.
+- **"None" button now actually clears the segment count.** Empty file selection in multi-file mode was being treated as "no filter, count everything" (a leftover from the single-file branch of the same code path), so clicking **None** left the count at the document total. Now multi-file mode correctly returns 0 segments when no files are checked. Single-file mode (where the file list is hidden) is unchanged.
+- **No more blue "selected" highlight on the file rows.** Even though v4.20.10 already replaced `CheckedListBox` with plain `CheckBox` rows, the default WinForms focus rectangle made the focused row look quasi-selected. Added `TabStop = false` + `FlatStyle = System` to each row so it renders as the OS-native checkbox with no focus indicator. One click = one toggle. No selection state.
+
+## [4.20.10] – 2026-05-25
+
+### Fixed
+
+- **Per-file segment attribution now works on real multi-file projects.** v4.20.9 walked paragraph-unit contexts looking for file metadata, but the v4.20.9 diagnostic dump (kindly provided by a user testing a 3-file Dutch project) revealed Trados puts **zero** file-identifying info in PU contexts – only paragraph-styling and header/footer flags. New approach: for each `ProjectFile.LocalFilePath` (the on-disk SDLXLIFF), read the file once and extract every GUID from it via regex. Trados paragraph-unit ids are GUIDs and are globally unique, so the set of GUIDs in file A's SDLXLIFF is exactly the set of PU ids belonging to file A. Then each segment pair's parent PU id is looked up against that table. Runs once per active-document change.
+- **As a consequence, all the visible v4.20.9 bugs go away in one shot:**
+  - "(0 segments)" beside each filename in the files-to-export list now shows the real count.
+  - Checking / unchecking a file in the list now actually changes the "Segments: N" label.
+  - Multi-file combined-DOCX export now produces the **6-column table with the File column** plus the **yellow "📄 File: \<name\>" section-break rows** between each file's segments (the renderer auto-switches when segments carry non-empty `SourceFileId`s).
+  - "Separate DOCX per file" mode now produces one bilingual file per source file as advertised.
+
+## [4.20.9] – 2026-05-25
+
+### Fixed
+
+- **Multi-file projects: per-file segment counts and the file-selection filter now actually work.** The v4.20.8 attribution map walked `IFile.ParagraphUnits` to figure out which segment belonged to which file, but `ProjectFile` in Studio 18 + 19 doesn't expose that collection at all – the map ended up empty, so checking any file in the list gave "Segments: 0" and Export emitted nothing. Replaced with the right SDK path: walk every segment pair, call `Document.GetParentParagraphUnit(pair)`, then match the paragraph unit's context-stack strings (DisplayName, Description, `FilePath` / `OriginalFilePath` metadata, etc.) against each file's Name / OriginalName / LocalFilePath / basename. Works in single-file and multi-file mode.
+- **Graceful degradation when attribution can't be built.** If the SDK still doesn't surface enough info to attribute segments (e.g. an unusual file-type configuration), the file-selection filter is silently ignored and the export proceeds with every segment in the active view. A log line in the Import / Export tab explains what happened. Better than emitting an empty file.
+
+### Changed
+
+- **Files-to-export list redesigned.** Replaced the `CheckedListBox` (which had a confusing distinction between "highlighted" and "checked" – clicking on a row's text would change the highlight without flipping the check, or vice versa) with a scrollable panel of plain checkbox rows. One click = one checkbox toggle. No more selection vs. check confusion.
+
+## [4.20.8] – 2026-05-25
+
+### Added
+
+- **Multi-file bilingual export.** Trados projects with multiple files merged into one editor tab now get a dedicated file list in the Import / Export tab, plus an output-mode chooser:
+  - **File list** — a CheckedListBox showing every file in the active (merged) document with its segment count. Quick-select buttons ([Active only] / [All] / [None]) for common selections. The "Segments: N" label tracks the current selection live.
+  - **Output mode** — *"Combine into one DOCX"* (default) produces a single bilingual file containing all selected files joined together, OR *"Separate DOCX per file"* asks for a folder and writes one bilingual file per selected source file.
+  - **Single-file documents see no change** — the file list, output radio, and per-file UI are all hidden so the tab looks exactly as before.
+
+- **File column + yellow section breaks in the combined DOCX.** When the export contains segments from more than one source file, the bilingual table grows from 5 to 6 columns — `#, Source, Target, File, Status, Notes`. Between each file's segments, a full-width yellow-highlighted section-break row appears reading "📄 File: `<filename>`", so the proofreader can spot file boundaries at a glance.
+
+- **Per-segment file id + name in the manifest.** Each manifest entry now records the segment's `source_file_id` (Trados GUID) and `source_file_name` (e.g. "Chapter2.docx"). Re-import uses the file id to route each diff to the correct file in the merged document. Manifests stay backwards-compatible — older single-file manifests parse cleanly into the new fields as empty strings.
+
+### Fixed
+
+- **"Segments: N" label on the Import / Export tab now actually updates.** Was an unwired UI control sitting at 0 since v4.20.7. Now reflects the active document's total segment count (or the current selection's count, in multi-file mode), updating on every active-document change and file-list selection change.
+
 ## [4.20.7] – 2026-05-24
 
 ### Added
@@ -20,11 +98,30 @@
 
 - **Embedded segment markers in every exported file** (`SV_seg_N` bookmarks in DOCX, `<!-- sv-seg:N -->` HTML comments in Markdown / HTML). These are invisible in normal rendering but let future versions match segments by ID even when human numbering drifts.
 
+- **Full inline-tag round-trip with Workbench-style semantic naming.** Source and target text in the bilingual file now go through `SegmentTagHandler.Serialize()` (the same serialisation the batch AI translator already uses for inline-tag-aware prompts) and then through `BilingualTagNamer.ApplySemanticNames()`. The cells contain:
+  - `<b>...</b>`, `<i>...</i>`, `<u>...</u>`, `<bi>...</bi>` for recognised cf character-formatting pairs (matches the Supervertaler Workbench's "With Tags" Bilingual Table style)
+  - Numbered `<t1>...</t1>` (paired) / `<t2/>` (standalone) for everything else — field codes, page numbers, custom format pairs, line breaks, etc. — so no Trados tag type is ever silently dropped
+  - All markers coloured dark red (#7F0001) in the DOCX so the proofreader can see the anchors at a glance
+  - On re-import, `BilingualTagNamer.ResolveSemanticNames()` walks the proofreader's edit and converts each `<b>` (etc.) back to the matching `<tN>` via positional matching against a freshly-regenerated TagMap (deterministic numbering as long as the source hasn't drifted — `SourceHash` guards against that). `SegmentTagHandler.ReconstructTarget()` then rebuilds the target segment with the cloned tags wrapped around the proofreader's translated text
+  - The proofreader can freely reorder tags to fit target-language word order, remove a marker pair to drop that formatting, or leave a segment unchanged
+  - If the marker structure is broken (mismatched, unknown name, unresolvable), the writeback falls back to plain text with a per-segment log entry — same defensive pattern the batch AI translator uses
+
+- **Structural-tag integrity check (toggleable, ON by default).** A new checkbox in the Import / Export tab — *"Refuse to apply edits that drop source-required tags (recommended)"* — protects against the most common production hazard of the round-trip. The check enforces **strict equality on structural tags** between source and the proofreader's edit. "Structural" means `<tN>` markers that didn't get a friendly semantic name from `BilingualTagNamer` — i.e. field codes, page numbers, custom format pairs, line breaks. These drive Trados file structure and must round-trip 1:1; adding one creates a tag the target file can't render, removing one drops a tag Trados expects. **Semantic formatting tags** (`<b>`, `<i>`, `<u>`, `<bi>`) are explicitly *not* counted — the proofreader can freely add or remove character formatting in the target without breaking Trados QA, since those changes only affect cosmetic rendering. When the check is ON, segments where `count(<tN> in source) ≠ count(<tN> in edit)` are classified as a new `TagMismatch` issue and not written; the confirmation dialog breaks the count out explicitly. When OFF (advanced use), tag-mismatched edits are applied verbatim with a per-segment warning in the log — you take responsibility for verifying Trados QA afterwards.
+
+- **Segment-number column centred in the bilingual DOCX table.** Reads more naturally as a vertical column when centred, especially with mixed digit counts (1 / 21 / 121).
+
+- **Inline-formatted text is now rendered with the matching style in the bilingual DOCX.** Previously the `<b>...</b>` / `<i>...</i>` / `<u>...</u>` / `<bi>...</bi>` markers appeared in red as tag anchors, but the text *between* them stayed unstyled. The proofreader can now visually preview how each formatted span will look: text inside `<b>...</b>` renders bold, text inside `<i>...</i>` renders italic, and so on. Markers themselves stay red (so the proofreader can see exactly which text is anchored to a tag and reorder them); nested same-name markers (`<b>x <b>y</b> z</b>`) and combinations (`<bi>`) are handled via a counter-based active-state walk. Numbered structural markers (`<t1>`, `<t2/>`, etc.) don't carry semantic styling so they leave the body-text style alone.
+
+- **Paragraph-level styling (bold / italic / underline) now visible in the bilingual DOCX.** Segments living in a "Heading 1" / "Title" paragraph, or any source paragraph styled bold / italic / underline as a whole, previously appeared as plain text in the bilingual file even though Trados renders them styled in its editor. The export now detects paragraph-level formatting by walking the segment's `IText.Properties.Formatting` (where Trados often pushes paragraph-wide styling down to runs) plus the parent `IParagraphUnit.Properties.Contexts` (for file types that keep it at paragraph level only) and applies matching bold / italic / underline to the source AND target cells in the DOCX. Both probes are wrapped in try/catch and degrade silently if the SDK exposes the shape differently for any one file type. Re-import ignores the styling completely — Trados regenerates paragraph styling from its own metadata on export, so the styling in the bilingual file is purely cosmetic for the proofreader's visual reference. Inline formatting (cf bold/italic tags inside the segment) is unchanged — it's still serialised as `<b>` / `<i>` / `<u>` markers and reconstructed on re-import.
+
 - **DocumentFormat.OpenXml 2.20.0 NuGet dependency** added for DOCX read/write. Pinned at the 2.x line because the 3.x multi-assembly layout doesn't fit the `.sdlplugin` packaging model. Single-DLL deployment alongside the existing iTextSharp / Microsoft.Data.Sqlite stack.
+
+- **DOCX bilingual export header now visually matches the Supervertaler Workbench's "Bilingual Table" format.** Decorative `━ × 50` horizontal line, centered "🌐 Supervertaler Bilingual Table" title in 18pt bold blue, clickable `Supervertaler.com/trados` URL subtitle (10pt blue underlined), second decorative line, then the Project / Source file / Languages / Segments / Exported key-value block, then the amber "⚠️ Important: …" notice with italic instructions. The only visible difference between a file exported by the Trados plugin and one exported by the Workbench is the subtitle URL (`Supervertaler.com/trados` vs `Supervertaler.com/workbench`) — the title text and re-import warning are identical. Files round-trip between both products either way. Paired with Supervertaler Workbench v1.10.167 which switched its subtitle URL to `Supervertaler.com/workbench`.
 
 ### Fixed
 
 - **AiAssistantControl: Reports tab badge + tab navigation no longer break when a new tab is inserted.** Previously `UpdateReportsBadge` and `SwitchToReportsTab` were hard-coded to tab index 2; adding the Import / Export tab shifted Reports to index 3 and would have silently broken the badge. Both methods now look the Reports tab up by label, so future tab insertions can't re-break navigation — same fix pattern applied to the Workbench in v1.10.161.
+- **Batch Operations → Clipboard Mode: "Copy to Clipboard" button no longer underlaps "Paste from Clipboard".** Companion fix to the v4.20.6 Preview-prompt overlap. The Paste button's Location was pinned at construction time using the Copy button's `.Right`, but `AutoSize` widens Copy *after* layout — so Paste landed too far left, partially hidden under Copy. Added a `SizeChanged` handler on Copy that repositions Paste with the same 8 px gap any time Copy resizes (DPI scale changes, font size changes, etc.). Same `SizeChanged` pattern already used for `_btnTranslate`. Spotted by a user.
 
 ## [4.20.6] – 2026-05-24
 

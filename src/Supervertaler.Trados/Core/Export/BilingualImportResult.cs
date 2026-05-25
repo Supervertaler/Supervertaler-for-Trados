@@ -22,7 +22,14 @@ namespace Supervertaler.Trados.Core.Export
 
         /// <summary>The Trados segment is locked or already
         /// confirmed; needs explicit user override before overwriting.</summary>
-        Locked
+        Locked,
+
+        /// <summary>The proofreader's edit has fewer tag markers than the
+        /// live source has tags. Applying it would create a Trados QA
+        /// failure (source tags must appear in the target). Skipped by
+        /// default; can be force-applied by turning off the strict
+        /// tag-integrity check in the Import / Export tab.</summary>
+        TagMismatch
     }
 
     public class ImportSegmentDiff
@@ -65,9 +72,15 @@ namespace Supervertaler.Trados.Core.Export
                 foreach (var d in Diffs)
                     if (d.Kind == ImportChangeKind.SegmentMissing
                         || d.Kind == ImportChangeKind.SourceMismatch
-                        || d.Kind == ImportChangeKind.Locked) n++;
+                        || d.Kind == ImportChangeKind.Locked
+                        || d.Kind == ImportChangeKind.TagMismatch) n++;
                 return n;
             }
+        }
+
+        public int TagMismatchCount
+        {
+            get { int n = 0; foreach (var d in Diffs) if (d.Kind == ImportChangeKind.TagMismatch) n++; return n; }
         }
     }
 }

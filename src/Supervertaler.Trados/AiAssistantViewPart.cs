@@ -270,6 +270,7 @@ namespace Supervertaler.Trados
             importExportControl.ImportRequested += OnBilingualImportRequested;
             importExportControl.OpenFileRequested += OnImportExportOpenFile;
             importExportControl.OpenFolderRequested += OnImportExportOpenFolder;
+            importExportControl.FileSelectionChanged += (s, e) => UpdateImportExportSegmentCount();
 
             // Optionally host SuperSearch as a 4th tab in this panel. The
             // SuperSearchController owns the control and all its logic; we just
@@ -4702,6 +4703,491 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     _control.Value.BatchTranslateControl.UpdateSegmentCounts(0, 0);
                 }
             });
+
+            // Piggyback the Import / Export tab's file list AND segment
+            // counter onto the same document-change events. Single-file
+            // documents see no UI change; multi-file documents get a
+            // checklist populated with the merged-in files.
+            UpdateImportExportFileList();
+            UpdateImportExportSegmentCount();
+        }
+
+        /// <summary>Update the "Segments: N" label on the Import / Export
+        /// tab. In multi-file mode the count reflects ONLY segments in
+        /// the currently-checked files; in single-file mode it's the
+        /// active document's full count. Always runs on the UI thread
+        /// via SafeInvoke and degrades to 0 on any SDK hiccup.</summary>
+        private void UpdateImportExportSegmentCount()
+        {
+            SafeInvoke(() =>
+            {
+                var ctrl = _control?.Value?.ImportExportControl;
+                if (ctrl == null) return;
+
+                if (_activeDocument == null)
+                {
+                    ctrl.UpdateSegmentCount(0);
+                    return;
+                }
+
+                // Honour the file selection when in multi-file mode.
+                // GetSelectedFileIds returns an empty list for single-
+                // file documents (the UI is hidden); in that case empty
+                // means "no file filter — count everything".
+                //
+                // In multi-file mode, empty selection means the user
+                // unchecked everything → count = 0 (so the "None" button
+                // visibly does something).
+                //
+                // When per-file attribution couldn't be built (SDK didn't
+                // expose enough info), we silently drop the filter and
+                // count everything regardless of selection. Better to
+                // show a meaningful total than a misleading 0; the export
+                // path uses the same fallback so behaviour stays
+                // consistent.
+                var selected = ctrl.GetSelectedFileIds();
+                bool multiFileVisible = ctrl.IsMultiFileUiVisible;
+                HashSet<string> filter;
+                if (!_perFileMappingWorked)
+                {
+                    filter = null;     // attribution failed → can't filter
+                }
+                else if (!multiFileVisible)
+                {
+                    filter = null;     // single-file mode — no filtering
+                }
+                else
+                {
+                    // Multi-file mode: empty selection = 0 segments.
+                    // Non-empty selection = those files only.
+                    filter = new HashSet<string>(selected, StringComparer.Ordinal);
+                }
+
+                int total = 0;
+                try
+                {
+                    foreach (var pair in _activeDocument.SegmentPairs)
+                    {
+                        if (filter != null)
+                        {
+                            if (filter.Count == 0) { total = 0; break; }
+                            var fileId = GetFileIdForSegment(pair);
+                            if (string.IsNullOrEmpty(fileId) || !filter.Contains(fileId)) continue;
+                        }
+                        total++;
+                    }
+                }
+                catch { total = 0; }
+
+                ctrl.UpdateSegmentCount(total);
+            });
+        }
+
+        // Cached map of fileId → set of "{puId}/{segId}" composite keys
+        // for the active document. Built once per ActiveDocumentChanged,
+        // queried per segment via GetFileIdForSegment. Bypasses the
+        // brittle "look for a FileId on the segment / pu via reflection"
+        // pattern that fails on Studio 18 (the property genuinely doesn't
+        // exist there) in favour of walking each file's own SegmentPairs
+        // collection — which we can usually access via reflection through
+        // IFile.ParagraphUnits[].SegmentPairs.
+        private readonly Dictionary<string, HashSet<string>> _fileIdToSegmentKeys =
+            new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _fileIdToName =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>Return the list of files in the active document, plus
+        /// the currently-active file's id (for the [Active only] quick-
+        /// select button). For a single-file document the list has one
+        /// entry — the ImportExportControl uses that as a signal to hide
+        /// the multi-file UI. All access is via reflection so the code
+        /// stays decoupled from per-SDK-version IFile type names.</summary>
+        private List<Controls.ImportExportControl.FileEntry> EnumerateActiveDocumentFiles(out string activeFileId)
+        {
+            activeFileId = "";
+            var entries = new List<Controls.ImportExportControl.FileEntry>();
+            if (_activeDocument == null) return entries;
+
+            // Refresh the per-file segment map. Cheap on single-file
+            // documents (one iteration); a bit more on multi-file, but
+            // it only runs on document changes / file-list refresh.
+            RefreshFileToSegmentMap();
+
+            // Active file id for the quick-select button.
+            try
+            {
+                var af = _activeDocument.ActiveFile;
+                if (af != null)
+                    activeFileId = TryGetStringProp(af, "Id") ?? TryGetStringProp(af, "FileId") ?? "";
+            }
+            catch { }
+
+            // Try _activeDocument.Files first (multi-file document
+            // exposes them); fall back to ActiveFile only.
+            var filesEnum = TryGetEnumerable(_activeDocument, "Files");
+            if (filesEnum == null)
+            {
+                var af = _activeDocument.ActiveFile;
+                if (af != null)
+                {
+                    var id = TryGetStringProp(af, "Id") ?? TryGetStringProp(af, "FileId") ?? "";
+                    activeFileId = id;
+                    entries.Add(new Controls.ImportExportControl.FileEntry
+                    {
+                        FileId = id,
+                        FileName = TryGetStringProp(af, "Name") ?? "(unknown file)",
+                        SegmentCount = LookupSegmentCount(id)
+                    });
+                }
+                return entries;
+            }
+
+            foreach (var f in filesEnum)
+            {
+                if (f == null) continue;
+                var id = TryGetStringProp(f, "Id") ?? TryGetStringProp(f, "FileId") ?? "";
+                var name = TryGetStringProp(f, "Name") ?? "(unknown file)";
+                entries.Add(new Controls.ImportExportControl.FileEntry
+                {
+                    FileId = id,
+                    FileName = name,
+                    SegmentCount = LookupSegmentCount(id)
+                });
+            }
+            return entries;
+        }
+
+        private int LookupSegmentCount(string fileId)
+        {
+            if (string.IsNullOrEmpty(fileId)) return 0;
+            return _fileIdToSegmentKeys.TryGetValue(fileId, out var keys) ? keys.Count : 0;
+        }
+
+        /// <summary>True when the most recent <see cref="RefreshFileToSegmentMap"/>
+        /// call produced at least one attributed segment. When false, callers
+        /// should ignore per-file filters and operate on the full segment
+        /// list — the SDK didn't give us enough info to attribute segments
+        /// to files, so filtering would silently drop everything.</summary>
+        private bool _perFileMappingWorked = false;
+
+        /// <summary>Rebuild the (fileId → segment-key set) map.
+        ///
+        /// Trados Studio 18 + 19 don't expose per-file segment enumeration
+        /// at the SDK level (verified via the v4.20.8/9 diagnostics —
+        /// ProjectFile has no ParagraphUnits, and paragraph-unit context
+        /// metadata contains ZERO file-identifying strings, only style /
+        /// header-footer info). So we go around the SDK: each ProjectFile
+        /// has a <c>LocalFilePath</c> pointing at its on-disk SDLXLIFF,
+        /// which is XML. We extract every GUID from each SDLXLIFF — Trados
+        /// paragraph-unit ids are GUIDs and are globally unique, so the
+        /// set of GUIDs in file A's SDLXLIFF is exactly the set of PU ids
+        /// belonging to file A. Then for each <c>SegmentPair</c> we get the
+        /// parent PU's id and look up which file's GUID set contains it.
+        ///
+        /// One-time cost: ~tens of MB of file I/O + a regex scan, run only
+        /// when the active document changes. Sets <see cref="_perFileMappingWorked"/>
+        /// to true iff at least one segment got attributed.</summary>
+        private void RefreshFileToSegmentMap()
+        {
+            _fileIdToSegmentKeys.Clear();
+            _fileIdToName.Clear();
+            _puIdToFileId.Clear();
+            _perFileMappingWorked = false;
+            if (_activeDocument == null) return;
+
+            var filesEnum = TryGetEnumerable(_activeDocument, "Files");
+            if (filesEnum == null) return;
+
+            // Step 1: scan each file's SDLXLIFF for GUIDs → puId→fileId map.
+            // Build _fileIdToName + _fileIdToSegmentKeys (empty sets) at
+            // the same time so the rest of the API has something to read
+            // even if scanning fails for one file.
+            var puIdToFileId = new Dictionary<string, string>(StringComparer.Ordinal);
+            int totalGuids = 0;
+            foreach (var f in filesEnum)
+            {
+                if (f == null) continue;
+                var fileId = TryGetStringProp(f, "Id") ?? TryGetStringProp(f, "FileId") ?? "";
+                if (string.IsNullOrEmpty(fileId)) continue;
+                var name = TryGetStringProp(f, "Name") ?? "";
+                _fileIdToName[fileId] = name;
+                _fileIdToSegmentKeys[fileId] = new HashSet<string>(StringComparer.Ordinal);
+
+                var local = TryGetStringProp(f, "LocalFilePath") ?? "";
+                if (string.IsNullOrEmpty(local) || !System.IO.File.Exists(local)) continue;
+
+                try
+                {
+                    var content = System.IO.File.ReadAllText(local);
+                    foreach (System.Text.RegularExpressions.Match m in SdlxliffGuidRe.Matches(content))
+                    {
+                        var g = m.Value;
+                        // First-wins. A GUID present in two files would be a
+                        // Trados bug — they're globally unique paragraph-unit
+                        // ids — but defend against it by not overwriting.
+                        if (!puIdToFileId.ContainsKey(g))
+                        {
+                            puIdToFileId[g] = fileId;
+                            totalGuids++;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            if (puIdToFileId.Count == 0) return;
+
+            // Step 2: walk every segment pair, attribute via PU id lookup.
+            int attributed = 0;
+            try
+            {
+                foreach (var pair in _activeDocument.SegmentPairs)
+                {
+                    if (pair == null) continue;
+
+                    object pu = null;
+                    try { pu = _activeDocument.GetParentParagraphUnit(pair); }
+                    catch { }
+                    if (pu == null) continue;
+
+                    var puId = TryGetParagraphUnitId(pu);
+                    string segId = "";
+                    try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+                    if (string.IsNullOrEmpty(puId) || string.IsNullOrEmpty(segId)) continue;
+
+                    string fid;
+                    if (!puIdToFileId.TryGetValue(puId, out fid)) continue;
+
+                    var key = puId + "/" + segId;
+                    _fileIdToSegmentKeys[fid].Add(key);
+                    _puIdToFileId[puId] = fid;
+                    attributed++;
+                }
+            }
+            catch { }
+
+            _perFileMappingWorked = attributed > 0;
+        }
+
+        /// <summary>Regex matching the standard "8-4-4-4-12" GUID pattern.
+        /// Compiled once. Used to extract paragraph-unit ids from on-disk
+        /// SDLXLIFF files in <see cref="RefreshFileToSegmentMap"/>.</summary>
+        private static readonly System.Text.RegularExpressions.Regex SdlxliffGuidRe =
+            new System.Text.RegularExpressions.Regex(
+                @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        // PU id → file id cache. Many segment pairs share the same PU;
+        // walking the context stack for each one would be wasteful. Built
+        // lazily inside RefreshFileToSegmentMap, cleared on doc change.
+        private readonly Dictionary<string, string> _puIdToFileId =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>Per-file attribution candidate set. Built from a
+        /// ProjectFile's Name / OriginalName / LocalFilePath (with and
+        /// without the .sdlxliff suffix and basename variants). The
+        /// matcher tries to find any of these strings inside a PU's
+        /// context-stack strings.</summary>
+        private sealed class FileMatchEntry
+        {
+            public string FileId;
+            public string Name;
+            public readonly HashSet<string> Candidates =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static void AddCandidate(HashSet<string> set, string s)
+        {
+            if (!string.IsNullOrEmpty(s)) set.Add(s);
+        }
+
+        private static string StripSdlxliffExt(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            if (s.EndsWith(".sdlxliff", StringComparison.OrdinalIgnoreCase))
+                return s.Substring(0, s.Length - 9);
+            return s;
+        }
+
+        /// <summary>Walk a paragraph unit's context stack and try to match
+        /// any context-string against any file's candidate set. Returns the
+        /// matching file id, or null if no context contains an identifiable
+        /// file reference. Pure reflection — no compile-time IContextInfo
+        /// type reference (avoids Studio-version coupling).</summary>
+        private static string MatchFileFromPuContexts(object pu, List<FileMatchEntry> files)
+        {
+            try
+            {
+                var props = pu.GetType().GetProperty("Properties")?.GetValue(pu, null);
+                if (props == null) return null;
+                var contexts = props.GetType().GetProperty("Contexts")?.GetValue(props, null);
+                if (contexts == null) return null;
+
+                // Prefer the IEnumerable<IContextInfo> nested "Contexts"
+                // collection; fall back to the IContextProperties root
+                // itself if it implements IEnumerable directly.
+                System.Collections.IEnumerable list = null;
+                try { list = contexts.GetType().GetProperty("Contexts")?.GetValue(contexts, null) as System.Collections.IEnumerable; } catch { }
+                if (list == null) { try { list = contexts as System.Collections.IEnumerable; } catch { } }
+                if (list == null) return null;
+
+                foreach (var ctx in list)
+                {
+                    if (ctx == null) continue;
+                    var ctxStrings = CollectContextStrings(ctx);
+                    if (ctxStrings.Count == 0) continue;
+
+                    foreach (var entry in files)
+                    {
+                        foreach (var fcand in entry.Candidates)
+                        {
+                            if (fcand.Length < 4) continue; // too generic
+                            foreach (var cs in ctxStrings)
+                            {
+                                if (string.IsNullOrEmpty(cs)) continue;
+                                if (cs.IndexOf(fcand, StringComparison.OrdinalIgnoreCase) >= 0)
+                                    return entry.FileId;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Pluck every string that could plausibly identify the
+        /// source file from a single IContextInfo: surface string
+        /// properties + a small set of likely metadata keys (FilePath,
+        /// OriginalFilePath, etc.).</summary>
+        private static List<string> CollectContextStrings(object ctx)
+        {
+            var result = new List<string>(12);
+            var type = ctx.GetType();
+            foreach (var propName in new[] { "Description", "DisplayName", "Code", "DisplayCode", "ContextType" })
+            {
+                try
+                {
+                    var v = type.GetProperty(propName)?.GetValue(ctx, null) as string;
+                    if (!string.IsNullOrEmpty(v)) result.Add(v);
+                }
+                catch { }
+            }
+            foreach (var key in new[]
+            {
+                "FilePath", "OriginalFilePath", "Path", "FileName",
+                "OriginalName", "SourceFilePath", "Source", "File"
+            })
+            {
+                try
+                {
+                    var v = TryGetContextMetaData(ctx, key);
+                    if (!string.IsNullOrEmpty(v)) result.Add(v);
+                }
+                catch { }
+            }
+            return result;
+        }
+
+        private static string TryGetParagraphUnitId(object pu)
+        {
+            try
+            {
+                var propsProp = pu.GetType().GetProperty("Properties");
+                if (propsProp == null) return "";
+                var props = propsProp.GetValue(pu, null);
+                if (props == null) return "";
+                var puIdProp = props.GetType().GetProperty("ParagraphUnitId");
+                if (puIdProp == null) return "";
+                var puId = puIdProp.GetValue(props, null);
+                if (puId == null) return "";
+                var idProp = puId.GetType().GetProperty("Id");
+                if (idProp == null) return "";
+                return idProp.GetValue(puId, null) as string ?? "";
+            }
+            catch { return ""; }
+        }
+
+        private static System.Collections.IEnumerable TryGetEnumerable(object obj, string propName)
+        {
+            if (obj == null || string.IsNullOrEmpty(propName)) return null;
+            try
+            {
+                var prop = obj.GetType().GetProperty(propName);
+                if (prop == null) return null;
+                return prop.GetValue(obj, null) as System.Collections.IEnumerable;
+            }
+            catch { return null; }
+        }
+
+        private static System.Collections.IEnumerable TryInvokeEnumerable(object obj, string methodName)
+        {
+            if (obj == null || string.IsNullOrEmpty(methodName)) return null;
+            try
+            {
+                var method = obj.GetType().GetMethod(methodName, Type.EmptyTypes);
+                if (method == null) return null;
+                return method.Invoke(obj, null) as System.Collections.IEnumerable;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Get the file id a segment pair belongs to, using the
+        /// precomputed map built by <see cref="RefreshFileToSegmentMap"/>.
+        /// Returns empty string when the map is empty (SDK didn't expose
+        /// ParagraphUnits) or the segment isn't found.</summary>
+        private string GetFileIdForSegment(Sdl.FileTypeSupport.Framework.BilingualApi.ISegmentPair pair)
+        {
+            if (pair == null || _fileIdToSegmentKeys.Count == 0) return "";
+
+            string puId = "", segId = "";
+            try
+            {
+                var pu = _activeDocument?.GetParentParagraphUnit(pair);
+                puId = pu?.Properties?.ParagraphUnitId.Id ?? "";
+            }
+            catch { }
+            try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+            if (string.IsNullOrEmpty(puId) || string.IsNullOrEmpty(segId)) return "";
+
+            var key = puId + "/" + segId;
+            foreach (var kv in _fileIdToSegmentKeys)
+            {
+                if (kv.Value.Contains(key)) return kv.Key;
+            }
+            return "";
+        }
+
+        /// <summary>Read a string-typed property by name via reflection
+        /// from an arbitrary SDK object. Returns null if the property
+        /// doesn't exist, isn't a string, or throws.</summary>
+        private static string TryGetStringProp(object obj, string propName)
+        {
+            if (obj == null || string.IsNullOrEmpty(propName)) return null;
+            try
+            {
+                var prop = obj.GetType().GetProperty(propName);
+                if (prop == null) return null;
+                var val = prop.GetValue(obj, null);
+                return val?.ToString();
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Push the active document's file list (plus the
+        /// active-file id for the quick-select button) into the Import /
+        /// Export tab. Single-file documents result in an empty/one-item
+        /// list — the control hides the multi-file UI in that case.</summary>
+        private void UpdateImportExportFileList()
+        {
+            SafeInvoke(() =>
+            {
+                var ctrl = _control?.Value?.ImportExportControl;
+                if (ctrl == null) return;
+                string activeFileId;
+                var files = EnumerateActiveDocumentFiles(out activeFileId);
+                ctrl.SetFileList(files, activeFileId);
+            });
         }
 
         private void UpdateBatchProviderDisplay()
@@ -5858,10 +6344,42 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     return;
                 }
 
+                // Multi-file: build the file-id filter from the UI
+                // selection. Empty filter means "no UI restriction" —
+                // either single-file (UI hidden) or user has the "All"
+                // quick-select active. Null = include everything.
+                //
+                // When per-file attribution failed (SDK didn't expose
+                // enough info to map segments to files), we silently
+                // drop the filter and export everything from selected
+                // files' segments… well, every segment, since we can't
+                // tell them apart. Better than emitting an empty file.
+                // The diagnostic is also dumped to the log so we can
+                // refine the matcher if this path gets hit.
+                var selectedIds = ctrl.GetSelectedFileIds();
+                HashSet<string> filter;
+                if (selectedIds.Count == 0)
+                {
+                    filter = null;
+                }
+                else if (!_perFileMappingWorked)
+                {
+                    filter = null;
+                    ctrl.AppendLog("Note: this document didn't expose per-file segment attribution. " +
+                                   "Exporting all segments in the active view (file selection is ignored).");
+                    // One-shot: dump diagnostic to the in-tab log so the next
+                    // round can refine the matcher. Doesn't block the export.
+                    try { DumpMultiFileDiagnostic(ctrl); } catch { }
+                }
+                else
+                {
+                    filter = new HashSet<string>(selectedIds, StringComparer.Ordinal);
+                }
+
                 List<Core.Export.ExportSegment> segments;
                 try
                 {
-                    segments = CollectBilingualExportSegments();
+                    segments = CollectBilingualExportSegments(filter);
                 }
                 catch (Exception ex)
                 {
@@ -5885,15 +6403,98 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ? Core.LanguageUtils.ShortenLanguageName(tgtLang)
                     : "Target";
                 opts.ProjectName = SafeGetProjectName();
-                opts.SourceFileName = SafeGetActiveFileName();
                 opts.ToolVersion = SafeGetPluginVersion();
+
+                // Group by source file so we can branch on output mode.
+                var groups = new List<KeyValuePair<string, List<Core.Export.ExportSegment>>>();
+                {
+                    var byFile = new Dictionary<string, List<Core.Export.ExportSegment>>(StringComparer.Ordinal);
+                    foreach (var seg in segments)
+                    {
+                        var key = string.IsNullOrEmpty(seg.SourceFileName)
+                            ? SafeGetActiveFileName()
+                            : seg.SourceFileName;
+                        if (!byFile.TryGetValue(key, out var list))
+                        {
+                            list = new List<Core.Export.ExportSegment>();
+                            byFile[key] = list;
+                            groups.Add(new KeyValuePair<string, List<Core.Export.ExportSegment>>(key, list));
+                        }
+                        list.Add(seg);
+                    }
+                }
+
+                bool multiFile = groups.Count > 1;
+                bool separatePerFile = multiFile
+                    && ctrl.SelectedOutputMode == MultiFileOutputMode.SeparatePerFile;
+
+                if (separatePerFile)
+                {
+                    // ── Output mode: one bilingual DOCX per source file.
+                    // Ask the user for a target FOLDER (not a file). We
+                    // synthesise per-file file names from the project +
+                    // source filename + layout.
+                    string targetDir;
+                    using (var dlg = new FolderBrowserDialog())
+                    {
+                        dlg.Description =
+                            "Pick a folder. One bilingual " + opts.Format +
+                            " will be created per source file inside it.";
+                        if (dlg.ShowDialog(_control.Value) != DialogResult.OK) return;
+                        targetDir = dlg.SelectedPath;
+                    }
+
+                    ctrl.SetBusy(true);
+                    int filesWritten = 0;
+                    try
+                    {
+                        var exporter = new Core.Export.BilingualExporter();
+                        foreach (var grp in groups)
+                        {
+                            var perFileOpts = ClonePerFileOpts(opts, sourceFileName: grp.Key);
+                            // Renumber segments 1..N within each file so
+                            // the round-trip stays clean (manifest carries
+                            // the puId/segId identity anyway).
+                            int n = 1;
+                            foreach (var s in grp.Value) s.Number = n++;
+                            var fileName = Core.Export.BilingualExporter.DefaultFileName(perFileOpts);
+                            var path = Path.Combine(targetDir, fileName);
+                            var manifest = exporter.Export(grp.Value, perFileOpts, path);
+                            ctrl.AddHistoryEntry(DateTime.Now, opts.Format.ToString(), path);
+                            ctrl.AppendLog(
+                                $"Exported {grp.Value.Count} segments from {grp.Key} → " +
+                                Path.GetFileName(path));
+                            filesWritten++;
+                        }
+                        ctrl.AppendLog(
+                            $"Wrote {filesWritten} bilingual file(s) into {targetDir}.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ctrl.AppendLog("Export failed: " + ex.Message, true);
+                    }
+                    finally
+                    {
+                        ctrl.SetBusy(false);
+                    }
+                    return;
+                }
+
+                // ── Output mode: one combined DOCX. Source file name on
+                // the manifest reflects the active file; per-segment file
+                // attribution lives on each ExportSegment.SourceFileName.
+                opts.SourceFileName = multiFile
+                    ? $"(multi-file: {groups.Count} files)"
+                    : SafeGetActiveFileName();
 
                 var defaultName = Core.Export.BilingualExporter.DefaultFileName(opts);
                 string targetPath;
                 using (var dlg = new SaveFileDialog())
                 {
                     dlg.FileName = defaultName;
-                    dlg.Title = "Save bilingual review file";
+                    dlg.Title = multiFile
+                        ? "Save combined bilingual review file (all selected files)"
+                        : "Save bilingual review file";
                     switch (opts.Format)
                     {
                         case Core.Export.ExportFormat.Docx:
@@ -5919,9 +6520,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var exporter = new Core.Export.BilingualExporter();
                     var manifest = exporter.Export(segments, opts, targetPath);
                     ctrl.AddHistoryEntry(DateTime.Now, opts.Format.ToString(), targetPath);
+                    var fileCountSuffix = multiFile ? $" ({groups.Count} source files)" : "";
                     ctrl.AppendLog(
                         $"Exported {segments.Count} segments to {Path.GetFileName(targetPath)} " +
-                        $"({opts.Format}, {opts.Layout}).");
+                        $"({opts.Format}, {opts.Layout}){fileCountSuffix}.");
                     ctrl.AppendLog("Sidecar manifest: " +
                         Path.GetFileName(Core.Export.ExportManifest.SidecarPathFor(targetPath)));
                 }
@@ -5934,6 +6536,345 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ctrl.SetBusy(false);
                 }
             });
+        }
+
+        /// <summary>One-shot diagnostic: dump everything we can introspect
+        /// about the active document's file structure to a TEMP FILE
+        /// (and to the tab log). We use a temp file rather than just the
+        /// log because the multi-file UI may have pushed the log area
+        /// off-screen on some layouts. Returns the temp-file path so the
+        /// caller can show it in a MessageBox.</summary>
+        private string DumpMultiFileDiagnostic(Controls.ImportExportControl ctrl)
+        {
+            var sb = new System.Text.StringBuilder();
+            void Log(string s) { sb.AppendLine(s); try { ctrl.AppendLog(s); } catch { } }
+
+            try
+            {
+                Log("── DIAG: active document SDK shape ──");
+                var doc = _activeDocument;
+                if (doc == null) { Log("  _activeDocument is null"); }
+                else
+                {
+                    Log($"  _activeDocument type: {doc.GetType().FullName}");
+
+                    // 1) Walk doc properties returning IEnumerable
+                    Log("  -- IEnumerable properties on _activeDocument --");
+                    foreach (var prop in doc.GetType().GetProperties())
+                    {
+                        if (prop.GetIndexParameters().Length > 0) continue;
+                        if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(prop.PropertyType)) continue;
+                        if (prop.PropertyType == typeof(string)) continue;
+                        try
+                        {
+                            var val = prop.GetValue(doc, null) as System.Collections.IEnumerable;
+                            int n = 0;
+                            if (val != null) foreach (var _ in val) { n++; if (n > 100000) break; }
+                            Log($"    {prop.Name}  ({prop.PropertyType.Name})  → {n} items");
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"    {prop.Name}  ({prop.PropertyType.Name})  → threw {ex.GetType().Name}");
+                        }
+                    }
+
+                    // 2) For first file in doc.Files, dump every property + every no-arg method
+                    var filesProp = doc.GetType().GetProperty("Files");
+                    if (filesProp != null)
+                    {
+                        var filesEnum = filesProp.GetValue(doc, null) as System.Collections.IEnumerable;
+                        if (filesEnum != null)
+                        {
+                            object firstFile = null;
+                            int fileCount = 0;
+                            foreach (var f in filesEnum) { if (firstFile == null) firstFile = f; fileCount++; }
+                            Log($"  .Files contains {fileCount} item(s)");
+
+                            if (firstFile != null)
+                            {
+                                Log($"  -- First file type: {firstFile.GetType().FullName} --");
+                                Log("  -- Properties on first file --");
+                                foreach (var prop in firstFile.GetType().GetProperties())
+                                {
+                                    if (prop.GetIndexParameters().Length > 0) continue;
+                                    try
+                                    {
+                                        var val = prop.GetValue(firstFile, null);
+                                        string valStr;
+                                        if (val == null) valStr = "null";
+                                        else if (val is System.Collections.IEnumerable enu && !(val is string))
+                                        {
+                                            int n = 0; foreach (var _ in enu) { n++; if (n > 100000) break; }
+                                            valStr = $"<enumerable, {n} items, type={prop.PropertyType.Name}>";
+                                        }
+                                        else valStr = val.ToString();
+                                        if (valStr != null && valStr.Length > 200) valStr = valStr.Substring(0, 200) + "…";
+                                        Log($"    {prop.Name}  ({prop.PropertyType.Name}) = {valStr}");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Log($"    {prop.Name}  → threw {ex.GetType().Name}");
+                                    }
+                                }
+
+                                Log("  -- No-arg methods on first file --");
+                                foreach (var method in firstFile.GetType().GetMethods(
+                                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+                                {
+                                    if (method.GetParameters().Length != 0) continue;
+                                    if (method.IsSpecialName) continue;
+                                    if (method.DeclaringType == typeof(object)) continue;
+                                    Log($"    {method.Name}() → {method.ReturnType.Name}");
+                                }
+                            }
+                        }
+                    }
+
+                    // 3) Methods on _activeDocument (one-arg too) — we're
+                    //    looking for something like GetFile(pair) or
+                    //    GetActiveFile(pair) that maps a segment to its
+                    //    parent file.
+                    try
+                    {
+                        Log("  -- Methods on _activeDocument (no-arg + one-arg, non-property) --");
+                        foreach (var method in doc.GetType().GetMethods(
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+                        {
+                            if (method.IsSpecialName) continue;
+                            if (method.DeclaringType == typeof(object)) continue;
+                            var pars = method.GetParameters();
+                            if (pars.Length > 1) continue;
+                            string sig = string.Join(", ",
+                                pars.Select(p => p.ParameterType.Name + " " + p.Name).ToArray());
+                            Log($"    {method.Name}({sig}) → {method.ReturnType.Name}");
+                        }
+                    }
+                    catch (Exception ex) { Log("  doc-methods dump threw: " + ex.Message); }
+
+                    // 4) Walk the first 3 segment pairs, dump full property
+                    //    chain so we can see where (if anywhere) FileId is
+                    //    hiding. Wrap EVERY access in try/catch so a single
+                    //    threw doesn't kill the whole section (which is
+                    //    probably what happened last time).
+                    try
+                    {
+                        Log("  -- First 3 segment pairs --");
+                        int pi = 0;
+                        foreach (var pair in doc.SegmentPairs)
+                        {
+                            if (pair == null) { pi++; continue; }
+                            Log($"  PAIR[{pi}] type={SafeTypeName(pair)}");
+                            DumpObjectPropsSafe(pair, "    pair.", Log);
+
+                            try
+                            {
+                                if (pair.Properties != null)
+                                {
+                                    Log($"    pair.Properties type={SafeTypeName(pair.Properties)}");
+                                    DumpObjectPropsSafe(pair.Properties, "      Properties.", Log);
+                                    try
+                                    {
+                                        var sid = pair.Properties.Id;
+                                        Log($"      Properties.Id type={SafeTypeName(sid)}");
+                                        DumpObjectPropsSafe(sid, "        Id.", Log);
+                                    }
+                                    catch (Exception ex) { Log("      Properties.Id threw: " + ex.Message); }
+                                }
+                            }
+                            catch (Exception ex) { Log("    pair.Properties access threw: " + ex.Message); }
+
+                            try
+                            {
+                                var pu = doc.GetParentParagraphUnit(pair);
+                                if (pu != null)
+                                {
+                                    Log($"    parentPU type={SafeTypeName(pu)}");
+                                    DumpObjectPropsSafe(pu, "      pu.", Log);
+                                    try
+                                    {
+                                        if (pu.Properties != null)
+                                        {
+                                            Log($"      pu.Properties type={SafeTypeName(pu.Properties)}");
+                                            DumpObjectPropsSafe(pu.Properties, "        Properties.", Log);
+                                            try
+                                            {
+                                                var puid = pu.Properties.ParagraphUnitId;
+                                                Log($"        ParagraphUnitId type={SafeTypeName(puid)}");
+                                                DumpObjectPropsSafe(puid, "          PUId.", Log);
+                                            }
+                                            catch (Exception ex) { Log("        ParagraphUnitId threw: " + ex.Message); }
+
+                                            // Walk INTO the Contexts collection so we can see
+                                            // whether file-identifying strings live there.
+                                            try
+                                            {
+                                                var ctxProp = pu.Properties.GetType().GetProperty("Contexts");
+                                                var ctxRoot = ctxProp?.GetValue(pu.Properties, null);
+                                                if (ctxRoot != null)
+                                                {
+                                                    Log($"        Contexts root type={SafeTypeName(ctxRoot)}");
+                                                    DumpObjectPropsSafe(ctxRoot, "          ctxRoot.", Log);
+                                                    System.Collections.IEnumerable ctxList = null;
+                                                    try { ctxList = ctxRoot.GetType().GetProperty("Contexts")?.GetValue(ctxRoot, null) as System.Collections.IEnumerable; } catch { }
+                                                    if (ctxList == null) { try { ctxList = ctxRoot as System.Collections.IEnumerable; } catch { } }
+                                                    if (ctxList != null)
+                                                    {
+                                                        int ci = 0;
+                                                        foreach (var c in ctxList)
+                                                        {
+                                                            if (c == null) { ci++; continue; }
+                                                            Log($"          CTX[{ci}] type={SafeTypeName(c)}");
+                                                            DumpObjectPropsSafe(c, "            ", Log);
+                                                            // Try the well-known metadata keys explicitly.
+                                                            foreach (var key in new[]
+                                                            {
+                                                                "FilePath","OriginalFilePath","Path","FileName",
+                                                                "OriginalName","SourceFilePath","Source","File",
+                                                                "ParagraphFormatting"
+                                                            })
+                                                            {
+                                                                try
+                                                                {
+                                                                    var v = TryGetContextMetaData(c, key);
+                                                                    if (!string.IsNullOrEmpty(v))
+                                                                    {
+                                                                        var trunc = v.Length > 200 ? v.Substring(0, 200) + "…" : v;
+                                                                        Log($"            metadata[{key}] = {trunc}");
+                                                                    }
+                                                                }
+                                                                catch { }
+                                                            }
+                                                            ci++;
+                                                            if (ci >= 8) break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception ex) { Log("        Contexts dump threw: " + ex.Message); }
+                                        }
+                                    }
+                                    catch (Exception ex) { Log("      pu.Properties access threw: " + ex.Message); }
+                                }
+                            }
+                            catch (Exception ex) { Log("    GetParentParagraphUnit threw: " + ex.Message); }
+
+                            pi++;
+                            if (pi >= 3) break;
+                        }
+                    }
+                    catch (Exception ex) { Log("  pair walk threw: " + ex.Message); }
+                }
+
+                Log("── /DIAG ──");
+            }
+            catch (Exception ex)
+            {
+                Log("DIAG outer fail: " + ex.Message);
+            }
+
+            // Write to a temp file. Stable name so user can locate it.
+            try
+            {
+                var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "supervertaler-trados-diag.txt");
+                System.IO.File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(false));
+                ctrl.AppendLog("Diagnostic written to: " + path);
+                return path;
+            }
+            catch (Exception ex)
+            {
+                ctrl.AppendLog("Could not write diagnostic file: " + ex.Message, true);
+                return null;
+            }
+        }
+
+        private static string SafeTypeName(object obj)
+        {
+            try { return obj?.GetType().FullName ?? "null"; } catch { return "<threw>"; }
+        }
+
+        /// <summary>Like <see cref="DumpObjectProps"/> but wrapping every
+        /// access in its own try/catch so a single threw doesn't kill
+        /// the whole enumeration. Used by the v4.20.8 multi-file
+        /// diagnostic.</summary>
+        private static void DumpObjectPropsSafe(object obj, string indent, Action<string> log)
+        {
+            if (obj == null) { log(indent + "(null)"); return; }
+            System.Reflection.PropertyInfo[] props;
+            try { props = obj.GetType().GetProperties(); }
+            catch (Exception ex) { log(indent + "GetProperties threw: " + ex.Message); return; }
+            foreach (var prop in props)
+            {
+                if (prop.GetIndexParameters().Length > 0) continue;
+                string valStr;
+                try
+                {
+                    var val = prop.GetValue(obj, null);
+                    if (val == null) valStr = "null";
+                    else if (val is System.Collections.IEnumerable enu && !(val is string))
+                    {
+                        int n = 0;
+                        try { foreach (var _ in enu) { n++; if (n > 100000) break; } }
+                        catch { valStr = "<enumerable, iteration threw>"; goto write; }
+                        valStr = $"<enumerable, {n} items, type={prop.PropertyType.Name}>";
+                    }
+                    else valStr = val.ToString();
+                    if (valStr != null && valStr.Length > 200) valStr = valStr.Substring(0, 200) + "…";
+                }
+                catch (Exception ex)
+                {
+                    valStr = "<threw: " + ex.GetType().Name + ": " + ex.Message + ">";
+                }
+                write:
+                log($"{indent}{prop.Name}  ({prop.PropertyType.Name}) = {valStr}");
+            }
+        }
+
+        private static void DumpObjectProps(object obj, string indent, Action<string> log)
+        {
+            if (obj == null) return;
+            foreach (var prop in obj.GetType().GetProperties())
+            {
+                if (prop.GetIndexParameters().Length > 0) continue;
+                try
+                {
+                    var val = prop.GetValue(obj, null);
+                    string valStr;
+                    if (val == null) valStr = "null";
+                    else if (val is System.Collections.IEnumerable enu && !(val is string))
+                    {
+                        int n = 0; foreach (var _ in enu) { n++; if (n > 100000) break; }
+                        valStr = $"<enumerable, {n} items, type={prop.PropertyType.Name}>";
+                    }
+                    else valStr = val.ToString();
+                    if (valStr != null && valStr.Length > 200) valStr = valStr.Substring(0, 200) + "…";
+                    log($"{indent}{prop.Name}  ({prop.PropertyType.Name}) = {valStr}");
+                }
+                catch (Exception ex)
+                {
+                    log($"{indent}{prop.Name}  → threw {ex.GetType().Name}");
+                }
+            }
+        }
+
+        /// <summary>Clone an <see cref="Core.Export.ExportOptions"/> with a
+        /// different per-file SourceFileName. Used in the SeparatePerFile
+        /// output mode so each emitted file's manifest records the right
+        /// source filename and the default file name generator picks up
+        /// the per-file stem.</summary>
+        private static Core.Export.ExportOptions ClonePerFileOpts(
+            Core.Export.ExportOptions src, string sourceFileName)
+        {
+            return new Core.Export.ExportOptions
+            {
+                Format = src.Format,
+                Layout = src.Layout,
+                SourceLanguageDisplay = src.SourceLanguageDisplay,
+                TargetLanguageDisplay = src.TargetLanguageDisplay,
+                ProjectName = (src.ProjectName ?? "") +
+                              (string.IsNullOrEmpty(sourceFileName) ? "" : " — " + Path.GetFileNameWithoutExtension(sourceFileName)),
+                SourceFileName = sourceFileName ?? "",
+                ToolVersion = src.ToolVersion
+            };
         }
 
         /// <summary>
@@ -5989,6 +6930,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // Lookups for the importer to query current state.
                 var currentTargetMap = SnapshotCurrentTargets();
                 var lockedMap = SnapshotLockedSegments();
+                var sourceTagCountMap = SnapshotSourceTagCounts();
 
                 var importer = new Core.Export.BilingualImporter();
                 var result = importer.Build(
@@ -5999,7 +6941,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         return currentTargetMap.TryGetValue(KeyOf(pu, sg), out val) ? val : null;
                     },
                     isWriteable: (pu, sg) => !lockedMap.Contains(KeyOf(pu, sg)),
-                    currentSourceLookup: null);
+                    currentSourceLookup: null,
+                    currentSourceTagCountLookup: (pu, sg) =>
+                    {
+                        int n;
+                        return sourceTagCountMap.TryGetValue(KeyOf(pu, sg), out n) ? n : 0;
+                    });
 
                 if (result.TotalImported == 0)
                 {
@@ -6008,23 +6955,64 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     return;
                 }
 
-                // Confirmation prompt.
+                // Strict-mode flag from the UI checkbox. When OFF, the
+                // writeback loop treats TagMismatch like Changed so the
+                // edit is applied verbatim (with a per-segment warning).
+                bool strict = ctrl.StrictTagIntegrityCheck;
+
+                // Confirmation prompt. Surface the tag-mismatch count
+                // separately so the user can see at a glance whether any
+                // segments would be skipped for safety.
+                var tagMismatch = result.TagMismatchCount;
+                var nonTagIssues = result.IssueCount - tagMismatch;
+                var tagLine = tagMismatch > 0
+                    ? (strict
+                        ? $"  {tagMismatch} tag-mismatch (will be SKIPPED — would break Trados QA)\n"
+                        : $"  {tagMismatch} tag-mismatch (will be applied — strict check is OFF)\n")
+                    : "";
                 var msg = $"Read {result.TotalImported} segments from the file.\n\n" +
                           $"  {result.ChangedCount} change(s) to apply\n" +
                           $"  {result.UnchangedCount} unchanged\n" +
-                          $"  {result.IssueCount} issue(s) (missing, locked, or source-mismatched)\n\n" +
+                          tagLine +
+                          $"  {nonTagIssues} other issue(s) (missing, locked, source-mismatched)\n\n" +
                           "Apply the changes to the active Trados document?";
                 var dr = MessageBox.Show(_control.Value, msg, "Re-import bilingual file",
                     MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
                 if (dr != DialogResult.OK) return;
 
-                int applied = 0, failed = 0;
+                int applied = 0, failed = 0, skippedTagMismatch = 0;
                 ctrl.SetBusy(true);
                 try
                 {
                     foreach (var d in result.Diffs)
                     {
-                        if (d.Kind != Core.Export.ImportChangeKind.Changed || !d.Apply) continue;
+                        // Strict mode: skip TagMismatch entirely.
+                        // Permissive mode: treat TagMismatch as Changed.
+                        bool isWriteableNow =
+                            d.Kind == Core.Export.ImportChangeKind.Changed
+                            || (d.Kind == Core.Export.ImportChangeKind.TagMismatch && !strict);
+
+                        if (!isWriteableNow)
+                        {
+                            if (d.Kind == Core.Export.ImportChangeKind.TagMismatch && strict)
+                            {
+                                ctrl.AppendLog(
+                                    $"Segment {d.Number}: skipped — {d.Detail}. " +
+                                    "Restore the tag in the bilingual file, edit the segment " +
+                                    "directly in Trados, or turn off strict tag-integrity check.",
+                                    true);
+                                skippedTagMismatch++;
+                            }
+                            continue;
+                        }
+
+                        if (d.Kind == Core.Export.ImportChangeKind.TagMismatch && !strict)
+                        {
+                            ctrl.AppendLog(
+                                $"Segment {d.Number}: applying despite tag mismatch — {d.Detail}. " +
+                                "Strict tag-integrity check is OFF; verify Trados QA after import.",
+                                true);
+                        }
                         var pair = FindSegmentPair(d.ParagraphUnitId, d.SegmentId);
                         if (pair == null)
                         {
@@ -6037,22 +7025,80 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             _activeDocument.ProcessSegmentPair(pair, "Supervertaler",
                                 (sp, cancel) =>
                                 {
-                                    // Plain-text re-import for the MVP: clone an IText from
-                                    // the source to carry across text properties (Excel /
-                                    // Visio soft-return preservation), and set the new
-                                    // target string. Tag-bearing segments are preserved
-                                    // verbatim by Trados if the proofreader did not edit
-                                    // them; if they DID edit a tag-bearing segment, the
-                                    // tag round-trip would need the same logic the batch
-                                    // translator uses (out of scope for the bilingual
-                                    // re-import MVP).
-                                    var textTpl = Core.SegmentTagHandler.FindFirstText(sp.Source);
-                                    if (textTpl != null && d.NewTarget != null)
+                                    // v4.20.7-tag: try the tag-aware reconstruction
+                                    // path first. We re-serialize the live source to get
+                                    // a fresh TagMap with the same numbering the
+                                    // proofreader saw at export time (deterministic given
+                                    // the source). SegmentTagHandler.ReconstructTarget
+                                    // then parses the proofreader's <tN>...</tN> markers
+                                    // and rebuilds the target with the correct cloned
+                                    // tags wrapped around the translated text.
+                                    //
+                                    // Fall back to plain-text writeback when:
+                                    //   - the source has no tags (nothing to reconstruct)
+                                    //   - ReconstructTarget returns false (proofreader
+                                    //     broke the tag structure — mismatched <tN>,
+                                    //     unknown tag number, etc.)
+                                    bool reconstructed = false;
+                                    if (d.NewTarget != null)
                                     {
-                                        sp.Target.Clear();
-                                        var clone = (IText)textTpl.Clone();
-                                        clone.Properties.Text = d.NewTarget;
-                                        sp.Target.Add(clone);
+                                        // Serialise BOTH source and target. Source tag
+                                        // references stay valid throughout reconstruction
+                                        // (source isn't modified). Target tag references
+                                        // need pre-cloning because ReconstructTarget calls
+                                        // sp.Target.Clear() internally — without cloning,
+                                        // those references could be invalidated before
+                                        // the parsed tags get used. Combining both maps
+                                        // lets a proofreader's edit reference tags that
+                                        // originated in either the source OR the target
+                                        // cell (the common case for the user's reported
+                                        // "moved bold to a different word" scenario:
+                                        // the bold only exists in target, source TagMap
+                                        // is empty, so without including target tags
+                                        // ReconstructTarget can't find the <tN> entry
+                                        // and falls back to plain text — stripping all
+                                        // formatting).
+                                        var sourceSer = Core.SegmentTagHandler.Serialize(sp.Source);
+                                        var targetSer = Core.SegmentTagHandler.Serialize(sp.Target);
+                                        var combinedMap = BuildCombinedTagMap(sourceSer.TagMap, targetSer.TagMap);
+
+                                        // Resolve any semantic-name markers (<b>, <i>, …)
+                                        // that BilingualTagNamer.ApplySemanticNames wrote on
+                                        // export back into the matching <tN>…</tN> form
+                                        // SegmentTagHandler.ReconstructTarget understands.
+                                        // Positional matching against the combined TagMap.
+                                        var resolved = Core.Export.BilingualTagNamer.ResolveSemanticNames(
+                                            d.NewTarget, combinedMap);
+
+                                        bool hasAnyMarker = combinedMap.Count > 0
+                                            || resolved.IndexOf("<t", StringComparison.Ordinal) >= 0;
+                                        if (hasAnyMarker)
+                                        {
+                                            reconstructed = Core.SegmentTagHandler.ReconstructTarget(
+                                                sp.Target, sp.Source, resolved, combinedMap);
+                                        }
+                                    }
+
+                                    if (!reconstructed)
+                                    {
+                                        // Plain-text fallback: strip any stray <tN> markers
+                                        // (and any leftover semantic markers) and write a
+                                        // single IText cloned from source.
+                                        var plain = Core.SegmentTagHandler.StripTagPlaceholders(d.NewTarget ?? "");
+                                        // Also strip residual <b>/<i>/<u>/<bi> markers that
+                                        // didn't resolve to a TagMap entry.
+                                        plain = System.Text.RegularExpressions.Regex.Replace(
+                                            plain, @"</?(?:bi|b|i|u)>", "",
+                                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                                        var textTpl = Core.SegmentTagHandler.FindFirstText(sp.Source);
+                                        if (textTpl != null)
+                                        {
+                                            sp.Target.Clear();
+                                            var clone = (IText)textTpl.Clone();
+                                            clone.Properties.Text = plain;
+                                            sp.Target.Add(clone);
+                                        }
                                     }
                                 });
                             applied++;
@@ -6069,8 +7115,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ctrl.SetBusy(false);
                 }
 
-                ctrl.AppendLog($"Re-import complete: {applied} applied, {failed} failed, " +
-                               $"{result.IssueCount} issue(s) skipped.");
+                var otherIssues = result.IssueCount - skippedTagMismatch;
+                var summary = $"Re-import complete: {applied} applied, {failed} failed";
+                if (skippedTagMismatch > 0)
+                    summary += $", {skippedTagMismatch} skipped (tag mismatch)";
+                if (otherIssues > 0)
+                    summary += $", {otherIssues} other issue(s) skipped";
+                summary += ".";
+                ctrl.AppendLog(summary);
             });
         }
 
@@ -6105,24 +7157,80 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// <see cref="Core.Export.ExportSegment"/> per non-empty source
         /// segment, with stable Trados (paragraph-unit-id, segment-id) keys
         /// in the manifest.</summary>
-        private List<Core.Export.ExportSegment> CollectBilingualExportSegments()
+        private List<Core.Export.ExportSegment> CollectBilingualExportSegments(
+            HashSet<string> fileIdFilter = null)
         {
             var result = new List<Core.Export.ExportSegment>();
             if (_activeDocument == null) return result;
 
+            // Build a (fileId → fileName) lookup once so we can attribute
+            // each segment to a human-readable file name. Single-file
+            // documents end up with one entry; multi-file documents with
+            // one per merged file.
+            var fileIdToName = new Dictionary<string, string>(StringComparer.Ordinal);
+            try
+            {
+                string _af;
+                foreach (var f in EnumerateActiveDocumentFiles(out _af))
+                    if (!string.IsNullOrEmpty(f.FileId))
+                        fileIdToName[f.FileId] = f.FileName ?? "";
+            }
+            catch { }
+
+            // Defensive: if attribution didn't work, the filter would
+            // drop every segment (because every fid would be empty).
+            // Treat that the same as "no filter" so we at least export
+            // something. The caller already shows a log warning.
+            var effectiveFilter = (fileIdFilter != null && _perFileMappingWorked)
+                ? fileIdFilter : null;
+
             int number = 1;
             foreach (var pair in _activeDocument.SegmentPairs)
             {
+                // Multi-file mode: skip segments outside the selected
+                // files. Null filter = include everything (single-file
+                // mode and "All files checked" mode).
+                if (effectiveFilter != null)
+                {
+                    var fid = GetFileIdForSegment(pair);
+                    if (string.IsNullOrEmpty(fid) || !effectiveFilter.Contains(fid)) continue;
+                }
                 if (pair?.Source == null) continue;
-                var sourceText = pair.Source.ToString() ?? "";
-                if (string.IsNullOrWhiteSpace(sourceText)) continue;
 
-                var targetText = pair.Target != null ? pair.Target.ToString() : "";
+                // v4.20.7-tag: serialize source + target through SegmentTagHandler
+                // so inline tags (cf bold/italic, field codes, page numbers, etc.)
+                // come out as numbered <tN>...</tN> / <tN/> placeholders in the
+                // bilingual file. This is the same serialization the batch AI
+                // translator uses; importantly the numbering is deterministic
+                // given the source segment, so re-import can regenerate the
+                // matching TagMap and call SegmentTagHandler.ReconstructTarget
+                // to put the tags back where the proofreader moved them to.
+                //
+                // After serialising we run the result through
+                // BilingualTagNamer.ApplySemanticNames so recognised cf
+                // pairs (bold/italic/underline) become <b>/<i>/<u>/<bi> —
+                // matching the Workbench's "With Tags" Bilingual Table
+                // export style. Unrecognised tags keep their numbered
+                // <tN> form.
+                var sourceSer = Core.SegmentTagHandler.Serialize(pair.Source);
+                var sourceText = Core.Export.BilingualTagNamer.ApplySemanticNames(
+                    sourceSer.SerializedText ?? "", sourceSer.TagMap);
+                if (string.IsNullOrWhiteSpace(Core.SegmentTagHandler.StripTagPlaceholders(sourceText))) continue;
+
+                string targetText = "";
+                if (pair.Target != null)
+                {
+                    var targetSer = Core.SegmentTagHandler.Serialize(pair.Target);
+                    targetText = Core.Export.BilingualTagNamer.ApplySemanticNames(
+                        targetSer.SerializedText ?? "", targetSer.TagMap);
+                }
+
+                IParagraphUnit parentParagraphUnit = null;
                 string puId = "", segId = "";
                 try
                 {
-                    var parentPU = _activeDocument.GetParentParagraphUnit(pair);
-                    puId = parentPU?.Properties?.ParagraphUnitId.Id ?? "";
+                    parentParagraphUnit = _activeDocument.GetParentParagraphUnit(pair);
+                    puId = parentParagraphUnit?.Properties?.ParagraphUnitId.Id ?? "";
                 }
                 catch { }
                 try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
@@ -6134,15 +7242,49 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
                 catch { }
 
+                // Detect paragraph-level formatting (Heading 1 bold, whole-
+                // paragraph italic, etc.) so the bilingual file can render
+                // segments with the same visual styling Trados shows in its
+                // editor. Only meaningful when the segment has no inline
+                // tags — inline cf-bold/italic is already serialised as
+                // <b>/<i> markers and applying paragraph-level bold ON TOP
+                // would over-style mixed-formatting segments. The detector
+                // is best-effort: it reads IText run formatting + parent
+                // paragraph context, with both probes wrapped in try/catch
+                // so an SDK quirk on any one probe doesn't lose the whole
+                // segment.
+                bool pBold = false, pItalic = false, pUnderline = false;
+                if (!sourceSer.HasTags)
+                {
+                    DetectParagraphLevelFormatting(pair.Source, parentParagraphUnit,
+                        out pBold, out pItalic, out pUnderline);
+                }
+
+                // Tag the segment with its source-file identity. Single-
+                // file documents end up with the only file's id+name on
+                // every row; multi-file documents have the correct per-
+                // segment attribution.
+                var segFileId = GetFileIdForSegment(pair);
+                string segFileName = null;
+                if (!string.IsNullOrEmpty(segFileId))
+                    fileIdToName.TryGetValue(segFileId, out segFileName);
+                if (string.IsNullOrEmpty(segFileName))
+                    segFileName = SafeGetActiveFileName();
+
                 result.Add(new Core.Export.ExportSegment
                 {
                     Number = number++,
                     ParagraphUnitId = puId,
                     SegmentId = segId,
                     SourceText = sourceText,
-                    TargetText = targetText ?? "",
+                    TargetText = targetText,
                     Status = status,
-                    SourceHash = Core.Export.BilingualExporter.HashPrefix(sourceText)
+                    SourceHash = Core.Export.BilingualExporter.HashPrefix(sourceText),
+                    IsBold = pBold,
+                    IsItalic = pItalic,
+                    IsUnderline = pUnderline,
+                    SourceFileId = segFileId ?? "",
+                    SourceFileName = segFileName ?? ""
                 });
             }
             return result;
@@ -6202,35 +7344,441 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
                 if (string.IsNullOrEmpty(puId) || string.IsNullOrEmpty(segId)) continue;
 
-                var targetText = pair.Target != null ? pair.Target.ToString() : "";
+                // CRITICAL: serialise the target the SAME WAY the export
+                // path does — Serialize() into numbered <tN>/</tN> markers
+                // and then ApplySemanticNames() to convert recognised
+                // cf-bold / cf-italic / cf-underline pairs into the friendly
+                // <b>/<i>/<u> form. Without this, every segment whose
+                // current target contains any inline formatting registers
+                // as "changed" on re-import even when the proofreader
+                // touched nothing, because the live ToString() value
+                // would be plain text while the DOCX cell contains the
+                // semantic markers.
+                var targetText = "";
+                if (pair.Target != null)
+                {
+                    try
+                    {
+                        var targetSer = Core.SegmentTagHandler.Serialize(pair.Target);
+                        targetText = Core.Export.BilingualTagNamer.ApplySemanticNames(
+                            targetSer.SerializedText ?? "", targetSer.TagMap);
+                    }
+                    catch
+                    {
+                        // Fall back to plain text on any serialisation
+                        // hiccup — better an over-reporting diff than
+                        // losing the segment from the lookup entirely.
+                        targetText = pair.Target.ToString() ?? "";
+                    }
+                }
                 map[KeyOf(puId, segId)] = targetText ?? "";
             }
             return map;
         }
 
-        /// <summary>Snapshot of (puId/segId) keys that are locked or rejected
-        /// and should not be overwritten silently.</summary>
-        private HashSet<string> SnapshotLockedSegments()
+        /// <summary>Detect paragraph-level bold / italic / underline styling
+        /// for a segment. Reads the parent
+        /// <c>IParagraphUnit.Properties.Contexts</c> list and inspects each
+        /// context via two complementary probes:
+        ///
+        /// 1. <c>IContextInfo.DisplayStyle</c> — a
+        ///    <see cref="System.Drawing.FontStyle"/>? that Trados Studio
+        ///    uses to render context-styled text in its editor (Heading 1
+        ///    bold, Title italic, etc.). The string form of FontStyle is
+        ///    e.g. "Bold", "Bold, Italic" — we match against those names.
+        ///    This is the path that catches DOCX heading paragraphs.
+        ///
+        /// 2. <c>IContextInfo.Formatting</c> — a formatting-group
+        ///    collection that some file types populate with explicit
+        ///    bold/italic/underline entries. Walked via reflection by
+        ///    <see cref="ExtractBoldItalicUnderline"/>.
+        ///
+        /// Inline cf bold/italic tags around part of a segment are
+        /// handled separately by SegmentTagHandler; the caller skips this
+        /// probe for tag-bearing segments to avoid double-applying
+        /// styling. All access is through reflection on the context's
+        /// runtime type — no strongly-typed reference to SDK formatting
+        /// interfaces is made anywhere in the method signatures, so the
+        /// class loads cleanly even if any of those types ship in
+        /// different assemblies across SDK versions.</summary>
+        private static void DetectParagraphLevelFormatting(
+            ISegment sourceSegment,
+            IParagraphUnit parentParagraphUnit,
+            out bool isBold,
+            out bool isItalic,
+            out bool isUnderline)
         {
-            var set = new HashSet<string>(StringComparer.Ordinal);
-            if (_activeDocument == null) return set;
-            foreach (var pair in _activeDocument.SegmentPairs)
+            isBold = false; isItalic = false; isUnderline = false;
+
+            try
             {
-                if (pair?.Properties == null) continue;
-                var conf = pair.Properties.ConfirmationLevel;
-                // Treat Rejected as needing explicit override. Locked status
-                // lives on the parent paragraph unit but for the MVP we just
-                // honour the confirmation-level signal.
-                if (conf == Sdl.Core.Globalization.ConfirmationLevel.Rejected)
+                var contexts = parentParagraphUnit?.Properties?.Contexts;
+                if (contexts == null) return;
+                System.Collections.IEnumerable list = null;
+                try { list = contexts.Contexts as System.Collections.IEnumerable; } catch { }
+                if (list == null)
                 {
-                    string puId = "", segId = "";
-                    try { puId = _activeDocument.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; } catch { }
-                    try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
-                    if (!string.IsNullOrEmpty(puId) && !string.IsNullOrEmpty(segId))
-                        set.Add(KeyOf(puId, segId));
+                    try { list = contexts as System.Collections.IEnumerable; } catch { }
+                }
+                if (list == null) return;
+
+                foreach (var ctx in list)
+                {
+                    if (ctx == null) continue;
+
+                    // Probe 1: DisplayStyle. Universal across DOCX / PPTX /
+                    // Excel etc. — this is the field that drives Trados'
+                    // own editor rendering of context-styled text.
+                    try
+                    {
+                        var dsProp = ctx.GetType().GetProperty("DisplayStyle");
+                        if (dsProp != null)
+                        {
+                            var ds = dsProp.GetValue(ctx, null);
+                            if (ds != null)
+                            {
+                                var dsStr = ds.ToString() ?? "";
+                                if (dsStr.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    isBold = true;
+                                if (dsStr.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    isItalic = true;
+                                if (dsStr.IndexOf("Underline", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    isUnderline = true;
+                            }
+                        }
+                    }
+                    catch { }
+
+                    // Probe 2: Formatting collection. File-type-dependent
+                    // fallback for SDLXLIFFs that publish their paragraph
+                    // styling via an explicit IFormattingGroup rather than
+                    // via DisplayStyle.
+                    try
+                    {
+                        var fmtProp = ctx.GetType().GetProperty("Formatting");
+                        if (fmtProp != null)
+                        {
+                            var fmt = fmtProp.GetValue(ctx, null);
+                            if (fmt != null)
+                            {
+                                ExtractBoldItalicUnderline(fmt, ref isBold, ref isItalic, ref isUnderline);
+                            }
+                        }
+                    }
+                    catch { }
+
+                    // Probe 3: ParagraphFormatting metadata. THE one for
+                    // DOCX. Trados encodes the paragraph's Word run-
+                    // property block as a metadata string under the key
+                    // "ParagraphFormatting" — looks like
+                    //   <w:pPr><w:rPr><w:b/><w:bCs/></w:rPr></w:pPr>
+                    // for a paragraph-wide bold paragraph (Heading 1
+                    // included). We don't need to interpret the style
+                    // name itself — we just look for the Word formatting
+                    // markers w:b (bold), w:i (italic), w:u (underline)
+                    // directly. Catches every DOCX case I've seen,
+                    // regardless of style-name conventions.
+                    try
+                    {
+                        var paraFmt = TryGetContextMetaData(ctx, "ParagraphFormatting");
+                        if (!string.IsNullOrEmpty(paraFmt))
+                        {
+                            // <w:b/> = bold on, <w:b w:val="false"/> = bold off.
+                            // We only flip the flag ON for explicit-true markers;
+                            // explicit-false stays unset.
+                            if (HasWordPropertyOn(paraFmt, "b"))      isBold = true;
+                            if (HasWordPropertyOn(paraFmt, "i"))      isItalic = true;
+                            if (HasWordPropertyOn(paraFmt, "u"))      isUnderline = true;
+                        }
+                    }
+                    catch { }
+
+                    // Probe 4: style-name heuristic. Fallback for files
+                    // where ParagraphFormatting isn't populated but the
+                    // style name is recognisable as a heading.
+                    try
+                    {
+                        if (!isBold && ContextLooksLikeHeading(ctx))
+                            isBold = true;
+                    }
+                    catch { }
                 }
             }
-            return set;
+            catch { }
+        }
+
+        /// <summary>Read a single string-valued entry from a Trados
+        /// IContextInfo's metadata bag. Trados encodes per-context
+        /// key/value pairs (e.g. "ParagraphFormatting", "StartsAt") as
+        /// metadata; the SDK exposes them via different access patterns
+        /// across SDK versions. We try each known pattern in sequence
+        /// and return the first non-null/non-empty match. All access
+        /// goes through reflection so no compile-time SDK type is
+        /// referenced.</summary>
+        private static string TryGetContextMetaData(object ctx, string key)
+        {
+            if (ctx == null || string.IsNullOrEmpty(key)) return null;
+            var type = ctx.GetType();
+
+            // Pattern A: GetMetaData(string) instance method.
+            try
+            {
+                var method = type.GetMethod("GetMetaData", new[] { typeof(string) });
+                if (method != null)
+                {
+                    var result = method.Invoke(ctx, new object[] { key });
+                    var s = result?.ToString();
+                    if (!string.IsNullOrEmpty(s)) return s;
+                }
+            }
+            catch { }
+
+            // Pattern B: MetaData property → dictionary-like → indexer.
+            try
+            {
+                var prop = type.GetProperty("MetaData");
+                if (prop != null)
+                {
+                    var dict = prop.GetValue(ctx, null);
+                    if (dict != null)
+                    {
+                        var indexer = dict.GetType().GetMethod("get_Item", new[] { typeof(string) });
+                        if (indexer != null)
+                        {
+                            var result = indexer.Invoke(dict, new object[] { key });
+                            var s = result?.ToString();
+                            if (!string.IsNullOrEmpty(s)) return s;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Pattern C: MetaDataCount + GetMetaDataItem(index) enumeration.
+            // The interface returns IMetaDataItem with Key/Value string
+            // properties. Walk it linearly until we find the key.
+            try
+            {
+                var countProp = type.GetProperty("MetaDataCount");
+                var getItem = type.GetMethod("GetMetaDataItem", new[] { typeof(int) });
+                if (countProp != null && getItem != null)
+                {
+                    var count = (int)(countProp.GetValue(ctx, null) ?? 0);
+                    for (int i = 0; i < count; i++)
+                    {
+                        var item = getItem.Invoke(ctx, new object[] { i });
+                        if (item == null) continue;
+                        var itemType = item.GetType();
+                        var itemKey = itemType.GetProperty("Key")?.GetValue(item, null) as string;
+                        if (!string.Equals(itemKey, key, StringComparison.Ordinal)) continue;
+                        var itemVal = itemType.GetProperty("Value")?.GetValue(item, null) as string;
+                        if (!string.IsNullOrEmpty(itemVal)) return itemVal;
+                    }
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
+        /// <summary>Detect whether a Word run-property fragment carries an
+        /// "on" marker for the given short element name (e.g. "b" for
+        /// bold, "i" for italic, "u" for underline). Word represents
+        /// these as:
+        ///   <c>&lt;w:b/&gt;</c>                — element-only, defaults to on
+        ///   <c>&lt;w:b w:val="true"/&gt;</c>   — explicit on
+        ///   <c>&lt;w:b w:val="false"/&gt;</c>  — explicit off (only relevant
+        ///                                       when an inherited style was
+        ///                                       on; we treat it as off here)
+        ///   <c>&lt;w:u w:val="single"/&gt;</c> — underline style (treated as on
+        ///                                       for any non-"none" value)
+        /// Returns true for the on cases, false otherwise. Conservative
+        /// — when in doubt, returns false.</summary>
+        private static bool HasWordPropertyOn(string paraFormatting, string elementShortName)
+        {
+            if (string.IsNullOrEmpty(paraFormatting)) return false;
+            // Look for <w:b ... /> or <w:b/> patterns. The fragment is
+            // raw XML text (possibly with mixed casing); use ordinal
+            // case-insensitive matching.
+            var openMarker = "<w:" + elementShortName;
+            int idx = 0;
+            while ((idx = paraFormatting.IndexOf(openMarker, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+            {
+                int end = idx + openMarker.Length;
+                if (end >= paraFormatting.Length) break;
+                char next = paraFormatting[end];
+                // Need the element name to end here — not be the start of
+                // a longer name like "bCs" or "bdr".
+                if (next == '/' || next == ' ' || next == '>' || next == '\t' || next == '\n')
+                {
+                    // Find the end of this tag.
+                    int tagEnd = paraFormatting.IndexOf('>', end);
+                    if (tagEnd < 0) return false;
+                    var tag = paraFormatting.Substring(idx, tagEnd - idx + 1);
+                    // Self-closing or no w:val? Treat as on.
+                    int valIdx = tag.IndexOf("w:val=", StringComparison.OrdinalIgnoreCase);
+                    if (valIdx < 0) return true;
+                    // Extract the value inside the quotes.
+                    int q1 = tag.IndexOf('"', valIdx);
+                    int q2 = q1 >= 0 ? tag.IndexOf('"', q1 + 1) : -1;
+                    if (q1 < 0 || q2 < 0) return true; // can't parse; assume on
+                    var val = tag.Substring(q1 + 1, q2 - q1 - 1).Trim().ToLowerInvariant();
+                    if (val == "false" || val == "0" || val == "off" || val == "none") return false;
+                    return true;
+                }
+                idx = end;
+            }
+            return false;
+        }
+
+        // Regex matching DOCX heading-style context names. Catches
+        // "Heading 1" / "heading2" / "h1" / "h-1" / "Title" / "Subtitle".
+        // Anchored loosely (look-around for word boundaries) to avoid
+        // matching unrelated words containing "title" or "heading" as
+        // substrings of longer style names.
+        private static readonly System.Text.RegularExpressions.Regex HeadingStyleRe =
+            new System.Text.RegularExpressions.Regex(
+                @"(?<![a-z])(?:heading\s*-?\s*[1-9]?|h-?[1-6]|title|subtitle)(?![a-z])",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>Probe a context's string-typed name fields for an
+        /// indication that the parent paragraph is a heading-style
+        /// paragraph (Heading 1-6, Title, Subtitle, etc.). Reads
+        /// Description / DisplayName / Code / DisplayCode via reflection,
+        /// so it stays decoupled from the specific IContextInfo SDK
+        /// type's shape.</summary>
+        private static bool ContextLooksLikeHeading(object ctx)
+        {
+            if (ctx == null) return false;
+            var type = ctx.GetType();
+            foreach (var propName in new[] { "Description", "DisplayName", "Code", "DisplayCode" })
+            {
+                try
+                {
+                    var prop = type.GetProperty(propName);
+                    if (prop == null) continue;
+                    var val = prop.GetValue(ctx, null) as string;
+                    if (string.IsNullOrEmpty(val)) continue;
+                    if (HeadingStyleRe.IsMatch(val)) return true;
+                }
+                catch { }
+            }
+            return false;
+        }
+
+        /// <summary>Extract bold/italic/underline flags from any
+        /// formatting-collection-like object using pure reflection. Accepts
+        /// <c>object</c> instead of a typed <c>IFormattingGroup</c>
+        /// parameter on purpose — referencing
+        /// <c>Sdl.FileTypeSupport.Framework.Formatting.IFormattingGroup</c>
+        /// in a method signature forces the CLR to resolve the type at
+        /// class-load time, and that interface isn't shipped in Studio 18's
+        /// runtime assemblies. A typed reference here makes the entire
+        /// AiAssistantViewPart class fail to load with a silent
+        /// TypeLoadException — the ViewPart disappears from the Trados UI
+        /// with no visible error. Pure reflection sidesteps that.</summary>
+        private static void ExtractBoldItalicUnderline(
+            object fmt,
+            ref bool isBold, ref bool isItalic, ref bool isUnderline)
+        {
+            if (fmt == null) return;
+            try
+            {
+                var type = fmt.GetType();
+                var keysProp = type.GetProperty("Keys");
+                if (keysProp == null) return;
+                var keys = keysProp.GetValue(fmt, null) as System.Collections.IEnumerable;
+                if (keys == null) return;
+
+                // Indexer: find the get_Item(string) method.
+                var indexer = type.GetMethod("get_Item", new[] { typeof(string) });
+
+                foreach (var keyObj in keys)
+                {
+                    var lc = (keyObj?.ToString() ?? "").ToLowerInvariant();
+                    if (string.IsNullOrEmpty(lc)) continue;
+
+                    object valObj = null;
+                    if (indexer != null)
+                    {
+                        try { valObj = indexer.Invoke(fmt, new object[] { keyObj?.ToString() }); }
+                        catch { continue; }
+                    }
+                    var val = (valObj?.ToString() ?? "").ToLowerInvariant();
+                    bool isOn = val.IndexOf("true", StringComparison.Ordinal) >= 0
+                             || val.IndexOf("single", StringComparison.Ordinal) >= 0;
+                    if (!isOn) continue;
+                    if (lc.Contains("bold")) isBold = true;
+                    else if (lc.Contains("italic")) isItalic = true;
+                    else if (lc.Contains("underline")) isUnderline = true;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>Snapshot of (puId/segId) keys that should not be silently
+        /// overwritten on re-import. Currently empty in the MVP — Trados'
+        /// own segment-protection will reject writes to locked segments
+        /// inside <c>ProcessSegmentPair</c>, so the worst case is a per-
+        /// segment "write failed" log line rather than data corruption.
+        /// The per-confirmation-level conflict policy is a Phase-3 follow-up
+        /// once the right enum values for "locked / rejected" are confirmed
+        /// against the live SDK enum (`Sdl.Core.Globalization.ConfirmationLevel`
+        /// has different value names across Studio SDK versions).</summary>
+        private HashSet<string> SnapshotLockedSegments()
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        /// <summary>Snapshot of (puId/segId) → live source's STRUCTURAL
+        /// tag count. Used by the importer's tag-integrity check.
+        /// "Structural" = tags that DON'T map to a semantic name via
+        /// BilingualTagNamer.DetectSemantic; i.e. field codes, page
+        /// numbers, custom format pairs, line breaks — anything that
+        /// stays as <tN> in the exported bilingual file rather than
+        /// becoming <b>/<i>/<u>/<bi>. These are the tags whose count
+        /// must round-trip exactly because Trados file structure depends
+        /// on them. Semantic formatting tags (bold/italic/underline) are
+        /// intentionally excluded — the proofreader can add or remove
+        /// them at will without breaking Trados QA.</summary>
+        private Dictionary<string, int> SnapshotSourceTagCounts()
+        {
+            var map = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (_activeDocument == null) return map;
+            foreach (var pair in _activeDocument.SegmentPairs)
+            {
+                if (pair?.Source == null) continue;
+                string puId = "", segId = "";
+                try { puId = _activeDocument.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; } catch { }
+                try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+                if (string.IsNullOrEmpty(puId) || string.IsNullOrEmpty(segId)) continue;
+
+                int structuralCount = 0;
+                try
+                {
+                    var ser = Core.SegmentTagHandler.Serialize(pair.Source);
+                    if (ser?.TagMap != null)
+                    {
+                        foreach (var kv in ser.TagMap)
+                        {
+                            // A tag is "structural" if BilingualTagNamer
+                            // can't assign it a semantic short-name —
+                            // i.e. it's NOT a cf bold / italic / underline
+                            // / bi pair. Standalone tags (line breaks,
+                            // page-number placeholders, etc.) are always
+                            // structural since DetectSemantic only
+                            // recognises ITagPair entries.
+                            if (Core.Export.BilingualTagNamer.DetectSemantic(kv.Value) == null)
+                                structuralCount++;
+                        }
+                    }
+                }
+                catch { structuralCount = 0; }
+
+                map[KeyOf(puId, segId)] = structuralCount;
+            }
+            return map;
         }
 
         /// <summary>Find the live <c>ISegmentPair</c> for a given
@@ -6256,6 +7804,63 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
         private static string KeyOf(string puId, string segId) =>
             (puId ?? "") + "/" + (segId ?? "");
+
+        /// <summary>Build a unified <see cref="Core.TagInfo"/> dictionary
+        /// that combines source-side and target-side tag references. Source
+        /// tags pass through unchanged; target tags are pre-cloned via
+        /// <see cref="IAbstractMarkupData.Clone"/> so they survive the
+        /// <c>sp.Target.Clear()</c> that ReconstructTarget runs internally.
+        /// On numbering collisions (source and target both have <c>&lt;tN&gt;</c>
+        /// for the same N), target wins because the proofreader's edits
+        /// live in the target cell.</summary>
+        private static Dictionary<int, Core.TagInfo> BuildCombinedTagMap(
+            Dictionary<int, Core.TagInfo> sourceTagMap,
+            Dictionary<int, Core.TagInfo> targetTagMap)
+        {
+            var combined = new Dictionary<int, Core.TagInfo>();
+
+            if (sourceTagMap != null)
+            {
+                foreach (var kv in sourceTagMap)
+                    combined[kv.Key] = kv.Value;
+            }
+
+            if (targetTagMap != null)
+            {
+                foreach (var kv in targetTagMap)
+                {
+                    var clone = CloneTagInfo(kv.Value);
+                    if (clone != null)
+                        combined[kv.Key] = clone;
+                }
+            }
+
+            return combined;
+        }
+
+        /// <summary>Deep-clone a <see cref="Core.TagInfo"/> so its
+        /// <c>OriginalMarkup</c> reference can be used after the original
+        /// segment is cleared. Returns null if cloning fails (rare —
+        /// IAbstractMarkupData.Clone is generally well-behaved).</summary>
+        private static Core.TagInfo CloneTagInfo(Core.TagInfo info)
+        {
+            if (info?.OriginalMarkup == null) return null;
+            try
+            {
+                var clonedMarkup = info.OriginalMarkup.Clone() as IAbstractMarkupData;
+                if (clonedMarkup == null) return null;
+                return new Core.TagInfo
+                {
+                    TagType = info.TagType,
+                    OriginalMarkup = clonedMarkup,
+                    IsLineBreak = info.IsLineBreak
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         private string SafeGetProjectName()
         {

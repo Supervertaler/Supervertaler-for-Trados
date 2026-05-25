@@ -47,5 +47,36 @@ namespace Supervertaler.Trados.Core.Export
         /// <summary>SHA-256 prefix of the source text at export time. Used by the
         /// importer to detect source tampering before applying changes.</summary>
         public string SourceHash { get; set; }
+
+        /// <summary>True when the segment's parent paragraph (or the segment's
+        /// own IText runs) carry paragraph-level bold styling — e.g. a DOCX
+        /// "Heading 1" or a whole paragraph set to bold in the source file.
+        /// Distinct from inline cf-bold tags, which are serialised as
+        /// <c>&lt;b&gt;...&lt;/b&gt;</c> markers inside the cell text.
+        /// The DocxRenderer applies this flag visually to both the source and
+        /// target cells so the proofreader sees the segment styled the way
+        /// it'll appear in the final translated document — purely cosmetic,
+        /// not round-tripped (Trados regenerates paragraph styling from its
+        /// own metadata on export).</summary>
+        public bool IsBold { get; set; }
+
+        /// <summary>Paragraph-level italic. Same semantics as <see cref="IsBold"/>.</summary>
+        public bool IsItalic { get; set; }
+
+        /// <summary>Paragraph-level underline. Same semantics as <see cref="IsBold"/>.</summary>
+        public bool IsUnderline { get; set; }
+
+        /// <summary>Trados file id (GUID-ish string) that the segment
+        /// belongs to. Same as the file's IProjectFile.Id. Empty for
+        /// single-file exports or when the SDK can't surface it.
+        /// Recorded in the manifest so re-import can route each diff to
+        /// the correct file in a merged multi-file document.</summary>
+        public string SourceFileId { get; set; }
+
+        /// <summary>Human-readable file name (e.g. "US8312383.docx") for
+        /// the file this segment belongs to. Used as the value in the
+        /// "File" column when the bilingual export is rendered in multi-
+        /// file mode.</summary>
+        public string SourceFileName { get; set; }
     }
 }

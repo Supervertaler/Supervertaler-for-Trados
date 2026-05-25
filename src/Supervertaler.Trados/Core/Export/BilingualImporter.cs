@@ -21,12 +21,26 @@ namespace Supervertaler.Trados.Core.Export
         /// Lock/confirmation status is supplied via
         /// <paramref name="isWriteable"/> — return false to mark a segment
         /// as Locked.</summary>
+        // Pattern that counts only STRUCTURAL tag markers (numbered <tN>
+        // / <tN/>) in a proofreader's edit. Semantic formatting markers
+        // (<b>, <i>, <u>, <bi>) are deliberately excluded because adding
+        // or removing character formatting in the target is harmless from
+        // a Trados-QA perspective — it just changes the cosmetic
+        // formatting of the translation. Structural tags (field codes,
+        // page numbers, custom format pairs, line breaks) are the ones
+        // Trados QA enforces; those must round-trip 1:1.
+        private static readonly System.Text.RegularExpressions.Regex
+            OpeningStructuralMarkerRe = new System.Text.RegularExpressions.Regex(
+                @"<(?!/)t\d+\b",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
         public BilingualImportResult Build(
             string importedFilePath,
             ExportManifest manifest,
             Func<string, string, string> currentTargetLookup,
             Func<string, string, bool> isWriteable,
-            Func<string, string, string> currentSourceLookup = null)
+            Func<string, string, string> currentSourceLookup = null,
+            Func<string, string, int> currentSourceTagCountLookup = null)
         {
             var ext = Path.GetExtension(importedFilePath).ToLowerInvariant();
             List<ImportedSegment> imported;
@@ -105,6 +119,43 @@ namespace Supervertaler.Trados.Core.Export
                     diff.Detail = "Segment is locked or rejected; needs explicit override";
                     result.Diffs.Add(diff);
                     continue;
+                }
+
+                // Structural-tag integrity check. Counts only numbered
+                // <tN> markers (NOT semantic <b>/<i>/<u>/<bi>) in both
+                // the source and the proofreader's edit, then enforces
+                // strict equality:
+                //
+                // - Semantic formatting tags (bold / italic / underline)
+                //   can be freely added or removed in the target — they
+                //   only affect cosmetic rendering and don't drive Trados
+                //   QA rules.
+                // - Structural tags (field codes, page numbers, custom
+                //   format pairs, line breaks — anything that didn't get
+                //   a friendly name via BilingualTagNamer) MUST round-trip
+                //   1:1 with the source. Adding one creates a tag the
+                //   target file can't render; removing one drops a tag
+                //   Trados expects.
+                //
+                // The source-side count is supplied by the caller's
+                // currentSourceStructuralCountLookup so the importer
+                // doesn't need to re-serialise the segment itself.
+                if (currentSourceTagCountLookup != null)
+                {
+                    int sourceStructural = currentSourceTagCountLookup(m.ParagraphUnitId, m.SegmentId);
+                    int targetStructural = OpeningStructuralMarkerRe.Matches(diff.NewTarget ?? "").Count;
+                    if (sourceStructural != targetStructural)
+                    {
+                        diff.Kind = ImportChangeKind.TagMismatch;
+                        diff.Detail =
+                            $"Edit has {targetStructural} structural tag marker(s) (<tN>) " +
+                            $"but source has {sourceStructural}; applying would break Trados " +
+                            "(structural tags must round-trip exactly — semantic <b>/<i>/<u> " +
+                            "can be freely added or removed)";
+                        diff.Apply = false; // strict mode default — caller can flip to true to force
+                        result.Diffs.Add(diff);
+                        continue;
+                    }
                 }
 
                 diff.Kind = ImportChangeKind.Changed;

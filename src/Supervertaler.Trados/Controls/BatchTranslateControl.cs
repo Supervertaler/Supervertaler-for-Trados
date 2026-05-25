@@ -490,8 +490,10 @@ namespace Supervertaler.Trados.Controls
             _btnPasteFromClipboard = new Button
             {
                 Text = "\uD83D\uDCCB  Paste from Clipboard",
-                // Position dynamically so it doesn't overlap the wider
-                // "Copy to Clipboard" button at high DPI / large fonts.
+                // Initial Location uses the Copy button's *current* Right \u2014
+                // which is still the un-AutoSized width at construction
+                // time, so the real position is set by the SizeChanged
+                // handler below the moment AutoSize widens Copy.
                 Location = new Point(_btnCopyToClipboard.Right + Px(8), y),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowOnly,
@@ -505,6 +507,22 @@ namespace Supervertaler.Trados.Controls
             _btnPasteFromClipboard.Click += (s, ev) =>
                 PasteFromClipboardRequested?.Invoke(this, EventArgs.Empty);
             Controls.Add(_btnPasteFromClipboard);
+
+            // When AutoSize widens the Copy button (after layout, after font
+            // metrics are real), reposition Paste so it sits flush-right of
+            // Copy with the same 8 px gap regardless of DPI or font size.
+            // Same pattern as the _btnTranslate.SizeChanged handler above.
+            int clipboardRowY = y;
+            _btnCopyToClipboard.SizeChanged += (s, ev) =>
+            {
+                _btnPasteFromClipboard.Location = new Point(
+                    _btnCopyToClipboard.Right + Px(8), clipboardRowY);
+                RepositionPreviewPromptLink();
+            };
+            // When Paste itself resizes, the Preview prompt link needs to
+            // move along with it (Preview prompt sits to the right of the
+            // rightmost visible action-row control).
+            _btnPasteFromClipboard.SizeChanged += (s, ev) => RepositionPreviewPromptLink();
 
             y += Px(38);
 

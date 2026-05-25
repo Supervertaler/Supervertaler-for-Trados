@@ -58,7 +58,9 @@ namespace Supervertaler.Trados.Core.Export
                 sb.Append("\"paragraph_unit_id\": ").Append(JsonString(s.ParagraphUnitId)).Append(", ");
                 sb.Append("\"segment_id\": ").Append(JsonString(s.SegmentId)).Append(", ");
                 sb.Append("\"source_hash\": ").Append(JsonString(s.SourceHash)).Append(", ");
-                sb.Append("\"status\": ").Append(JsonString(s.Status));
+                sb.Append("\"status\": ").Append(JsonString(s.Status)).Append(", ");
+                sb.Append("\"source_file_id\": ").Append(JsonString(s.SourceFileId)).Append(", ");
+                sb.Append("\"source_file_name\": ").Append(JsonString(s.SourceFileName));
                 sb.Append("}");
                 if (i < Segments.Count - 1) sb.Append(',');
                 sb.Append('\n');
@@ -197,6 +199,8 @@ namespace Supervertaler.Trados.Core.Export
                     case "segment_id": seg.SegmentId = StripQuotes(value); break;
                     case "source_hash": seg.SourceHash = StripQuotes(value); break;
                     case "status": seg.Status = StripQuotes(value); break;
+                    case "source_file_id": seg.SourceFileId = StripQuotes(value); break;
+                    case "source_file_name": seg.SourceFileName = StripQuotes(value); break;
                 }
             }
             return seg;
@@ -316,5 +320,16 @@ namespace Supervertaler.Trados.Core.Export
         public string SegmentId { get; set; } = "";
         public string SourceHash { get; set; } = "";
         public string Status { get; set; } = "";
+
+        /// <summary>Trados file id (string GUID) the segment came from.
+        /// Empty for single-file exports; populated in multi-file mode
+        /// so re-import can route each diff to the correct source file
+        /// in a merged document.</summary>
+        public string SourceFileId { get; set; } = "";
+
+        /// <summary>Human-readable source filename (e.g. "Chapter2.docx")
+        /// the segment came from. Mirrors SourceFileId for UX —
+        /// surfaced in re-import warnings and log lines.</summary>
+        public string SourceFileName { get; set; } = "";
     }
 }
