@@ -6376,10 +6376,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     filter = new HashSet<string>(selectedIds, StringComparer.Ordinal);
                 }
 
+                // v4.20.18: honour the "Include locked segments" checkbox.
+                // Off → locked segments are skipped entirely. On → they're
+                // included and visually flagged with 🔒 in the Status
+                // column by the renderers.
+                bool includeLocked = ctrl.IncludeLockedSegments;
+
                 List<Core.Export.ExportSegment> segments;
                 try
                 {
-                    segments = CollectBilingualExportSegments(filter);
+                    segments = CollectBilingualExportSegments(filter, includeLocked);
                 }
                 catch (Exception ex)
                 {
@@ -6873,7 +6879,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 ProjectName = (src.ProjectName ?? "") +
                               (string.IsNullOrEmpty(sourceFileName) ? "" : " — " + Path.GetFileNameWithoutExtension(sourceFileName)),
                 SourceFileName = sourceFileName ?? "",
-                ToolVersion = src.ToolVersion
+                ToolVersion = src.ToolVersion,
+                IncludeLocked = src.IncludeLocked
             };
         }
 
@@ -7158,7 +7165,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// segment, with stable Trados (paragraph-unit-id, segment-id) keys
         /// in the manifest.</summary>
         private List<Core.Export.ExportSegment> CollectBilingualExportSegments(
-            HashSet<string> fileIdFilter = null)
+            HashSet<string> fileIdFilter = null,
+            bool includeLocked = true)
         {
             var result = new List<Core.Export.ExportSegment>();
             if (_activeDocument == null) return result;
@@ -7196,6 +7204,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     if (string.IsNullOrEmpty(fid) || !effectiveFilter.Contains(fid)) continue;
                 }
                 if (pair?.Source == null) continue;
+
+                // v4.20.18: read the segment's locked flag once. Used both
+                // to honour the includeLocked filter (skip when off) and
+                // to set ExportSegment.IsLocked so the renderers can
+                // visually mark the row.
+                bool isLocked = false;
+                try { isLocked = pair.Properties?.IsLocked ?? false; }
+                catch { }
+                if (isLocked && !includeLocked) continue;
 
                 // v4.20.7-tag: serialize source + target through SegmentTagHandler
                 // so inline tags (cf bold/italic, field codes, page numbers, etc.)
@@ -7284,7 +7301,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     IsItalic = pItalic,
                     IsUnderline = pUnderline,
                     SourceFileId = segFileId ?? "",
-                    SourceFileName = segFileName ?? ""
+                    SourceFileName = segFileName ?? "",
+                    IsLocked = isLocked
                 });
             }
             return result;
@@ -7726,9 +7744,37 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// once the right enum values for "locked / rejected" are confirmed
         /// against the live SDK enum (`Sdl.Core.Globalization.ConfirmationLevel`
         /// has different value names across Studio SDK versions).</summary>
+        /// <summary>v4.20.18: actually reads pair.Properties.IsLocked
+        /// from every segment in the active document. Was previously a
+        /// stub returning an empty set — meaning re-import would happily
+        /// overwrite locked segments. Now the BilingualImporter's
+        /// isWriteable predicate sees the real picture and refuses to
+        /// write back to locked segments (they show up as the "locked"
+        /// counter in the re-import dialog's "other issues" line).</summary>
         private HashSet<string> SnapshotLockedSegments()
         {
-            return new HashSet<string>(StringComparer.Ordinal);
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            if (_activeDocument == null) return set;
+            try
+            {
+                foreach (var pair in _activeDocument.SegmentPairs)
+                {
+                    if (pair == null) continue;
+                    bool locked = false;
+                    try { locked = pair.Properties?.IsLocked ?? false; }
+                    catch { }
+                    if (!locked) continue;
+                    string puId = "", segId = "";
+                    try { puId = _activeDocument.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; }
+                    catch { }
+                    try { segId = pair.Properties?.Id.Id ?? ""; }
+                    catch { }
+                    if (string.IsNullOrEmpty(puId) || string.IsNullOrEmpty(segId)) continue;
+                    set.Add(KeyOf(puId, segId));
+                }
+            }
+            catch { }
+            return set;
         }
 
         /// <summary>Snapshot of (puId/segId) → live source's STRUCTURAL

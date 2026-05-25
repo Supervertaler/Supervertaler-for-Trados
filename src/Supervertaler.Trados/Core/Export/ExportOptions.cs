@@ -40,5 +40,15 @@ namespace Supervertaler.Trados.Core.Export
 
         /// <summary>Plugin version that produced the export, written into the manifest.</summary>
         public string ToolVersion { get; set; } = "";
+
+        /// <summary>When true (default), locked segments are exported
+        /// along with everything else and visually marked with a 🔒
+        /// prefix in the Status column. When false, they are skipped
+        /// entirely — useful on large projects where the bulk of the
+        /// work is locked-approved and the proofreader should only see
+        /// what's actually still editable. Default: true (backwards-
+        /// compatible with the pre-v4.20.18 behaviour, which always
+        /// included locked segments but didn't flag them).</summary>
+        public bool IncludeLocked { get; set; } = true;
     }
 }

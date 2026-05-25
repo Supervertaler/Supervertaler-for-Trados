@@ -70,7 +70,8 @@ namespace Supervertaler.Trados.Core.Export
                     SourceHash = seg.SourceHash ?? "",
                     Status = seg.Status ?? "",
                     SourceFileId = seg.SourceFileId ?? "",
-                    SourceFileName = seg.SourceFileName ?? ""
+                    SourceFileName = seg.SourceFileName ?? "",
+                    IsLocked = seg.IsLocked
                 });
             }
             return m;

@@ -277,7 +277,7 @@ namespace Supervertaler.Trados.Core.Export
                     bold: seg.IsBold, italic: seg.IsItalic, underline: seg.IsUnderline));
                 if (multiFile)
                     row.AppendChild(MakeBodyCell(seg.SourceFileName ?? "", alignment: "left"));
-                row.AppendChild(MakeBodyCell(seg.Status ?? ""));
+                row.AppendChild(MakeBodyCell(seg.DisplayStatus));
                 row.AppendChild(MakeBodyCell(seg.Notes ?? ""));
                 table.AppendChild(row);
             }
@@ -306,12 +306,12 @@ namespace Supervertaler.Trados.Core.Export
                     AppendStackedTarget(body, seg, opts);
                 }
 
-                if (!string.IsNullOrEmpty(seg.Status))
+                if (!string.IsNullOrEmpty(seg.DisplayStatus))
                 {
                     body.AppendChild(new Paragraph(
                         new ParagraphProperties(new SpacingBetweenLines() { After = "120" }),
                         MakeRun("Status: ", bold: true, fontSize: "16", color: "888888"),
-                        MakeRun(seg.Status, fontSize: "16", color: "888888")));
+                        MakeRun(seg.DisplayStatus, fontSize: "16", color: "888888")));
                 }
 
                 // Visual separator between segments.

@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.18] – 2026-05-25
+
+### Added
+
+- **Locked segments are now visible and filterable in the Import / Export tab.** Two related behaviours:
+  - **New checkbox: "Include locked segments (🔒 marked in Status column)"** — default ON (matches pre-v4.20.18 behaviour). When ON, locked segments are exported alongside everything else and get a **🔒** prefix in the Status column (e.g. `🔒 ApprovedTranslation`) so the proofreader sees at a glance which rows won't round-trip back to Trados. When OFF, locked segments are skipped entirely — useful on large projects where most segments are locked-approved and the proofreader should only see what's still editable. A user with a 14-file, 7308-segment project noted that locked segments came through without any indicator, leading them to edit segments that couldn't be saved back to Trados.
+  - **Re-import now actually refuses to overwrite locked segments.** `SnapshotLockedSegments()` was a stub returning an empty set since v4.20.7 — meaning re-import would happily write back to locked segments. Now it walks the active document and reads `pair.Properties.IsLocked` for real, populates the lookup, and `BilingualImporter`'s existing `isWriteable` predicate uses it to skip locked segments (they show up under "other issues" in the re-import summary).
+- **Locked flag is persisted in the sidecar manifest** as `is_locked: true/false` per segment, so older manifests (without the field) parse cleanly as `false`.
+
+
 ## [4.20.17] – 2026-05-25
 
 ### Fixed

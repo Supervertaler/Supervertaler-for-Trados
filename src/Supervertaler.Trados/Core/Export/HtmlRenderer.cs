@@ -109,8 +109,8 @@ namespace Supervertaler.Trados.Core.Export
                     AppendHtmlTarget(sb, seg, opts);
                 }
 
-                if (!string.IsNullOrEmpty(seg.Status))
-                    sb.Append("  <div class=\"status\">").Append(HtmlEscape(seg.Status)).Append("</div>\n");
+                if (!string.IsNullOrEmpty(seg.DisplayStatus))
+                    sb.Append("  <div class=\"status\">").Append(HtmlEscape(seg.DisplayStatus)).Append("</div>\n");
 
                 sb.Append("</div>\n");
             }
@@ -142,7 +142,7 @@ namespace Supervertaler.Trados.Core.Export
                 sb.Append("<td class=\"num\">").Append(seg.Number).Append("</td>");
                 sb.Append("<td>").Append(HtmlEscape(seg.SourceText)).Append("</td>");
                 sb.Append("<td>").Append(HtmlEscape(seg.TargetText ?? "")).Append("</td>");
-                sb.Append("<td>").Append(HtmlEscape(seg.Status ?? "")).Append("</td>");
+                sb.Append("<td>").Append(HtmlEscape(seg.DisplayStatus)).Append("</td>");
                 sb.Append("<td>").Append(HtmlEscape(seg.Notes ?? "")).Append("</td>");
                 sb.Append("</tr>\n");
             }

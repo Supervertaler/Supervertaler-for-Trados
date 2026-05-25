@@ -80,8 +80,8 @@ namespace Supervertaler.Trados.Core.Export
                     AppendTargetBlock(sb, seg, opts);
                 }
 
-                if (!string.IsNullOrEmpty(seg.Status))
-                    sb.Append("**Status:** ").Append(seg.Status).Append("\n\n");
+                if (!string.IsNullOrEmpty(seg.DisplayStatus))
+                    sb.Append("**Status:** ").Append(seg.DisplayStatus).Append("\n\n");
 
                 sb.Append("---\n\n");
             }
@@ -110,7 +110,7 @@ namespace Supervertaler.Trados.Core.Export
                 sb.Append("| ").Append(seg.Number).Append(" <!-- sv-seg:").Append(seg.Number).Append(" -->")
                   .Append(" | ").Append(EscapeForTableCell(seg.SourceText))
                   .Append(" | ").Append(EscapeForTableCell(seg.TargetText ?? ""))
-                  .Append(" | ").Append(EscapeForTableCell(seg.Status ?? ""))
+                  .Append(" | ").Append(EscapeForTableCell(seg.DisplayStatus))
                   .Append(" | ").Append(EscapeForTableCell(seg.Notes ?? ""))
                   .Append(" |\n");
             }

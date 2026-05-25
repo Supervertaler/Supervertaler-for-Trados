@@ -78,5 +78,31 @@ namespace Supervertaler.Trados.Core.Export
         /// "File" column when the bilingual export is rendered in multi-
         /// file mode.</summary>
         public string SourceFileName { get; set; }
+
+        /// <summary>True when the segment is locked in Trados (read-only
+        /// in the editor view). Distinct from confirmation level — a
+        /// segment can be both "ApprovedTranslation" and locked, or
+        /// "Draft" and locked. Included in v4.20.18 so the export can
+        /// (a) mark locked rows visually with a 🔒 prefix in the Status
+        /// column, and (b) be filtered out entirely via the
+        /// IncludeLocked option on ExportOptions. The manifest also
+        /// records it so re-import can refuse to overwrite locked
+        /// segments by default.</summary>
+        public bool IsLocked { get; set; }
+
+        /// <summary>Display-side status string used by every renderer.
+        /// Prefixes <see cref="Status"/> with "🔒 " when
+        /// <see cref="IsLocked"/> is true so the proofreader sees at a
+        /// glance which rows won't round-trip back to Trados. Keeps the
+        /// underlying raw <see cref="Status"/> field clean (e.g. plain
+        /// "ApprovedTranslation") for the manifest.</summary>
+        public string DisplayStatus
+        {
+            get
+            {
+                var s = Status ?? "";
+                return IsLocked ? ("🔒 " + s).TrimEnd() : s;
+            }
+        }
     }
 }

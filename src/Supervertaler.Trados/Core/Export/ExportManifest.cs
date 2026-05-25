@@ -60,7 +60,8 @@ namespace Supervertaler.Trados.Core.Export
                 sb.Append("\"source_hash\": ").Append(JsonString(s.SourceHash)).Append(", ");
                 sb.Append("\"status\": ").Append(JsonString(s.Status)).Append(", ");
                 sb.Append("\"source_file_id\": ").Append(JsonString(s.SourceFileId)).Append(", ");
-                sb.Append("\"source_file_name\": ").Append(JsonString(s.SourceFileName));
+                sb.Append("\"source_file_name\": ").Append(JsonString(s.SourceFileName)).Append(", ");
+                sb.Append("\"is_locked\": ").Append(s.IsLocked ? "true" : "false");
                 sb.Append("}");
                 if (i < Segments.Count - 1) sb.Append(',');
                 sb.Append('\n');
@@ -201,6 +202,12 @@ namespace Supervertaler.Trados.Core.Export
                     case "status": seg.Status = StripQuotes(value); break;
                     case "source_file_id": seg.SourceFileId = StripQuotes(value); break;
                     case "source_file_name": seg.SourceFileName = StripQuotes(value); break;
+                    case "is_locked":
+                        {
+                            var v = StripQuotes(value).Trim().ToLowerInvariant();
+                            seg.IsLocked = (v == "true" || v == "1");
+                        }
+                        break;
                 }
             }
             return seg;
@@ -331,5 +338,12 @@ namespace Supervertaler.Trados.Core.Export
         /// the segment came from. Mirrors SourceFileId for UX —
         /// surfaced in re-import warnings and log lines.</summary>
         public string SourceFileName { get; set; } = "";
+
+        /// <summary>v4.20.18: snapshot of the segment's IsLocked flag at
+        /// export time. Mostly informational — the re-import path queries
+        /// the LIVE Trados document for the current locked state via
+        /// SnapshotLockedSegments(), since the lock may have been
+        /// toggled between export and re-import.</summary>
+        public bool IsLocked { get; set; }
     }
 }

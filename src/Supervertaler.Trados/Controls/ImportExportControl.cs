@@ -31,6 +31,7 @@ namespace Supervertaler.Trados.Controls
         private ComboBox _cmbFormat;
         private ComboBox _cmbLayout;
         private CheckBox _chkStrictTagCheck;
+        private CheckBox _chkIncludeLocked;
         private Label _lblSegmentCount;
 
         // Multi-file controls (shown only when active document contains
@@ -239,6 +240,35 @@ namespace Supervertaler.Trados.Controls
                 "warning in the log. Only turn this off if you're intentionally " +
                 "stripping tags and you know the consequences.");
             Controls.Add(_chkStrictTagCheck);
+            y += UiScale.Pixels(24);
+
+            // v4.20.18: include locked segments toggle. Default ON
+            // matches pre-v4.20.18 behaviour (everything exported). When
+            // OFF, locked segments are skipped entirely — useful on
+            // large projects where most of the work is locked-approved
+            // and the proofreader should only see what's still editable.
+            // When ON, locked rows get a 🔒 prefix in the Status column
+            // so the proofreader can see at a glance which ones won't
+            // round-trip back to Trados.
+            _chkIncludeLocked = new CheckBox
+            {
+                Text = "Include locked segments (🔒 marked in Status column)",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor,
+                Checked = true
+            };
+            var lockTip = new ToolTip { AutoPopDelay = 14000, InitialDelay = 300 };
+            lockTip.SetToolTip(_chkIncludeLocked,
+                "When ON (default): locked segments are exported alongside everything " +
+                "else and visually marked with 🔒 in the Status column. Re-import " +
+                "will refuse to overwrite them (they show up as the 'locked' counter " +
+                "in the re-import summary's 'other issues' line).\r\n\r\n" +
+                "When OFF: locked segments are skipped entirely. Useful on large " +
+                "projects where most segments are locked-approved and the proofreader " +
+                "should only see what's actually still editable.");
+            Controls.Add(_chkIncludeLocked);
             y += UiScale.Pixels(24);
 
             // ─── Multi-file controls (hidden when single-file) ───────
@@ -552,6 +582,12 @@ namespace Supervertaler.Trados.Controls
         /// a TagMismatch diff classification (strict ON = skip mismatched
         /// segments; strict OFF = apply verbatim with a warning).</summary>
         public bool StrictTagIntegrityCheck => _chkStrictTagCheck?.Checked ?? true;
+
+        /// <summary>Whether locked segments are included in the export.
+        /// When false, the collector skips them entirely; when true,
+        /// they're exported and visually marked with 🔒 in the Status
+        /// column. Default true.</summary>
+        public bool IncludeLockedSegments => _chkIncludeLocked?.Checked ?? true;
 
         /// <summary>Multi-file output mode. SeparatePerFile = produce one
         /// DOCX per selected file; CombineOne = one DOCX containing all
