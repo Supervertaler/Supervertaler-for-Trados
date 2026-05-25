@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.22] – 2026-05-25
+
+### Fixed
+
+- **Panel rename to "Supervertaler" finally takes effect in Trados.** v4.20.21 changed the `[ViewPart]` C# attribute's `Name` field, but Trados ignores that — it reads the panel title from `<property name="Name">…</property>` inside `Supervertaler.Trados.plugin.xml`. That file is generated from another source (Trados' build tooling) and the auto-rename didn't propagate. Patched the value in-place. The Trados panel header + dockable-tab strip now show **Supervertaler**.
+
+
 ## [4.20.21] – 2026-05-25
 
 ### Changed
