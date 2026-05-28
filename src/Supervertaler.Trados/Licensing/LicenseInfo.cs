@@ -271,9 +271,25 @@ namespace Supervertaler.Trados.Licensing
                     File.WriteAllText(LicenseFile, json, Encoding.UTF8);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently ignore save failures
+                // A silently-failing Save() is dangerous: if license.json never
+                // persists, every launch re-seeds a fresh trial, so the trial
+                // never counts down and the user gets unlimited free use without
+                // anyone noticing (observed in the field on an older build). Log
+                // it loudly. BridgeLog mirrors to %TEMP%, which stays writable
+                // even when the data folder itself is the thing that's broken.
+                try
+                {
+                    Core.BridgeLog.Write(
+                        "LICENCE WARNING: failed to save license.json to '" + LicenseFile +
+                        "'. The trial start may not persist across launches. " +
+                        ex.GetType().Name + ": " + ex.Message);
+                }
+                catch
+                {
+                    // Logging must never throw out of Save().
+                }
             }
         }
 

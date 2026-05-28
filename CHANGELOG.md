@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.36] – 2026-05-28
+
+### Changed (Licence)
+
+- Licence-file save failures are now logged instead of being silently ignored, so a trial that can't persist its start date no longer goes unnoticed.
+
+
 ## [4.20.35] – 2026-05-28
 
 ### Changed (Licence)
