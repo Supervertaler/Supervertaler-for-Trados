@@ -18,11 +18,13 @@ namespace Supervertaler.Trados.Controls
     {
         // ─── Search bar row 1 ────────────────────────────────────
         private Panel _searchPanel;
-        private TextBox _txtSearch;
+        private Label _lblSearchSource;
+        private TextBox _txtSearch;          // source-term box
+        private Label _lblSearchTarget;
+        private TextBox _txtSearchTarget;    // target-term box
         private Button _btnSearch;
         private Button _btnStop;
         private ComboBox _cboMode;
-        private ComboBox _cboScope;
         private CheckBox _chkCaseSensitive;
         private CheckBox _chkRegex;
         private CheckBox _chkWholeWord;
@@ -57,7 +59,8 @@ namespace Supervertaler.Trados.Controls
         private HashSet<string> _excludedTms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // ─── Highlight state ─────────────────────────────────────
-        private string _highlightQuery;
+        private string _highlightSource;
+        private string _highlightTarget;
         private bool _highlightCaseSensitive;
 
         // ─── Styling ─────────────────────────────────────────────
@@ -124,11 +127,20 @@ namespace Supervertaler.Trados.Controls
                 Padding = new Padding(4, 4, 4, 2)
             };
 
+            _lblSearchSource = new Label
+            {
+                Text = "Src:",
+                Font = smallFont,
+                ForeColor = SubtleColor,
+                AutoSize = true
+            };
+            _searchPanel.Controls.Add(_lblSearchSource);
+
             _txtSearch = new TextBox
             {
                 Font = bodyFont,
                 Location = new Point(4, 8),
-                Width = 200  // will be auto-sized on resize
+                Width = 150  // auto-sized on resize
             };
             _txtSearch.KeyDown += (s, e) =>
             {
@@ -139,6 +151,31 @@ namespace Supervertaler.Trados.Controls
                 }
             };
             _searchPanel.Controls.Add(_txtSearch);
+
+            _lblSearchTarget = new Label
+            {
+                Text = "Tgt:",
+                Font = smallFont,
+                ForeColor = SubtleColor,
+                AutoSize = true
+            };
+            _searchPanel.Controls.Add(_lblSearchTarget);
+
+            _txtSearchTarget = new TextBox
+            {
+                Font = bodyFont,
+                Location = new Point(160, 8),
+                Width = 150  // auto-sized on resize
+            };
+            _txtSearchTarget.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    FireSearch();
+                }
+            };
+            _searchPanel.Controls.Add(_txtSearchTarget);
 
             _btnSearch = CreateButton("Search", bodyFont, 72, 26);
             _btnSearch.Click += (s, e) => FireSearch();
@@ -171,16 +208,6 @@ namespace Supervertaler.Trados.Controls
                 "Where to search: the project's SDLXLIFF files, the files plus the " +
                 "project's translation memories, or the TMs only (concordance)");
             _searchPanel.Controls.Add(_cboMode);
-
-            _cboScope = new ComboBox
-            {
-                Font = bodyFont,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Width = 145
-            };
-            _cboScope.Items.AddRange(new object[] { "Source & Target", "Source only", "Target only" });
-            _cboScope.SelectedIndex = 0;
-            _searchPanel.Controls.Add(_cboScope);
 
             _chkCaseSensitive = new CheckBox
             {
@@ -314,10 +341,10 @@ namespace Supervertaler.Trados.Controls
             // ─── Tooltips for the search & replace bars ──────────────
             // (the Aa / .* / Word / Files controls set their own tooltips above)
             var tt = new ToolTip { AutoPopDelay = 10000 };
-            tt.SetToolTip(_txtSearch, "Text to search for across the project's SDLXLIFF files. Press Enter to search.");
-            tt.SetToolTip(_btnSearch, "Search the selected files for the query");
+            tt.SetToolTip(_txtSearch, "Source-text search term. Leave blank to match any source. Press Enter to search.");
+            tt.SetToolTip(_txtSearchTarget, "Target-text search term. Leave blank to match any target. Fill both boxes to find segments whose source AND target match. Press Enter to search.");
+            tt.SetToolTip(_btnSearch, "Search the selected files/TMs");
             tt.SetToolTip(_btnStop, "Stop the current search");
-            tt.SetToolTip(_cboScope, "Search source text, target text, or both");
             tt.SetToolTip(_chkShowReplace, "Show the find & replace bar");
             tt.SetToolTip(_btnHelp, "Open SuperSearch help");
             tt.SetToolTip(_txtReplace, "Replacement text — applied to target text only");
@@ -569,32 +596,43 @@ namespace Supervertaler.Trados.Controls
             int w = _searchPanel.ClientSize.Width;
             int h = _searchPanel.ClientSize.Height;
             int btnY = (h - _btnSearch.Height) / 2;         // vertically center buttons
-            int txtY = (h - _txtSearch.Height) / 2;          // vertically center text box
+            int txtY = (h - _txtSearch.Height) / 2;          // vertically center text boxes
             int chkY = (h - _chkCaseSensitive.Height) / 2;   // vertically center checkboxes
-            int cboY = (h - _cboScope.Height) / 2;            // vertically center combo
+            int cboY = (h - _cboMode.Height) / 2;            // vertically center combo
+            int lblY = (h - _lblSearchSource.Height) / 2;    // vertically center labels
 
             // Right-anchored controls first (right to left): ? , TMs, Files
             _btnHelp.Location = new Point(w - _btnHelp.Width - 4, btnY);
             _btnTms.Location = new Point(_btnHelp.Left - _btnTms.Width - 4, btnY);
             _btnFiles.Location = new Point(_btnTms.Left - _btnFiles.Width - 4, btnY);
 
-            // Fixed controls from left after the search box
+            // Fixed controls from the right after the search boxes
             int fixedLeft = _btnFiles.Left;
 
-            // Position from right: chkShowReplace, chkWholeWord, chkRegex, chkCaseSensitive, cboScope, cboMode, btnStop, btnSearch
+            // Position from right: chkShowReplace, chkWholeWord, chkRegex, chkCaseSensitive, cboMode, btnStop, btnSearch
             _chkShowReplace.Location = new Point(fixedLeft - _chkShowReplace.Width - 4, chkY);
             _chkWholeWord.Location = new Point(_chkShowReplace.Left - _chkWholeWord.Width - 2, chkY);
             _chkRegex.Location = new Point(_chkWholeWord.Left - _chkRegex.Width - 2, chkY);
             _chkCaseSensitive.Location = new Point(_chkRegex.Left - _chkCaseSensitive.Width - 2, chkY);
-            _cboScope.Location = new Point(_chkCaseSensitive.Left - _cboScope.Width - 6, cboY);
-            _cboMode.Location = new Point(_cboScope.Left - _cboMode.Width - 4, cboY);
+            _cboMode.Location = new Point(_chkCaseSensitive.Left - _cboMode.Width - 6, cboY);
             _btnStop.Location = new Point(_cboMode.Left - _btnStop.Width - 4, btnY);
             _btnSearch.Location = new Point(_btnStop.Left - _btnSearch.Width - 2, btnY);
 
-            // Search text box fills available space
-            _txtSearch.Location = new Point(4, txtY);
-            int searchRight = _btnSearch.Left - 4;
-            _txtSearch.Width = Math.Max(80, searchRight - _txtSearch.Left);
+            // Two text boxes (Src: | Tgt:) split the remaining space on the left.
+            int areaLeft = 4;
+            int areaRight = _btnSearch.Left - 6;
+            int available = Math.Max(160, areaRight - areaLeft);
+            int boxesWidth = available
+                - (_lblSearchSource.Width + 3) - (_lblSearchTarget.Width + 3) - 8;
+            int eachBox = Math.Max(60, boxesWidth / 2);
+
+            _lblSearchSource.Location = new Point(areaLeft, lblY);
+            _txtSearch.Location = new Point(_lblSearchSource.Right + 3, txtY);
+            _txtSearch.Width = eachBox;
+
+            _lblSearchTarget.Location = new Point(_txtSearch.Right + 8, lblY);
+            _txtSearchTarget.Location = new Point(_lblSearchTarget.Right + 3, txtY);
+            _txtSearchTarget.Width = eachBox;
         }
 
         private void LayoutReplaceBar()
@@ -894,17 +932,19 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public void SetResults(List<SearchResult> results)
         {
-            SetResults(results, _txtSearch.Text, _chkCaseSensitive.Checked);
+            // Highlight each box's term in its own column/preview.
+            _highlightSource = _txtSearch.Text;
+            _highlightTarget = _txtSearchTarget.Text;
+            _highlightCaseSensitive = _chkCaseSensitive.Checked;
+            PopulateGrid(results);
         }
 
         /// <summary>
-        /// Populates the results grid with search results and stores the query for highlighting.
+        /// Populates the results grid with search results (highlight terms are
+        /// set by the caller via the source/target box state).
         /// </summary>
-        public void SetResults(List<SearchResult> results, string highlightQuery, bool caseSensitive)
+        private void PopulateGrid(List<SearchResult> results)
         {
-            _highlightQuery = highlightQuery;
-            _highlightCaseSensitive = caseSensitive;
-
             _grid.SuspendLayout();
             _grid.Rows.Clear();
 
@@ -1045,7 +1085,11 @@ namespace Supervertaler.Trados.Controls
             // Only highlight Source and Target columns
             if (e.RowIndex < 0) return;
             if (e.ColumnIndex != 2 && e.ColumnIndex != 3) return; // colSource=2, colTarget=3
-            if (string.IsNullOrEmpty(_highlightQuery)) return;
+
+            // Source column highlights the Source-box term; Target column the
+            // Target-box term.
+            var query = e.ColumnIndex == 2 ? _highlightSource : _highlightTarget;
+            if (string.IsNullOrEmpty(query)) return;
 
             var cellText = e.Value?.ToString();
             if (string.IsNullOrEmpty(cellText)) return;
@@ -1055,7 +1099,7 @@ namespace Supervertaler.Trados.Controls
                 : StringComparison.OrdinalIgnoreCase;
 
             // Check if the query appears in this cell
-            int firstIdx = cellText.IndexOf(_highlightQuery, comparison);
+            int firstIdx = cellText.IndexOf(query, comparison);
             if (firstIdx < 0) return;
 
             // Let the grid paint the background and borders
@@ -1089,12 +1133,12 @@ namespace Supervertaler.Trados.Controls
                 int pos = 0;
                 while (pos < cellText.Length)
                 {
-                    int idx = cellText.IndexOf(_highlightQuery, pos, comparison);
+                    int idx = cellText.IndexOf(query, pos, comparison);
                     if (idx < 0) break;
 
                     // Measure text-before and text-through-match to get pixel span
                     var before = idx > 0 ? cellText.Substring(0, idx) : "";
-                    var through = cellText.Substring(0, idx + _highlightQuery.Length);
+                    var through = cellText.Substring(0, idx + query.Length);
 
                     int xBefore = idx > 0
                         ? TextRenderer.MeasureText(e.Graphics, before, font,
@@ -1112,7 +1156,7 @@ namespace Supervertaler.Trados.Controls
                     if (highlightRect.Width > 0)
                         e.Graphics.FillRectangle(highlightBrush, highlightRect);
 
-                    pos = idx + _highlightQuery.Length;
+                    pos = idx + query.Length;
                 }
             }
 
@@ -1136,18 +1180,19 @@ namespace Supervertaler.Trados.Controls
                 return;
             }
 
-            PopulatePreview(_rtbPreviewSource, result.SourceText);
-            PopulatePreview(_rtbPreviewTarget, result.TargetText);
+            PopulatePreview(_rtbPreviewSource, result.SourceText, _highlightSource);
+            PopulatePreview(_rtbPreviewTarget, result.TargetText, _highlightTarget);
         }
 
         /// <summary>
-        /// Sets the preview text and highlights the search term in yellow.
+        /// Sets the preview text and highlights the given term in yellow
+        /// (source-box term in the source pane, target-box term in the target pane).
         /// </summary>
-        private void PopulatePreview(RichTextBox rtb, string text)
+        private void PopulatePreview(RichTextBox rtb, string text, string query)
         {
             rtb.Text = text ?? "";
 
-            if (string.IsNullOrEmpty(_highlightQuery) || string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(text))
                 return;
 
             var comparison = _highlightCaseSensitive
@@ -1157,12 +1202,12 @@ namespace Supervertaler.Trados.Controls
             int pos = 0;
             while (pos < text.Length)
             {
-                int idx = text.IndexOf(_highlightQuery, pos, comparison);
+                int idx = text.IndexOf(query, pos, comparison);
                 if (idx < 0) break;
 
-                rtb.Select(idx, _highlightQuery.Length);
+                rtb.Select(idx, query.Length);
                 rtb.SelectionBackColor = Color.FromArgb(255, 235, 120);
-                pos = idx + _highlightQuery.Length;
+                pos = idx + query.Length;
             }
 
             rtb.Select(0, 0);
@@ -1243,20 +1288,14 @@ namespace Supervertaler.Trados.Controls
 
         private void FireSearch()
         {
-            if (string.IsNullOrWhiteSpace(_txtSearch.Text)) return;
-
-            SearchScope scope;
-            switch (_cboScope.SelectedIndex)
-            {
-                case 1: scope = SearchScope.SourceOnly; break;
-                case 2: scope = SearchScope.TargetOnly; break;
-                default: scope = SearchScope.SourceAndTarget; break;
-            }
+            // At least one box must be filled.
+            if (string.IsNullOrWhiteSpace(_txtSearch.Text)
+                && string.IsNullOrWhiteSpace(_txtSearchTarget.Text)) return;
 
             SearchRequested?.Invoke(this, new SearchRequestEventArgs
             {
-                Query = _txtSearch.Text,
-                Scope = scope,
+                SourceQuery = _txtSearch.Text,
+                TargetQuery = _txtSearchTarget.Text,
                 CaseSensitive = _chkCaseSensitive.Checked,
                 UseRegex = _chkRegex.Checked,
                 WholeWord = _chkWholeWord.Checked,
@@ -1269,9 +1308,11 @@ namespace Supervertaler.Trados.Controls
             var result = GetSelectedResult();
             if (result == null) return;
 
+            // Replace operates on the target text, so the find term is the
+            // Target box.
             ReplaceRequested?.Invoke(this, new ReplaceRequestEventArgs
             {
-                SearchText = _txtSearch.Text,
+                SearchText = _txtSearchTarget.Text,
                 ReplaceText = _txtReplace.Text,
                 CaseSensitive = _chkCaseSensitive.Checked,
                 UseRegex = _chkRegex.Checked,
@@ -1284,7 +1325,7 @@ namespace Supervertaler.Trados.Controls
         {
             ReplaceAllRequested?.Invoke(this, new ReplaceRequestEventArgs
             {
-                SearchText = _txtSearch.Text,
+                SearchText = _txtSearchTarget.Text,
                 ReplaceText = _txtReplace.Text,
                 CaseSensitive = _chkCaseSensitive.Checked,
                 UseRegex = _chkRegex.Checked,
@@ -1343,8 +1384,11 @@ namespace Supervertaler.Trados.Controls
 
     public class SearchRequestEventArgs : EventArgs
     {
-        public string Query { get; set; }
-        public SearchScope Scope { get; set; }
+        // Dual-box search: either query may be empty. A segment matches when its
+        // source contains SourceQuery (if set) AND its target contains
+        // TargetQuery (if set). At least one is non-empty.
+        public string SourceQuery { get; set; }
+        public string TargetQuery { get; set; }
         public bool CaseSensitive { get; set; }
         public bool UseRegex { get; set; }
         public bool WholeWord { get; set; }

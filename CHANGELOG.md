@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.38] – 2026-05-29
+
+### Changed (SuperSearch: separate Source and Target boxes)
+
+- **SuperSearch now has separate Source and Target search boxes** instead of one box plus a Source/Target/Both scope dropdown. Fill the **Src** box to search source text, the **Tgt** box to search target text, or **both** to find segments whose source matches one term *and* whose target matches another (memoQ-style concordance). Each box's term is highlighted in its own column and preview pane. Find & Replace continues to operate on the target text, using the Target box. (Progressive/live filtering is a follow-up.)
+
+
 ## [4.20.37] – 2026-05-29
 
 ### Changed (Clipboard Mode)

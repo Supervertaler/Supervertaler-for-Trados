@@ -260,26 +260,46 @@ namespace Supervertaler.Trados.Core
 
                     SafeInvoke(() => _control.SetStatus("Searching..."));
 
-                    var merged = new List<SearchResult>();
+                    bool hasSource = !string.IsNullOrEmpty(e.SourceQuery);
+                    bool hasTarget = !string.IsNullOrEmpty(e.TargetQuery);
 
-                    if (files.Count > 0)
+                    // Run a single query against the selected files + TMs with a
+                    // given scope (source-only or target-only).
+                    Func<string, SearchScope, string, List<SearchResult>> runOne = (q, scope, label) =>
                     {
-                        merged.AddRange(XliffSearcher.Search(
-                            files, e.Query, e.Scope,
-                            e.CaseSensitive, e.UseRegex, e.WholeWord,
-                            (done, total) => SafeInvoke(() =>
-                                _control.SetStatus($"Searching files... ({done}/{total})")),
-                            ct));
+                        var m = new List<SearchResult>();
+                        if (files.Count > 0)
+                            m.AddRange(XliffSearcher.Search(
+                                files, q, scope, e.CaseSensitive, e.UseRegex, e.WholeWord,
+                                (done, total) => SafeInvoke(() =>
+                                    _control.SetStatus($"Searching files ({label})... ({done}/{total})")),
+                                ct));
+                        if (tms.Count > 0)
+                            m.AddRange(TmSearcher.Search(
+                                tms, q, scope, e.CaseSensitive, e.UseRegex, e.WholeWord,
+                                (done, total) => SafeInvoke(() =>
+                                    _control.SetStatus($"Searching TMs ({label})... ({done}/{total})")),
+                                ct));
+                        return m;
+                    };
+
+                    List<SearchResult> merged;
+                    if (hasSource && hasTarget)
+                    {
+                        // Both boxes filled: a segment must match the source term
+                        // in its source AND the target term in its target.
+                        var srcHits = runOne(e.SourceQuery, SearchScope.SourceOnly, "source");
+                        var tgtKeys = new HashSet<string>(
+                            runOne(e.TargetQuery, SearchScope.TargetOnly, "target").Select(ResultKey));
+                        merged = srcHits.Where(r => tgtKeys.Contains(ResultKey(r))).ToList();
                     }
-
-                    if (tms.Count > 0)
+                    else if (hasSource)
                     {
-                        merged.AddRange(TmSearcher.Search(
-                            tms, e.Query, e.Scope,
-                            e.CaseSensitive, e.UseRegex, e.WholeWord,
-                            (done, total) => SafeInvoke(() =>
-                                _control.SetStatus($"Searching TMs... ({done}/{total})")),
-                            ct));
+                        merged = runOne(e.SourceQuery, SearchScope.SourceOnly, "source");
+                    }
+                    else
+                    {
+                        merged = runOne(e.TargetQuery, SearchScope.TargetOnly, "target");
                     }
 
                     return merged;
@@ -322,6 +342,19 @@ namespace Supervertaler.Trados.Core
                     _control.SetSearching(false);
                 });
             }
+        }
+
+        /// <summary>
+        /// Identity used to intersect the source-term and target-term result
+        /// sets when both boxes are filled. XLIFF segments are distinguished by
+        /// file + unit + segment; TM entries (no stable segment id) fall back to
+        /// their source/target text.
+        /// </summary>
+        private static string ResultKey(SearchResult r)
+        {
+            return string.Join("",
+                r.FilePath ?? "", r.ParagraphUnitId ?? "", r.SegmentId ?? "",
+                r.SourceText ?? "", r.TargetText ?? "");
         }
 
         private static string DescribeResults(List<SearchResult> results, int fileCount, int tmCount, long ms)
