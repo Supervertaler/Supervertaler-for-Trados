@@ -76,7 +76,7 @@ namespace Supervertaler.Trados.Core
             },
             new LlmModelInfo
             {
-                Id = "claude-opus-4-7", DisplayName = "Claude Opus 4.7",
+                Id = "claude-opus-4-8", DisplayName = "Claude Opus 4.8",
                 Description = "Highest quality – Anthropic's most capable model, 1M context",
                 Provider = LlmProvider.Claude
             }
@@ -196,7 +196,7 @@ namespace Supervertaler.Trados.Core
             },
             new LlmModelInfo
             {
-                Id = "anthropic/claude-opus-4.7", DisplayName = "Claude Opus 4.7",
+                Id = "anthropic/claude-opus-4.8", DisplayName = "Claude Opus 4.8",
                 Description = "Highest quality – Anthropic's most capable model, 1M context",
                 Provider = LlmProvider.OpenRouter
             },

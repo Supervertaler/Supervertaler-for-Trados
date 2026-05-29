@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.40] – 2026-05-29
+
+### Changed (Claude Opus 4.8)
+
+- **Upgraded the curated Claude flagship from Opus 4.7 to Opus 4.8** (`claude-opus-4-8`), Anthropic's new most-capable model (released 28 May 2026, 1M context, same $5 / $25 per 1M token pricing as 4.7). Updated in both the Claude and OpenRouter (`anthropic/claude-opus-4.8`) lists, and in the cost estimator. The Claude list stays a clean three: **Sonnet 4.6** (recommended), **Haiku 4.5** (fast/cheap), **Opus 4.8** (highest quality). Anyone still pointing at Opus 4.7 keeps working via the Model ID field.
+
+
 ## [4.20.39] – 2026-05-29
 
 ### Added (SuperSearch: live filter)
