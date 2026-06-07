@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.43] – 2026-06-07
+
+### Fixed (Shared TM bridge — language names)
+
+- **Bridged TMs no longer reverse matches when a row's languages are stored as names rather than codes.** v4.20.42 orients each returned row by its own `source_lang`/`target_lang`, but that comparison only understood ISO codes (`en`, `nl-BE`). A Supervertaler TM can hold rows tagged with human-readable language *names* ("English"/"Dutch") – e.g. from segments saved by a project whose language pair was held as a display name. Those rows matched neither side of the per-row check, so orientation fell back to the TM-level direction and swapped a row that was already correctly oriented, inserting the source language into the target. `CulturesCompatible` now normalises through `LanguageUtils` (the same name/code comparator used for termbase direction), so "English" ≡ "en" ≡ "en-US" and "Dutch" ≡ "nl" ≡ "nl-BE". Studio again sees correct project-source → project-target hits. (Workbench v1.10.253 additionally normalises languages to codes on write, so new rows avoid the mixed tagging in the first place.)
+
+
 ## [4.20.42] – 2026-06-02
 
 ### Fixed (Shared TM bridge — per-row direction)

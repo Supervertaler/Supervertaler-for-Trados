@@ -285,9 +285,29 @@ namespace Supervertaler.Trados.TranslationProviders
         internal static bool CulturesCompatible(string a, string b)
         {
             if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+
+            // Fast path: BCP-47 base-code equality (en ≡ en-US, nl ≡ nl-BE).
             var primaryA = PrimaryLangTag(a);
             var primaryB = PrimaryLangTag(b);
-            return string.Equals(primaryA, primaryB, StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(primaryA, primaryB, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Robust path: a TM row's languages may be stored as human-readable
+            // names ("English", "Dutch", "Dutch (Netherlands)") rather than ISO
+            // codes – TMX imports in particular carry full names. Those share no
+            // primary sub-tag with "en"/"nl", so without this the per-row
+            // orientation in SupervertalerTmLanguageDirection.BuildTranslationUnit
+            // can't recognise them, falls back to the TM-level reverse flag, and
+            // inserts the wrong language (the source-target reversal reported for
+            // bridged TMs that mix code and name tags). Normalise both sides
+            // through LanguageUtils (codes -> English display names via
+            // CultureInfo; names pass through) and compare with the same prefix
+            // rule LanguageUtils already uses for termbase direction.
+            var na = LanguageUtils.ShortenLanguageName(a);
+            var nb = LanguageUtils.ShortenLanguageName(b);
+            if (string.IsNullOrEmpty(na) || string.IsNullOrEmpty(nb)) return false;
+            return na.StartsWith(nb, StringComparison.OrdinalIgnoreCase)
+                || nb.StartsWith(na, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
