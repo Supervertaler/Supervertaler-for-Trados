@@ -725,6 +725,13 @@ namespace Supervertaler.Trados.Core
         private static bool MatchesWholeWord(string termUpper, string textUpper)
         {
             if (string.IsNullOrEmpty(termUpper)) return false;
+            // Ignore single-character candidates (e.g. chemical symbols like "S", "C", "N",
+            // or stray one-letter codes). They whole-word-match incidental lone letters in
+            // the document and inject irrelevant terms – a "sulfur" entry carrying the
+            // abbreviation "S" would otherwise match any standalone "S". Dropping
+            // one-character candidates costs nothing (they are never useful glossary
+            // entries); two-character abbreviations (UI, AI, ID, API…) are still matched.
+            if (termUpper.Length < 2) return false;
             try
             {
                 // \b matches between \w and \W. For multi-word terms the spaces inside

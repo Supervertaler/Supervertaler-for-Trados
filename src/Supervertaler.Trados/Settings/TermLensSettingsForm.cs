@@ -555,6 +555,15 @@ namespace Supervertaler.Trados.Settings
                 FillWeight = 1,
                 ToolTipText = "Case-sensitive matching for this termbase."
             };
+            var colAi = new DataGridViewCheckBoxColumn
+            {
+                Name = "colAi",
+                HeaderText = "AI",
+                Width = 56,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                FillWeight = 1,
+                ToolTipText = "Send this termbase's terms to the AI (Chat, AutoPrompt, batch operations). Click header to select/deselect all."
+            };
             var colName = new DataGridViewTextBoxColumn
             {
                 Name = "colName",
@@ -584,7 +593,7 @@ namespace Supervertaler.Trados.Settings
             };
             _dgvTermbases.Columns.AddRange(new DataGridViewColumn[]
             {
-                colRead, colWrite, colProject, colCS, colName, colTermCount, colLanguages
+                colRead, colWrite, colProject, colCS, colAi, colName, colTermCount, colLanguages
             });
 
             // Enforce radio-button behaviour on the Project column (only one can be project)
@@ -1037,7 +1046,7 @@ namespace Supervertaler.Trados.Settings
         private void OnColumnHeaderMouseClick(object sender, DataGridViewCellMouseEventArgs e)
         {
             var col = _dgvTermbases.Columns[e.ColumnIndex];
-            if (col.Name != "colRead" && col.Name != "colWrite" && col.Name != "colProject")
+            if (col.Name != "colRead" && col.Name != "colWrite" && col.Name != "colProject" && col.Name != "colAi")
                 return;
 
             if (_dgvTermbases.Rows.Count == 0) return;
@@ -1100,7 +1109,7 @@ namespace Supervertaler.Trados.Settings
 
             // Don't open editor when double-clicking checkbox columns
             var colName = _dgvTermbases.Columns[e.ColumnIndex].Name;
-            if (colName == "colRead" || colName == "colWrite" || colName == "colProject" || colName == "colCS")
+            if (colName == "colRead" || colName == "colWrite" || colName == "colProject" || colName == "colCS" || colName == "colAi")
                 return;
 
             OpenTermbaseEditor(e.RowIndex);
@@ -1209,8 +1218,6 @@ namespace Supervertaler.Trados.Settings
 
             // AI settings
             _aiSettingsPanel.PopulateFromSettings(_settings.AiSettings);
-            _aiSettingsPanel.SetAvailableTermbases(GetCombinedTermbaseList(),
-                _settings.AiSettings?.DisabledAiTermbaseIds);
 
             // Prompts – pass per-project active prompt if available
             string projectActivePrompt = null;
@@ -1291,6 +1298,11 @@ namespace Supervertaler.Trados.Settings
             _termbases.Clear();
             _multiTermInfos.Clear();
 
+            // AI inclusion ("AI" column) is stored as an opt-in disable list, shared by
+            // Supervertaler termbases (by Id) and MultiTerm termbases (by SyntheticId).
+            var disabledAi = new HashSet<long>(
+                _settings.AiSettings?.DisabledAiTermbaseIds ?? new List<long>());
+
             // Load Supervertaler termbases from the .db file
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
             {
@@ -1310,11 +1322,13 @@ namespace Supervertaler.Trados.Settings
                                 bool isWrite = writeIds.Contains(tb.Id);
                                 bool isProject = tb.Id == _settings.ProjectTermbaseId;
                                 bool isCaseSensitive = tb.CaseSensitive == 1;
+                                bool isAi = !disabledAi.Contains(tb.Id);
                                 int rowIdx = _dgvTermbases.Rows.Add(
                                     isRead,
                                     isWrite,
                                     isProject,
                                     isCaseSensitive,
+                                    isAi,
                                     tb.Name,
                                     tb.TermCount.ToString("N0"),
                                     $"{LanguageUtils.ShortenLanguageName(tb.SourceLang)} \u2192 {LanguageUtils.ShortenLanguageName(tb.TargetLang)}");
@@ -1341,6 +1355,7 @@ namespace Supervertaler.Trados.Settings
                 foreach (var info in _multiTermInfos)
                 {
                     bool isRead = !disabledMtIds.Contains(info.SyntheticId);
+                    bool isAiMt = !disabledAi.Contains(info.SyntheticId);
                     var langText = !string.IsNullOrEmpty(info.SourceIndexName)
                         && !string.IsNullOrEmpty(info.TargetIndexName)
                         ? $"{info.SourceIndexName} \u2192 {info.TargetIndexName}"
@@ -1351,6 +1366,7 @@ namespace Supervertaler.Trados.Settings
                         false,      // Write (always disabled for MultiTerm)
                         false,      // Project (always disabled for MultiTerm)
                         false,      // CS (always disabled for MultiTerm)
+                        isAiMt,     // AI (MultiTerm CAN be sent to the AI)
                         $"{info.Name} [MultiTerm]",
                         info.TermCount.ToString("N0"),
                         langText);
@@ -1366,13 +1382,6 @@ namespace Supervertaler.Trados.Settings
                 }
             }
 
-            // Keep the AI settings tab's termbase checklist in sync whenever
-            // the termbase list changes (new DB, add/remove termbase, etc.)
-            if (_aiSettingsPanel != null)
-            {
-                _aiSettingsPanel.SetAvailableTermbases(GetCombinedTermbaseList(),
-                    _settings.AiSettings?.DisabledAiTermbaseIds);
-            }
         }
 
         private void OnCreateNewClick(object sender, EventArgs e)
@@ -1742,6 +1751,7 @@ namespace Supervertaler.Trados.Settings
 
             // Iterate by Tag so the mapping survives column sorts
             _settings.DisabledMultiTermIds = new List<long>();
+            var disabledAiIds = new List<long>();
             foreach (DataGridViewRow row in _dgvTermbases.Rows)
             {
                 if (row.Tag is TermbaseInfo tb)
@@ -1760,13 +1770,29 @@ namespace Supervertaler.Trados.Settings
                     if (!readChecked) _settings.DisabledTermbaseIds.Add(tb.Id);
                     if (writeChecked) _settings.WriteTermbaseIds.Add(tb.Id);
                     if (projectChecked) _settings.ProjectTermbaseId = tb.Id;
+
+                    var aiChecked = row.Cells["colAi"].Value as bool? ?? false;
+                    if (!aiChecked) disabledAiIds.Add(tb.Id);
                 }
                 else if (row.Tag is MultiTermTermbaseInfo mtInfo)
                 {
                     var readChecked = row.Cells["colRead"].Value as bool? ?? false;
                     if (!readChecked)
                         _settings.DisabledMultiTermIds.Add(mtInfo.SyntheticId);
+
+                    var aiChecked = row.Cells["colAi"].Value as bool? ?? false;
+                    if (!aiChecked) disabledAiIds.Add(mtInfo.SyntheticId);
                 }
+            }
+
+            // The "AI" column on the Termbases tab is now the single source of truth for
+            // which termbases the AI may see (Chat, AutoPrompt, batch). Persist it as the
+            // opt-in disable list and mark it initialized so the opt-in auto-migration in
+            // TermLensEditorViewPart doesn't reset the user's choices on next startup.
+            if (_settings.AiSettings != null)
+            {
+                _settings.AiSettings.DisabledAiTermbaseIds = disabledAiIds;
+                _settings.AiSettings.AiTermbaseIdsInitialized = true;
             }
 
             // AI settings
@@ -1958,25 +1984,6 @@ namespace Supervertaler.Trados.Settings
             // Show near the title bar help button (top-right area)
             var btnLocation = new Point(ClientSize.Width - 60, 0);
             menu.Show(this, btnLocation);
-        }
-
-        /// <summary>
-        /// Combines Supervertaler termbases and MultiTerm termbases into a single list
-        /// for the AI Settings termbase checklist.
-        /// </summary>
-        private List<TermbaseInfo> GetCombinedTermbaseList()
-        {
-            var combined = new List<TermbaseInfo>(_termbases);
-            foreach (var mt in _multiTermInfos)
-            {
-                combined.Add(new TermbaseInfo
-                {
-                    Id = mt.SyntheticId,
-                    Name = $"{mt.Name} [MultiTerm]",
-                    TermCount = mt.TermCount
-                });
-            }
-            return combined;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

@@ -1186,6 +1186,51 @@ namespace Supervertaler.Trados
                 var totalTermCount = termbaseTerms.Count;
                 termbaseTerms = PromptGenerator.FilterRelevantTerms(termbaseTerms, sourceSegments);
 
+                // Diagnostic log: record exactly which termbase terms TermScan injected into
+                // the prompt, so the injection is auditable after the fact (open the BridgeLog
+                // file in %TEMP%). Logging must never interfere with prompt generation.
+                try
+                {
+                    var injectedTerms = string.Join(", ", termbaseTerms
+                        .Select(t => t.SourceTerm)
+                        .Where(s => !string.IsNullOrWhiteSpace(s)));
+                    var injectedFrom = string.Join(", ", termbaseTerms
+                        .Select(t => t.TermbaseName ?? "Default")
+                        .Distinct());
+                    BridgeLog.Write(
+                        $"[AutoPrompt] TermScan injected {termbaseTerms.Count} of {totalTermCount} " +
+                        $"enabled term(s) from termbase(s): {injectedFrom}. Terms: {injectedTerms}");
+                }
+                catch { /* never break prompt generation on a logging failure */ }
+
+                // AutoPrompt works best with a small, project-focused termbase. Warn based on
+                // the SIZE of the termbase(s) enabled for AI (totalTermCount, before TermScan
+                // filtering) – not on how many terms survive filtering. A large or general-
+                // purpose termbase, even when filtered, injects many incidental whole-word
+                // matches (common words that merely appear in the document) and is the wrong
+                // tool for AutoPrompt. Threshold is deliberately low: a useful AutoPrompt
+                // glossary is typically a few dozen carefully chosen terms, not hundreds.
+                const int LargeTermbaseWarningThreshold = 50;
+                if (totalTermCount > LargeTermbaseWarningThreshold)
+                {
+                    var parent = _control.Value.FindForm();
+                    var warn =
+                        $"The termbase(s) you have enabled for AI contain {totalTermCount:N0} terms.\n\n" +
+                        "AutoPrompt works best with a small, project-focused termbase – typically " +
+                        "a few dozen carefully chosen terms. Large or general-purpose termbases inject " +
+                        "many incidental matches (common words that merely appear in the document), " +
+                        "which crowd the prompt with terms that are not relevant to this project.\n\n" +
+                        "Tip: on Settings → Termbases, untick the “AI” column for large or " +
+                        "general termbases and enable only a compact, project-specific one.\n\n" +
+                        "Generate the prompt anyway?";
+                    var choice = MessageBox.Show(
+                        parent, warn, "Large termbase – AutoPrompt",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2);
+                    if (choice != DialogResult.Yes)
+                        return;
+                }
+
                 // Phase 4: Gather TM reference pairs from translated segments
                 // Respects the "Include TM matches" toggle in AI Settings
                 var includeTm = aiSettings.IncludeTmMatches;

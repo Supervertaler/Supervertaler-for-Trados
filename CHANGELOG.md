@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.20.44] – 2026-06-11
+
+### Added (AI termbase selection + AutoPrompt safeguards)
+
+- **Choose which termbases the AI sees with a new "AI" column on the Termbases tab.** Opting a termbase into AI prompts (Chat, AutoPrompt, batch operations) used to be a separate checklist on the AI Settings tab, which was easy to miss: enabling a termbase for term recognition did not include it in the AI context, and the two controls lived on different tabs. The AI-inclusion toggle is now an "AI" column in the termbase grid, right alongside the existing Read / Write / Project toggles, so it sits where you manage termbases. Click the column header to select or deselect all, and MultiTerm termbases can be toggled here too. The old AI Settings checklist has been retired in favour of a pointer to the new column.
+- **AutoPrompt warns before generating a prompt from a large termbase.** A small, project-focused termbase produces a far better AutoPrompt glossary than a big general one; a large termbase injects many incidental whole-word matches – common words that merely happen to appear in the document. When the termbase(s) enabled for AI hold more than 50 terms, AutoPrompt now shows a dismissible warning recommending a compact, project-specific termbase before it spends a generation.
+- **AutoPrompt records which termbase terms it injected.** Each run now logs the exact list of terms TermScan passed into the prompt – and how many, from which termbases – to the diagnostic log, so the terminology that reaches the AI can be audited after the fact.
+
+### Fixed (AutoPrompt: TermScan false positives)
+
+- **AutoPrompt no longer pulls in irrelevant terms through single-character abbreviations.** TermScan filters a termbase down to the terms that appear in the document, but it also matched a term's abbreviations as whole words with no minimum length, so an entry carrying a one-letter abbreviation (for example "S" for a chemistry term) matched any stray "S" in the text and injected the whole entry into the glossary. The relevance filter now ignores single-character candidates, so this kind of noise no longer reaches the prompt; legitimate two-character abbreviations (UI, API, ID …) are unaffected.
+
+
 ## [4.20.43] – 2026-06-07
 
 ### Fixed (Shared TM bridge — language names)

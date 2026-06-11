@@ -58,9 +58,6 @@ namespace Supervertaler.Trados.Controls
         private Label _lblBatchSize;
         private NumericUpDown _nudBatchSize;
         private Label _lblAiTermbases;
-        private LinkLabel _lnkSelectAll;
-        private LinkLabel _lnkDeselectAll;
-        private CheckedListBox _clbAiTermbases;
 
         // AI Context section – Chat & QuickLauncher only
         private Label _lblChatContextHeader;
@@ -73,7 +70,6 @@ namespace Supervertaler.Trados.Controls
         private ComboBox _cmbQuickLauncherTarget;
 
         private Label _lblInfo;
-        private List<TermbaseInfo> _availableTermbases = new List<TermbaseInfo>();
 
         // Y position right after the Test Connection row (before provider-specific panels)
         private int _providerSectionY;
@@ -643,61 +639,18 @@ namespace Supervertaler.Trados.Controls
                 "higher values reduce cost and improve cross-segment consistency.");
             Controls.Add(_nudBatchSize);
 
+            // Termbase AI inclusion is now chosen on the Termbases tab (the "AI"
+            // column in the termbase grid), so the user controls term recognition
+            // and AI inclusion in one place. This is just a pointer to that.
             _lblAiTermbases = new Label
             {
-                Text = "Termbases included in AI prompts:",
+                Text = "Termbases included in AI prompts are chosen on the Termbases tab – " +
+                       "tick the “AI” column for each termbase the AI should see.",
                 Location = new Point(16, 0), // positioned dynamically
                 AutoSize = true,
                 ForeColor = labelColor
             };
             Controls.Add(_lblAiTermbases);
-
-            var linkFont = new Font("Segoe UI", 7.5f);
-            var linkColor = Color.FromArgb(80, 80, 80);
-
-            _lnkSelectAll = new LinkLabel
-            {
-                Text = "Select all",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                Font = linkFont,
-                LinkColor = linkColor,
-                ActiveLinkColor = Color.FromArgb(0, 102, 204)
-            };
-            _lnkSelectAll.LinkClicked += (s, e) =>
-            {
-                for (int i = 0; i < _clbAiTermbases.Items.Count; i++)
-                    _clbAiTermbases.SetItemChecked(i, true);
-            };
-            Controls.Add(_lnkSelectAll);
-
-            _lnkDeselectAll = new LinkLabel
-            {
-                Text = "Deselect all",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                Font = linkFont,
-                LinkColor = linkColor,
-                ActiveLinkColor = Color.FromArgb(0, 102, 204)
-            };
-            _lnkDeselectAll.LinkClicked += (s, e) =>
-            {
-                for (int i = 0; i < _clbAiTermbases.Items.Count; i++)
-                    _clbAiTermbases.SetItemChecked(i, false);
-            };
-            Controls.Add(_lnkDeselectAll);
-
-            _clbAiTermbases = new CheckedListBox
-            {
-                Location = new Point(16, 0), // positioned dynamically
-                Size = new Size(360, 350),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left,  // no Right – fixed width, horizontal scrollbar handles overflow
-                CheckOnClick = true,
-                BorderStyle = BorderStyle.FixedSingle,
-                IntegralHeight = false,
-                HorizontalScrollbar = true
-            };
-            Controls.Add(_clbAiTermbases);
 
             // === AI Context section – Chat & QuickLauncher only ===
             _lblChatContextHeader = new Label
@@ -902,12 +855,7 @@ namespace Supervertaler.Trados.Controls
             y += 30;
 
             _lblAiTermbases.Location = new Point(16, y);
-            _lnkSelectAll.Location = new Point(_lblAiTermbases.Right + 8, y + 2);
-            _lnkDeselectAll.Location = new Point(_lnkSelectAll.Right + 4, y + 2);
-            y += 20;
-
-            _clbAiTermbases.Location = new Point(16, y);
-            y += _clbAiTermbases.Height + 12;
+            y += 28;
 
             // ── Section 2: AI Context (Chat & QuickLauncher only) ──
             _lblChatContextHeader.Location = new Point(16, y);
@@ -955,11 +903,8 @@ namespace Supervertaler.Trados.Controls
 
         private void LayoutTermbasesList()
         {
-            if (_clbAiTermbases == null) return;
-            // Fit the list to the panel width (minus margins), clamped to a reasonable range
-            // Use ClientSize.Width (not Width) so we don't slide under the AutoScroll bar.
-            var w = Math.Max(200, ClientSize.Width - 32);
-            _clbAiTermbases.Width = w;
+            // Termbase AI inclusion is now chosen on the Termbases tab (the "AI" column);
+            // the in-panel checklist has been retired, so there is nothing to lay out here.
         }
 
         private void LayoutProviderModelRows()
@@ -1054,36 +999,6 @@ namespace Supervertaler.Trados.Controls
                 Math.Min(_nudBatchSize.Maximum, settings.BatchSize > 0 ? settings.BatchSize : 20));
         }
 
-        /// <summary>
-        /// Sets the available termbases for the AI Context section.
-        /// Called by the settings form after loading termbases from the database.
-        /// </summary>
-        public void SetAvailableTermbases(List<TermbaseInfo> termbases, List<long> disabledAiTermbaseIds)
-        {
-            _availableTermbases = termbases ?? new List<TermbaseInfo>();
-            var disabled = new HashSet<long>(disabledAiTermbaseIds ?? new List<long>());
-
-            _clbAiTermbases.Items.Clear();
-            foreach (var tb in _availableTermbases)
-            {
-                var label = $"{tb.Name} ({tb.TermCount:N0} terms)";
-                var isChecked = !disabled.Contains(tb.Id);
-                _clbAiTermbases.Items.Add(label, isChecked);
-            }
-
-            // Compute HorizontalExtent so the scrollbar covers the widest item
-            using (var g = _clbAiTermbases.CreateGraphics())
-            {
-                int maxWidth = 0;
-                foreach (var item in _clbAiTermbases.Items)
-                {
-                    var w = (int)g.MeasureString(item.ToString(), _clbAiTermbases.Font).Width;
-                    if (w > maxWidth) maxWidth = w;
-                }
-                // Add space for the checkbox (~20px) and a small right margin
-                _clbAiTermbases.HorizontalExtent = maxWidth + 24;
-            }
-        }
 
         public void ApplyToSettings(AiSettings settings)
         {
@@ -1160,19 +1075,8 @@ namespace Supervertaler.Trados.Controls
             settings.IncludeSuperMemoryInAutoPrompt = _chkIncludeSuperMemoryAutoPrompt.Checked;
             settings.LogPromptsToReports = _chkLogPrompts.Checked;
             settings.BatchSize = (int)_nudBatchSize.Value;
-
-            // Build disabled AI termbase IDs from unchecked items
-            var disabledIds = new List<long>();
-            for (int i = 0; i < _clbAiTermbases.Items.Count && i < _availableTermbases.Count; i++)
-            {
-                if (!_clbAiTermbases.GetItemChecked(i))
-                    disabledIds.Add(_availableTermbases[i].Id);
-            }
-            settings.DisabledAiTermbaseIds = disabledIds;
-            // Once the user has explicitly made a choice in the dialog, mark the
-            // global list as initialized so the opt-in auto-migration in the
-            // editor view part doesn't reset their selection on next startup.
-            settings.AiTermbaseIdsInitialized = true;
+            // NOTE: DisabledAiTermbaseIds / AiTermbaseIdsInitialized are now owned by the
+            // Termbases tab (the "AI" column in the termbase grid), not this panel.
         }
 
         // ─── Event Handlers ──────────────────────────────────────────
