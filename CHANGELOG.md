@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.45] – 2026-06-12
+
+### Changed (AI pane renamed)
+
+- **The AI pane is called "Supervertaler Assistant" again.** The dockable pane that hosts Chat, Batch Operations, Import/Export and Reports had been shortened to bare "Supervertaler", which collided with the product name (Supervertaler for Trados) and read awkwardly in the documentation ("The Supervertaler supports …"). It is restored to "Supervertaler Assistant" – both the pane/dock-tab caption and the View menu entry – so the pane is clearly distinct from the product and the help docs match. No functional change.
+
+
 ## [4.20.44] – 2026-06-11
 
 ### Added (AI termbase selection + AutoPrompt safeguards)

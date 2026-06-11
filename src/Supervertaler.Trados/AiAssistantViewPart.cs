@@ -28,7 +28,7 @@ namespace Supervertaler.Trados
     /// </summary>
     [ViewPart(
         Id = "AiAssistantViewPart",
-        Name = "Supervertaler",
+        Name = "Supervertaler Assistant",
         Description = "AI-powered translation assistant with chat and batch translate",
         Icon = "TermLensIcon"
     )]
