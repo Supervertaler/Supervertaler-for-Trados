@@ -2,7 +2,7 @@
 
 ## [4.20.48] – 2026-06-12
 
-### Improved (AI · inline tags)
+### Fixed (AI · inline tags)
 
 - **Hardened inline-tag handling against models that mangle tags.** A user reported that Mistral Large recently began emitting empty tag pairs (`<t1></t1>` with the translation left outside) instead of wrapping the translated words. Two defences: (1) the AI translation prompt now explicitly forbids empty pairs and reminds the model of the exact tag form (with a wrong/right example); (2) the tag-placeholder parser is now whitespace- and case-tolerant, so a tag that drifts slightly from the canonical form (`< t1>`, `<T1>`, a stray space) is still recognised and reconstructed — or cleanly stripped — instead of leaking into the target as literal text. Helps every provider, not just Mistral.
 
