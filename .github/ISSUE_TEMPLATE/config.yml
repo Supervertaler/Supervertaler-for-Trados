@@ -1,0 +1,16 @@
+# Route all Supervertaler for Trados engagement to the forum: it's a paid,
+# source-available product, so support and discussion live on our own channel.
+# No issue templates are offered and blank issues are disabled, so the "New
+# issue" page shows only the forum links below. (The maintainer can still file
+# via `gh issue create` if ever needed.)
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Support, bugs & setup help
+    url: https://forum.supervertaler.com/viewforum.php?f=14
+    about: Get help with the Supervertaler for Trados plugin on the Supervertaler Forum – bugs, installation, licensing and how-to.
+  - name: 💡 Feature requests & ideas
+    url: https://forum.supervertaler.com/viewforum.php?f=14
+    about: Suggest features and discuss ideas for the Trados plugin on the Supervertaler Forum.
+  - name: 🛟 RWS App Store listing
+    url: https://appstore.rws.com/plugin/432
+    about: Plugin page and reviews on the RWS App Store.
