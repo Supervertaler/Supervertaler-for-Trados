@@ -36,6 +36,54 @@ namespace Supervertaler.Trados.Core
         private List<string> _multiWordTermsCache;
 
         /// <summary>
+        /// Suffix-tolerant matching for languages where grammatical particles
+        /// attach directly to a noun with no intervening space (Korean,
+        /// Japanese). When true, a single CJK token matches the longest term
+        /// that is a PREFIX of it (값 ↦ 값으로), and a multi-word term matches
+        /// when its final CJK token is a prefix of the segment token
+        /// (제2 전압 값 ↦ 제2 전압 값으로). Off by default; set per source
+        /// language / user setting. Only CJK-script tokens are prefix-matched,
+        /// so Latin words in the same document are never affected.
+        /// </summary>
+        public bool SuffixTolerant { get; set; } = false;
+
+        private static bool IsCjkChar(char ch)
+        {
+            return (ch >= '가' && ch <= '힣')   // Hangul syllables
+                || (ch >= '぀' && ch <= 'ヿ')   // Hiragana + Katakana
+                || (ch >= '㐀' && ch <= '䶿')   // CJK Unified Ideographs Ext A
+                || (ch >= '一' && ch <= '鿿');  // CJK Unified Ideographs
+        }
+
+        private static bool ContainsCjk(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (var ch in s)
+                if (IsCjkChar(ch)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Suffix-tolerant single-token lookup: returns the longest term that is
+        /// a PREFIX of <paramref name="token"/> (the remainder being an attached
+        /// particle, e.g. 값 inside 값으로). Longest prefix wins so the most
+        /// specific term is chosen. Cheap — at most token-length index probes.
+        /// </summary>
+        private (List<TermEntry> entries, HashSet<long> abbrMatchIds) LookupTermPrefix(string token)
+        {
+            var empty = (new List<TermEntry>(), new HashSet<long>());
+            if (_termIndex == null || string.IsNullOrWhiteSpace(token))
+                return empty;
+            var normalised = NormalizeScriptChars(token.Trim());
+            for (int len = normalised.Length - 1; len >= 1; len--)
+            {
+                if (_termIndex.ContainsKey(normalised.Substring(0, len)))
+                    return LookupTerm(normalised.Substring(0, len));
+            }
+            return empty;
+        }
+
+        /// <summary>
         /// Loads the term index for fast in-memory matching.
         /// Call this once when a termbase is loaded or changed.
         /// </summary>
@@ -319,6 +367,15 @@ namespace Supervertaler.Trados.Core
                 if (!covered)
                 {
                     var (entries, abbrIds) = LookupTerm(text);
+                    // Suffix-tolerant fallback: a CJK token with no exact match
+                    // (값으로) matches the longest term that is a prefix of it (값).
+                    if ((entries == null || entries.Count == 0)
+                        && SuffixTolerant && ContainsCjk(text))
+                    {
+                        var pfx = LookupTermPrefix(text);
+                        entries = pfx.entries;
+                        abbrIds = pfx.abbrMatchIds;
+                    }
                     allSpans.Add((start, end, text, entries, abbrIds));
                 }
             }
@@ -373,11 +430,25 @@ namespace Supervertaler.Trados.Core
                     bool startBoundary = idx == 0 || !char.IsLetterOrDigit(lineLower[idx - 1]);
                     bool endBoundary = endIdx >= lineLower.Length || !char.IsLetterOrDigit(lineLower[endIdx]);
 
+                    // Suffix-tolerant: allow the term's final CJK token to be a
+                    // prefix of a longer segment token (제2 전압 값 ↦ 제2 전압 값으로).
+                    // Extend the highlighted span across the attached particle to
+                    // the next whitespace so the displayed token stays intact.
+                    int spanEnd = endIdx;
+                    if (!endBoundary && SuffixTolerant
+                        && IsCjkChar(lineLower[endIdx])
+                        && endIdx > 0 && IsCjkChar(lineLower[endIdx - 1]))
+                    {
+                        while (spanEnd < lineLower.Length && !char.IsWhiteSpace(lineLower[spanEnd]))
+                            spanEnd++;
+                        endBoundary = true;
+                    }
+
                     if (startBoundary && endBoundary)
                     {
                         // Check no overlap with existing matches
                         bool overlaps = false;
-                        for (int p = idx; p < endIdx; p++)
+                        for (int p = idx; p < spanEnd; p++)
                         {
                             if (usedPositions.Contains(p))
                             {
@@ -389,6 +460,8 @@ namespace Supervertaler.Trados.Core
                         if (!overlaps)
                         {
                             var rawEntries = _termIndex[term];
+                            // Term portion only — used for the case-sensitive /
+                            // abbreviation comparison below (not the displayed span).
                             var matchedText = line.Substring(idx, term.Length);
 
                             // Post-filter case-sensitive entries for multi-word matches
@@ -419,9 +492,14 @@ namespace Supervertaler.Trados.Core
 
                             if (filteredEntries.Count > 0)
                             {
-                                matches.Add((idx, endIdx, matchedText, filteredEntries));
+                                // Display span covers any attached particle so no
+                                // text is dropped from the rendered segment.
+                                var spanText = spanEnd == endIdx
+                                    ? matchedText
+                                    : line.Substring(idx, spanEnd - idx);
+                                matches.Add((idx, spanEnd, spanText, filteredEntries));
 
-                                for (int p = idx; p < endIdx; p++)
+                                for (int p = idx; p < spanEnd; p++)
                                     usedPositions.Add(p);
                             }
                         }

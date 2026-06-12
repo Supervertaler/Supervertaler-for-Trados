@@ -84,11 +84,16 @@ namespace Supervertaler.Trados
                     var selection = doc.Selection;
                     if (selection != null)
                     {
+                        // Korean/Japanese: keep the exact selection rather than
+                        // expanding to the whitespace token (which would capture
+                        // an attached particle). F2 still expands explicitly.
+                        bool srcAutoExpand = !settings.ResolveSuffixTolerant(
+                            TermLensEditorViewPart.GetCurrentProjectSourceLanguage());
                         try
                         {
                             var srcSel = selection.Source?.ToString();
                             if (!string.IsNullOrWhiteSpace(srcSel))
-                                sourceText = SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel);
+                                sourceText = SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel, srcAutoExpand);
                         }
                         catch { /* Selection may not be available */ }
 

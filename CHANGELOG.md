@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.47] – 2026-06-12
+
+### Added (TermLens: Korean / Japanese particle handling)
+
+- **TermLens now recognises terms in Korean and Japanese even when a grammatical particle is attached to the noun.** Previously matching was whole-token, so a clean term like 값 ("value") or 제2 전압 값 ("second voltage value") would not highlight in 값으로 / 제2 전압 값을 / …, because the trailing particle made the segment token differ — and adding a term auto-expanded the selection to the whole token, capturing the particle (saving 장치의 instead of the intended 장치). Both sides are now particle-aware:
+  - **Matching** is suffix-tolerant: a single CJK token matches the longest term that is a prefix of it (값 ↦ 값으로), and a multi-word term matches when its final CJK token is a prefix of the segment token (제2 전압 값 ↦ 제2 전압 값으로), with the highlight spanning the attached particle so no text is dropped.
+  - **Adding a term** keeps your exact selection instead of expanding to the whitespace word, so the bare noun is saved. (F2 still expands explicitly when you want it.)
+  - Controlled by a new **Particle matching** setting (Settings → Termbases): **Auto** (default — on for Korean/Japanese source), **Always on** (e.g. Chinese or another language), or **Always off**. Only CJK-script tokens are prefix-matched, so European languages are unaffected. Addresses issue #34.
+
+
 ## [4.20.46] – 2026-06-12
 
 ### Fixed (GPT-5.5 temperature)

@@ -59,6 +59,7 @@ namespace Supervertaler.Trados.Settings
         private NumericUpDown _nudFontSize;
         private ComboBox _cboUiScale;
         private ComboBox _cboShortcutStyle;
+        private ComboBox _cboSuffixTolerant;
         private NumericUpDown _nudChordDelay;
 
         // Form buttons (outside tabs)
@@ -350,7 +351,7 @@ namespace Supervertaler.Trados.Settings
             // Bottom: separator, auto-load, font size (fixed height)
             // Middle: DataGridView fills remaining space
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 138, Width = w, BackColor = Color.White };
-            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 145, BackColor = Color.White };
+            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 175, BackColor = Color.White };
             var gridPanel = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -744,6 +745,29 @@ namespace Supervertaler.Trados.Settings
                 ForeColor = Color.FromArgb(100, 100, 100)
             };
 
+            var lblSuffixTolerant = new Label
+            {
+                Text = "Particle matching:",
+                Location = new Point(10, 142),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(60, 60, 60)
+            };
+            _cboSuffixTolerant = new ComboBox
+            {
+                Location = new Point(inputX, 140),
+                Width = 280,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            _cboSuffixTolerant.Items.Add("Auto (on for Korean / Japanese)");
+            _cboSuffixTolerant.Items.Add("Always on");
+            _cboSuffixTolerant.Items.Add("Always off");
+            switch ((_settings.SuffixTolerantMatching ?? "auto").Trim().ToLowerInvariant())
+            {
+                case "on": _cboSuffixTolerant.SelectedIndex = 1; break;
+                case "off": _cboSuffixTolerant.SelectedIndex = 2; break;
+                default: _cboSuffixTolerant.SelectedIndex = 0; break;
+            }
+
             var tips = new ToolTip();
             tips.SetToolTip(_btnOpenTermbase,
                 "Open the selected termbase in the built-in termbase editor.");
@@ -764,6 +788,12 @@ namespace Supervertaler.Trados.Settings
             tips.SetToolTip(_chkCaseSensitive,
                 "When checked, terms only match if the case matches exactly.\n" +
                 "Individual termbases can override this using the Case column above.");
+            tips.SetToolTip(_cboSuffixTolerant,
+                "For Korean / Japanese, grammatical particles attach to nouns with no space.\n" +
+                "When active, a term still matches when the segment word has a trailing particle\n" +
+                "(값 matches 값으로), and adding a term keeps your exact selection instead of\n" +
+                "expanding to the whole word.\n" +
+                "Auto: on when the source language is Korean or Japanese.");
 
             // Add controls to their respective panels
             topPanel.Controls.AddRange(new Control[]
@@ -778,7 +808,8 @@ namespace Supervertaler.Trados.Settings
                 sep, _chkAutoLoad, _chkCaseSensitive,
                 lblFontSize, _nudFontSize, lblFontPt,
                 lblShortcutStyle, _cboShortcutStyle,
-                lblChordDelay, _nudChordDelay, lblChordMs
+                lblChordDelay, _nudChordDelay, lblChordMs,
+                lblSuffixTolerant, _cboSuffixTolerant
             });
 
             gridPanel.Controls.Add(_dgvTermbases);
@@ -1740,6 +1771,12 @@ namespace Supervertaler.Trados.Settings
 
             _settings.TermShortcutStyle = _cboShortcutStyle.SelectedIndex == 1 ? "repeated" : "sequential";
             _settings.ChordDelayMs = (int)_nudChordDelay.Value;
+            switch (_cboSuffixTolerant.SelectedIndex)
+            {
+                case 1: _settings.SuffixTolerantMatching = "on"; break;
+                case 2: _settings.SuffixTolerantMatching = "off"; break;
+                default: _settings.SuffixTolerantMatching = "auto"; break;
+            }
 
             // Build disabled list, write IDs, and project ID from grid cells
             _settings.DisabledTermbaseIds = new List<long>();

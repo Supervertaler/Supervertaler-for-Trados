@@ -366,6 +366,17 @@ namespace Supervertaler.Trados.Controls
         }
 
         /// <summary>
+        /// Enables/disables suffix-tolerant matching (Korean/Japanese particle
+        /// attachment) on the underlying matcher. Set from the editor view part
+        /// based on the project source language and the user's setting.
+        /// </summary>
+        public void SetSuffixTolerant(bool enabled)
+        {
+            if (_matcher != null)
+                _matcher.SuffixTolerant = enabled;
+        }
+
+        /// <summary>
         /// Merges MultiTerm terms into the existing TermMatcher index.
         /// Call after LoadTermbase() to add MultiTerm entries alongside Supervertaler terms.
         /// </summary>

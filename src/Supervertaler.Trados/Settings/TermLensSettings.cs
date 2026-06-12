@@ -186,6 +186,53 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "caseSensitiveMatching")]
         public bool CaseSensitiveMatching { get; set; } = false;
 
+        // ─── Agglutinative / no-space language matching ──────────────
+        /// <summary>
+        /// Suffix-tolerant term matching for languages where grammatical
+        /// particles attach directly to a noun with no intervening space
+        /// (Korean, Japanese). When active, a term still matches when the
+        /// segment token carries a trailing particle (값 ↦ 값으로,
+        /// 제2 전압 값 ↦ 제2 전압 값으로), and the Add Term actions stop
+        /// auto-expanding the selection to whitespace so the bare noun can be
+        /// saved (장치, not 장치의).
+        ///
+        /// Three-state, stored as a string for forward compatibility:
+        ///   "auto" (default) — on when the project source language is Korean
+        ///                      or Japanese;
+        ///   "on"             — always on (e.g. Chinese, or an agglutinative
+        ///                      language not auto-detected);
+        ///   "off"            — always off (strict whole-token matching).
+        /// </summary>
+        [DataMember(Name = "suffixTolerantMatching")]
+        public string SuffixTolerantMatching { get; set; } = "auto";
+
+        /// <summary>
+        /// Resolves whether suffix-tolerant matching is active for a given
+        /// source language, honouring the three-state <see cref="SuffixTolerantMatching"/>.
+        /// </summary>
+        public bool ResolveSuffixTolerant(string sourceLanguage)
+        {
+            switch ((SuffixTolerantMatching ?? "auto").Trim().ToLowerInvariant())
+            {
+                case "on": return true;
+                case "off": return false;
+                default: return IsAgglutinativeNoSpaceLanguage(sourceLanguage);
+            }
+        }
+
+        /// <summary>
+        /// True for Korean / Japanese, where particles attach to nouns without a
+        /// space. Accepts ISO codes (ko, ja, ko-KR, ja-JP) and English display
+        /// names ("Korean", "Japanese (Japan)").
+        /// </summary>
+        public static bool IsAgglutinativeNoSpaceLanguage(string lang)
+        {
+            if (string.IsNullOrWhiteSpace(lang)) return false;
+            var l = lang.Trim().ToLowerInvariant();
+            return l.StartsWith("ko") || l.StartsWith("ja")
+                || l.Contains("korean") || l.Contains("japanese");
+        }
+
         // ─── Update checker ──────────────────────────────────────────
         /// <summary>
         /// Version string the user chose to skip (e.g. "4.2.0-beta").
@@ -328,6 +375,10 @@ namespace Supervertaler.Trados.Settings
                     // Ensure update checker field is never null
                     if (s.SkippedUpdateVersion == null)
                         s.SkippedUpdateVersion = "";
+
+                    // Suffix-tolerant matching missing from older settings → "auto"
+                    if (string.IsNullOrWhiteSpace(s.SuffixTolerantMatching))
+                        s.SuffixTolerantMatching = "auto";
 
                     // Ensure usage statistics ID is never null
                     if (s.UsageStatisticsId == null)

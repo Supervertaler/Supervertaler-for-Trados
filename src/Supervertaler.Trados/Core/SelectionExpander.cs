@@ -44,6 +44,19 @@ namespace Supervertaler.Trados.Core
         /// <param name="fullText">The complete segment text.</param>
         /// <param name="partialSelection">The user's (possibly partial) selection.</param>
         /// <returns>The expanded text, or the original selection if it can't be found.</returns>
+        /// <summary>
+        /// Overload that can skip auto-expansion. When <paramref name="autoExpand"/>
+        /// is false the exact (trimmed) selection is returned unchanged — used for
+        /// Korean/Japanese where expanding to the whitespace token would swallow
+        /// an attached particle (saving 장치의 instead of the intended 장치).
+        /// </summary>
+        public static string ExpandToWordBoundaries(string fullText, string partialSelection, bool autoExpand)
+        {
+            if (!autoExpand)
+                return (partialSelection ?? "").Trim();
+            return ExpandToWordBoundaries(fullText, partialSelection);
+        }
+
         public static string ExpandToWordBoundaries(string fullText, string partialSelection)
         {
             if (string.IsNullOrEmpty(fullText) || string.IsNullOrEmpty(partialSelection))

@@ -85,11 +85,17 @@ namespace Supervertaler.Trados
                     var selection = doc.Selection;
                     if (selection != null)
                     {
+                        // Korean/Japanese: don't auto-expand to the whitespace
+                        // token, which would swallow an attached particle and save
+                        // 장치의 instead of the bare noun 장치 (the user can still
+                        // expand explicitly with F2).
+                        bool srcAutoExpand = !settings.ResolveSuffixTolerant(
+                            TermLensEditorViewPart.GetCurrentProjectSourceLanguage());
                         try
                         {
                             var srcSel = selection.Source?.ToString();
                             if (!string.IsNullOrWhiteSpace(srcSel))
-                                sourceText = SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel);
+                                sourceText = SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel, srcAutoExpand);
                         }
                         catch { /* Selection may not be available */ }
 

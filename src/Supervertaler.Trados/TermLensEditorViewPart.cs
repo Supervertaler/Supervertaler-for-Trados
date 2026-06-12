@@ -295,6 +295,11 @@ namespace Supervertaler.Trados
 
             var projectSourceLang = GetDocumentSourceLanguage();
 
+            // Suffix-tolerant matching for Korean/Japanese (particles attach to
+            // nouns without a space). Honours the three-state user setting,
+            // defaulting to on for those source languages.
+            _control.Value.SetSuffixTolerant(_settings.ResolveSuffixTolerant(projectSourceLang));
+
             // 1. Use the saved termbase path if set and the file exists
             if (!string.IsNullOrEmpty(_settings.TermbasePath) && File.Exists(_settings.TermbasePath))
             {
