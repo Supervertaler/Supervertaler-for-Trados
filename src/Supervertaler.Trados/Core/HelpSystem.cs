@@ -17,7 +17,7 @@ namespace Supervertaler.Trados.Core
         /// <c>supervertaler.gitbook.io/help</c> URL kept working during
         /// the transition and is now eligible for sunset.
         /// </summary>
-        private const string DocsBaseUrl = "https://help.supervertaler.com";
+        private const string DocsBaseUrl = "https://docs.supervertaler.com";
 
         /// <summary>
         /// Help topic identifiers. Each value is appended to <see cref="DocsBaseUrl"/>
@@ -75,7 +75,7 @@ namespace Supervertaler.Trados.Core
             public const string BatchOperations     = "trados/batch-operations/";
             public const string BatchTranslate      = "trados/batch-translate/";
             public const string AiProofreader       = "trados/ai-proofreader/";
-            public const string AiProofreaderReports = "trados/ai-proofreader/#reports-tab";
+            public const string Reports             = "trados/reports/";
             public const string ClipboardMode       = "trados/clipboard-mode/";
             public const string GeneratePrompt      = "trados/generate-prompt/";
             public const string ImportExport       = "trados/import-export/";

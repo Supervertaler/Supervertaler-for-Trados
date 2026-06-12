@@ -92,7 +92,7 @@ namespace Supervertaler.Trados.Controls
             // F1 is owned by Trados Studio (its handler beats application-level
             // message filters) so a working in-popup help binding would need a
             // Win32 low-level keyboard hook, which isn't worth the complexity.
-            // Users can read the help page directly at help.supervertaler.com.
+            // Users can read the help page directly at docs.supervertaler.com.
             _hintLabel = new Label
             {
                 Dock = DockStyle.Bottom,

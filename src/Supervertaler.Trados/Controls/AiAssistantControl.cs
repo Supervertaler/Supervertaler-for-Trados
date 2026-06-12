@@ -802,7 +802,7 @@ namespace Supervertaler.Trados.Controls
                     label = "Import/Export Help";
                     break;
                 case 3:
-                    topic = HelpSystem.Topics.AiProofreaderReports;
+                    topic = HelpSystem.Topics.Reports;
                     label = "Reports Help";
                     break;
                 case 4:
@@ -852,7 +852,7 @@ namespace Supervertaler.Trados.Controls
                                     ? HelpSystem.Topics.AiProofreader
                                     : HelpSystem.Topics.BatchTranslate; break;
                     case 2: topic = HelpSystem.Topics.ImportExport; break;
-                    case 3: topic = HelpSystem.Topics.AiProofreaderReports; break;
+                    case 3: topic = HelpSystem.Topics.Reports; break;
                     case 4: topic = HelpSystem.Topics.SuperSearch; break;
                     default: topic = HelpSystem.Topics.AiAssistantChat; break;
                 }

@@ -105,7 +105,7 @@ and displays their terms as green chips alongside Supervertaler terms.
 | What | URL / Path |
 |------|------------|
 | Website (Trados page) | `https://supervertaler.com/trados.html` (source: `Supervertaler-Workbench` repo `docs/trados.html`) |
-| Documentation | `https://help.supervertaler.com/trados/` (Astro/Starlight site on Cloudflare Pages, source in [`Supervertaler-Help`](https://github.com/Supervertaler/Supervertaler-Help) repo) |
+| Documentation | `https://docs.supervertaler.com/trados/` (Astro/Starlight site on Cloudflare Pages, source in [`Supervertaler-Help`](https://github.com/Supervertaler/Supervertaler-Help) repo) |
 | Docs source (git-synced) | `docs/` in this repo |
 
 ---
