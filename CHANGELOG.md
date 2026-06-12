@@ -4,7 +4,7 @@
 
 ### Fixed (AI · inline tags)
 
-- **Hardened inline-tag handling against models that mangle tags.** A user reported that Mistral Large recently began emitting empty tag pairs (`<t1></t1>` with the translation left outside) instead of wrapping the translated words. Two defences: (1) the AI translation prompt now explicitly forbids empty pairs and reminds the model of the exact tag form (with a wrong/right example); (2) the tag-placeholder parser is now whitespace- and case-tolerant, so a tag that drifts slightly from the canonical form (`< t1>`, `<T1>`, a stray space) is still recognised and reconstructed — or cleanly stripped — instead of leaking into the target as literal text. Helps every provider, not just Mistral.
+- **Hardened inline-tag handling against models that mangle tags.** A user reported that Mistral Large recently began emitting empty inline-tag pairs — an opening tag immediately followed by its own closing tag, with the translated text left outside — instead of wrapping the translated words. Two defences: (1) the AI translation prompt now explicitly forbids empty tag pairs and reminds the model of the exact tag format (with a wrong/right example); (2) the tag-placeholder parser is now whitespace- and case-tolerant, so a tag that drifts slightly from the canonical form (a stray space inside it, or the wrong letter case) is still recognised and reconstructed — or cleanly stripped — instead of leaking into the target as literal text. Helps every provider, not just Mistral.
 
 
 ## [4.20.47] – 2026-06-12
@@ -90,7 +90,7 @@
 
 ### Changed (Clipboard Mode)
 
-- **Stronger output-format instructions for Clipboard Mode translation.** Some web LLMs (notably DeepSeek's web chat) reformatted the reply into a bare list and dropped the `Segment <n>` headers, so the result couldn't be re-imported into Trados. The clipboard prompt now insists, explicitly, that every `Segment <n>` header be kept in order with both language lines, and that the output not be turned into a list, table, or prose – because the headers are what the importer uses to map translations back to segments.
+- **Stronger output-format instructions for Clipboard Mode translation.** Some web LLMs (notably DeepSeek's web chat) reformatted the reply into a bare list and dropped the "Segment N" headers, so the result couldn't be re-imported into Trados. The clipboard prompt now insists, explicitly, that every "Segment N" header be kept in order with both language lines, and that the output not be turned into a list, table, or prose – because the headers are what the importer uses to map translations back to segments.
 
 
 ## [4.20.36] – 2026-05-28
