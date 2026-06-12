@@ -71,6 +71,7 @@ namespace Supervertaler.Trados.Core
         private readonly string _apiKey;
         private readonly string _baseUrl;
         private readonly bool _isReasoningModel;
+        private readonly bool _supportsTemperature;
         private readonly int _defaultTimeoutMs;
         private readonly int _maxTokens;
         private readonly int _ollamaTimeoutMinutes;
@@ -98,6 +99,7 @@ namespace Supervertaler.Trados.Core
 
             var modelInfo = LlmModels.FindModel(_model);
             _isReasoningModel = modelInfo?.IsReasoningModel ?? IsReasoningModel(_model);
+            _supportsTemperature = ModelSupportsTemperature(_model);
             _defaultTimeoutMs = modelInfo?.DefaultTimeoutMs ?? 120_000;
         }
 
@@ -560,14 +562,16 @@ namespace Supervertaler.Trados.Core
             if (UsesMaxCompletionTokens(_model))
             {
                 sb.Append(",\"max_completion_tokens\":").Append(tokens);
-                // No temperature for reasoning models
-                if (!_isReasoningModel)
+                // No temperature for reasoning models or models that reject a
+                // custom temperature (e.g. GPT-5.5 – only the default is allowed)
+                if (!_isReasoningModel && _supportsTemperature)
                     sb.Append(",\"temperature\":0.3");
             }
             else
             {
                 sb.Append(",\"max_tokens\":").Append(tokens);
-                sb.Append(",\"temperature\":0.3");
+                if (_supportsTemperature)
+                    sb.Append(",\"temperature\":0.3");
             }
 
             sb.Append("}");
@@ -834,13 +838,16 @@ namespace Supervertaler.Trados.Core
             if (UsesMaxCompletionTokens(_model))
             {
                 sb.Append(",\"max_completion_tokens\":").Append(tokens);
-                if (!_isReasoningModel)
+                // Omit temperature for reasoning models and models that reject a
+                // custom temperature (e.g. GPT-5.5 – only the default is allowed)
+                if (!_isReasoningModel && _supportsTemperature)
                     sb.Append(",\"temperature\":0.3");
             }
             else
             {
                 sb.Append(",\"max_tokens\":").Append(tokens);
-                sb.Append(",\"temperature\":0.3");
+                if (_supportsTemperature)
+                    sb.Append(",\"temperature\":0.3");
             }
 
             sb.Append("}");
@@ -1441,6 +1448,26 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Returns true if the model accepts a custom "temperature" value.
+        /// Some models (notably GPT-5.5) only accept the API default and 400
+        /// with "Only the default (1) value is supported" if any explicit
+        /// temperature is sent, so the request builder must omit it.
+        /// Catalog models carry an explicit flag; for custom/unknown IDs a
+        /// heuristic treats full GPT-5.x models as temperature-locked while
+        /// mini/nano variants (which do accept it) keep temperature.
+        /// </summary>
+        private static bool ModelSupportsTemperature(string model)
+        {
+            if (string.IsNullOrEmpty(model)) return true;
+            var info = LlmModels.FindModel(model);
+            if (info != null) return info.SupportsTemperature;
+            var lower = model.ToLowerInvariant();
+            if (lower.StartsWith("gpt-5") && !lower.Contains("mini") && !lower.Contains("nano"))
+                return false;
+            return true;
+        }
+
+        /// <summary>
         /// Returns true if the model requires max_completion_tokens instead of max_tokens.
         /// GPT-5.x and reasoning models all use the newer parameter.
         /// </summary>
@@ -1803,13 +1830,16 @@ namespace Supervertaler.Trados.Core
                 if (UsesMaxCompletionTokens(_model))
                 {
                     sb.Append(",\"max_completion_tokens\":").Append(tokens);
-                    if (!_isReasoningModel)
+                    // Omit temperature for reasoning models and models that reject
+                    // a custom temperature (e.g. GPT-5.5 – only the default is allowed)
+                    if (!_isReasoningModel && _supportsTemperature)
                         sb.Append(",\"temperature\":0.3");
                 }
                 else
                 {
                     sb.Append(",\"max_tokens\":").Append(tokens);
-                    sb.Append(",\"temperature\":0.3");
+                    if (_supportsTemperature)
+                        sb.Append(",\"temperature\":0.3");
                 }
 
                 sb.Append("}");

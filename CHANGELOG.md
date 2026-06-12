@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.46] – 2026-06-12
+
+### Fixed (GPT-5.5 temperature)
+
+- **GPT-5.5 now works – Test Connection and translation no longer fail with an "unsupported temperature" error.** OpenAI's GPT-5.5 only accepts the default temperature value and returns *"Unsupported value: 'temperature' does not support 0.3 with this model. Only the default (1) value is supported."* if any explicit temperature is sent. The plugin sent a fixed `temperature: 0.3` on every OpenAI request for non-reasoning models, so GPT-5.5 failed both the Test Connection check and any actual translation, while GPT-5.4 Mini (which does accept a custom temperature) worked. Models now carry a `SupportsTemperature` flag; GPT-5.5 is marked as temperature-locked, so the parameter is omitted for it across all request paths (Test Connection, single-segment, batch translate, and tool-use), and a heuristic covers any future full GPT-5.x model entered in the custom Model ID field. Reported in issue #36.
+
+
 ## [4.20.45] – 2026-06-12
 
 ### Changed (AI pane renamed)

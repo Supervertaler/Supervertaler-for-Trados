@@ -23,6 +23,14 @@ namespace Supervertaler.Trados.Core
         public string Description { get; set; }
         public LlmProvider Provider { get; set; }
         public bool IsReasoningModel { get; set; }
+
+        /// <summary>
+        /// Whether the model accepts a custom "temperature" value. Some models
+        /// (e.g. GPT-5.5) only accept the API default and 400 if any explicit
+        /// temperature is sent, so the request builder must omit it. Defaults
+        /// to true; set false only for models that reject custom temperatures.
+        /// </summary>
+        public bool SupportsTemperature { get; set; } = true;
         public int DefaultTimeoutMs { get; set; } = 120_000;
         public int DefaultMaxTokens { get; set; } = 16384;
     }
@@ -50,7 +58,8 @@ namespace Supervertaler.Trados.Core
             {
                 Id = "gpt-5.5", DisplayName = "GPT-5.5",
                 Description = "Premium quality – OpenAI's most advanced model, ideal for AutoPrompt and complex translation tasks",
-                Provider = LlmProvider.OpenAi
+                Provider = LlmProvider.OpenAi,
+                SupportsTemperature = false  // GPT-5.5 only accepts the default temperature
             },
             new LlmModelInfo
             {
@@ -204,7 +213,8 @@ namespace Supervertaler.Trados.Core
             {
                 Id = "openai/gpt-5.5", DisplayName = "GPT-5.5",
                 Description = "Premium quality – OpenAI's most advanced model",
-                Provider = LlmProvider.OpenRouter
+                Provider = LlmProvider.OpenRouter,
+                SupportsTemperature = false  // routes to OpenAI GPT-5.5, which rejects custom temperature
             },
             new LlmModelInfo
             {
