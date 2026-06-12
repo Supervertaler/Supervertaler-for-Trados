@@ -46,7 +46,10 @@ namespace Supervertaler.Trados.Core
             sb.AppendLine("- If source has N tags, target must have exactly N tags with the same numbers");
             sb.AppendLine("- Never translate, remove, or modify the tag placeholders themselves");
             sb.AppendLine("- Tags may be reordered to fit natural target language word order");
+            sb.AppendLine("- A paired tag MUST wrap the translated word(s) that the source tag wrapped. NEVER output an empty pair like <t1></t1> with the translated text left outside it.");
+            sb.AppendLine("- Write each tag exactly as shown: lowercase t, the digits, angle brackets, no spaces inside (<t1>, </t1>, <t3/>).");
             sb.AppendLine("- Example: \"Click the <t1>Save</t1> button\" → \"Klik op de knop <t1>Opslaan</t1>\"");
+            sb.AppendLine("- WRONG: \"<t1></t1> Opslaan\"  –  RIGHT: \"<t1>Opslaan</t1>\"");
             sb.AppendLine("- Example: \"Page <t2/> of <t3/>\" → \"Pagina <t2/> van <t3/>\"");
             sb.AppendLine();
 

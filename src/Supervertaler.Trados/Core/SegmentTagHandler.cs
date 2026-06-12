@@ -87,10 +87,16 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         public static Action<string> DiagnosticMessage { get; set; }
 
-        // Regex for parsing tag placeholders in LLM output
-        // Matches: <t1>, </t1>, <t2/>
+        // Regex for parsing tag placeholders in LLM output.
+        // Canonical forms: <t1>, </t1>, <t2/>. The pattern is deliberately
+        // whitespace- and case-tolerant (< t1 >, </ t1 >, <T1/>, <t1 />) so that
+        // a model which drifts slightly from the canonical form (observed with
+        // Mistral Large) is still recognised and reconstructed — instead of the
+        // literal placeholder text leaking into the target because neither the
+        // tokenizer nor StripTagPlaceholders matched it.
         private static readonly Regex TagPlaceholderPattern =
-            new Regex(@"<t(\d+)\s*/>|</t(\d+)>|<t(\d+)>", RegexOptions.Compiled);
+            new Regex(@"<\s*t\s*(\d+)\s*/\s*>|<\s*/\s*t\s*(\d+)\s*>|<\s*t\s*(\d+)\s*>",
+                RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // ─── Serialization ───────────────────────────────────
 
