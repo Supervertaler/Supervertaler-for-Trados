@@ -1,16 +1,15 @@
-# Route Supervertaler for Trados engagement to GitHub Discussions: it's a paid,
-# source-available product, so support and discussion live on the org-level
-# Discussions board (shared with Workbench). No issue templates are offered and
-# blank issues are disabled, so the "New issue" page shows only the links below.
-# (The maintainer can still file via `gh issue create` if ever needed.)
-blank_issues_enabled: false
+# The "New issue" chooser. Bug reports use the Bug form below and become normal
+# GitHub issues; feature requests, questions and general discussion go to the
+# org-level GitHub Discussions board (shared with Workbench). blank_issues_enabled
+# stays true so the maintainer can also open roadmap / [Feature] issues directly.
+blank_issues_enabled: true
 contact_links:
-  - name: 💬 Support, bugs & setup help
-    url: https://github.com/orgs/Supervertaler/discussions
-    about: Get help with the Supervertaler for Trados plugin in GitHub Discussions – bugs, installation, licensing and how-to.
   - name: 💡 Feature requests & ideas
     url: https://github.com/orgs/Supervertaler/discussions
     about: Suggest features and discuss ideas for the Trados plugin in GitHub Discussions.
+  - name: ❓ Questions & how-to help
+    url: https://github.com/orgs/Supervertaler/discussions
+    about: For usage questions, installation, licensing and general discussion, please post in GitHub Discussions.
   - name: 🛟 RWS App Store listing
     url: https://appstore.rws.com/plugin/432
     about: Plugin page and reviews on the RWS App Store.

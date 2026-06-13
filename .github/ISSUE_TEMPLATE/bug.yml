@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a bug in Supervertaler for Trados
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please complete **every** required field below — without your plugin version and Trados Studio version we usually can't reproduce or investigate the problem.
+  - type: textarea
+    id: version
+    attributes:
+      label: Plugin & Trados version
+      description: "The Supervertaler plugin version (shown in the Supervertaler pane / Trados Plugin Manager) and your Trados Studio version."
+      placeholder: |
+        Supervertaler for Trados v4.20.48
+        Trados Studio 2024 (build 17.x)
+    validations:
+      required: true
+  - type: dropdown
+    id: studio
+    attributes:
+      label: Trados Studio version
+      options:
+        - Studio 2024
+        - Studio 2026 (beta)
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install the plugin?
+      options:
+        - RWS App Store (signed)
+        - GitHub release (.sdlplugin, unsigned)
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: "Describe the bug, and what you expected to happen instead."
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic log or screenshots
+      description: "Optional but very helpful. The plugin writes a BridgeLog to your `%TEMP%` folder; you can attach it here, along with any screenshots (drag images straight into this box)."
+    validations:
+      required: false
