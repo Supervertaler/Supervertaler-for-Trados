@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
@@ -12,6 +12,13 @@ namespace Supervertaler.Trados.Controls
     /// <summary>
     /// WinForms UserControl for AI provider configuration.
     /// Embedded in the Settings dialog as the "AI Settings" tab.
+    ///
+    /// Layout is built from nested <see cref="TableLayoutPanel"/>s with AutoSize
+    /// rows/columns and <see cref="AutoScaleMode"/> = None, so every label, field
+    /// and button sizes to its (UiScale-scaled) content and reflows automatically.
+    /// This is DPI/scale-proof: nothing clips or overlaps at 100/125/150/175% or
+    /// any custom Windows display scale. UiScale owns all scaling; WinForms' own
+    /// autoscaling is disabled so it can't double-scale on top.
     /// </summary>
     public class AiSettingsPanel : UserControl
     {
@@ -29,14 +36,17 @@ namespace Supervertaler.Trados.Controls
         private Button _btnTestConnection;
         private Label _lblStatus;
 
+        // Provider-specific rows (toggled in OnProviderChanged). Hiding both
+        // cells of a TableLayoutPanel row collapses it, so the rest reflows.
+        private readonly List<Control> _ollamaRows = new List<Control>();
+        private readonly List<Control> _customRows = new List<Control>();
+
         // Ollama section
-        private Panel _pnlOllama;
         private TextBox _txtOllamaEndpoint;
         private NumericUpDown _nudOllamaTimeout;
         private Label _lblOllamaTimeoutHint;
 
         // Custom OpenAI section
-        private Panel _pnlCustom;
         private ComboBox _cmbCustomProfile;
         private Button _btnAddProfile;
         private Button _btnRemoveProfile;
@@ -71,9 +81,6 @@ namespace Supervertaler.Trados.Controls
 
         private Label _lblInfo;
 
-        // Y position right after the Test Connection row (before provider-specific panels)
-        private int _providerSectionY;
-
         private bool _keyVisible;
         private bool _customKeyVisible;
 
@@ -88,428 +95,361 @@ namespace Supervertaler.Trados.Controls
 
         private void BuildUI()
         {
-            // Let WinForms scale this dialog by system DPI so it doesn't squish
-            // at >100% Windows display scaling. Cheap fallback; for surfaces
-            // with their own UiScale-driven layout, set AutoScaleMode = None
-            // instead and let UiScale own scaling.
-            AutoScaleMode = AutoScaleMode.Dpi;
-            SuspendLayout();
+            // UiScale owns all DPI/scale-based sizing; AutoScaleMode.None stops
+            // WinForms from double-scaling on top of it. The whole panel is laid
+            // out with TableLayoutPanels (AutoSize rows/columns), so labels,
+            // fields and buttons size to their scaled content and never clip or
+            // overlap at any Windows display scale. (Replaces the old absolute-
+            // positioned, AutoScaleMode.Dpi layout that clipped at high DPI.)
+            AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.White;
             AutoScroll = true;
+            Font = new Font("Segoe UI", UiScale.FontSize(9f));
+            Padding = new Padding(UiScale.Pixels(16), UiScale.Pixels(12), UiScale.Pixels(16), UiScale.Pixels(12));
 
-            // Set a reasonable initial size so anchor margins are computed correctly
-            // (the panel will be resized to fill the TabPage via Dock = Fill)
-            Size = new Size(530, 800);
-
-            var y = 16;
             var labelColor = Color.FromArgb(80, 80, 80);
-            var labelFont = Font;
-            var headerFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+            var headerColor = Color.FromArgb(50, 50, 50);
 
-            // === Section header ===
-            var lblHeader = new Label
-            {
-                Text = "AI Provider",
-                Font = headerFont,
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(16, y),
-                AutoSize = true
-            };
-            Controls.Add(lblHeader);
-            y += 28;
+            // ── small factories / layout helpers (local functions) ──────────
+            Font HeaderFont() => new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold);
+            Font HintFont() => new Font("Segoe UI", UiScale.FontSize(7.5f), FontStyle.Italic);
 
-            // === Provider ===
-            var lblProvider = new Label
+            TableLayoutPanel NewGrid()
             {
-                Text = "Provider:",
-                Location = new Point(16, y + 3),
+                var t = new TableLayoutPanel
+                {
+                    ColumnCount = 2,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    GrowStyle = TableLayoutPanelGrowStyle.AddRows,
+                    Margin = Padding.Empty
+                };
+                t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+                return t;
+            }
+
+            Label FieldLabel(string text, int indentSteps = 0) => new Label
+            {
+                Text = text,
                 AutoSize = true,
-                ForeColor = labelColor
+                ForeColor = labelColor,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(indentSteps * 20), UiScale.Pixels(7), UiScale.Pixels(8), UiScale.Pixels(7))
             };
-            _cmbProvider = new ComboBox
+
+            Label Header(string text, bool first = false) => new Label
             {
-                Location = new Point(120, y),
-                Width = 260,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Text = text,
+                AutoSize = true,
+                Font = HeaderFont(),
+                ForeColor = headerColor,
+                Margin = new Padding(0, UiScale.Pixels(first ? 0 : 14), 0, UiScale.Pixels(6))
             };
+
+            CheckBox Check(string text, int indentSteps = 0) => new CheckBox
+            {
+                Text = text,
+                AutoSize = true,
+                // AutoSize checkboxes can size a touch short at high DPI, letting
+                // adjacent rows look like they touch; MinimumSize + a little extra
+                // vertical margin guarantees a clean gap at any scale.
+                MinimumSize = new Size(0, UiScale.Pixels(20)),
+                ForeColor = labelColor,
+                Margin = new Padding(UiScale.Pixels(indentSteps * 20), UiScale.Pixels(4), 0, UiScale.Pixels(5))
+            };
+
+            TextBox FillBox(bool password = false) => new TextBox
+            {
+                Dock = DockStyle.Fill,
+                UseSystemPasswordChar = password,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
+            };
+
+            ComboBox FillCombo() => new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
+            };
+
+            NumericUpDown SmallNud(int min, int max, int value, int increment) => new NumericUpDown
+            {
+                Minimum = min,
+                Maximum = max,
+                Value = value,
+                Increment = increment,
+                Width = UiScale.Pixels(95), // fits 4-digit values + spinner at high DPI
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
+            };
+
+            Button TextButton(string text) // AutoSize: never clips at any scale/locale
+            {
+                var b = new Button
+                {
+                    Text = text,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    FlatStyle = FlatStyle.System,
+                    Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3)),
+                    Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
+                };
+                return b;
+            }
+
+            Button GlyphButton(string glyph, string tip, bool bold = false)
+            {
+                var b = new Button
+                {
+                    Text = glyph,
+                    Width = UiScale.Pixels(32),
+                    Height = UiScale.Pixels(30),
+                    FlatStyle = FlatStyle.Flat,
+                    Font = new Font("Segoe UI", UiScale.FontSize(11f), bold ? FontStyle.Bold : FontStyle.Regular),
+                    ForeColor = Color.FromArgb(70, 70, 70),
+                    Anchor = AnchorStyles.Left,
+                    Padding = Padding.Empty,
+                    Margin = new Padding(UiScale.Pixels(3), UiScale.Pixels(3), 0, UiScale.Pixels(3))
+                };
+                b.FlatAppearance.BorderSize = 0;
+                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+                new ToolTip().SetToolTip(b, tip);
+                return b;
+            }
+
+            // A textbox that fills the row with a trailing AutoSize "Show/Hide" button.
+            TableLayoutPanel KeyRow(TextBox box, Button showBtn)
+            {
+                var host = new TableLayoutPanel
+                {
+                    ColumnCount = 2,
+                    RowCount = 1,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    Dock = DockStyle.Fill,
+                    Margin = Padding.Empty
+                };
+                host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+                host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                box.Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(6), UiScale.Pixels(3));
+                host.Controls.Add(box, 0, 0);
+                host.Controls.Add(showBtn, 1, 0);
+                return host;
+            }
+
+            void Span(TableLayoutPanel t, ref int r, Control c)
+            {
+                t.Controls.Add(c, 0, r);
+                t.SetColumnSpan(c, 2);
+                r++;
+            }
+
+            void Pair(TableLayoutPanel t, ref int r, Control labelCtrl, Control field)
+            {
+                t.Controls.Add(labelCtrl, 0, r);
+                t.Controls.Add(field, 1, r);
+                r++;
+            }
+
+            void Row(TableLayoutPanel t, ref int r, string labelText, Control field, int indentSteps = 0)
+            {
+                Pair(t, ref r, FieldLabel(labelText, indentSteps), field);
+            }
+
+            // Empty placeholder for the label column when a control should align
+            // under the field column with no label.
+            Label NoLabel() => new Label { AutoSize = true, Margin = Padding.Empty };
+
+            // ── root grid ───────────────────────────────────────────────────
+            var root = NewGrid();
+            root.Dock = DockStyle.Top;
+            int row = 0;
+
+            // ===== AI Provider =====
+            Span(root, ref row, Header("AI Provider", first: true));
+
+            _cmbProvider = FillCombo();
             foreach (var key in LlmModels.AllProviderKeys)
                 _cmbProvider.Items.Add(new ProviderItem(key));
             _cmbProvider.SelectedIndexChanged += OnProviderChanged;
-            Controls.Add(lblProvider);
-            Controls.Add(_cmbProvider);
-            y += 32;
+            Row(root, ref row, "Provider:", _cmbProvider);
 
-            // === Model ===
-            var lblModel = new Label
-            {
-                Text = "Model:",
-                Location = new Point(16, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _cmbModel = new ComboBox
-            {
-                Location = new Point(120, y),
-                Width = 260,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            Controls.Add(lblModel);
-            Controls.Add(_cmbModel);
-            y += 32;
+            _cmbModel = FillCombo();
+            Row(root, ref row, "Model:", _cmbModel);
 
-            // === View supported models link ===
             var lnkViewModels = new LinkLabel
             {
                 Text = "View all supported models...",
-                Location = new Point(120, y),
                 AutoSize = true,
-                Font = new Font("Segoe UI", 8.5f),
-                LinkColor = Color.FromArgb(0, 102, 153)
+                LinkColor = Color.FromArgb(0, 102, 153),
+                Margin = new Padding(0, UiScale.Pixels(2), 0, UiScale.Pixels(4))
             };
             lnkViewModels.LinkClicked += (s, e) =>
             {
                 using (var dlg = new SupportedModelsDialog())
                     dlg.ShowDialog(this);
             };
-            Controls.Add(lnkViewModels);
-            y += 24;
+            Pair(root, ref row, NoLabel(), lnkViewModels);
 
-            // === Custom model ID (optional — overrides the dropdown) ===
-            var lblCustomModelId = new Label
-            {
-                // Must be short enough to clear the x=16..120 label column with
-                // real margin — at the panel font + Windows display scaling,
-                // "Custom model:" (~89px) still ran into the textbox. "Model ID:"
-                // (~58px) keeps ~45px+ clearance at any scale. The hint label and
-                // tooltip carry the "custom / overrides the dropdown" meaning.
-                Text = "Model ID:",
-                Location = new Point(16, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _txtCustomModelId = new TextBox
-            {
-                Location = new Point(120, y),
-                Width = 260
-            };
-            var lblCustomModelHint = new Label
-            {
-                Text = "(optional – overrides the dropdown above)",
-                Location = new Point(388, y + 3),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(140, 140, 140),
-                Font = new Font("Segoe UI", 8f, FontStyle.Italic)
-            };
+            _txtCustomModelId = FillBox();
             var ttCustomModel = new ToolTip();
             ttCustomModel.SetToolTip(_txtCustomModelId,
                 "Enter an exact model ID to use a model that isn't in the dropdown " +
                 "(e.g. a new release, a preview model, or an OpenRouter router such " +
                 "as \"openrouter/free\"). Leave blank to use the model selected above.");
-            Controls.Add(lblCustomModelId);
-            Controls.Add(_txtCustomModelId);
-            Controls.Add(lblCustomModelHint);
-            y += 32;
+            Row(root, ref row, "Model ID:", _txtCustomModelId);
 
-            // === API Key ===
-            var lblApiKey = new Label
+            var lblCustomModelHint = new Label
             {
-                Text = "API Key:",
-                Location = new Point(16, y + 3),
+                Text = "(optional – overrides the dropdown above)",
                 AutoSize = true,
-                ForeColor = labelColor
+                ForeColor = Color.FromArgb(140, 140, 140),
+                Font = HintFont(),
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(4))
             };
-            _btnShowKey = new Button
-            {
-                Text = "Show",
-                // 80px design-time width (was 50). After AutoScaleMode.Dpi
-                // scales the control at >100% Windows display scaling, 50
-                // wasn't wide enough for the "Show" text – it was clipping
-                // to "Sho". 80 leaves comfortable padding at any DPI.
-                Width = 80,
-                Height = 23,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnShowKey.FlatAppearance.BorderSize = 0;
-            _btnShowKey.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            Pair(root, ref row, NoLabel(), lblCustomModelHint);
+
+            _txtApiKey = FillBox(password: true);
+            _btnShowKey = TextButton("Show");
             _btnShowKey.Click += OnShowKeyClick;
+            Row(root, ref row, "API Key:", KeyRow(_txtApiKey, _btnShowKey));
 
-            _txtApiKey = new TextBox
-            {
-                Location = new Point(120, y),
-                UseSystemPasswordChar = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            Controls.Add(lblApiKey);
-            Controls.Add(_txtApiKey);
-            Controls.Add(_btnShowKey);
-            y += 32;
-
-            // === Test Connection + Status ===
-            _btnTestConnection = new Button
-            {
-                Text = "Test Connection",
-                // 160px design-time width (was 120). After AutoScaleMode.Dpi
-                // scales the control at >100% Windows display scaling, 120
-                // wasn't wide enough for "Test Connection" – the text wrapped
-                // to two lines. 160 keeps it on one line at any DPI.
-                Width = 160,
-                Height = 26,
-                Location = new Point(120, y),
-                FlatStyle = FlatStyle.System
-            };
+            _btnTestConnection = TextButton("Test Connection");
             _btnTestConnection.Click += OnTestConnectionClick;
-
             _lblStatus = new Label
             {
                 Text = "",
-                // Sit past the Test Connection button's right edge — at x=250 the
-                // label started underneath the 160px-wide button (which is in
-                // front in z-order), clipping the start of "Connected".
-                Location = new Point(_btnTestConnection.Right + 8, y + 4),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(100, 100, 100),
-                Font = new Font("Segoe UI", 8.5f)
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(8), 0, 0)
             };
-            Controls.Add(_btnTestConnection);
-            Controls.Add(_lblStatus);
-            y += 40;
-
-            // === Ollama section ===
-            // Controls placed directly on the UserControl (not in a child Panel)
-            // to avoid clipping issues with right-anchored controls.
-            _pnlOllama = new Panel
+            var testHost = new FlowLayoutPanel
             {
-                Location = new Point(0, y),
-                Size = new Size(400, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Visible = false
-            };
-
-            var lblOllamaEndpoint = new Label
-            {
-                Text = "Endpoint:",
-                Location = new Point(16, 8),
                 AutoSize = true,
-                ForeColor = labelColor
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
             };
-            _txtOllamaEndpoint = new TextBox
-            {
-                Location = new Point(120, 5),
-                Size = new Size(_pnlOllama.Width - 120 - 20, 20),
-                Text = "http://localhost:11434",
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
+            testHost.Controls.Add(_btnTestConnection);
+            testHost.Controls.Add(_lblStatus);
+            Pair(root, ref row, NoLabel(), testHost);
 
-            var lblOllamaTimeout = new Label
-            {
-                Text = "Timeout (min):",
-                Location = new Point(16, 38),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _nudOllamaTimeout = new NumericUpDown
-            {
-                Location = new Point(135, 37),
-                Width = 75,
-                Minimum = 0,
-                Maximum = 120,
-                Value = 0,
-                Margin = new Padding(0, 0, 5, 0)
-            };
+            // ===== Ollama section (rows shown only when Ollama is selected) =====
+            // Added directly to the root grid (not a nested AutoSize panel) so the
+            // fields inherit the root's definite width — a nested panel left the
+            // trailing button overflowing the right edge at high DPI. Hiding both
+            // cells of a row collapses it (handled in OnProviderChanged).
+            var lblOllamaEndpoint = FieldLabel("Endpoint:");
+            _txtOllamaEndpoint = FillBox();
+            _txtOllamaEndpoint.Text = "http://localhost:11434";
+            Pair(root, ref row, lblOllamaEndpoint, _txtOllamaEndpoint);
+            _ollamaRows.Add(lblOllamaEndpoint);
+            _ollamaRows.Add(_txtOllamaEndpoint);
+
+            var lblOllamaTimeout = FieldLabel("Timeout (min):");
+            _nudOllamaTimeout = SmallNud(0, 120, 0, 1);
             _lblOllamaTimeoutHint = new Label
             {
-                Text = "0 = auto (3\u201310 min, based on model size)",
-                Location = new Point(217, 40),
+                Text = "0 = auto (3–10 min, based on model size)",
                 AutoSize = true,
                 ForeColor = Color.Gray,
-                Font = new Font("Segoe UI", 8f)
+                Font = HintFont(),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(6), 0, 0)
             };
-
-            _pnlOllama.Controls.Add(lblOllamaEndpoint);
-            _pnlOllama.Controls.Add(_txtOllamaEndpoint);
-            _pnlOllama.Controls.Add(lblOllamaTimeout);
-            _pnlOllama.Controls.Add(_nudOllamaTimeout);
-            _pnlOllama.Controls.Add(_lblOllamaTimeoutHint);
-            Controls.Add(_pnlOllama);
-
-            // === Custom OpenAI section ===
-            _pnlCustom = new Panel
+            var ollamaTimeoutHost = new FlowLayoutPanel
             {
-                Location = new Point(0, y),
-                Size = new Size(400, 150),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Visible = false
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
             };
+            ollamaTimeoutHost.Controls.Add(_nudOllamaTimeout);
+            ollamaTimeoutHost.Controls.Add(_lblOllamaTimeoutHint);
+            Pair(root, ref row, lblOllamaTimeout, ollamaTimeoutHost);
+            _ollamaRows.Add(lblOllamaTimeout);
+            _ollamaRows.Add(ollamaTimeoutHost);
 
+            // ===== Custom OpenAI section (rows shown only when Custom is selected) =====
             var sepCustom = new Label
             {
-                Location = new Point(16, 0),
-                Height = 1,
+                Height = Math.Max(1, UiScale.Pixels(1)),
                 BorderStyle = BorderStyle.Fixed3D,
-                Width = 360,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, UiScale.Pixels(10), 0, UiScale.Pixels(6))
             };
+            Span(root, ref row, sepCustom);
+            _customRows.Add(sepCustom);
 
-            var lblCustomHeader = new Label
-            {
-                Text = "Custom OpenAI-Compatible Endpoint",
-                Font = headerFont,
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(16, 8),
-                AutoSize = true
-            };
+            var lblCustomHeader = Header("Custom OpenAI-Compatible Endpoint");
+            Span(root, ref row, lblCustomHeader);
+            _customRows.Add(lblCustomHeader);
 
-            var lblProfile = new Label
-            {
-                Text = "Profile:",
-                Location = new Point(16, 38),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _cmbCustomProfile = new ComboBox
-            {
-                Location = new Point(120, 35),
-                Width = 180,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
+            _cmbCustomProfile = FillCombo();
             _cmbCustomProfile.SelectedIndexChanged += OnCustomProfileChanged;
-
-            _btnAddProfile = new Button
-            {
-                Text = "+",
-                Width = 26, Height = 26,
-                Location = new Point(306, 33),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnAddProfile.FlatAppearance.BorderSize = 0;
-            _btnAddProfile.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnAddProfile = GlyphButton("+", "Add a new endpoint", bold: true);
             _btnAddProfile.Click += OnAddProfileClick;
-
-            _btnRemoveProfile = new Button
-            {
-                Text = "\u2212",
-                Width = 26, Height = 26,
-                Location = new Point(334, 33),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnRemoveProfile.FlatAppearance.BorderSize = 0;
-            _btnRemoveProfile.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnRemoveProfile = GlyphButton("−", "Remove this endpoint", bold: true);
             _btnRemoveProfile.Click += OnRemoveProfileClick;
-
-            _btnRenameProfile = new Button
-            {
-                Text = "\u270E",
-                Width = 26, Height = 26,
-                Location = new Point(362, 33),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 10f),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnRenameProfile.FlatAppearance.BorderSize = 0;
-            _btnRenameProfile.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            _btnRenameProfile = GlyphButton("✎", "Rename this endpoint");
             _btnRenameProfile.Click += OnRenameProfileClick;
-            new ToolTip().SetToolTip(_btnRenameProfile, "Rename this endpoint");
-
-            var lblCustomEndpoint = new Label
+            var profileHost = new TableLayoutPanel
             {
-                Text = "Endpoint:",
-                Location = new Point(16, 68),
+                ColumnCount = 4,
+                RowCount = 1,
                 AutoSize = true,
-                ForeColor = labelColor
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty
             };
-            _txtCustomEndpoint = new TextBox
-            {
-                Location = new Point(120, 65),
-                Width = 260,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
+            profileHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            profileHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            profileHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            profileHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            profileHost.Controls.Add(_cmbCustomProfile, 0, 0);
+            profileHost.Controls.Add(_btnAddProfile, 1, 0);
+            profileHost.Controls.Add(_btnRemoveProfile, 2, 0);
+            profileHost.Controls.Add(_btnRenameProfile, 3, 0);
+            var lblProfile = FieldLabel("Profile:");
+            Pair(root, ref row, lblProfile, profileHost);
+            _customRows.Add(lblProfile);
+            _customRows.Add(profileHost);
 
-            var lblCustomModel = new Label
-            {
-                Text = "Model:",
-                Location = new Point(16, 98),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _txtCustomModel = new TextBox
-            {
-                Location = new Point(120, 95),
-                Width = 260,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
+            var lblCustomEndpoint = FieldLabel("Endpoint:");
+            _txtCustomEndpoint = FillBox();
+            Pair(root, ref row, lblCustomEndpoint, _txtCustomEndpoint);
+            _customRows.Add(lblCustomEndpoint);
+            _customRows.Add(_txtCustomEndpoint);
 
-            var lblCustomApiKey = new Label
-            {
-                Text = "API Key:",
-                Location = new Point(16, 128),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _txtCustomApiKey = new TextBox
-            {
-                Location = new Point(120, 125),
-                Width = 210,
-                UseSystemPasswordChar = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            _btnShowCustomKey = new Button
-            {
-                Text = "Show",
-                Width = 50,
-                Height = 23,
-                Location = new Point(336, 125),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8f),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _btnShowCustomKey.FlatAppearance.BorderSize = 0;
-            _btnShowCustomKey.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
+            var lblCustomModel = FieldLabel("Model:");
+            _txtCustomModel = FillBox();
+            Pair(root, ref row, lblCustomModel, _txtCustomModel);
+            _customRows.Add(lblCustomModel);
+            _customRows.Add(_txtCustomModel);
+
+            var lblCustomApiKey = FieldLabel("API Key:");
+            _txtCustomApiKey = FillBox(password: true);
+            _btnShowCustomKey = TextButton("Show");
             _btnShowCustomKey.Click += OnShowCustomKeyClick;
+            var customKeyHost = KeyRow(_txtCustomApiKey, _btnShowCustomKey);
+            Pair(root, ref row, lblCustomApiKey, customKeyHost);
+            _customRows.Add(lblCustomApiKey);
+            _customRows.Add(customKeyHost);
 
-            _pnlCustom.Controls.AddRange(new Control[]
-            {
-                sepCustom, lblCustomHeader,
-                lblProfile, _cmbCustomProfile, _btnAddProfile, _btnRemoveProfile, _btnRenameProfile,
-                lblCustomEndpoint, _txtCustomEndpoint,
-                lblCustomModel, _txtCustomModel,
-                lblCustomApiKey, _txtCustomApiKey, _btnShowCustomKey
-            });
-            Controls.Add(_pnlCustom);
+            // Hide provider-specific rows until OnProviderChanged shows the right set.
+            foreach (var c in _ollamaRows) c.Visible = false;
+            foreach (var c in _customRows) c.Visible = false;
 
-            // Store base Y for dynamic repositioning
-            _providerSectionY = y;
+            // ===== AI context (Batch operations, Chat and QuickLauncher) =====
+            _lblAiContextHeader = Header("AI context (Batch operations, Chat and QuickLauncher)");
+            Span(root, ref row, _lblAiContextHeader);
 
-            // === AI Context section – all AI features ===
-            _lblAiContextHeader = new Label
-            {
-                Text = "AI context (Batch operations, Chat and QuickLauncher)",
-                Font = headerFont,
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true
-            };
-            Controls.Add(_lblAiContextHeader);
-
-            _chkIncludeDocumentContext = new CheckBox
-            {
-                Text = "Include full document content in AI context",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = true
-            };
+            _chkIncludeDocumentContext = Check("Include full document content in AI context");
+            _chkIncludeDocumentContext.Checked = true;
             var docTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             docTip.SetToolTip(_chkIncludeDocumentContext,
                 "Sends all source segments to the AI so it can determine the document type\r\n" +
@@ -521,55 +461,27 @@ namespace Supervertaler.Trados.Controls
                 _nudMaxSegments.Enabled = _chkIncludeDocumentContext.Checked;
                 _lblMaxSegments.Enabled = _chkIncludeDocumentContext.Checked;
             };
-            Controls.Add(_chkIncludeDocumentContext);
+            Span(root, ref row, _chkIncludeDocumentContext);
 
-            _lblMaxSegments = new Label
-            {
-                Text = "Max segments:",
-                Location = new Point(36, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            Controls.Add(_lblMaxSegments);
-
-            _nudMaxSegments = new NumericUpDown
-            {
-                Location = new Point(160, 0), // positioned dynamically
-                Width = 80,
-                Minimum = 100,
-                Maximum = 2000,
-                Value = 500,
-                Increment = 100
-            };
+            _lblMaxSegments = FieldLabel("Max segments:", indentSteps: 1);
+            _nudMaxSegments = SmallNud(100, 2000, 500, 100);
             var maxSegTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             maxSegTip.SetToolTip(_nudMaxSegments,
                 "Maximum number of source segments to include in the AI prompt.\r\n" +
                 "Documents larger than this will be truncated (first 80% + last 20%).");
-            Controls.Add(_nudMaxSegments);
+            Pair(root, ref row, _lblMaxSegments, _nudMaxSegments);
 
-            _chkIncludeTermMetadata = new CheckBox
-            {
-                Text = "Include term definitions and domains",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = true
-            };
+            _chkIncludeTermMetadata = Check("Include term definitions and domains");
+            _chkIncludeTermMetadata.Checked = true;
             var metaTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             metaTip.SetToolTip(_chkIncludeTermMetadata,
                 "When enabled, term definitions, domains, and notes are included\r\n" +
                 "alongside matched terminology in the AI prompt.\r\n" +
                 "Applies to Chat, QuickLauncher, and Batch Operations.");
-            Controls.Add(_chkIncludeTermMetadata);
+            Span(root, ref row, _chkIncludeTermMetadata);
 
-            _chkIncludeSuperMemory = new CheckBox
-            {
-                Text = "Include SuperMemory knowledge base in AI context",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = true
-            };
+            _chkIncludeSuperMemory = Check("Include SuperMemory knowledge base in AI context");
+            _chkIncludeSuperMemory.Checked = true;
             var smTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             smTip.SetToolTip(_chkIncludeSuperMemory,
                 "When enabled, relevant SuperMemory articles (client profiles, domain\r\n" +
@@ -579,135 +491,86 @@ namespace Supervertaler.Trados.Controls
             {
                 _chkIncludeSuperMemoryAutoPrompt.Enabled = _chkIncludeSuperMemory.Checked;
             };
-            Controls.Add(_chkIncludeSuperMemory);
+            Span(root, ref row, _chkIncludeSuperMemory);
 
-            _chkIncludeSuperMemoryAutoPrompt = new CheckBox
-            {
-                Text = "Use knowledge base when generating prompts (AutoPrompt)",
-                Location = new Point(36, 0), // indented, positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = true
-            };
+            _chkIncludeSuperMemoryAutoPrompt = Check("Use knowledge base when generating prompts (AutoPrompt)", indentSteps: 1);
+            _chkIncludeSuperMemoryAutoPrompt.Checked = true;
             var apTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             apTip.SetToolTip(_chkIncludeSuperMemoryAutoPrompt,
                 "When enabled, AutoPrompt includes your SuperMemory articles\r\n" +
                 "(client conventions, terminology reasoning, style guides) in\r\n" +
                 "the meta-prompt so that generated prompts reflect your\r\n" +
                 "established knowledge base from the start.");
-            Controls.Add(_chkIncludeSuperMemoryAutoPrompt);
+            Span(root, ref row, _chkIncludeSuperMemoryAutoPrompt);
 
-            _chkLogPrompts = new CheckBox
-            {
-                Text = "Log prompts and responses to Reports tab",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = false
-            };
+            _chkLogPrompts = Check("Log prompts and responses to Reports tab");
+            _chkLogPrompts.Checked = false;
             var logTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             logTip.SetToolTip(_chkLogPrompts,
                 "When enabled, every AI API call is logged to the Reports tab with\r\n" +
                 "the full prompt, response, estimated token counts, and cost.\r\n" +
                 "Useful for monitoring costs and debugging prompt behaviour.");
-            Controls.Add(_chkLogPrompts);
+            Span(root, ref row, _chkLogPrompts);
 
-            _lblBatchSize = new Label
-            {
-                Text = "Batch size:",
-                Location = new Point(16, 0),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            Controls.Add(_lblBatchSize);
-
-            _nudBatchSize = new NumericUpDown
-            {
-                Minimum = 5,
-                Maximum = 100,
-                Value = 20,
-                // 80px gives the digits enough room after AutoScaleMode.Dpi
-                // scales the control at >100% Windows display scaling – at
-                // 60px the system spinner buttons take up most of the width.
-                Width = 80,
-                Location = new Point(160, 0)
-            };
+            _lblBatchSize = FieldLabel("Batch size:");
+            _nudBatchSize = SmallNud(5, 100, 20, 1);
             var batchTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             batchTip.SetToolTip(_nudBatchSize,
                 "Number of segments sent to the AI provider per API call during\r\n" +
                 "Batch Translate and Batch Proofread. Lower values are safer;\r\n" +
                 "higher values reduce cost and improve cross-segment consistency.");
-            Controls.Add(_nudBatchSize);
+            Pair(root, ref row, _lblBatchSize, _nudBatchSize);
 
             // Termbase AI inclusion is now chosen on the Termbases tab (the "AI"
-            // column in the termbase grid), so the user controls term recognition
-            // and AI inclusion in one place. This is just a pointer to that.
+            // column in the termbase grid), so this is just a pointer to that.
             _lblAiTermbases = new Label
             {
                 Text = "Termbases included in AI prompts are chosen on the Termbases tab – " +
                        "tick the “AI” column for each termbase the AI should see.",
-                Location = new Point(16, 0), // positioned dynamically
                 AutoSize = true,
-                ForeColor = labelColor
+                MaximumSize = new Size(UiScale.Pixels(520), 0),
+                ForeColor = labelColor,
+                Margin = new Padding(0, UiScale.Pixels(4), 0, UiScale.Pixels(4))
             };
-            Controls.Add(_lblAiTermbases);
+            Span(root, ref row, _lblAiTermbases);
 
-            // === AI Context section – Chat & QuickLauncher only ===
-            _lblChatContextHeader = new Label
-            {
-                Text = "AI context (Chat and QuickLauncher)",
-                Font = headerFont,
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true
-            };
-            Controls.Add(_lblChatContextHeader);
+            // ===== AI context (Chat and QuickLauncher only) =====
+            _lblChatContextHeader = Header("AI context (Chat and QuickLauncher)");
+            Span(root, ref row, _lblChatContextHeader);
 
             _lblChatContextNote = new Label
             {
-                Text = "Most of these apply to Chat and QuickLauncher only \u2013 see each tooltip for exceptions.",
-                Location = new Point(16, 0), // positioned dynamically
+                Text = "Most of these apply to Chat and QuickLauncher only – see each tooltip for exceptions.",
                 AutoSize = true,
                 ForeColor = Color.FromArgb(130, 130, 130),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic)
+                Font = HintFont(),
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(4))
             };
-            Controls.Add(_lblChatContextNote);
+            Span(root, ref row, _lblChatContextNote);
 
-            _chkIncludeTmMatches = new CheckBox
-            {
-                Text = "Include TM matches in AI context (Chat, QuickLauncher, AutoPrompt)",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = true
-            };
+            _chkIncludeTmMatches = Check("Include TM matches in AI context (Chat, QuickLauncher, AutoPrompt)");
+            _chkIncludeTmMatches.Checked = true;
             var tmTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
             tmTip.SetToolTip(_chkIncludeTmMatches,
                 "When enabled, the AI gets translation reference pairs in two ways:\r\n" +
                 "\r\n" +
-                "  \u2022 Chat / QuickLauncher: live TM lookups for the active segment \u2013 fuzzy\r\n" +
+                "  • Chat / QuickLauncher: live TM lookups for the active segment – fuzzy\r\n" +
                 "    and exact matches from your project TMs are included as references.\r\n" +
                 "\r\n" +
-                "  \u2022 AutoPrompt (Batch Operations): up to 50 already-translated, human-\r\n" +
+                "  • AutoPrompt (Batch Operations): up to 50 already-translated, human-\r\n" +
                 "    confirmed segment pairs are sampled evenly from the active document\r\n" +
                 "    and included as in-project translation examples. Includes 100% / exact\r\n" +
                 "    matches that have been applied and confirmed, fuzzy-and-edited\r\n" +
-                "    segments, and segments translated from scratch \u2013 anything with a\r\n" +
+                "    segments, and segments translated from scratch – anything with a\r\n" +
                 "    Translated / ApprovedTranslation / ApprovedSignOff confirmation level.\r\n" +
                 "\r\n" +
                 "Other Batch Operations (Translate, Proofread) are unaffected by this\r\n" +
-                "checkbox \u2013 they always work segment-by-segment without TM reference\r\n" +
+                "checkbox – they always work segment-by-segment without TM reference\r\n" +
                 "pairs.");
-            Controls.Add(_chkIncludeTmMatches);
+            Span(root, ref row, _chkIncludeTmMatches);
 
-            _chkDemoMode = new CheckBox
-            {
-                Text = "Incognito mode \u2014 anonymise project names, paths, and personal data in AI responses",
-                Location = new Point(16, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor,
-                Checked = false
-            };
+            _chkDemoMode = Check("Incognito mode — anonymise project names, paths, and personal data in AI responses");
+            _chkDemoMode.Checked = false;
             var demoTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             demoTip.SetToolTip(_chkDemoMode,
                 "When enabled, the AI replaces all project names, file paths, TM names,\r\n" +
@@ -715,208 +578,62 @@ namespace Supervertaler.Trados.Controls
                 "Useful for screen sharing, recording demos, posting screenshots in forums,\r\n" +
                 "or any situation where you need to keep client data confidential.\r\n" +
                 "Toggle on before sharing, toggle off when done.");
-            Controls.Add(_chkDemoMode);
+            Span(root, ref row, _chkDemoMode);
 
-            _lblSurroundingSegments = new Label
-            {
-                Text = "Surrounding segments:",
-                Location = new Point(36, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            Controls.Add(_lblSurroundingSegments);
-
-            _nudSurroundingSegments = new NumericUpDown
-            {
-                Location = new Point(210, 0), // positioned dynamically – label is wider than "Max segments:"
-                // 80px gives the digits enough room after AutoScaleMode.Dpi
-                // scales the control at >100% Windows display scaling – at
-                // 60px the system spinner buttons take up most of the width.
-                Width = 80,
-                Minimum = 1,
-                Maximum = 20,
-                Value = 5,
-                Increment = 1
-            };
+            _lblSurroundingSegments = FieldLabel("Surrounding segments:", indentSteps: 1);
+            _nudSurroundingSegments = SmallNud(1, 20, 5, 1);
             var surroundingTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             surroundingTip.SetToolTip(_nudSurroundingSegments,
                 "Number of segments before and after the active segment to include\r\n" +
                 "in {{SURROUNDING_SEGMENTS}} QuickLauncher prompts and the AI Assistant\r\n" +
                 "chat context. Default: 5 (five segments on each side).\r\n" +
-                "Only applies to Chat and QuickLauncher \u2013 not to Batch Operations.");
-            Controls.Add(_nudSurroundingSegments);
+                "Only applies to Chat and QuickLauncher – not to Batch Operations.");
+            Pair(root, ref row, _lblSurroundingSegments, _nudSurroundingSegments);
 
-            _lblQuickLauncherTarget = new Label
-            {
-                Text = "QuickLauncher prompts go to:",
-                Location = new Point(36, 0), // positioned dynamically
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            Controls.Add(_lblQuickLauncherTarget);
-
+            _lblQuickLauncherTarget = FieldLabel("QuickLauncher prompts go to:", indentSteps: 1);
             _cmbQuickLauncherTarget = new ComboBox
             {
-                Location = new Point(210, 0), // positioned dynamically
-                Width = 220,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Width = UiScale.Pixels(220),
+                Anchor = AnchorStyles.Left,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
             _cmbQuickLauncherTarget.Items.Add("In-Trados AI Assistant");
-            // Display string was "Workbench Sidekick" through Trados v4.19.x \u2013
+            // Display string was "Workbench Sidekick" through Trados v4.19.x –
             // renamed to "Workbench Chat" after Supervertaler Workbench v1.10.4
             // retired the Sidekick floating window and the Chat surface was
             // promoted into Workbench itself. The persisted setting value
             // (settings.QuickLauncherTarget == "WorkbenchSidekick") is kept
             // unchanged on disk so existing users' saved preferences still
-            // resolve \u2013 it's an internal identifier, never user-visible.
+            // resolve – it's an internal identifier, never user-visible.
             _cmbQuickLauncherTarget.Items.Add("Workbench Chat");
             _cmbQuickLauncherTarget.SelectedIndex = 0;
             var qlTargetTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             qlTargetTip.SetToolTip(_cmbQuickLauncherTarget,
                 "Where Ctrl+Q QuickLauncher prompts are run.\r\n" +
                 "\r\n" +
-                "  In-Trados AI Assistant \u2013 default. Prompt + response stay in the\r\n" +
+                "  In-Trados AI Assistant – default. Prompt + response stay in the\r\n" +
                 "  Trados Assistant chat panel.\r\n" +
                 "\r\n" +
-                "  Workbench Chat \u2013 posts the prompt to Supervertaler Workbench's\r\n" +
-                "  AI tab \u2192 Chat sub-tab over a localhost bridge. Useful when you\r\n" +
+                "  Workbench Chat – posts the prompt to Supervertaler Workbench's\r\n" +
+                "  AI tab → Chat sub-tab over a localhost bridge. Useful when you\r\n" +
                 "  prefer a larger chat window for the response, or want both\r\n" +
                 "  products' chat history in one place. Falls back to the in-Trados\r\n" +
                 "  Assistant if Workbench isn't running.");
-            Controls.Add(_cmbQuickLauncherTarget);
+            Pair(root, ref row, _lblQuickLauncherTarget, _cmbQuickLauncherTarget);
 
-            // === Info label ===
+            // ===== Info =====
             _lblInfo = new Label
             {
                 Text = "API keys are stored locally and never sent anywhere except to the selected provider.",
-                Location = new Point(16, 0), // positioned dynamically
                 AutoSize = true,
                 ForeColor = Color.FromArgb(150, 150, 150),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic)
+                Font = HintFont(),
+                Margin = new Padding(0, UiScale.Pixels(12), 0, 0)
             };
-            Controls.Add(_lblInfo);
+            Span(root, ref row, _lblInfo);
 
-            ResumeLayout(false);
-
-            // Initial layout of dynamic controls
-            RepositionAiContextSection();
-
-            // Layout adjustments that depend on parent width
-            Resize += (s, e) =>
-            {
-                LayoutApiKeyRow();
-                LayoutTermbasesList();
-                LayoutProviderModelRows();
-            };
-            LayoutApiKeyRow();
-        }
-
-        /// <summary>
-        /// Repositions the AI Context section below the currently visible provider panel,
-        /// eliminating empty space when Ollama/Custom panels are hidden.
-        /// </summary>
-        private void RepositionAiContextSection()
-        {
-            var y = _providerSectionY;
-
-            // Add height of the visible provider panel
-            if (_pnlOllama.Visible)
-                y += _pnlOllama.Height + 8;
-            else if (_pnlCustom.Visible)
-                y += _pnlCustom.Height + 8;
-            else
-                y += 8; // small gap after Test Connection when no provider panel
-
-            // ── Section 1: AI Context (all AI features) ──
-            _lblAiContextHeader.Location = new Point(16, y);
-            y += 26;
-
-            _chkIncludeDocumentContext.Location = new Point(16, y);
-            y += 24;
-
-            _lblMaxSegments.Location = new Point(36, y + 3);
-            _nudMaxSegments.Location = new Point(160, y);
-            y += 30;
-
-            _chkIncludeTermMetadata.Location = new Point(16, y);
-            y += 24;
-
-            _chkIncludeSuperMemory.Location = new Point(16, y);
-            y += 24;
-
-            _chkIncludeSuperMemoryAutoPrompt.Location = new Point(36, y);
-            y += 28;
-
-            _chkLogPrompts.Location = new Point(16, y);
-            y += 28;
-
-            _lblBatchSize.Location = new Point(16, y + 3);
-            _nudBatchSize.Location = new Point(160, y);
-            y += 30;
-
-            _lblAiTermbases.Location = new Point(16, y);
-            y += 28;
-
-            // ── Section 2: AI Context (Chat & QuickLauncher only) ──
-            _lblChatContextHeader.Location = new Point(16, y);
-            y += 22;
-
-            _lblChatContextNote.Location = new Point(16, y);
-            y += 20;
-
-            _chkIncludeTmMatches.Location = new Point(16, y);
-            y += 24;
-
-            _chkDemoMode.Location = new Point(16, y);
-            y += 24;
-
-            _lblSurroundingSegments.Location = new Point(36, y + 3);
-            // Position the NUD dynamically against the label's actual right
-            // edge: at 150% Windows scaling the AutoSize label "Surrounding
-            // segments:" is wider than the fixed x=210 column the other rows
-            // use, so a hard-coded x would put the NUD on top of the label.
-            _nudSurroundingSegments.Location = new Point(_lblSurroundingSegments.Right + 8, y);
-            y += 34;
-
-            // The label "QuickLauncher prompts go to:" is wider than the
-            // shared x=210 column the other rows use, so the combo is
-            // anchored to the label's right edge instead of a fixed x to
-            // avoid the label clipping into the combo's leading text.
-            _lblQuickLauncherTarget.Location = new Point(36, y + 3);
-            _cmbQuickLauncherTarget.Location = new Point(_lblQuickLauncherTarget.Right + 8, y);
-            y += 34;
-
-            _lblInfo.Location = new Point(16, y);
-        }
-
-        private void LayoutApiKeyRow()
-        {
-            if (_txtApiKey == null || _btnShowKey == null) return;
-            // Use ClientSize.Width, NOT Width: when AutoScroll's vertical
-            // scrollbar appears (which happens because the AI Context section
-            // is taller than the panel), Width still reports the full panel
-            // size but ClientSize.Width is reduced by the scrollbar width.
-            // Using Width here makes the Show button slide under the scrollbar.
-            _btnShowKey.Location = new Point(ClientSize.Width - 16 - _btnShowKey.Width, _txtApiKey.Top);
-            _txtApiKey.Width = _btnShowKey.Left - _txtApiKey.Left - 6;
-        }
-
-        private void LayoutTermbasesList()
-        {
-            // Termbase AI inclusion is now chosen on the Termbases tab (the "AI" column);
-            // the in-panel checklist has been retired, so there is nothing to lay out here.
-        }
-
-        private void LayoutProviderModelRows()
-        {
-            if (_cmbProvider == null || _cmbModel == null) return;
-            var rightMargin = 16;
-            // Use ClientSize.Width (not Width) so the dropdowns don't extend
-            // under the AutoScroll vertical scrollbar when the AI Context
-            // section overflows the panel.
-            var w = Math.Max(120, ClientSize.Width - _cmbProvider.Left - rightMargin);
-            _cmbProvider.Width = w;
-            _cmbModel.Width = w;
+            Controls.Add(root);
         }
 
         /// <summary>
@@ -1105,9 +822,13 @@ namespace Supervertaler.Trados.Controls
             string savedKey;
             _txtApiKey.Text = _providerApiKeys.TryGetValue(providerKey, out savedKey) ? savedKey : "";
 
-            // Show/hide provider-specific sections
-            _pnlOllama.Visible = providerKey == LlmModels.ProviderOllama;
-            _pnlCustom.Visible = providerKey == LlmModels.ProviderCustomOpenAi;
+            // Show/hide provider-specific rows. Hiding both cells of a row
+            // collapses it, so the root grid reflows automatically — no manual
+            // repositioning to do.
+            bool isOllama = providerKey == LlmModels.ProviderOllama;
+            bool isCustom = providerKey == LlmModels.ProviderCustomOpenAi;
+            foreach (var c in _ollamaRows) c.Visible = isOllama;
+            foreach (var c in _customRows) c.Visible = isCustom;
 
             // API key field: hide for Ollama, show for others
             _txtApiKey.Enabled = providerKey != LlmModels.ProviderOllama;
@@ -1125,9 +846,6 @@ namespace Supervertaler.Trados.Controls
 
             // Clear status
             _lblStatus.Text = "";
-
-            // Reposition AI Context section based on visible provider panel
-            RepositionAiContextSection();
 
             _lastProviderKey = providerKey;
         }
@@ -1155,19 +873,19 @@ namespace Supervertaler.Trados.Controls
                     var error = await client.TestConnectionAsync(CancellationToken.None);
                     if (error == null)
                     {
-                        _lblStatus.Text = "\u2713 Connected";
+                        _lblStatus.Text = "✓ Connected";
                         _lblStatus.ForeColor = Color.FromArgb(30, 130, 60);
                     }
                     else
                     {
-                        _lblStatus.Text = $"\u2717 {error}";
+                        _lblStatus.Text = $"✗ {error}";
                         _lblStatus.ForeColor = Color.FromArgb(180, 60, 60);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _lblStatus.Text = $"\u2717 {ex.Message}";
+                _lblStatus.Text = $"✗ {ex.Message}";
                 _lblStatus.ForeColor = Color.FromArgb(180, 60, 60);
             }
             finally
