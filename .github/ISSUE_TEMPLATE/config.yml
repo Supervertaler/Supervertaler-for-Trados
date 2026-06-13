@@ -1,12 +1,9 @@
-# The "New issue" chooser. Bug reports use the Bug form below and become normal
-# GitHub issues; feature requests, questions and general discussion go to the
-# org-level GitHub Discussions board (shared with Workbench). blank_issues_enabled
-# stays true so the maintainer can also open roadmap / [Feature] issues directly.
+# The "New issue" chooser. Bug reports and feature requests use the forms below
+# and become normal GitHub issues ([Bug] / [Feature]); questions and general
+# discussion go to the org-level GitHub Discussions board (shared with Workbench).
+# blank_issues_enabled stays true so the maintainer can open issues directly.
 blank_issues_enabled: true
 contact_links:
-  - name: 💡 Feature requests & ideas
-    url: https://github.com/orgs/Supervertaler/discussions
-    about: Suggest features and discuss ideas for the Trados plugin in GitHub Discussions.
   - name: ❓ Questions & how-to help
     url: https://github.com/orgs/Supervertaler/discussions
     about: For usage questions, installation, licensing and general discussion, please post in GitHub Discussions.
