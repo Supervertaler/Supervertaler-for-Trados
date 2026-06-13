@@ -121,7 +121,7 @@ The plugins attached to this release are the **unsigned** builds. The version on
 
 - RWS App Store (signed): https://appstore.rws.com/plugin/432
 - Full changelog: https://github.com/Supervertaler/Supervertaler-for-Trados/blob/main/CHANGELOG.md
-- Support & community forum: https://forum.supervertaler.com/
+- Questions & discussion: https://github.com/orgs/Supervertaler/discussions
 """
 
 
