@@ -52,3 +52,10 @@ dist/Supervertaler-Example-Project.zip
 ## Python (tools/)
 __pycache__/
 *.pyc
+
+## Private dev notes — NEVER commit (holds the server-side trial-registration design doc)
+.dev/
+
+## Build logs and GitHub release zips (transient / regenerated)
+build_*.log
+dist/*.zip
