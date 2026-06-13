@@ -217,4 +217,14 @@ else
     echo ""
 fi
 
+# Produce the GitHub-release zips (hyphenated outer name, exact .sdlplugin name inside).
+# These are GitHub-only artefacts; the RWS App Store still gets the raw .sdlplugin.
+# See tools/github_release.py for why the plugins must be zipped rather than attached bare.
+if command -v python >/dev/null 2>&1; then
+    echo ""
+    echo "=== Producing GitHub-release zips in dist/ ==="
+    python "$SCRIPT_DIR/tools/github_release.py" --zip-only
+    echo ""
+fi
+
 echo "=== Done — start Trados Studio to load the updated plugin(s) ==="

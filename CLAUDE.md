@@ -118,6 +118,30 @@ and displays their terms as green chips alongside Supervertaler terms.
 
 ---
 
+## Release channels (GitHub vs RWS App Store)
+
+Two channels with **different semantics – do not mirror one onto the other.** `CHANGELOG.md` is the single source of truth both draw from.
+
+| | **GitHub releases** | **RWS App Store** |
+|---|---|---|
+| Tracks | **builds** | **approvals** |
+| Mutability | immutable, append-only, **never deleted** | rolling – delete the unapproved one and re-upload a bigger cumulative one as needed |
+| Changelog baseline | the **previous GitHub release tag** (auto via `gh`) | the last **published** App Store version (passed manually) |
+| Carries the plugin? | **Yes** – both unsigned zips attached | yes – the signed `.sdlplugin` |
+
+Rules:
+- **Never delete a GitHub release.** The App Store delete/re-upload dance stays entirely on the App Store side and never touches a GitHub release.
+- **Cut a GitHub release** whenever you'd submit to the App Store (Sunday cadence) **plus** for any urgent mid-week build a user is actively waiting on. Tag = the exact built version.
+- **Attach both plugin zips** to every GitHub release so eager users can install before App Store approval (which can take days, esp. weekends). This reverses the old "notes-only, no binaries" policy (v4.19.24–v4.20.44).
+- **Why zips, not bare `.sdlplugin`:** GitHub Releases replaces spaces in asset filenames with periods, turning `Supervertaler for Trados.sdlplugin` → `Supervertaler.for.Trados.sdlplugin`. Trados extracts to `Unpacked/<sdlplugin-filename-without-extension>/` and matches the manifest `<PlugInName>`, so a dotted name reintroduces the duplicate-package crash. The hyphenated zip preserves the exact inner filename. The `.sdlplugin` names are **load-bearing – never rename them.**
+
+Tooling:
+- `build.sh` calls `python tools/github_release.py --zip-only` after building, producing `Supervertaler-for-Trados-Studio-2024.zip` and `…-Studio-2026-beta.zip` in `dist/` (GitHub-only; the App Store still gets the raw `.sdlplugin`).
+- `python tools/github_release.py --create` auto-detects the last GitHub tag, extracts the `CHANGELOG.md` delta since it, writes `release-body-v<ver>.md` (with the unsigned/zip-extract preamble + links), and runs `gh release create v<ver>` with both zips attached. Run without `--create` for a dry run; `--since <ver>` overrides the baseline.
+- `python tools/appstore_release.py <last_published_version>` is unchanged – it generates the App Store notes from its own (published-version) baseline.
+
+---
+
 ## Naming conventions
 
 - **Plugin name**: "Supervertaler for Trados" (visible in Trados docking header and plugin manager)
