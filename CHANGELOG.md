@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.51] – 2026-06-14
+
+### Changed (AI · termbases)
+
+- **Native MultiTerm (.sdltb) termbases are now opt-in for the AI, the same as Supervertaler's own .db termbases.** Previously a MultiTerm termbase attached to your Trados project could have its terms sent to the AI by default. Now its **AI** column (Settings → Termbases) starts unticked, and its terms are included in AI prompts (Chat, AutoPrompt, Batch Translate and Proofread) only when you explicitly tick it. Your Supervertaler .db termbases are unaffected. If you were relying on a MultiTerm termbase feeding the AI, just tick its AI box once after updating.
+
+
 ## [4.20.50] – 2026-06-14
 
 ### Added
