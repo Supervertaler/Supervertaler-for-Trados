@@ -129,12 +129,15 @@ namespace Supervertaler.Trados.Settings
             BackColor = Color.White;
 
             // === OK / Cancel – anchored to bottom of form, outside tabs ===
+            // Wider than the old 75px (which cropped "Cancel" / "OK" at high DPI);
+            // plain anchored buttons so they always render bottom-right.
             _btnOK = new Button
             {
                 Text = "OK",
                 DialogResult = DialogResult.OK,
-                Location = new Point(ClientSize.Width - 170, ClientSize.Height - 40),
-                Width = 75,
+                Location = new Point(ClientSize.Width - 218, ClientSize.Height - 42),
+                Width = 100,
+                Height = 28,
                 FlatStyle = FlatStyle.System,
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
@@ -144,8 +147,9 @@ namespace Supervertaler.Trados.Settings
             {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(ClientSize.Width - 88, ClientSize.Height - 40),
-                Width = 75,
+                Location = new Point(ClientSize.Width - 112, ClientSize.Height - 42),
+                Width = 100,
+                Height = 28,
                 FlatStyle = FlatStyle.System,
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
@@ -210,131 +214,193 @@ namespace Supervertaler.Trados.Settings
         /// <summary>
         /// Builds the General tab – plugin-wide settings that are not specific to TermLens or AI.
         /// </summary>
+        // ─── Shared scaled-layout helpers (UiScale + AutoScaleMode.None) ───
+        // Each settings tab's content lives inside a UserControl host with
+        // AutoScaleMode.None, so UiScale (not WinForms autoscaling) owns all
+        // sizing. The layout is built from TableLayoutPanels with AutoSize
+        // rows/columns, so nothing clips or overlaps at any Windows display
+        // scale. (The form itself stays AutoScaleMode.Dpi for its chrome; each
+        // host is an independent scaling boundary, like AiSettingsPanel.)
+        private static readonly Color SvLabelColor = Color.FromArgb(70, 70, 70);
+        private static readonly Color SvHeaderColor = Color.FromArgb(50, 50, 50);
+
+        private UserControl NewScaledHost() => new UserControl
+        {
+            Dock = DockStyle.Fill,
+            AutoScaleMode = AutoScaleMode.None,
+            AutoScroll = true,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", UiScale.FontSize(9f)),
+            Padding = new Padding(UiScale.Pixels(16), UiScale.Pixels(12), UiScale.Pixels(16), UiScale.Pixels(12))
+        };
+
+        private TableLayoutPanel NewFormGrid()
+        {
+            var t = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                GrowStyle = TableLayoutPanelGrowStyle.AddRows,
+                Margin = Padding.Empty
+            };
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            return t;
+        }
+
+        private Label HeaderG(string text, bool first = false) => new Label
+        {
+            Text = text,
+            AutoSize = true,
+            Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold),
+            ForeColor = SvHeaderColor,
+            Margin = new Padding(0, UiScale.Pixels(first ? 0 : 12), 0, UiScale.Pixels(6))
+        };
+
+        private Label NoteG(string text) => new Label
+        {
+            Text = text,
+            AutoSize = true,
+            ForeColor = Color.FromArgb(140, 140, 140),
+            Font = new Font("Segoe UI", UiScale.FontSize(7.5f), FontStyle.Italic),
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, UiScale.Pixels(2), 0, UiScale.Pixels(2))
+        };
+
+        private Label SeparatorG() => new Label
+        {
+            Height = Math.Max(1, UiScale.Pixels(1)),
+            BorderStyle = BorderStyle.Fixed3D,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, UiScale.Pixels(10), 0, UiScale.Pixels(6))
+        };
+
+        private CheckBox CheckG(string text, int indentSteps = 0) => new CheckBox
+        {
+            Text = text,
+            AutoSize = true,
+            MinimumSize = new Size(0, UiScale.Pixels(20)),
+            ForeColor = SvLabelColor,
+            Margin = new Padding(UiScale.Pixels(indentSteps * 20), UiScale.Pixels(4), 0, UiScale.Pixels(5))
+        };
+
+        private Label FieldLabelG(string text, int indentSteps = 0) => new Label
+        {
+            Text = text,
+            AutoSize = true,
+            ForeColor = SvLabelColor,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(UiScale.Pixels(indentSteps * 20), UiScale.Pixels(7), UiScale.Pixels(8), UiScale.Pixels(7))
+        };
+
+        private FlowLayoutPanel FlowG(params Control[] controls)
+        {
+            var f = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
+            };
+            f.Controls.AddRange(controls);
+            return f;
+        }
+
+        private void SpanG(TableLayoutPanel t, ref int r, Control c)
+        {
+            t.Controls.Add(c, 0, r);
+            t.SetColumnSpan(c, 2);
+            r++;
+        }
+
+        private void PairG(TableLayoutPanel t, ref int r, Control labelCtrl, Control field)
+        {
+            t.Controls.Add(labelCtrl, 0, r);
+            t.Controls.Add(field, 1, r);
+            r++;
+        }
+
+        private void RowG(TableLayoutPanel t, ref int r, string labelText, Control field, int indentSteps = 0)
+        {
+            PairG(t, ref r, FieldLabelG(labelText, indentSteps), field);
+        }
+
         private void BuildGeneralTab(TabPage page)
         {
-            // ─── Appearance section ─────────────────────────────────
-            var lblAppearance = new Label
-            {
-                Text = "Appearance",
-                Location = new Point(10, 12),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(50, 50, 50)
-            };
+            var host = NewScaledHost();
+            var root = NewFormGrid();
+            int row = 0;
+            var tips = new ToolTip();
 
-            var lblUiScale = new Label
-            {
-                Text = "UI scale:",
-                Location = new Point(10, 40),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
+            // ─── Appearance ───
+            SpanG(root, ref row, HeaderG("Appearance", first: true));
 
             _cboUiScale = new ComboBox
             {
-                Location = new Point(80, 37),
-                Width = 70,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Width = UiScale.Pixels(90),
+                Anchor = AnchorStyles.Left,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                DrawMode = DrawMode.OwnerDrawFixed,
+                ItemHeight = UiScale.Pixels(22),
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
+            };
+            // Owner-draw so the selected text ("100%") is vertically centred in the
+            // box instead of sitting on the bottom edge at high DPI.
+            _cboUiScale.DrawItem += (s, e) =>
+            {
+                e.DrawBackground();
+                if (e.Index >= 0)
+                {
+                    using (var brush = new SolidBrush(e.ForeColor))
+                    using (var fmt = new StringFormat
+                    {
+                        LineAlignment = StringAlignment.Center,
+                        Alignment = StringAlignment.Near,
+                        FormatFlags = StringFormatFlags.NoWrap
+                    })
+                    {
+                        var rect = e.Bounds;
+                        rect.X += UiScale.Pixels(3);
+                        e.Graphics.DrawString(_cboUiScale.Items[e.Index].ToString(), e.Font, brush, rect, fmt);
+                    }
+                }
+                e.DrawFocusRectangle();
             };
             // 70-90% lets users dial the plugin smaller than Windows' display
             // scaling on hi-DPI machines where the global scaling is too
             // aggressive but they don't want to change Windows-wide settings.
-            // Below 70% the system-rendered control elements (NUD spinners,
-            // checkbox boxes) become disproportionately large vs the text.
             _cboUiScale.Items.AddRange(new object[] { "70%", "80%", "90%", "100%", "110%", "125%", "150%" });
             var scalePercent = (int)Math.Round(_settings.UiScaleFactor * 100);
             var scaleText = scalePercent + "%";
             var idx = _cboUiScale.Items.IndexOf(scaleText);
             _cboUiScale.SelectedIndex = idx >= 0 ? idx : 0;
+            RowG(root, ref row, "UI scale:", FlowG(_cboUiScale, NoteG("(restart required)")));
 
-            var lblScaleNote = new Label
-            {
-                Text = "(restart required)",
-                Location = new Point(156, 40),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(140, 140, 140),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic)
-            };
-
-            // ─── Privacy section ────────────────────────────────────
-            var sepPrivacy = new Label
-            {
-                Location = new Point(10, 72),
-                Height = 1,
-                Width = 500,
-                BorderStyle = BorderStyle.Fixed3D,
-                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
-            };
-
-            var lblPrivacy = new Label
-            {
-                Text = "Privacy",
-                Location = new Point(10, 82),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(50, 50, 50)
-            };
-
-            _chkUsageStats = new CheckBox
-            {
-                Text = "Share anonymous usage statistics (no personal data)",
-                Location = new Point(10, 108),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
-
-            var tips = new ToolTip();
+            // ─── Privacy ───
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Privacy"));
+            _chkUsageStats = CheckG("Share anonymous usage statistics (no personal data)");
             tips.SetToolTip(_chkUsageStats,
                 "Sends a single anonymous ping on startup (plugin version, OS, Trados version, locale).\n" +
                 "No personal data, translation content, or termbase info is ever collected.");
+            SpanG(root, ref row, _chkUsageStats);
 
-            // ─── Panels section ─────────────────────────────────────
-            var sepPanels = new Label
-            {
-                Location = new Point(10, 140),
-                Height = 1,
-                Width = 500,
-                BorderStyle = BorderStyle.Fixed3D,
-                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
-            };
-
-            var lblPanels = new Label
-            {
-                Text = "Panels",
-                Location = new Point(10, 150),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(50, 50, 50)
-            };
-
-            _chkSuperSearchInTab = new CheckBox
-            {
-                Text = "Show SuperSearch as a tab in the Supervertaler Assistant panel",
-                Location = new Point(10, 176),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
-
-            var lblSuperSearchNote = new Label
-            {
-                Text = "(restart required)",
-                Location = new Point(10, 198),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(140, 140, 140),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic)
-            };
-
+            // ─── Panels ───
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Panels"));
+            _chkSuperSearchInTab = CheckG("Show SuperSearch as a tab in the Supervertaler Assistant panel");
             tips.SetToolTip(_chkSuperSearchInTab,
                 "When on, SuperSearch is hosted as a 4th tab inside the Supervertaler Assistant\n" +
                 "panel instead of its own dockable panel. Requires a Trados restart, and an\n" +
                 "Assistant licence (without one, SuperSearch stays in its own panel).");
+            SpanG(root, ref row, _chkSuperSearchInTab);
+            SpanG(root, ref row, NoteG("(restart required)"));
 
-            page.Controls.AddRange(new Control[]
-            {
-                lblAppearance, lblUiScale, _cboUiScale, lblScaleNote,
-                sepPrivacy, lblPrivacy, _chkUsageStats,
-                sepPanels, lblPanels, _chkSuperSearchInTab, lblSuperSearchNote
-            });
+            host.Controls.Add(root);
+            page.Controls.Add(host);
         }
 
         /// <summary>
@@ -343,143 +409,137 @@ namespace Supervertaler.Trados.Settings
         /// </summary>
         private void BuildTermLensTab(TabPage page)
         {
-            // Reference width for initial control positioning; Dock handles actual sizing.
-            var w = page.ClientSize.Width > 0 ? page.ClientSize.Width : 530;
+            var host = NewScaledHost();
+            host.AutoScroll = false; // the grid fills the middle and scrolls internally
 
-            // Use Dock-based panels for robust layout across DPI scales and resolutions.
-            // Top: termbase path, browse, info, termbase buttons (fixed height)
-            // Bottom: separator, auto-load, font size (fixed height)
-            // Middle: DataGridView fills remaining space
-            var topPanel = new Panel { Dock = DockStyle.Top, Height = 138, Width = w, BackColor = Color.White };
-            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 175, BackColor = Color.White };
-            var gridPanel = new Panel
-            {
-                Dock = DockStyle.Fill,
-                Padding = new Padding(10, 0, 10, 0),
-                BackColor = Color.White
-            };
+            // === Top section: database path + termbase management ===
+            var topGrid = NewFormGrid();
+            int tr = 0;
 
-            // === Database section ===
-            var lblSection = new Label
-            {
-                Text = "Database",
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(10, 10),
-                AutoSize = true
-            };
-
-            var lblPath = new Label
-            {
-                Text = "Database file (.db):",
-                Location = new Point(10, 36),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(80, 80, 80)
-            };
+            SpanG(topGrid, ref tr, HeaderG("Database", first: true));
 
             _btnBrowse = new Button
             {
                 Text = "Browse...",
-                Width = 75,
-                Height = 23,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlatStyle = FlatStyle.System,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Margin = new Padding(UiScale.Pixels(4), UiScale.Pixels(3), 0, UiScale.Pixels(3)),
+                Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
             };
-            _btnBrowse.Location = new Point(w - 10 - _btnBrowse.Width, 52);
             _btnBrowse.Click += OnBrowseClick;
 
             _btnCreateNew = new Button
             {
                 Text = "Create New...",
-                Width = 120,
-                Height = 23,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlatStyle = FlatStyle.System,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Margin = new Padding(UiScale.Pixels(4), UiScale.Pixels(3), 0, UiScale.Pixels(3)),
+                Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
             };
-            _btnCreateNew.Location = new Point(_btnBrowse.Left - 6 - _btnCreateNew.Width, 52);
             _btnCreateNew.Click += OnCreateNewClick;
 
             _txtTermbasePath = new TextBox
             {
-                Location = new Point(10, 54),
+                Dock = DockStyle.Fill,
                 ReadOnly = true,
                 BackColor = Color.FromArgb(250, 250, 250),
                 ForeColor = Color.FromArgb(40, 40, 40),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left
+                Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(2), UiScale.Pixels(3))
             };
-            _txtTermbasePath.Width = _btnCreateNew.Left - 10 - 10;
-
-            // Keep TextBox width in sync with button positions when the panel resizes
-            topPanel.Layout += (s, e) =>
+            var pathHost = new TableLayoutPanel
             {
-                _txtTermbasePath.Width = _btnCreateNew.Left - 10 - 10;
+                ColumnCount = 3,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty
             };
+            pathHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            pathHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            pathHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            pathHost.Controls.Add(_txtTermbasePath, 0, 0);
+            pathHost.Controls.Add(_btnCreateNew, 1, 0);
+            pathHost.Controls.Add(_btnBrowse, 2, 0);
+            RowG(topGrid, ref tr, "Database file (.db):", pathHost);
 
             _lblTermbaseInfo = new Label
             {
-                Location = new Point(10, 80),
-                AutoSize = false,
-                Height = 32,
-                ForeColor = Color.FromArgb(100, 100, 100),
-                Font = new Font("Segoe UI", 8f),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            _lblTermbaseInfo.Width = w - 20;
-
-            // === Termbase grid (Read / Write / Project columns) ===
-            _lblTermbasesHeader = new Label
-            {
-                Text = "Termbases:",
-                Location = new Point(10, 114),
                 AutoSize = true,
-                ForeColor = Color.FromArgb(80, 80, 80)
+                MaximumSize = new Size(UiScale.Pixels(640), 0),
+                ForeColor = Color.FromArgb(100, 100, 100),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f)),
+                Margin = new Padding(0, UiScale.Pixels(2), 0, UiScale.Pixels(6))
             };
+            SpanG(topGrid, ref tr, _lblTermbaseInfo);
 
-            // Termbase management buttons (right-aligned on the Termbases row).
-            // All five use AutoSize + MinimumSize so labels never clip at high
-            // DPI \u2013 at 150% Windows scaling the previous fixed widths cropped
-            // "Open" -> "Ope" and dropped the "Remove" / "Add" text entirely,
-            // leaving just the +/\u2212 symbol. The chain positions each button to
-            // the LEFT of the previous one using its measured Width, so the
-            // row still right-aligns correctly regardless of label length.
-            Button MakeFlatButton(string text, int minWidth)
+            // Termbase management buttons \u2013 AutoSize so labels never clip at any scale.
+            Button MakeFlatButton(string text)
             {
                 var b = new Button
                 {
                     Text = text,
                     AutoSize = true,
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                    MinimumSize = new Size(minWidth, 26),
-                    Padding = new Padding(8, 0, 8, 0),
+                    Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2)),
                     FlatStyle = FlatStyle.Flat,
-                    Font = new Font("Segoe UI", 8f),
+                    Font = new Font("Segoe UI", UiScale.FontSize(8.5f)),
                     ForeColor = Color.FromArgb(80, 80, 80),
-                    Anchor = AnchorStyles.Top | AnchorStyles.Right
+                    Margin = new Padding(UiScale.Pixels(2), 0, 0, 0)
                 };
                 b.FlatAppearance.BorderSize = 0;
                 b.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
                 return b;
             }
 
-            _btnAddTermbase = MakeFlatButton("+ Add", 50);
-            _btnAddTermbase.Location = new Point(w - 10 - _btnAddTermbase.PreferredSize.Width, 110);
+            _btnOpenTermbase = MakeFlatButton("Open");
+            _btnOpenTermbase.Click += OnOpenTermbaseClick;
+            _btnExport = MakeFlatButton("Export");
+            _btnExport.Click += OnExportClick;
+            _btnImport = MakeFlatButton("Import");
+            _btnImport.Click += OnImportClick;
+            _btnRemoveTermbase = MakeFlatButton("\u2212 Remove");
+            _btnRemoveTermbase.Click += OnRemoveTermbaseClick;
+            _btnAddTermbase = MakeFlatButton("+ Add");
             _btnAddTermbase.Click += OnAddTermbaseClick;
 
-            _btnRemoveTermbase = MakeFlatButton("\u2212 Remove", 68);
-            _btnRemoveTermbase.Location = new Point(_btnAddTermbase.Left - _btnRemoveTermbase.PreferredSize.Width - 2, 110);
-            _btnRemoveTermbase.Click += OnRemoveTermbaseClick;
-
-            _btnImport = MakeFlatButton("Import", 65);
-            _btnImport.Location = new Point(_btnRemoveTermbase.Left - _btnImport.PreferredSize.Width - 2, 110);
-            _btnImport.Click += OnImportClick;
-
-            _btnExport = MakeFlatButton("Export", 65);
-            _btnExport.Location = new Point(_btnImport.Left - _btnExport.PreferredSize.Width - 2, 110);
-            _btnExport.Click += OnExportClick;
-
-            _btnOpenTermbase = MakeFlatButton("Open", 55);
-            _btnOpenTermbase.Location = new Point(_btnExport.Left - _btnOpenTermbase.PreferredSize.Width - 2, 110);
-            _btnOpenTermbase.Click += OnOpenTermbaseClick;
+            var tbButtonFlow = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Anchor = AnchorStyles.Right,
+                Margin = Padding.Empty
+            };
+            tbButtonFlow.Controls.AddRange(new Control[]
+            {
+                _btnOpenTermbase, _btnExport, _btnImport, _btnRemoveTermbase, _btnAddTermbase
+            });
+            _lblTermbasesHeader = new Label
+            {
+                Text = "Termbases:",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, UiScale.Pixels(7), 0, UiScale.Pixels(3))
+            };
+            var tbHeaderHost = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty
+            };
+            tbHeaderHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            tbHeaderHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            tbHeaderHost.Controls.Add(_lblTermbasesHeader, 0, 0);
+            tbHeaderHost.Controls.Add(tbButtonFlow, 1, 0);
+            SpanG(topGrid, ref tr, tbHeaderHost);
 
             _dgvTermbases = new DataGridView
             {
@@ -637,126 +697,69 @@ namespace Supervertaler.Trados.Settings
                 }
             };
 
-            // === Options section (inside bottomPanel, positions relative to panel) ===
-            var sep = new Label
-            {
-                Location = new Point(10, 0),
-                Height = 1,
-                BorderStyle = BorderStyle.Fixed3D,
-                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
-            };
-            sep.Width = w - 20;
+            // === Bottom section: options ===
+            var bottomGrid = NewFormGrid();
+            bottomGrid.Dock = DockStyle.Bottom;
+            int br = 0;
 
-            _chkAutoLoad = new CheckBox
-            {
-                Text = "Automatically load database when Trados Studio starts",
-                Location = new Point(10, 8),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
+            SpanG(bottomGrid, ref br, SeparatorG());
 
-            _chkCaseSensitive = new CheckBox
+            _chkAutoLoad = CheckG("Automatically load database when Trados Studio starts");
+            SpanG(bottomGrid, ref br, _chkAutoLoad);
+
+            _chkCaseSensitive = CheckG("Enable case-sensitive matching globally");
+            SpanG(bottomGrid, ref br, _chkCaseSensitive);
+
+            Label UnitLabel(string t) => new Label
             {
-                Text = "Enable case-sensitive matching globally",
-                Location = new Point(10, 32),
+                Text = t,
                 AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
+                ForeColor = Color.FromArgb(100, 100, 100),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(4), UiScale.Pixels(7), 0, 0)
             };
 
-            // Bottom rows: a label, an input, and a trailing unit label. The
-            // input column was previously hard-coded to x=130, but at 150%
-            // Windows display scaling the AutoSize labels grow past 120px
-            // and overlap the input. Compute a shared input-column x from the
-            // widest of the three labels' actual widths, then chain the
-            // trailing units off each input's right edge.
-            var lblFontSize = new Label
-            {
-                Text = "Panel font size:",
-                Location = new Point(10, 58),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
-            var lblShortcutStyle = new Label
-            {
-                Text = "Term shortcuts:",
-                Location = new Point(10, 86),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
-            var lblChordDelay = new Label
-            {
-                Text = "Shortcut delay:",
-                Location = new Point(10, 114),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
-            int inputX = Math.Max(130,
-                Math.Max(lblFontSize.PreferredSize.Width,
-                    Math.Max(lblShortcutStyle.PreferredSize.Width,
-                             lblChordDelay.PreferredSize.Width)) + 16);
-
-            // Bumped widths so the digit area still feels comfortable after
-            // AutoScaleMode.Dpi scales the control body at >100% scaling – at
-            // 60/70px the system spinner buttons swallowed most of the width.
             _nudFontSize = new NumericUpDown
             {
-                Location = new Point(inputX, 56),
-                Width = 80,
+                Width = UiScale.Pixels(90),
+                Anchor = AnchorStyles.Left,
                 Minimum = 7,
                 Maximum = 16,
                 DecimalPlaces = 1,
                 Increment = 0.5m,
-                Value = (decimal)_settings.PanelFontSize
+                Value = (decimal)_settings.PanelFontSize,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
-
-            var lblFontPt = new Label
-            {
-                Text = "pt",
-                Location = new Point(_nudFontSize.Right + 4, 58),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(100, 100, 100)
-            };
+            RowG(bottomGrid, ref br, "Panel font size:", FlowG(_nudFontSize, UnitLabel("pt")));
 
             _cboShortcutStyle = new ComboBox
             {
-                Location = new Point(inputX, 84),
-                Width = 280,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
             _cboShortcutStyle.Items.Add("Sequential (Alt+45 = term 45)");
             _cboShortcutStyle.Items.Add("Repeated digit (Alt+55, Alt+66, etc.)");
             _cboShortcutStyle.SelectedIndex = _settings.TermShortcutStyle == "repeated" ? 1 : 0;
+            RowG(bottomGrid, ref br, "Term shortcuts:", _cboShortcutStyle);
 
             _nudChordDelay = new NumericUpDown
             {
-                Location = new Point(inputX, 112),
-                Width = 90,
+                Width = UiScale.Pixels(95),
+                Anchor = AnchorStyles.Left,
                 Minimum = 300,
                 Maximum = 3000,
                 Increment = 100,
-                Value = Math.Max(300, Math.Min(3000, _settings.ChordDelayMs))
+                Value = Math.Max(300, Math.Min(3000, _settings.ChordDelayMs)),
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
+            RowG(bottomGrid, ref br, "Shortcut delay:", FlowG(_nudChordDelay, UnitLabel("ms")));
 
-            var lblChordMs = new Label
-            {
-                Text = "ms",
-                Location = new Point(_nudChordDelay.Right + 4, 114),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(100, 100, 100)
-            };
-
-            var lblSuffixTolerant = new Label
-            {
-                Text = "Particle matching:",
-                Location = new Point(10, 142),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(60, 60, 60)
-            };
             _cboSuffixTolerant = new ComboBox
             {
-                Location = new Point(inputX, 140),
-                Width = 280,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
             _cboSuffixTolerant.Items.Add("Auto (on for Korean / Japanese)");
             _cboSuffixTolerant.Items.Add("Always on");
@@ -767,18 +770,15 @@ namespace Supervertaler.Trados.Settings
                 case "off": _cboSuffixTolerant.SelectedIndex = 2; break;
                 default: _cboSuffixTolerant.SelectedIndex = 0; break;
             }
+            RowG(bottomGrid, ref br, "Particle matching:", _cboSuffixTolerant);
 
             var tips = new ToolTip();
-            tips.SetToolTip(_btnOpenTermbase,
-                "Open the selected termbase in the built-in termbase editor.");
-            tips.SetToolTip(_btnExport,
-                "Export all terms from the selected termbase to a CSV file.");
-            tips.SetToolTip(_btnImport,
-                "Import terms from a CSV file into the selected termbase.");
+            tips.SetToolTip(_btnOpenTermbase, "Open the selected termbase in the built-in termbase editor.");
+            tips.SetToolTip(_btnExport, "Export all terms from the selected termbase to a CSV file.");
+            tips.SetToolTip(_btnImport, "Import terms from a CSV file into the selected termbase.");
             tips.SetToolTip(_btnRemoveTermbase,
                 "Remove the selected termbase from the database.\nThe termbase and its terms will be permanently deleted.");
-            tips.SetToolTip(_btnAddTermbase,
-                "Add a new termbase to the database.");
+            tips.SetToolTip(_btnAddTermbase, "Add a new termbase to the database.");
             tips.SetToolTip(_cboShortcutStyle,
                 "Sequential: type the term number digit by digit (short delay).\n" +
                 "Repeated digit: press the same key multiple times (no delay).");
@@ -795,119 +795,94 @@ namespace Supervertaler.Trados.Settings
                 "expanding to the whole word.\n" +
                 "Auto: on when the source language is Korean or Japanese.");
 
-            // Add controls to their respective panels
-            topPanel.Controls.AddRange(new Control[]
+            // === Grid (fills the middle) ===
+            var gridPanel = new Panel
             {
-                lblSection, lblPath, _txtTermbasePath, _btnCreateNew, _btnBrowse,
-                _lblTermbaseInfo, _lblTermbasesHeader,
-                _btnOpenTermbase, _btnExport, _btnImport, _btnRemoveTermbase, _btnAddTermbase
-            });
-
-            bottomPanel.Controls.AddRange(new Control[]
-            {
-                sep, _chkAutoLoad, _chkCaseSensitive,
-                lblFontSize, _nudFontSize, lblFontPt,
-                lblShortcutStyle, _cboShortcutStyle,
-                lblChordDelay, _nudChordDelay, lblChordMs,
-                lblSuffixTolerant, _cboSuffixTolerant
-            });
-
+                Dock = DockStyle.Fill,
+                Padding = new Padding(0, UiScale.Pixels(4), 0, UiScale.Pixels(4)),
+                BackColor = Color.White
+            };
             gridPanel.Controls.Add(_dgvTermbases);
 
-            // Add panels to page – order matters for Dock layout
-            // (last added has highest z-order and docks first)
-            page.Controls.Add(gridPanel);     // Fill – docks last, fills remaining space
-            page.Controls.Add(bottomPanel);   // Bottom
-            page.Controls.Add(topPanel);      // Top
+            // Assemble inside the scaled host: grid fills, options dock bottom,
+            // database section docks top. (Add Fill first so the docked edges win.)
+            host.Controls.Add(gridPanel);
+            host.Controls.Add(bottomGrid);
+            host.Controls.Add(topGrid);
+            page.Controls.Add(host);
         }
 
         private void BuildBackupTab(TabPage page)
         {
-            var lblHeader = new Label
-            {
-                Text = "Back up and restore your Supervertaler settings",
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(50, 50, 50),
-                Location = new Point(16, 16),
-                AutoSize = true
-            };
+            var host = NewScaledHost();
+            var root = NewFormGrid();
+            int row = 0;
 
-            var lblDesc = new Label
+            SpanG(root, ref row, HeaderG("Back up and restore your Supervertaler settings", first: true));
+
+            SpanG(root, ref row, new Label
             {
                 Text = "Export your settings to a file so you can restore them later – for example " +
                        "before upgrading the plugin, or to transfer your setup to another machine.\n\n" +
                        "The settings file contains all your plugin configuration: termbase paths, " +
                        "toggle states, font size, shortcut preferences, AI provider keys, model " +
                        "selections, and prompt configuration.",
-                Location = new Point(16, 44),
-                Size = new Size(500, 72),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                AutoSize = true,
+                MaximumSize = new Size(UiScale.Pixels(560), 0),
+                ForeColor = SvLabelColor,
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(10))
+            });
+
+            Button BackupButton(string text)
+            {
+                var b = new Button
+                {
+                    Text = text,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    FlatStyle = FlatStyle.System,
+                    Anchor = AnchorStyles.Left,
+                    Margin = new Padding(0, UiScale.Pixels(4), 0, UiScale.Pixels(4)),
+                    Padding = new Padding(UiScale.Pixels(10), UiScale.Pixels(3), UiScale.Pixels(10), UiScale.Pixels(3))
+                };
+                return b;
+            }
+            Label BackupHint(string text) => new Label
+            {
+                Text = text,
+                AutoSize = true,
+                ForeColor = Color.FromArgb(100, 100, 100),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(10), UiScale.Pixels(9), 0, 0)
             };
 
-            var btnExport = new Button
-            {
-                Text = "Export Settings...",
-                Location = new Point(16, 130),
-                Width = 140,
-                Height = 30,
-                FlatStyle = FlatStyle.System
-            };
+            var btnExport = BackupButton("Export Settings...");
             btnExport.Click += OnExportSettingsClick;
+            PairG(root, ref row, btnExport, BackupHint("Save a copy of your current settings to a JSON file."));
 
-            var lblExport = new Label
-            {
-                Text = "Save a copy of your current settings to a JSON file.",
-                Location = new Point(164, 136),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(100, 100, 100)
-            };
-
-            var btnImport = new Button
-            {
-                Text = "Import Settings...",
-                Location = new Point(16, 172),
-                Width = 140,
-                Height = 30,
-                FlatStyle = FlatStyle.System
-            };
+            var btnImport = BackupButton("Import Settings...");
             btnImport.Click += OnImportSettingsClick;
+            PairG(root, ref row, btnImport, BackupHint("Restore settings from a previously exported file."));
 
-            var lblImport = new Label
-            {
-                Text = "Restore settings from a previously exported file.",
-                Location = new Point(164, 178),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(100, 100, 100)
-            };
-
-            var lblLocation = new Label
-            {
-                Text = "Settings file location:",
-                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Location = new Point(16, 224),
-                AutoSize = true
-            };
+            SpanG(root, ref row, HeaderG("Settings file location:"));
 
             var txtPath = new TextBox
             {
                 Text = TermLensSettings.SettingsFilePath,
-                Location = new Point(16, 244),
-                Width = 500,
+                Dock = DockStyle.Fill,
                 ReadOnly = true,
                 BackColor = Color.FromArgb(245, 245, 245),
                 ForeColor = Color.FromArgb(60, 60, 60),
-                Font = new Font("Consolas", 8.5f),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Font = new Font("Consolas", UiScale.FontSize(8.5f)),
+                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
+            SpanG(root, ref row, txtPath);
 
             var lnkOpenFolder = new LinkLabel
             {
                 Text = "Open settings folder",
-                Location = new Point(16, 274),
                 AutoSize = true,
-                Font = new Font("Segoe UI", 8.5f)
+                Margin = new Padding(0, UiScale.Pixels(4), 0, 0)
             };
             lnkOpenFolder.LinkClicked += (s, e) =>
             {
@@ -915,12 +890,10 @@ namespace Supervertaler.Trados.Settings
                 if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
                     System.Diagnostics.Process.Start("explorer.exe", folder);
             };
+            SpanG(root, ref row, lnkOpenFolder);
 
-            page.Controls.AddRange(new Control[]
-            {
-                lblHeader, lblDesc, btnExport, lblExport, btnImport, lblImport,
-                lblLocation, txtPath, lnkOpenFolder
-            });
+            host.Controls.Add(root);
+            page.Controls.Add(host);
         }
 
         private void OnGridCellContentClick(object sender, DataGridViewCellEventArgs e)

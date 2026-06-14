@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.49] – 2026-06-14
+
+### Fixed (high-DPI / Windows display scaling)
+
+- **The Settings dialog now lays out cleanly at any Windows display scale.** A user on a 4K display at 175% display scaling plus 175% text scaling reported clipped buttons, overlapping rows and cut-off text, mainly in the Settings tabs (issue #37). Every tab — General, Termbases, AI Settings, Prompts, Licence and Backup — was rebuilt with `TableLayoutPanel`-based layout, AutoSize buttons and the plugin's `UiScale` system instead of absolute pixel positioning, so labels, fields and buttons size to their (scaled) content and reflow automatically. Nothing clips or overlaps at 100/125/150/175% or any custom scale, and the in-app **UI scale** setting now affects the Settings dialog too. The Batch Operations pane's mode toggle and Scope dropdown, and the editor pencil/glyph buttons, were fixed the same way.
+
+### Added
+
+- **Anonymous usage stats now include the Windows display scale** (e.g. "175"), so the share of users on high-DPI scaling can be seen at a glance. Still opt-out, still nothing identifying — just the DPI percentage alongside the existing OS / Studio version / locale.
+
+
 ## [4.20.48] – 2026-06-12
 
 ### Fixed (AI · inline tags)

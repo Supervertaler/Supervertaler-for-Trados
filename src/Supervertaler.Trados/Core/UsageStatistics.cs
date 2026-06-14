@@ -70,7 +70,8 @@ namespace Supervertaler.Trados.Core
                     TradosVersion = GetTradosVersion(),
                     Locale = CultureInfo.CurrentUICulture.Name,
                     VirtualizationHost = DetectVirtualization(),
-                    ProcessArch = (Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") ?? "unknown").ToLowerInvariant()
+                    ProcessArch = (Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") ?? "unknown").ToLowerInvariant(),
+                    DisplayScale = GetDisplayScale()
                 };
 
                 var json = SerializePayload(payload);
@@ -196,6 +197,24 @@ namespace Supervertaler.Trados.Core
             return "none";
         }
 
+        /// <summary>
+        /// Windows display scale as a percentage string (e.g. "100", "150", "175"),
+        /// from the primary-screen DPI. Lets us see what share of users run high-DPI
+        /// scaling without sending anything identifying. "unknown" if it can't be read.
+        /// </summary>
+        private static string GetDisplayScale()
+        {
+            try
+            {
+                using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
+                {
+                    var pct = (int)Math.Round(g.DpiX / 96f * 100f);
+                    return (pct < 50 || pct > 600) ? "unknown" : pct.ToString(CultureInfo.InvariantCulture);
+                }
+            }
+            catch { return "unknown"; }
+        }
+
         private static string SerializePayload(UsagePing ping)
         {
             using (var stream = new MemoryStream())
@@ -232,6 +251,9 @@ namespace Supervertaler.Trados.Core
 
             [DataMember(Name = "arch")]
             public string ProcessArch { get; set; }
+
+            [DataMember(Name = "display_scale")]
+            public string DisplayScale { get; set; }
         }
     }
 }

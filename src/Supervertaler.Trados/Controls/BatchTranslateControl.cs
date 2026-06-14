@@ -170,7 +170,11 @@ namespace Supervertaler.Trados.Controls
             _modePanel = new Panel
             {
                 Location = new Point(leftMargin, y),
-                Size = new Size(Px(300), Px(24)),
+                // AutoSize so the panel always fits the radios; a fixed height
+                // clipped the radio text at high DPI + Windows text scaling.
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(Px(300), Px(26)),
                 BackColor = Color.Transparent
             };
 
@@ -179,6 +183,7 @@ namespace Supervertaler.Trados.Controls
                 Text = "Translate",
                 Location = new Point(0, Px(2)),
                 AutoSize = true,
+                MinimumSize = new Size(0, Px(22)),
                 Font = bodyFont,
                 ForeColor = labelColor,
                 Checked = true,
@@ -195,6 +200,7 @@ namespace Supervertaler.Trados.Controls
                 // the second radio button. PreferredSize gives the AutoSize
                 // measurement before the control is added to its parent.
                 AutoSize = true,
+                MinimumSize = new Size(0, Px(22)),
                 Font = bodyFont,
                 ForeColor = labelColor,
                 FlatStyle = FlatStyle.Flat
@@ -239,7 +245,8 @@ namespace Supervertaler.Trados.Controls
             _cmbScope = new ComboBox
             {
                 Location = new Point(labelColumn, y),
-                Width = Px(200),
+                // Wider so "Empty segments only" isn't clipped at high DPI.
+                Width = Px(260),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = bodyFont
             };

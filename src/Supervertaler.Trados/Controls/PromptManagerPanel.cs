@@ -150,7 +150,7 @@ namespace Supervertaler.Trados.Controls
             var toolbar = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 36,
+                Height = 46,
                 BackColor = Color.White
             };
 
@@ -234,7 +234,7 @@ namespace Supervertaler.Trados.Controls
             var folderPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 24,
+                Height = 38,
                 BackColor = Color.White
             };
             var lnkFolder = new LinkLabel
@@ -417,11 +417,12 @@ namespace Supervertaler.Trados.Controls
                 BackColor = Color.White
             };
 
-            // Top section: header + info
+            // Top section: header + info. Taller so the wrapped subtitle isn't
+            // clipped at high DPI + Windows text scaling.
             var topPanel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 54,
+                Height = 92,
                 BackColor = Color.White
             };
 
@@ -441,18 +442,19 @@ namespace Supervertaler.Trados.Controls
                 Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
                 ForeColor = Color.FromArgb(130, 130, 130),
                 AutoSize = false,
-                Height = 18,
+                Height = 44,
                 Width = 400,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
 
             topPanel.Controls.AddRange(new Control[] { lblSysHeader, lblSysInfo });
 
-            // Bottom section: Edit/Reset buttons
+            // Bottom section: Edit/Reset buttons. Taller so the AutoSize buttons
+            // aren't clipped at the bottom at high DPI + Windows text scaling.
             var bottomPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 34,
+                Height = 48,
                 BackColor = Color.White
             };
 
@@ -461,14 +463,18 @@ namespace Supervertaler.Trados.Controls
             // clipped "Edit System Prompt" / "Reset to Default". Position the
             // second button dynamically against the first's actual right edge,
             // and the status label dynamically against the second button.
+            // AutoSize buttons in a FlowLayoutPanel so they grow to fit the text
+            // at any DPI and the status label always sits past the second button's
+            // real edge (the old design-time .Right placement slid the label under
+            // the button at high DPI, clipping "(customised)" to "lt)").
             _btnEditSystem = new Button
             {
                 Text = "Edit System Prompt",
-                Location = new Point(6, 4),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 MinimumSize = new Size(130, 25),
                 Padding = new Padding(8, 0, 8, 0),
+                Margin = new Padding(6, 4, 0, 4),
                 FlatStyle = FlatStyle.System,
                 Font = bodyFont
             };
@@ -477,11 +483,11 @@ namespace Supervertaler.Trados.Controls
             _btnResetSystem = new Button
             {
                 Text = "Reset to Default",
-                Location = new Point(_btnEditSystem.PreferredSize.Width + 12, 4),
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 MinimumSize = new Size(120, 25),
                 Padding = new Padding(8, 0, 8, 0),
+                Margin = new Padding(12, 4, 0, 4),
                 FlatStyle = FlatStyle.System,
                 Font = bodyFont
             };
@@ -490,13 +496,25 @@ namespace Supervertaler.Trados.Controls
             _lblSystemStatus = new Label
             {
                 Text = "",
-                Location = new Point(_btnResetSystem.Right + 6, 8),
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
                 ForeColor = Color.FromArgb(100, 100, 100),
-                Font = new Font("Segoe UI", 8f)
+                Font = new Font("Segoe UI", 8f),
+                Margin = new Padding(8, 8, 0, 0)
             };
 
-            bottomPanel.Controls.AddRange(new Control[] { _btnEditSystem, _btnResetSystem, _lblSystemStatus });
+            var systemButtonFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            systemButtonFlow.Controls.Add(_btnEditSystem);
+            systemButtonFlow.Controls.Add(_btnResetSystem);
+            systemButtonFlow.Controls.Add(_lblSystemStatus);
+            bottomPanel.Controls.Add(systemButtonFlow);
 
             // Middle: system prompt textbox
             _txtSystemPrompt = new TextBox

@@ -77,7 +77,9 @@ namespace Supervertaler.Trados.Licensing
             _statusBanner = new Panel
             {
                 Location = new Point(leftPad, y),
-                Size = new Size(contentWidth, 36),
+                // Taller so the bold "Licence active" text isn't clipped at the
+                // bottom under high DPI + Windows text scaling.
+                Size = new Size(contentWidth, 48),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = Color.FromArgb(230, 245, 230)
             };
@@ -135,8 +137,9 @@ namespace Supervertaler.Trados.Licensing
             _btnActivate = new Button
             {
                 Text = "Activate",
-                Width = 90,
-                Height = 28,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(12, 4, 12, 4),
                 Location = new Point(0, 56),
                 FlatStyle = FlatStyle.System
             };
@@ -167,88 +170,66 @@ namespace Supervertaler.Trados.Licensing
             _licensedPanel = new Panel
             {
                 Location = new Point(leftPad, y),
-                Size = new Size(contentWidth, 200),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(contentWidth, 0),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Visible = false
             };
 
-            int ly = 0;
-            int labelX = 0;
-            int valueX = 110;
+            // AutoSize TableLayoutPanel: rows can't overlap and values can't clip
+            // at high DPI (the old absolute ly increments + fixed valueX=110 did
+            // both, especially with Windows text scaling on top).
+            var licensedGrid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                GrowStyle = TableLayoutPanelGrowStyle.AddRows,
+                Margin = Padding.Empty
+            };
+            licensedGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            licensedGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
 
-            _lblTierLabel = new Label
+            Label LicLabel(string text, Font f) => new Label
             {
-                Text = "Plan:",
-                Location = new Point(labelX, ly),
-                AutoSize = true,
-                Font = headingFont,
-                ForeColor = labelColor
+                Text = text, AutoSize = true, Font = f, ForeColor = labelColor,
+                Anchor = AnchorStyles.Left, Margin = new Padding(0, 4, 14, 4)
             };
-            _lblTierValue = new Label
+            Label LicValue(Font f, Color c) => new Label
             {
-                Location = new Point(valueX, ly),
-                AutoSize = true,
-                Font = headingFont,
-                ForeColor = valueColor
+                AutoSize = true, Font = f, ForeColor = c,
+                Anchor = AnchorStyles.Left, Margin = new Padding(0, 4, 0, 4)
             };
-            ly += 24;
 
-            _lblKeyLabel = new Label
-            {
-                Text = "Licence key:",
-                Location = new Point(labelX, ly),
-                AutoSize = true,
-                Font = smallFont,
-                ForeColor = labelColor
-            };
-            _lblKeyValue = new Label
-            {
-                Location = new Point(valueX, ly),
-                AutoSize = true,
-                Font = new Font("Consolas", 8.5f),
-                ForeColor = valueColor
-            };
-            ly += 22;
+            _lblTierLabel = LicLabel("Plan:", headingFont);
+            _lblTierValue = LicValue(headingFont, valueColor);
+            licensedGrid.Controls.Add(_lblTierLabel, 0, 0);
+            licensedGrid.Controls.Add(_lblTierValue, 1, 0);
 
-            _lblStatusLabel = new Label
-            {
-                Text = "Status:",
-                Location = new Point(labelX, ly),
-                AutoSize = true,
-                Font = smallFont,
-                ForeColor = labelColor
-            };
-            _lblStatusValue = new Label
-            {
-                Location = new Point(valueX, ly),
-                AutoSize = true,
-                Font = smallFont,
-                ForeColor = valueColor
-            };
-            ly += 22;
+            _lblKeyLabel = LicLabel("Licence key:", smallFont);
+            _lblKeyValue = LicValue(new Font("Consolas", 8.5f), valueColor);
+            licensedGrid.Controls.Add(_lblKeyLabel, 0, 1);
+            licensedGrid.Controls.Add(_lblKeyValue, 1, 1);
 
-            _lblValidatedLabel = new Label
-            {
-                Text = "Last verified:",
-                Location = new Point(labelX, ly),
-                AutoSize = true,
-                Font = smallFont,
-                ForeColor = labelColor
-            };
-            _lblValidatedValue = new Label
-            {
-                Location = new Point(valueX, ly),
-                AutoSize = true,
-                Font = smallFont,
-                ForeColor = labelColor
-            };
-            ly += 32;
+            _lblStatusLabel = LicLabel("Status:", smallFont);
+            _lblStatusValue = LicValue(smallFont, valueColor);
+            licensedGrid.Controls.Add(_lblStatusLabel, 0, 2);
+            licensedGrid.Controls.Add(_lblStatusValue, 1, 2);
+
+            _lblValidatedLabel = LicLabel("Last verified:", smallFont);
+            _lblValidatedValue = LicValue(smallFont, labelColor);
+            licensedGrid.Controls.Add(_lblValidatedLabel, 0, 3);
+            licensedGrid.Controls.Add(_lblValidatedValue, 1, 3);
 
             _btnRefresh = new Button
             {
                 Text = "Verify Now",
-                Width = 90,
-                Location = new Point(0, ly),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(12, 4, 12, 4),
+                Margin = new Padding(0, 10, 8, 0),
                 FlatStyle = FlatStyle.System
             };
             _btnRefresh.Click += async (s, e) => await RefreshAsync();
@@ -256,38 +237,45 @@ namespace Supervertaler.Trados.Licensing
             _btnDeactivate = new Button
             {
                 Text = "Deactivate",
-                Width = 90,
-                Location = new Point(100, ly),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(12, 4, 12, 4),
+                Margin = new Padding(0, 10, 0, 0),
                 FlatStyle = FlatStyle.System
             };
             _btnDeactivate.Click += async (s, e) => await DeactivateAsync();
 
-            ly += 34;
+            var licenseButtonFlow = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
+            };
+            licenseButtonFlow.Controls.Add(_btnRefresh);
+            licenseButtonFlow.Controls.Add(_btnDeactivate);
+            licensedGrid.Controls.Add(licenseButtonFlow, 0, 4);
+            licensedGrid.SetColumnSpan(licenseButtonFlow, 2);
 
             _lnkManage = new LinkLabel
             {
                 Text = "Manage subscription \u2192",
-                Location = new Point(0, ly),
                 AutoSize = true,
                 Font = font,
                 LinkColor = Color.FromArgb(40, 100, 180),
-                ActiveLinkColor = Color.FromArgb(30, 80, 160)
+                ActiveLinkColor = Color.FromArgb(30, 80, 160),
+                Margin = new Padding(0, 12, 0, 0)
             };
             _lnkManage.LinkClicked += (s, e) =>
             {
                 try { Process.Start(new ProcessStartInfo(ManageUrl) { UseShellExecute = true }); }
                 catch { }
             };
+            licensedGrid.Controls.Add(_lnkManage, 0, 5);
+            licensedGrid.SetColumnSpan(_lnkManage, 2);
 
-            _licensedPanel.Controls.AddRange(new Control[]
-            {
-                _lblTierLabel, _lblTierValue,
-                _lblKeyLabel, _lblKeyValue,
-                _lblStatusLabel, _lblStatusValue,
-                _lblValidatedLabel, _lblValidatedValue,
-                _btnRefresh, _btnDeactivate,
-                _lnkManage
-            });
+            _licensedPanel.Controls.Add(licensedGrid);
             Controls.Add(_licensedPanel);
         }
 

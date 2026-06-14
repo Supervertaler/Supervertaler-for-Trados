@@ -203,10 +203,12 @@ namespace Supervertaler.Trados.Controls
                 var b = new Button
                 {
                     Text = glyph,
-                    Width = UiScale.Pixels(32),
-                    Height = UiScale.Pixels(30),
+                    Width = UiScale.Pixels(36),
+                    Height = UiScale.Pixels(32),
                     FlatStyle = FlatStyle.Flat,
-                    Font = new Font("Segoe UI", UiScale.FontSize(11f), bold ? FontStyle.Bold : FontStyle.Regular),
+                    // The pencil glyph (✎) renders wider/taller than + and −, so it
+                    // gets a slightly smaller font to stay inside the button.
+                    Font = new Font("Segoe UI", UiScale.FontSize(bold ? 11f : 10f), bold ? FontStyle.Bold : FontStyle.Regular),
                     ForeColor = Color.FromArgb(70, 70, 70),
                     Anchor = AnchorStyles.Left,
                     Padding = Padding.Empty,
@@ -593,8 +595,7 @@ namespace Supervertaler.Trados.Controls
             _lblQuickLauncherTarget = FieldLabel("QuickLauncher prompts go to:", indentSteps: 1);
             _cmbQuickLauncherTarget = new ComboBox
             {
-                Width = UiScale.Pixels(220),
-                Anchor = AnchorStyles.Left,
+                Dock = DockStyle.Fill,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
             };
