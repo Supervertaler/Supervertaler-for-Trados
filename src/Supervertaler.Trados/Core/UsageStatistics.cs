@@ -71,7 +71,9 @@ namespace Supervertaler.Trados.Core
                     Locale = CultureInfo.CurrentUICulture.Name,
                     VirtualizationHost = DetectVirtualization(),
                     ProcessArch = (Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") ?? "unknown").ToLowerInvariant(),
-                    DisplayScale = GetDisplayScale()
+                    DisplayScale = GetDisplayScale(),
+                    TextScale = GetTextScale(),
+                    UiScalePercent = FormatScalePercent(settings.UiScaleFactor)
                 };
 
                 var json = SerializePayload(payload);
@@ -215,6 +217,36 @@ namespace Supervertaler.Trados.Core
             catch { return "unknown"; }
         }
 
+        /// <summary>
+        /// Windows accessibility "Text size" as a percentage string (e.g. "100",
+        /// "175"), from HKCU\Software\Microsoft\Accessibility\TextScaleFactor.
+        /// Absent = 100 (the default). A separate knob from display scaling.
+        /// </summary>
+        private static string GetTextScale()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Accessibility"))
+                {
+                    var val = key?.GetValue("TextScaleFactor");
+                    if (val == null) return "100";
+                    var pct = Convert.ToInt32(val);
+                    return (pct < 50 || pct > 600) ? "unknown" : pct.ToString(CultureInfo.InvariantCulture);
+                }
+            }
+            catch { return "unknown"; }
+        }
+
+        /// <summary>
+        /// The in-app Supervertaler UI-scale slider as a percentage string
+        /// (e.g. "70", "100", "150").
+        /// </summary>
+        private static string FormatScalePercent(float factor)
+        {
+            var pct = (int)Math.Round(factor * 100f);
+            return (pct < 10 || pct > 600) ? "unknown" : pct.ToString(CultureInfo.InvariantCulture);
+        }
+
         private static string SerializePayload(UsagePing ping)
         {
             using (var stream = new MemoryStream())
@@ -254,6 +286,12 @@ namespace Supervertaler.Trados.Core
 
             [DataMember(Name = "display_scale")]
             public string DisplayScale { get; set; }
+
+            [DataMember(Name = "text_scale")]
+            public string TextScale { get; set; }
+
+            [DataMember(Name = "ui_scale")]
+            public string UiScalePercent { get; set; }
         }
     }
 }

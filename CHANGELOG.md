@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.50] – 2026-06-14
+
+### Added
+
+- **Usage stats now also include the Windows accessibility text size and the in-app UI-scale setting**, alongside the display scale added in 4.20.49. Together the three show the full picture of how large the UI renders for each user (Windows DPI × text size × the in-app slider). Still opt-out, still nothing identifying.
+
+
 ## [4.20.49] – 2026-06-14
 
 ### Fixed (high-DPI / Windows display scaling)
