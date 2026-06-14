@@ -343,6 +343,8 @@ namespace Supervertaler.Trados.Settings
                         s.AiSettings.CustomOpenAiProfiles = new List<CustomOpenAiProfile>();
                     if (s.AiSettings.DisabledAiTermbaseIds == null)
                         s.AiSettings.DisabledAiTermbaseIds = new List<long>();
+                    if (s.AiSettings.EnabledAiMultiTermIds == null)
+                        s.AiSettings.EnabledAiMultiTermIds = new List<long>();
 
                     // Ensure prompt settings have safe defaults
                     if (s.AiSettings.SelectedPromptPath == null)
@@ -427,6 +429,9 @@ namespace Supervertaler.Trados.Settings
             if (AiSettings != null && ps.DisabledAiTermbaseIds != null)
                 AiSettings.DisabledAiTermbaseIds = ps.DisabledAiTermbaseIds;
 
+            if (AiSettings != null && ps.EnabledAiMultiTermIds != null)
+                AiSettings.EnabledAiMultiTermIds = ps.EnabledAiMultiTermIds;
+
             // Per-project active prompt (overrides global SelectedPromptPath)
             if (AiSettings != null && !string.IsNullOrEmpty(ps.ActivePromptPath))
                 AiSettings.SelectedPromptPath = ps.ActivePromptPath;
@@ -452,6 +457,8 @@ namespace Supervertaler.Trados.Settings
                     ? new List<long>(DisabledMultiTermIds) : new List<long>(),
                 DisabledAiTermbaseIds = AiSettings?.DisabledAiTermbaseIds != null
                     ? new List<long>(AiSettings.DisabledAiTermbaseIds) : new List<long>(),
+                EnabledAiMultiTermIds = AiSettings?.EnabledAiMultiTermIds != null
+                    ? new List<long>(AiSettings.EnabledAiMultiTermIds) : new List<long>(),
                 // Always true when extracted – the settings are considered initialised once
                 // the plugin has loaded and applied them at least once.
                 AiTermbaseIdsInitialized = true,

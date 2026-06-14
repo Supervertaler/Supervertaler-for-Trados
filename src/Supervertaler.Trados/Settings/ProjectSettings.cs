@@ -75,6 +75,13 @@ namespace Supervertaler.Trados.Settings
         public List<long> DisabledAiTermbaseIds { get; set; } = new List<long>();
 
         /// <summary>
+        /// IDs of MultiTerm (.sdltb) termbases EXPLICITLY enabled for AI context for this
+        /// project. MultiTerm termbases are opt-in (default off); see AiSettings.EnabledAiMultiTermIds.
+        /// </summary>
+        [DataMember(Name = "enabledAiMultiTermIds")]
+        public List<long> EnabledAiMultiTermIds { get; set; } = new List<long>();
+
+        /// <summary>
         /// True once the AI termbase selection has been explicitly initialised for this project.
         /// False (or absent in older project files) triggers a one-time migration that disables
         /// all termbases from AI context, matching the opt-in default for new projects.
@@ -207,6 +214,7 @@ namespace Supervertaler.Trados.Settings
                     if (ps.DisabledTermbaseIds == null) ps.DisabledTermbaseIds = new List<long>();
                     if (ps.DisabledMultiTermIds == null) ps.DisabledMultiTermIds = new List<long>();
                     if (ps.DisabledAiTermbaseIds == null) ps.DisabledAiTermbaseIds = new List<long>();
+                    if (ps.EnabledAiMultiTermIds == null) ps.EnabledAiMultiTermIds = new List<long>();
 
                     // Migrate old hash-only filenames to readable format
                     if (!string.IsNullOrEmpty(ps.ProjectName))

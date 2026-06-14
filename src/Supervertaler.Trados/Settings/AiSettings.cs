@@ -121,6 +121,31 @@ namespace Supervertaler.Trados.Settings
         public bool AiTermbaseIdsInitialized { get; set; }
 
         /// <summary>
+        /// IDs of MultiTerm (.sdltb) termbases the user has EXPLICITLY enabled for AI.
+        /// MultiTerm termbases are opt-in (default off): unlike Supervertaler .db termbases
+        /// — which the one-shot migration adds to <see cref="DisabledAiTermbaseIds"/> so they
+        /// start unticked — MultiTerm termbases are discovered per-project after that
+        /// migration, so they can't rely on the disabled-list mechanism. They are therefore
+        /// tracked here by their (negative) SyntheticId and are sent to the AI ONLY when
+        /// present in this list (i.e. the user ticks the AI column for them).
+        /// </summary>
+        [DataMember(Name = "enabledAiMultiTermIds")]
+        public List<long> EnabledAiMultiTermIds { get; set; } = new List<long>();
+
+        /// <summary>
+        /// Single source of truth for "may this termbase's terms be sent to the AI?".
+        /// MultiTerm termbases (negative SyntheticId) are opt-in: included only when the
+        /// user has explicitly enabled them. Supervertaler .db termbases (non-negative Id)
+        /// are included unless the user has disabled them. Both default to NOT sending.
+        /// </summary>
+        public bool IsTermbaseAiEnabled(long termbaseId)
+        {
+            if (termbaseId < 0)
+                return EnabledAiMultiTermIds != null && EnabledAiMultiTermIds.Contains(termbaseId);
+            return DisabledAiTermbaseIds == null || !DisabledAiTermbaseIds.Contains(termbaseId);
+        }
+
+        /// <summary>
         /// Whether to include TM (Translation Memory) fuzzy matches in AI context.
         /// Default: true – TM matches provide useful reference for the AI.
         /// </summary>

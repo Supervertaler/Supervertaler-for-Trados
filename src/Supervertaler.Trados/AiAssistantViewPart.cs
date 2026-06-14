@@ -604,11 +604,9 @@ namespace Supervertaler.Trados
             var targetLang = GetDocumentTargetLanguage();
 
             // Filter matched terms by AI-disabled termbase IDs
-            var disabledIds = _settings?.AiSettings?.DisabledAiTermbaseIds ?? new List<long>();
+            var aiCfgChat = _settings?.AiSettings ?? new AiSettings();
             var allMatches = TermLensEditorViewPart.GetCurrentSegmentMatches();
-            var matchedTerms = disabledIds.Count > 0
-                ? allMatches.Where(m => !disabledIds.Contains(m.PrimaryEntry?.TermbaseId ?? 0)).ToList()
-                : allMatches;
+            var matchedTerms = allMatches.Where(m => aiCfgChat.IsTermbaseAiEnabled(m.PrimaryEntry?.TermbaseId ?? 0)).ToList();
 
             // Gather TM matches if enabled
             List<TmMatch> tmMatches = null;
@@ -1034,11 +1032,9 @@ namespace Supervertaler.Trados
                 // Termbase hits – filter by AI-disabled IDs the same way Chat does
                 try
                 {
-                    var disabledIds = _settings?.AiSettings?.DisabledAiTermbaseIds ?? new List<long>();
+                    var aiCfgSnap = _settings?.AiSettings ?? new AiSettings();
                     var allMatches = TermLensEditorViewPart.GetCurrentSegmentMatches();
-                    var matchedTerms = disabledIds.Count > 0
-                        ? allMatches.Where(m => !disabledIds.Contains(m.PrimaryEntry?.TermbaseId ?? 0)).ToList()
-                        : allMatches;
+                    var matchedTerms = allMatches.Where(m => aiCfgSnap.IsTermbaseAiEnabled(m.PrimaryEntry?.TermbaseId ?? 0)).ToList();
 
                     snapshot.TermbaseHits = new List<BridgeTermbaseHit>();
                     foreach (var m in matchedTerms)
@@ -1177,10 +1173,8 @@ namespace Supervertaler.Trados
 
                 // Phase 3: Gather termbase terms (filtered by AI-disabled list)
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                var disabledIds = aiSettings.DisabledAiTermbaseIds ?? new List<long>();
-                var termbaseTerms = disabledIds.Count > 0
-                    ? allTerms.Where(t => !disabledIds.Contains(t.TermbaseId)).ToList()
-                    : allTerms;
+                var aiCfgA = aiSettings ?? new AiSettings();
+                var termbaseTerms = allTerms.Where(t => aiCfgA.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                 // Phase 3b: Filter terms to only those relevant to the document
                 var totalTermCount = termbaseTerms.Count;
@@ -3533,10 +3527,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Get termbase terms for prompt injection (filtered by AI-disabled list)
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                var batchDisabledIds = _settings?.AiSettings?.DisabledAiTermbaseIds ?? new List<long>();
-                var termbaseTerms = batchDisabledIds.Count > 0
-                    ? allTerms.Where(t => !batchDisabledIds.Contains(t.TermbaseId)).ToList()
-                    : allTerms;
+                var aiCfgC = _settings?.AiSettings ?? new AiSettings();
+                var termbaseTerms = allTerms.Where(t => aiCfgC.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                 // Resolve custom prompt from library selection
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
@@ -3894,10 +3886,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Get termbase terms (filtered by AI-disabled list)
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                var batchDisabledIds = aiSettings?.DisabledAiTermbaseIds ?? new List<long>();
-                var termbaseTerms = batchDisabledIds.Count > 0
-                    ? allTerms.Where(t => !batchDisabledIds.Contains(t.TermbaseId)).ToList()
-                    : allTerms;
+                var aiCfgB = aiSettings ?? new AiSettings();
+                var termbaseTerms = allTerms.Where(t => aiCfgB.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                 // Persist the prompt dropdown selection before resolving
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
@@ -4017,10 +4007,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Termbase terms, prompt path, custom prompt \u2014 same flow as the copy path
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                var batchDisabledIds = aiSettings?.DisabledAiTermbaseIds ?? new List<long>();
-                var termbaseTerms = batchDisabledIds.Count > 0
-                    ? allTerms.Where(t => !batchDisabledIds.Contains(t.TermbaseId)).ToList()
-                    : allTerms;
+                var aiCfgB = aiSettings ?? new AiSettings();
+                var termbaseTerms = allTerms.Where(t => aiCfgB.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
                 if (aiSettings != null)
@@ -4299,10 +4287,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Get termbase terms for prompt injection (filtered by AI-disabled list)
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                var batchDisabledIds = _settings?.AiSettings?.DisabledAiTermbaseIds ?? new List<long>();
-                var termbaseTerms = batchDisabledIds.Count > 0
-                    ? allTerms.Where(t => !batchDisabledIds.Contains(t.TermbaseId)).ToList()
-                    : allTerms;
+                var aiCfgC = _settings?.AiSettings ?? new AiSettings();
+                var termbaseTerms = allTerms.Where(t => aiCfgC.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                 // Resolve custom prompt from library selection
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
@@ -5540,10 +5526,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                     // Get termbase terms for prompt injection (filtered by AI-disabled list)
                     var allTbTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                    var singleDisabledIds = settings?.AiSettings?.DisabledAiTermbaseIds ?? new List<long>();
-                    var termbaseTerms = singleDisabledIds.Count > 0
-                        ? allTbTerms.Where(t => !singleDisabledIds.Contains(t.TermbaseId)).ToList()
-                        : allTbTerms;
+                    var aiCfgE = settings?.AiSettings ?? new AiSettings();
+                    var termbaseTerms = allTbTerms.Where(t => aiCfgE.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                     // Resolve custom prompt from settings
                     var customPromptContent = instance.ResolveCustomPromptContent(sourceLang, targetLang);
@@ -5810,10 +5794,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                     // Get termbase terms (same filtering as batch translate)
                     var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
-                    var disabledIds = aiSettings.DisabledAiTermbaseIds ?? new List<long>();
-                    var termbaseTerms = disabledIds.Count > 0
-                        ? allTerms.Where(t => !disabledIds.Contains(t.TermbaseId)).ToList()
-                        : allTerms;
+                    var aiCfgD = aiSettings ?? new AiSettings();
+                    var termbaseTerms = allTerms.Where(t => aiCfgD.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
 
                     // Resolve custom prompt (from batch translate tab selection)
                     var batchControl = _control.Value.BatchTranslateControl;

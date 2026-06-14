@@ -1306,6 +1306,9 @@ namespace Supervertaler.Trados.Settings
             // Supervertaler termbases (by Id) and MultiTerm termbases (by SyntheticId).
             var disabledAi = new HashSet<long>(
                 _settings.AiSettings?.DisabledAiTermbaseIds ?? new List<long>());
+            // MultiTerm termbases are opt-in for AI: ticked only when explicitly enabled.
+            var enabledAiMt = new HashSet<long>(
+                _settings.AiSettings?.EnabledAiMultiTermIds ?? new List<long>());
 
             // Load Supervertaler termbases from the .db file
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
@@ -1359,7 +1362,7 @@ namespace Supervertaler.Trados.Settings
                 foreach (var info in _multiTermInfos)
                 {
                     bool isRead = !disabledMtIds.Contains(info.SyntheticId);
-                    bool isAiMt = !disabledAi.Contains(info.SyntheticId);
+                    bool isAiMt = enabledAiMt.Contains(info.SyntheticId);
                     var langText = !string.IsNullOrEmpty(info.SourceIndexName)
                         && !string.IsNullOrEmpty(info.TargetIndexName)
                         ? $"{info.SourceIndexName} \u2192 {info.TargetIndexName}"
@@ -1761,7 +1764,8 @@ namespace Supervertaler.Trados.Settings
 
             // Iterate by Tag so the mapping survives column sorts
             _settings.DisabledMultiTermIds = new List<long>();
-            var disabledAiIds = new List<long>();
+            var disabledAiIds = new List<long>();        // .db termbases unticked for AI (opt-out)
+            var enabledAiMtIds = new List<long>();       // MultiTerm termbases ticked for AI (opt-in)
             foreach (DataGridViewRow row in _dgvTermbases.Rows)
             {
                 if (row.Tag is TermbaseInfo tb)
@@ -1790,8 +1794,9 @@ namespace Supervertaler.Trados.Settings
                     if (!readChecked)
                         _settings.DisabledMultiTermIds.Add(mtInfo.SyntheticId);
 
+                    // MultiTerm is opt-in for AI: only record termbases the user ticked.
                     var aiChecked = row.Cells["colAi"].Value as bool? ?? false;
-                    if (!aiChecked) disabledAiIds.Add(mtInfo.SyntheticId);
+                    if (aiChecked) enabledAiMtIds.Add(mtInfo.SyntheticId);
                 }
             }
 
@@ -1802,6 +1807,7 @@ namespace Supervertaler.Trados.Settings
             if (_settings.AiSettings != null)
             {
                 _settings.AiSettings.DisabledAiTermbaseIds = disabledAiIds;
+                _settings.AiSettings.EnabledAiMultiTermIds = enabledAiMtIds;
                 _settings.AiSettings.AiTermbaseIdsInitialized = true;
             }
 
