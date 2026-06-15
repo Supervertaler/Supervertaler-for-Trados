@@ -942,6 +942,75 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
+        /// Like <see cref="GetMultiTermInfos"/>, but resilient for the Settings dialog:
+        /// if the live editor view part hasn't loaded MultiTerm info (e.g. the Settings
+        /// dialog was opened from the AI Assistant panel or with no document in the
+        /// Editor, so <c>_currentInstance</c> is null/empty), it detects the active
+        /// project's MultiTerm termbases directly and builds the info on the spot — so an
+        /// attached .sdltb still appears in the grid (and its AI box can be ticked)
+        /// regardless of how Settings was reached.
+        /// </summary>
+        public static List<MultiTermTermbaseInfo> GetMultiTermInfosForSettings()
+        {
+            // Prefer the editor instance's already-loaded list (accurate term counts).
+            var live = _currentInstance?._multiTermInfos;
+            if (live != null && live.Count > 0)
+                return live;
+
+            var result = new List<MultiTermTermbaseInfo>();
+            try
+            {
+                var doc = SdlTradosStudio.Application.GetController<EditorController>()?.ActiveDocument;
+                if (doc == null)
+                {
+                    DiagnosticLog.Log("MultiTerm", "GetMultiTermInfosForSettings: no live infos and no active document → no MultiTerm rows.");
+                    return result;
+                }
+
+                var configs = MultiTermProjectDetector.DetectTermbases(doc);
+                foreach (var config in configs)
+                {
+                    try
+                    {
+                        using (var reader = TermbaseReaderFactory.Create(config.FilePath))
+                        {
+                            if (reader.Open())
+                            {
+                                // Load so the term count is accurate, then capture the info.
+                                reader.LoadAllTerms(config.SourceIndexName, config.TargetIndexName,
+                                    config.SyntheticId, config.TermbaseName);
+                                result.Add(reader.GetTermbaseInfo(
+                                    config.SourceIndexName, config.TargetIndexName, config.SyntheticId));
+                                continue;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DiagnosticLog.Log("MultiTerm", $"GetMultiTermInfosForSettings: '{config.TermbaseName}' failed to open: {ex.Message}");
+                    }
+                    // Open/read failed — still surface the row so it's visible (and tickable).
+                    result.Add(new MultiTermTermbaseInfo
+                    {
+                        SyntheticId = config.SyntheticId,
+                        FilePath = config.FilePath,
+                        Name = config.TermbaseName,
+                        SourceIndexName = config.SourceIndexName,
+                        TargetIndexName = config.TargetIndexName,
+                        LoadMode = MultiTermLoadMode.Failed
+                    });
+                }
+                DiagnosticLog.Log("MultiTerm",
+                    $"GetMultiTermInfosForSettings: editor instance had no infos; detected {result.Count} from the active project directly.");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("MultiTerm", "GetMultiTermInfosForSettings fallback threw: " + ex);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Returns detected MultiTerm configs for the settings dialog.
         /// </summary>
         public static List<MultiTermTermbaseConfig> GetMultiTermConfigs()

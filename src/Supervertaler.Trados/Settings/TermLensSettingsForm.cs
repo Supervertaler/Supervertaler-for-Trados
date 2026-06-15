@@ -1399,7 +1399,7 @@ namespace Supervertaler.Trados.Settings
             }
 
             // Add MultiTerm termbases from the active Trados project
-            var mtInfos = TermLensEditorViewPart.GetMultiTermInfos();
+            var mtInfos = TermLensEditorViewPart.GetMultiTermInfosForSettings();
             if (mtInfos != null)
                 _multiTermInfos = mtInfos;
 

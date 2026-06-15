@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.53] – 2026-06-15
+
+### Fixed (MultiTerm)
+
+- **An attached MultiTerm (.sdltb) termbase now shows in the Termbases tab even when Settings is opened without the editor in focus.** The grid's MultiTerm list previously came only from the live TermLens editor view part, so if the Settings dialog was opened from the AI Assistant panel, or with no document active in the Editor, an attached .sdltb (and its "AI" checkbox) would silently not appear. The Settings dialog now falls back to detecting the active project's MultiTerm termbases directly, so the row appears whenever a .sdltb is attached, however Settings was reached. (Investigating #36.)
+
+
 ## [4.20.52] – 2026-06-15
 
 ### Added (diagnostics)
