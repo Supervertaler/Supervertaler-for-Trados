@@ -34,16 +34,28 @@ namespace Supervertaler.Trados.Core
             IStudioDocument activeDocument)
         {
             var result = new List<MultiTermTermbaseConfig>();
-            if (activeDocument == null) return result;
+            if (activeDocument == null)
+            {
+                DiagnosticLog.Log("MultiTerm", "DetectTermbases: activeDocument is null → 0 termbases.");
+                return result;
+            }
 
             try
             {
                 var project = activeDocument.Project as FileBasedProject;
-                if (project == null) return result;
+                if (project == null)
+                {
+                    DiagnosticLog.Log("MultiTerm", "DetectTermbases: active document's Project is not a FileBasedProject → 0 termbases.");
+                    return result;
+                }
 
                 var tbConfig = project.GetTermbaseConfiguration();
                 if (tbConfig?.Termbases == null || tbConfig.Termbases.Count == 0)
+                {
+                    DiagnosticLog.Log("MultiTerm", $"DetectTermbases: project termbase configuration has no termbases (tbConfig null={tbConfig == null}) → 0 termbases.");
                     return result;
+                }
+                DiagnosticLog.Log("MultiTerm", $"DetectTermbases: project has {tbConfig.Termbases.Count} termbase(s) in its configuration, {tbConfig.LanguageIndexes?.Count ?? 0} language index(es).");
 
                 // Build language index mapping: project language code → termbase index name
                 // e.g. "en-US" → "English", "nl-NL" → "Dutch"
@@ -72,7 +84,10 @@ namespace Supervertaler.Trados.Core
                 catch { }
 
                 if (string.IsNullOrEmpty(sourceLocale) || string.IsNullOrEmpty(targetLocale))
+                {
+                    DiagnosticLog.Log("MultiTerm", $"DetectTermbases: could not read active-file locales (source='{sourceLocale}', target='{targetLocale}') → 0 termbases.");
                     return result;
+                }
 
                 // Resolve source and target index names from the mapping
                 string sourceIndexName = null;
@@ -88,7 +103,13 @@ namespace Supervertaler.Trados.Core
                     targetIndexName = FindIndexByPrefix(langIndexMap, targetLocale);
 
                 if (string.IsNullOrEmpty(sourceIndexName) || string.IsNullOrEmpty(targetIndexName))
+                {
+                    DiagnosticLog.Log("MultiTerm",
+                        $"DetectTermbases: could not map project locales to termbase index names " +
+                        $"(source '{sourceLocale}'→'{sourceIndexName}', target '{targetLocale}'→'{targetIndexName}'). " +
+                        $"Available indexes: [{string.Join(", ", langIndexMap.Keys)}] → [{string.Join(", ", langIndexMap.Values)}]. → 0 termbases.");
                     return result;
+                }
 
                 // Enumerate each termbase in the project configuration
                 int ordinal = 0;
@@ -160,8 +181,14 @@ namespace Supervertaler.Trados.Core
                     catch { }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("MultiTerm", "DetectTermbases threw: " + ex);
+            }
 
+            DiagnosticLog.Log("MultiTerm",
+                $"DetectTermbases: returning {result.Count} usable .sdltb/.ttb termbase(s)" +
+                (result.Count > 0 ? " — " + string.Join(", ", result.ConvertAll(c => c.TermbaseName)) : "."));
             return result;
         }
 

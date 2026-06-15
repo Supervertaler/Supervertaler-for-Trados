@@ -348,9 +348,11 @@ namespace Supervertaler.Trados
                 if (_multiTermConfigs.Count == 0)
                 {
                     System.Diagnostics.Debug.WriteLine("[TermLens] No MultiTerm termbases detected in project");
+                    DiagnosticLog.Log("MultiTerm", "LoadMultiTermTermbases: detector returned 0 termbases — nothing to load (TermLens MultiTerm hits will be empty).");
                     return;
                 }
                 System.Diagnostics.Debug.WriteLine($"[TermLens] Detected {_multiTermConfigs.Count} MultiTerm termbase(s)");
+                DiagnosticLog.Log("MultiTerm", $"LoadMultiTermTermbases: detector returned {_multiTermConfigs.Count} termbase(s); attempting load.");
 
                 // Filter out termbases disabled in Supervertaler settings
                 var disabledMtIds = _settings.DisabledMultiTermIds ?? new List<long>();
@@ -430,6 +432,9 @@ namespace Supervertaler.Trados
                 _multiTermInfos = infos;
 
                 System.Diagnostics.Debug.WriteLine($"[TermLens] MultiTerm merged index: {mergedIndex.Count} keys, {infos.Count} termbases, {failedConfigs.Count} failed");
+                DiagnosticLog.Log("MultiTerm",
+                    $"LoadMultiTermTermbases: merged index has {mergedIndex.Count} key(s) across {infos.Count} termbase(s) " +
+                    $"({failedConfigs.Count} needed the API fallback). These feed both TermLens and (if AI-enabled) the prompt.");
                 if (mergedIndex.Count > 0)
                     SafeInvoke(() => _control.Value.MergeMultiTermEntries(mergedIndex, infos));
                 else if (failedConfigs.Count > 0)

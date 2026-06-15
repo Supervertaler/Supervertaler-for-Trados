@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.52] – 2026-06-15
+
+### Added (diagnostics)
+
+- **Opt-in diagnostic logging.** Settings → General → Diagnostics → "Enable diagnostic logging" writes a detailed debug trace to `…/trados/logs/diagnostic.log`, with the path shown in the dialog and "Open log folder" / "Open log file" / "Clear log" buttons. Off by default. Turn it on, reproduce a problem, and send the log — it records, among other things, exactly why a native MultiTerm (.sdltb) termbase is or isn't picked up (project termbase configuration, language-index mapping, how many terms the Supervertaler .db and the MultiTerm index load, and any fallback). Aimed at issue #36.
+
+
 ## [4.20.51] – 2026-06-14
 
 ### Changed (AI · termbases)

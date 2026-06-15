@@ -300,6 +300,7 @@ namespace Supervertaler.Trados.Controls
             // Build in-memory index for fast matching
             var index = _reader.LoadAllTerms(disabledTermbaseIds, globalCaseSensitive, projectSourceLang);
             _matcher.LoadIndex(index);
+            DiagnosticLog.Log("Termbase", $"Loaded Supervertaler .db index: {index.Count} headword key(s).");
 
             var termbases = _reader.GetTermbases();
             int enabledCount = 0;

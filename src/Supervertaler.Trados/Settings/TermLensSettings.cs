@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
+using Supervertaler.Trados.Core;
 
 namespace Supervertaler.Trados.Settings
 {
@@ -30,6 +31,14 @@ namespace Supervertaler.Trados.Settings
 
         [DataMember(Name = "autoLoadOnStartup")]
         public bool AutoLoadOnStartup { get; set; } = true;
+
+        /// <summary>
+        /// Opt-in diagnostic logging. When true, the plugin writes a detailed debug
+        /// trace to <see cref="Core.DiagnosticLog.LogFilePath"/> for troubleshooting.
+        /// Off by default; mirrored into <see cref="Core.DiagnosticLog.Enabled"/> on load.
+        /// </summary>
+        [DataMember(Name = "diagnosticLogging")]
+        public bool DiagnosticLogging { get; set; } = false;
 
         /// <summary>
         /// IDs of termbases the user has disabled. Empty means all termbases are active.
@@ -385,6 +394,10 @@ namespace Supervertaler.Trados.Settings
                     // Ensure usage statistics ID is never null
                     if (s.UsageStatisticsId == null)
                         s.UsageStatisticsId = "";
+
+                    // Keep the global diagnostic-logging switch in sync with the
+                    // persisted preference on every load.
+                    DiagnosticLog.Enabled = s.DiagnosticLogging;
 
                     return s;
                 }

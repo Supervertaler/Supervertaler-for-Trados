@@ -56,6 +56,7 @@ namespace Supervertaler.Trados.Settings
         private CheckBox _chkCaseSensitive;
         private CheckBox _chkUsageStats;
         private CheckBox _chkSuperSearchInTab;
+        private CheckBox _chkDiagnosticLogging;
         private NumericUpDown _nudFontSize;
         private ComboBox _cboUiScale;
         private ComboBox _cboShortcutStyle;
@@ -398,6 +399,52 @@ namespace Supervertaler.Trados.Settings
                 "Assistant licence (without one, SuperSearch stays in its own panel).");
             SpanG(root, ref row, _chkSuperSearchInTab);
             SpanG(root, ref row, NoteG("(restart required)"));
+
+            // ─── Diagnostics ───
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Diagnostics"));
+            _chkDiagnosticLogging = CheckG("Enable diagnostic logging");
+            tips.SetToolTip(_chkDiagnosticLogging,
+                "Writes a detailed debug trace to a log file. Turn it on, reproduce the problem,\n" +
+                "then send me the log file. Leave off for normal use.");
+            SpanG(root, ref row, _chkDiagnosticLogging);
+            SpanG(root, ref row, NoteG("Log file: " + Core.DiagnosticLog.LogFilePath));
+
+            Func<string, Button> mkLogBtn = (txt) => new Button
+            {
+                Text = txt,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlatStyle = FlatStyle.System,
+                Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3)),
+                Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
+            };
+            var btnOpenLogFolder = mkLogBtn("Open log folder");
+            btnOpenLogFolder.Click += (s, e) =>
+            {
+                try
+                {
+                    System.IO.Directory.CreateDirectory(Core.DiagnosticLog.LogDir);
+                    System.Diagnostics.Process.Start("explorer.exe", "\"" + Core.DiagnosticLog.LogDir + "\"");
+                }
+                catch { }
+            };
+            var btnOpenLogFile = mkLogBtn("Open log file");
+            btnOpenLogFile.Click += (s, e) =>
+            {
+                try
+                {
+                    if (System.IO.File.Exists(Core.DiagnosticLog.LogFilePath))
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Core.DiagnosticLog.LogFilePath) { UseShellExecute = true });
+                    else
+                        MessageBox.Show("No log file yet — enable logging, reproduce the issue, then check again.",
+                            "Diagnostic log", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
+            };
+            var btnClearLog = mkLogBtn("Clear log");
+            btnClearLog.Click += (s, e) => Core.DiagnosticLog.Clear();
+            SpanG(root, ref row, FlowG(btnOpenLogFolder, btnOpenLogFile, btnClearLog));
 
             host.Controls.Add(root);
             page.Controls.Add(host);
@@ -1213,6 +1260,7 @@ namespace Supervertaler.Trados.Settings
             _chkCaseSensitive.Checked = _settings.CaseSensitiveMatching;
             _chkUsageStats.Checked = _settings.UsageStatisticsEnabled;
             _chkSuperSearchInTab.Checked = _settings.SuperSearchInAssistantTab;
+            _chkDiagnosticLogging.Checked = _settings.DiagnosticLogging;
             _nudFontSize.Value = Math.Max(_nudFontSize.Minimum, Math.Min(_nudFontSize.Maximum, (decimal)_settings.PanelFontSize));
             var curScaleText = ((int)Math.Round(_settings.UiScaleFactor * 100)) + "%";
             var scaleIdx = _cboUiScale.Items.IndexOf(curScaleText);
@@ -1729,6 +1777,11 @@ namespace Supervertaler.Trados.Settings
             _settings.CaseSensitiveMatching = _chkCaseSensitive.Checked;
             _settings.UsageStatisticsEnabled = _chkUsageStats.Checked;
             _settings.SuperSearchInAssistantTab = _chkSuperSearchInTab.Checked;
+            bool diagWasOff = !Core.DiagnosticLog.Enabled;
+            _settings.DiagnosticLogging = _chkDiagnosticLogging.Checked;
+            Core.DiagnosticLog.Enabled = _chkDiagnosticLogging.Checked;
+            if (_chkDiagnosticLogging.Checked && diagWasOff)
+                Core.DiagnosticLog.WriteSessionHeader("Diagnostic logging enabled from Settings.");
             // Mark as asked (both v1 and v2 flags) so the opt-in dialog won't show again
             _settings.UsageStatisticsAsked = true;
             _settings.UsageStatisticsAskedV2 = true;
