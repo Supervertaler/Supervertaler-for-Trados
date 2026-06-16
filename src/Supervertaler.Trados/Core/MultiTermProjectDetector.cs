@@ -112,7 +112,6 @@ namespace Supervertaler.Trados.Core
                 }
 
                 // Enumerate each termbase in the project configuration
-                int ordinal = 0;
                 foreach (var tb in tbConfig.Termbases)
                 {
                     try
@@ -162,8 +161,16 @@ namespace Supervertaler.Trados.Core
                             ? localTb.Name
                             : Path.GetFileNameWithoutExtension(filePath);
 
-                        // Generate stable negative synthetic ID from file path
-                        long syntheticId = -(Math.Abs((long)filePath.ToLowerInvariant().GetHashCode()) * 1000 + ordinal + 1);
+                        // Generate a stable negative synthetic ID from the file path.
+                        // MUST be deterministic across processes: each MultiTerm
+                        // termbase's "AI" and enabled/disabled state is persisted by
+                        // SyntheticId, so an ID that changes between Trados restarts
+                        // silently resets those ticks (issue #36). The old
+                        // String.GetHashCode() is randomised per process on .NET Core,
+                        // so it never persisted. Derive the ID purely from the path
+                        // (not the enumeration order either, so reordering termbases
+                        // in Trados doesn't lose the ticks).
+                        long syntheticId = MakeStableSyntheticId(filePath);
 
                         result.Add(new MultiTermTermbaseConfig
                         {
@@ -175,8 +182,6 @@ namespace Supervertaler.Trados.Core
                             TradosEnabled = tb.Enabled,
                             SettingsXml = settingsXml
                         });
-
-                        ordinal++;
                     }
                     catch { }
                 }
@@ -190,6 +195,34 @@ namespace Supervertaler.Trados.Core
                 $"DetectTermbases: returning {result.Count} usable .sdltb/.ttb termbase(s)" +
                 (result.Count > 0 ? " — " + string.Join(", ", result.ConvertAll(c => c.TermbaseName)) : "."));
             return result;
+        }
+
+        /// <summary>
+        /// Derives a stable, process-independent negative synthetic ID from a
+        /// termbase file path. Uses FNV-1a (64-bit) over the lower-cased path so
+        /// the same .sdltb/.ttb always maps to the same ID across Trados restarts
+        /// — unlike String.GetHashCode(), which is randomised per process on
+        /// .NET Core/.NET 5+. Always negative so it never collides with the
+        /// positive IDs of Supervertaler's own .db termbases (issue #36).
+        /// </summary>
+        private static long MakeStableSyntheticId(string filePath)
+        {
+            string key = (filePath ?? string.Empty).ToLowerInvariant();
+
+            const ulong fnvOffset = 14695981039346656037UL;
+            const ulong fnvPrime = 1099511628211UL;
+            ulong hash = fnvOffset;
+            foreach (char c in key)
+            {
+                hash ^= c;
+                hash *= fnvPrime;
+            }
+
+            // Clear the sign bit → a non-negative long, then negate. Guard the
+            // (practically impossible) zero case so the ID is never 0.
+            long magnitude = (long)(hash & 0x7FFFFFFFFFFFFFFFUL);
+            if (magnitude == 0) magnitude = 1;
+            return -magnitude;
         }
 
         /// <summary>

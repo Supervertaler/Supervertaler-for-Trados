@@ -1355,7 +1355,18 @@ namespace Supervertaler.Trados
         /// </summary>
         public static string GetCurrentProjectPath()
         {
-            return _currentInstance?._currentProjectPath;
+            var tracked = _currentInstance?._currentProjectPath;
+            if (!string.IsNullOrEmpty(tracked))
+                return tracked;
+            // Fallback: resolve straight from the editor's ActiveDocument. This
+            // view part only tracks the project once OnActiveDocumentChanged has
+            // fired for it, but a document can be open (and a MultiTerm "AI" box
+            // tickable in Settings) before that — e.g. Settings opened from the
+            // AI Assistant panel. Without this fallback the per-project save in
+            // ApplySettings was skipped, so the tick lived only in the global
+            // settings and got clobbered by the empty per-project overlay on the
+            // next Trados restart (issue #36).
+            return GetActiveDocumentProject()?.FilePath;
         }
 
         /// <summary>
@@ -1363,7 +1374,29 @@ namespace Supervertaler.Trados
         /// </summary>
         public static string GetCurrentProjectName()
         {
-            return _currentInstance?._currentProjectName;
+            var tracked = _currentInstance?._currentProjectName;
+            if (!string.IsNullOrEmpty(tracked))
+                return tracked;
+            return GetActiveDocumentProject()?.GetProjectInfo()?.Name;
+        }
+
+        /// <summary>
+        /// Resolves the FileBasedProject backing the editor's ActiveDocument,
+        /// or null when no document is open. Used as a fallback for the
+        /// current-project getters so per-project settings still resolve before
+        /// this view part has tracked the project (issue #36).
+        /// </summary>
+        private static FileBasedProject GetActiveDocumentProject()
+        {
+            try
+            {
+                var doc = SdlTradosStudio.Application.GetController<EditorController>()?.ActiveDocument;
+                return doc?.Project as FileBasedProject;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

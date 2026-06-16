@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.54] – 2026-06-16
+
+### Fixed (MultiTerm · AI)
+
+- **The MultiTerm "AI" tick now survives a Trados restart.** A MultiTerm termbase ticked for AI in Settings → Termbases would silently revert to unticked after reopening Trados, so the AI stopped seeing the terminology until you re-ticked it. The tick is stored per-project, but the per-project save only ran when the Editor view part had already tracked the active project — which isn't the case when Settings is opened from the AI Assistant panel (the same path 4.20.53 made the row visible from). The tick then lived only in the global settings and was overwritten by the empty per-project overlay on the next restart. The current-project lookup now falls back to the Editor's active document, so the per-project save always runs and the choice persists. (Fixes #36.)
+
+### Changed (MultiTerm · internal)
+
+- **MultiTerm termbase synthetic IDs are now derived from a stable hash of the file path** (FNV-1a) instead of `String.GetHashCode()`. `GetHashCode` is documented as unsafe to persist — it varies across .NET runtimes and between 32-bit and 64-bit processes — so the previous IDs, used as the persistence key for each termbase's AI / enabled state, would not survive a move to a different runtime or bitness. Hardening only; current behaviour is unchanged on the existing .NET Framework build.
+
+
 ## [4.20.53] – 2026-06-15
 
 ### Fixed (MultiTerm)
