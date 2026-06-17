@@ -237,9 +237,13 @@ namespace Supervertaler.Trados.Settings
         ///     swallow the particle.
         ///   • Chinese — no inter-word spaces at all, so auto-expanding to
         ///     whitespace swallows the whole segment (the user selects
-        ///     挂车控制模块 but 挂车控制模块的更换 gets saved). Keeping the
-        ///     exact selection is the right behaviour until proper Chinese word
-        ///     segmentation exists.
+        ///     挂车控制模块 but 挂车控制模块的更换 gets saved). Chinese has no
+        ///     word boundaries to expand to, so the exact selection is kept by
+        ///     design — this is the correct behaviour, not a stopgap. A general
+        ///     word segmenter is deliberately NOT used here: it would over-split
+        ///     multi-character technical terms (挂车控制模块 → 挂车 / 控制 /
+        ///     模块) and snap to the wrong span, whereas the user's own
+        ///     character-precise selection is exactly the term they want.
         /// Accepts ISO codes (ko, ja, zh, ko-KR, ja-JP, zh-CN, zh-TW, zh-Hans …)
         /// and English display names ("Korean", "Japanese (Japan)",
         /// "Chinese (Simplified)").
