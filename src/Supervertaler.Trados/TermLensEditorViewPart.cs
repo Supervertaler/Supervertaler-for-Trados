@@ -1411,6 +1411,18 @@ namespace Supervertaler.Trados
             return _currentInstance?.GetDocumentSourceLanguage();
         }
 
+        /// <summary>
+        /// Returns the active document's target-language display name (e.g.
+        /// "Chinese (Simplified)"), or null when no document is open. Used by the
+        /// Add / Quick-Add term actions to decide whether a target selection may
+        /// be auto-expanded to the whitespace token — it must not be for no-space
+        /// scripts (Chinese, Korean, Japanese), or the whole segment is saved.
+        /// </summary>
+        public static string GetCurrentProjectTargetLanguage()
+        {
+            return _currentInstance?.GetDocumentTargetLanguage();
+        }
+
         private void OnActiveFilePropertiesChanged(object sender, EventArgs e)
         {
             // Fired when file/project properties change – reload MultiTerm

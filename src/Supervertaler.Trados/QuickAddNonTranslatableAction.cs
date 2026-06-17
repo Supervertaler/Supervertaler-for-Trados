@@ -99,14 +99,19 @@ namespace Supervertaler.Trados
                         }
                         catch { /* Selection may not be available */ }
 
-                        // If no source selection, try target selection
+                        // If no source selection, try target selection. Honour the
+                        // TARGET language so a no-space script (Chinese / Korean /
+                        // Japanese) keeps the exact selection instead of expanding
+                        // to whitespace and swallowing the whole segment.
                         if (string.IsNullOrWhiteSpace(sourceText))
                         {
+                            bool tgtAutoExpand = !settings.ResolveSuffixTolerant(
+                                TermLensEditorViewPart.GetCurrentProjectTargetLanguage());
                             try
                             {
                                 var tgtSel = selection.Target?.ToString();
                                 if (!string.IsNullOrWhiteSpace(tgtSel))
-                                    sourceText = SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel);
+                                    sourceText = SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel, tgtAutoExpand);
                             }
                             catch { /* Selection may not be available */ }
                         }

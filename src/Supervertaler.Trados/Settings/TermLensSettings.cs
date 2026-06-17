@@ -230,16 +230,26 @@ namespace Supervertaler.Trados.Settings
         }
 
         /// <summary>
-        /// True for Korean / Japanese, where particles attach to nouns without a
-        /// space. Accepts ISO codes (ko, ja, ko-KR, ja-JP) and English display
-        /// names ("Korean", "Japanese (Japan)").
+        /// True for languages whose script does not delimit words with spaces, so
+        /// expanding a term selection to the whitespace token is wrong:
+        ///   • Korean / Japanese — grammatical particles attach to the noun with
+        ///     no space (값 ↦ 값으로); we keep the bare selection rather than
+        ///     swallow the particle.
+        ///   • Chinese — no inter-word spaces at all, so auto-expanding to
+        ///     whitespace swallows the whole segment (the user selects
+        ///     挂车控制模块 but 挂车控制模块的更换 gets saved). Keeping the
+        ///     exact selection is the right behaviour until proper Chinese word
+        ///     segmentation exists.
+        /// Accepts ISO codes (ko, ja, zh, ko-KR, ja-JP, zh-CN, zh-TW, zh-Hans …)
+        /// and English display names ("Korean", "Japanese (Japan)",
+        /// "Chinese (Simplified)").
         /// </summary>
         public static bool IsAgglutinativeNoSpaceLanguage(string lang)
         {
             if (string.IsNullOrWhiteSpace(lang)) return false;
             var l = lang.Trim().ToLowerInvariant();
-            return l.StartsWith("ko") || l.StartsWith("ja")
-                || l.Contains("korean") || l.Contains("japanese");
+            return l.StartsWith("ko") || l.StartsWith("ja") || l.StartsWith("zh")
+                || l.Contains("korean") || l.Contains("japanese") || l.Contains("chinese");
         }
 
         // ─── Update checker ──────────────────────────────────────────

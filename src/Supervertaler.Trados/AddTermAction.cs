@@ -99,11 +99,17 @@ namespace Supervertaler.Trados
                         }
                         catch { /* Selection may not be available */ }
 
+                        // The target side must honour the TARGET language: for a
+                        // no-space script (Chinese, Korean, Japanese) auto-expanding
+                        // to the whitespace token swallows the whole segment — the
+                        // user selects 挂车控制模块 but 挂车控制模块的更换 is saved.
+                        bool tgtAutoExpand = !settings.ResolveSuffixTolerant(
+                            TermLensEditorViewPart.GetCurrentProjectTargetLanguage());
                         try
                         {
                             var tgtSel = selection.Target?.ToString();
                             if (!string.IsNullOrWhiteSpace(tgtSel))
-                                targetText = SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel);
+                                targetText = SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel, tgtAutoExpand);
                         }
                         catch { /* Selection may not be available */ }
                     }
