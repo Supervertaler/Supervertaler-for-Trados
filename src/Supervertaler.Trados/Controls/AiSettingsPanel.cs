@@ -65,6 +65,7 @@ namespace Supervertaler.Trados.Controls
         private CheckBox _chkIncludeSuperMemory;
         private CheckBox _chkIncludeSuperMemoryAutoPrompt;
         private CheckBox _chkLogPrompts;
+        private CheckBox _chkPersistUsageLog;
         private Label _lblBatchSize;
         private NumericUpDown _nudBatchSize;
         private Label _lblAiTermbases;
@@ -514,6 +515,24 @@ namespace Supervertaler.Trados.Controls
                 "Useful for monitoring costs and debugging prompt behaviour.");
             Span(root, ref row, _chkLogPrompts);
 
+            _chkPersistUsageLog = Check("Keep a persistent token-usage log (for cost monitoring)");
+            _chkPersistUsageLog.Checked = true;
+            var usageTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+            usageTip.SetToolTip(_chkPersistUsageLog,
+                "When enabled, every AI call's token usage and cost is appended to a\r\n" +
+                "monthly log file under your Supervertaler\\trados\\usage folder.\r\n" +
+                "It records metadata only (model, tokens, cost, project, file) – never\r\n" +
+                "the prompt or response text. Open it in Excel, or use the report below.");
+            Span(root, ref row, _chkPersistUsageLog);
+
+            var btnUsageReport = TextButton("Usage & Costs report…");
+            btnUsageReport.Click += (s, ev) =>
+            {
+                try { using (var f = new UsageReportForm()) f.ShowDialog(FindForm()); }
+                catch { /* report is best-effort */ }
+            };
+            Span(root, ref row, btnUsageReport);
+
             _lblBatchSize = FieldLabel("Batch size:");
             _nudBatchSize = SmallNud(5, 100, 20, 1);
             var batchTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
@@ -713,6 +732,7 @@ namespace Supervertaler.Trados.Controls
             _chkIncludeSuperMemoryAutoPrompt.Checked = settings.IncludeSuperMemoryInAutoPrompt;
             _chkIncludeSuperMemoryAutoPrompt.Enabled = settings.IncludeSuperMemoryContext;
             _chkLogPrompts.Checked = settings.LogPromptsToReports;
+            _chkPersistUsageLog.Checked = settings.IsUsageLogEnabled;
             _nudBatchSize.Value = Math.Max(_nudBatchSize.Minimum,
                 Math.Min(_nudBatchSize.Maximum, settings.BatchSize > 0 ? settings.BatchSize : 20));
         }
@@ -792,6 +812,7 @@ namespace Supervertaler.Trados.Controls
             settings.IncludeSuperMemoryContext = _chkIncludeSuperMemory.Checked;
             settings.IncludeSuperMemoryInAutoPrompt = _chkIncludeSuperMemoryAutoPrompt.Checked;
             settings.LogPromptsToReports = _chkLogPrompts.Checked;
+            settings.PersistUsageLog = _chkPersistUsageLog.Checked;
             settings.BatchSize = (int)_nudBatchSize.Value;
             // NOTE: DisabledAiTermbaseIds / AiTermbaseIdsInitialized are now owned by the
             // Termbases tab (the "AI" column in the termbase grid), not this panel.
