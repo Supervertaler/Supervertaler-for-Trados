@@ -132,6 +132,14 @@
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
   </ItemGroup>
 
+  <!-- Canonical LLM price list, bundled into the assembly as an embedded
+       resource (so it can never be separated from the plugin). Loaded by
+       Core/PricingTable; a <home>/Supervertaler/pricing.json file, if present,
+       overrides it for both Supervertaler products at once. -->
+  <ItemGroup>
+    <EmbeddedResource Include="pricing.json" />
+  </ItemGroup>
+
   <!-- Plugin extension manifest. -->
   <ItemGroup>
     <None Include="Supervertaler.Trados.plugin.xml">

@@ -6,48 +6,12 @@ namespace Supervertaler.Trados.Core
     /// <summary>
     /// Estimates token counts and API costs for AI calls.
     /// Uses chars/4 heuristic for token estimation (no external library).
-    /// Pricing table based on official provider rates as of March 2026.
+    /// Per-model prices come from <see cref="PricingTable"/> (the canonical
+    /// pricing.json shared with Supervertaler Workbench); the per-provider cache
+    /// discount multipliers below are applied on top.
     /// </summary>
     public static class TokenEstimator
     {
-        // Per-million-token pricing: (input, output)
-        private static readonly Dictionary<string, (decimal inputPer1M, decimal outputPer1M)> Pricing
-            = new Dictionary<string, (decimal, decimal)>
-        {
-            // OpenAI (current)
-            { "gpt-5.5",                   (5.00m,   30.00m) },
-            { "gpt-5.4-mini",              (0.75m,   4.50m)  },
-            // OpenAI (legacy – kept for cost estimates if users still have these selected)
-            { "gpt-5.4",                   (10.00m,  30.00m) },
-            { "gpt-4.1",                   (2.00m,   8.00m)  },
-            { "gpt-4.1-mini",              (0.40m,   1.60m)  },
-            { "o4-mini",                   (1.10m,   4.40m)  },
-
-            // Claude (Anthropic)
-            { "claude-sonnet-4-6",         (3.00m,   15.00m) },
-            { "claude-haiku-4-5-20251001", (1.00m,   5.00m)  },
-            { "claude-opus-4-8",           (5.00m,   25.00m) },
-
-            // Google Gemini
-            { "gemini-3.1-flash-lite",     (0.25m,   1.50m)  },
-            { "gemini-3.5-flash",          (1.50m,   9.00m)  },
-            { "gemini-2.5-pro",            (1.25m,   10.00m) },
-            { "gemini-3.1-pro-preview",    (2.00m,   12.00m) },
-
-            // Grok (xAI)
-            { "grok-4.3",                     (1.25m,  2.50m)  },
-
-            // Mistral AI
-            { "mistral-large-latest",         (2.00m,  6.00m)  },
-            { "mistral-small-latest",         (0.10m,  0.30m)  },
-
-            // Ollama (local) – free
-            { "translategemma:12b",        (0m, 0m) },
-            { "translategemma:4b",         (0m, 0m) },
-            { "qwen3:14b",                (0m, 0m) },
-            { "aya-expanse:8b",            (0m, 0m) },
-        };
-
         /// <summary>
         /// Estimates token count from a string using chars/4 heuristic.
         /// Returns 0 for null/empty strings.
@@ -89,7 +53,7 @@ namespace Supervertaler.Trados.Core
             if (string.IsNullOrEmpty(model)) return 0m;
 
             (decimal inputPer1M, decimal outputPer1M) rates;
-            if (!Pricing.TryGetValue(model, out rates))
+            if (!PricingTable.TryGet(model, out rates))
                 return 0m;
 
             return (inputTokens * rates.inputPer1M / 1_000_000m)
@@ -105,7 +69,7 @@ namespace Supervertaler.Trados.Core
             if (string.IsNullOrEmpty(model)) return 0m;
 
             (decimal inputPer1M, decimal outputPer1M) rates;
-            if (!Pricing.TryGetValue(model, out rates))
+            if (!PricingTable.TryGet(model, out rates))
                 return 0m;
 
             return inputTokens * rates.inputPer1M / 1_000_000m;
@@ -116,7 +80,8 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         public static bool HasPricing(string model)
         {
-            return !string.IsNullOrEmpty(model) && Pricing.ContainsKey(model);
+            (decimal input, decimal output) rates;
+            return PricingTable.TryGet(model, out rates);
         }
 
         /// <summary>
@@ -163,7 +128,7 @@ namespace Supervertaler.Trados.Core
             if (string.IsNullOrEmpty(model)) return 0m;
 
             (decimal inputPer1M, decimal outputPer1M) rates;
-            if (!Pricing.TryGetValue(model, out rates))
+            if (!PricingTable.TryGet(model, out rates))
                 return 0m;
 
             var (readMul, writeMul) = GetCacheMultipliers(model);
