@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.62] – 2026-06-19
+
+### Changed (Editor context menu — the proper fix)
+
+- **The duplicate "AI translate current segment" entry is removed from the editor right-click menu, without crashing Studio.** The earlier crashes were both from removing *too much*: 4.20.57 deleted the action type (but the manifest still referenced it, so the command bar couldn't instantiate it); 4.20.60 deleted the action's entire `<auxiliaryExtensionAttributes>` element from `plugin.xml` (so the startup shortcut-cache loader hit a null and threw). The startup log pinpointed the second one (`ActionService.ReloadShortcutSettings → Extension.get_AuxiliaryExtensionAttributes → NullReferenceException`). The fix keeps the action **registered** and keeps the element present but **empty** (`<auxiliaryExtensionAttributes />`), dropping only the `ActionLayoutAttribute` — exactly the shape three other extensions in this plugin already ship and load fine. Net: no menu entry, no crash. Use **"Translate active segment" (Ctrl+T)**. (The action still appears in the keyboard-shortcuts editor, by design — registration must stay.)
+
+
 ## [4.20.61] – 2026-06-18
 
 ### Fixed (Startup crash — abandons the menu-hide attempt)
