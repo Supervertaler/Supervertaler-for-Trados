@@ -1,10 +1,17 @@
 # Changelog
 
+## [4.20.60] – 2026-06-18
+
+### Changed (Editor context menu — the fix that actually works)
+
+- **The duplicate "AI translate current segment" entry is now genuinely gone from the editor right-click menu.** 4.20.59 removed the `[ActionLayout]` from the C# action, but Studio doesn't read that — it reads the plugin's `plugin.xml` manifest, a static file that still declared the menu placement, so the entry stayed. This release removes the `ActionLayoutAttribute` block for the action from `plugin.xml` itself, while keeping its `ActionAttribute` so the action stays **registered** (which is what prevents the 4.20.57 startup crash). Net effect: the entry drops out of the menu, no crash. Use **"Translate active segment" (Ctrl+T)** — they were always identical. The retired action still appears in the keyboard-shortcuts editor (that list includes every registered action; the SDK has no flag to hide one, and registration must stay).
+
+
 ## [4.20.59] – 2026-06-18
 
 ### Changed (Editor context menu)
 
-- **The duplicate "AI translate current segment" entry is hidden from the editor right-click menu — the safe way this time.** Rather than deleting the action (which crashed Studio on startup in 4.20.57, since Studio caches the editor command bar by action id), the action stays **registered** but is given no menu placement, so the cached reference still resolves and the entry simply drops out of the menu. Use **"Translate active segment" (Ctrl+T)** — they were always identical. The retired action does still appear in the keyboard-shortcuts editor: that list includes every registered action and the SDK has no flag to hide one from it, and registration must be kept to avoid the startup crash.
+- Attempted to hide the duplicate "AI translate current segment" entry by dropping its C# `[ActionLayout]`. **Ineffective** — Studio reads the menu layout from `plugin.xml`, not the C# attribute. Superseded by 4.20.60.
 
 
 ## [4.20.58] – 2026-06-18
