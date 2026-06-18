@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.59] – 2026-06-18
+
+### Changed (Editor context menu)
+
+- **The duplicate "AI translate current segment" entry is hidden from the editor right-click menu — the safe way this time.** Rather than deleting the action (which crashed Studio on startup in 4.20.57, since Studio caches the editor command bar by action id), the action stays **registered** but is given no menu placement, so the cached reference still resolves and the entry simply drops out of the menu. Use **"Translate active segment" (Ctrl+T)** — they were always identical. The retired action does still appear in the keyboard-shortcuts editor: that list includes every registered action and the SDK has no flag to hide one from it, and registration must be kept to avoid the startup crash.
+
+
 ## [4.20.58] – 2026-06-18
 
 ### Fixed (Startup crash — reverts 4.20.57)
