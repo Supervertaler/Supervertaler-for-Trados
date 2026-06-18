@@ -526,7 +526,7 @@ namespace Supervertaler.Trados.Controls
                 "the prompt or response text. Open it in Excel, or use the report below.");
             Span(root, ref row, _chkPersistUsageLog);
 
-            var btnUsageReport = TextButton("Usage & Costs report…");
+            var btnUsageReport = TextButton("Usage && Costs report…");
             btnUsageReport.Click += (s, ev) =>
             {
                 try { using (var f = new UsageReportForm()) f.ShowDialog(FindForm()); }
@@ -535,7 +535,9 @@ namespace Supervertaler.Trados.Controls
             Span(root, ref row, btnUsageReport);
 
             var lblMonthlyBudget = FieldLabel("Monthly budget (USD, 0 = none):");
-            _nudMonthlyBudget = SmallNud(0, 100000, 0, 10);
+            _nudMonthlyBudget = SmallNud(0, 100000, 0, 1);
+            _nudMonthlyBudget.DecimalPlaces = 2;   // allow cents (e.g. 0.18, 25.50)
+            _nudMonthlyBudget.Width = UiScale.Pixels(110);
             var budgetTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             budgetTip.SetToolTip(_nudMonthlyBudget,
                 "A soft monthly spend limit. When this month's logged AI cost reaches\r\n" +
