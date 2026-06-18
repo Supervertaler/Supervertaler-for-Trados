@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.57] – 2026-06-18
+
+### Changed (Editor context menu)
+
+- **Removed the duplicate "AI translate current segment" entry from the editor right-click menu.** It was a legacy alias that did exactly the same thing as **"Translate active segment" (Ctrl+T)** — translate the active segment using your Batch Translate settings — and only added clutter (and a confusing second Ctrl+T label). The single **"Translate active segment"** command remains, with Ctrl+T. The legacy action is also no longer listed under the plugin's keyboard-shortcuts settings.
+
+
 ## [4.20.56] – 2026-06-18
 
 ### Added (Token usage & costs)
