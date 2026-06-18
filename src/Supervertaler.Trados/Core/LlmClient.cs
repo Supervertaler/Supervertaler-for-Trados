@@ -704,6 +704,7 @@ namespace Supervertaler.Trados.Core
                     if (!response.IsSuccessStatusCode)
                         throw new HttpRequestException(EnrichErrorMessage("Gemini", (int)response.StatusCode, body, _model));
 
+                    LastUsage = ExtractGeminiUsage(body);
                     return ExtractGeminiContent(body);
                 }
             }
@@ -748,6 +749,7 @@ namespace Supervertaler.Trados.Core
                     if (!response.IsSuccessStatusCode)
                         throw new HttpRequestException(EnrichErrorMessage("Ollama", (int)response.StatusCode, body, _model));
 
+                    LastUsage = ExtractOllamaUsage(body);
                     return ExtractOllamaContent(body);
                 }
             }
@@ -1011,6 +1013,7 @@ namespace Supervertaler.Trados.Core
                     if (!response.IsSuccessStatusCode)
                         throw new HttpRequestException(EnrichErrorMessage("Gemini", (int)response.StatusCode, body, _model));
 
+                    LastUsage = ExtractGeminiUsage(body);
                     return ExtractGeminiContent(body);
                 }
             }
@@ -1075,6 +1078,7 @@ namespace Supervertaler.Trados.Core
                     if (!response.IsSuccessStatusCode)
                         throw new HttpRequestException(EnrichErrorMessage("Ollama", (int)response.StatusCode, body, _model));
 
+                    LastUsage = ExtractOllamaUsage(body);
                     return ExtractOllamaContent(body);
                 }
             }
@@ -1173,6 +1177,53 @@ namespace Supervertaler.Trados.Core
             // No cache info – all input is full-price.
             usage.RegularInputTokens = totalPromptTokens;
             return usage;
+        }
+
+        /// <summary>
+        /// Parses the `usageMetadata` block from a Gemini generateContent response.
+        /// promptTokenCount is the TOTAL input (cached portion included); the
+        /// cached slice is cachedContentTokenCount. Reasoning ("thoughts") tokens
+        /// are billed at the output rate, so they're folded into output here.
+        /// Returns null if the basic fields can't be parsed.
+        /// </summary>
+        private static ApiUsage ExtractGeminiUsage(string json)
+        {
+            var promptMatch = Regex.Match(json, @"""promptTokenCount""\s*:\s*(\d+)");
+            var candidatesMatch = Regex.Match(json, @"""candidatesTokenCount""\s*:\s*(\d+)");
+            if (!promptMatch.Success || !candidatesMatch.Success) return null;
+
+            var totalPrompt = int.Parse(promptMatch.Groups[1].Value);
+            var output = int.Parse(candidatesMatch.Groups[1].Value);
+
+            var thoughtsMatch = Regex.Match(json, @"""thoughtsTokenCount""\s*:\s*(\d+)");
+            if (thoughtsMatch.Success) output += int.Parse(thoughtsMatch.Groups[1].Value);
+
+            var usage = new ApiUsage { OutputTokens = output };
+
+            var cachedMatch = Regex.Match(json, @"""cachedContentTokenCount""\s*:\s*(\d+)");
+            if (cachedMatch.Success)
+                usage.CacheReadTokens = int.Parse(cachedMatch.Groups[1].Value);
+
+            usage.RegularInputTokens = Math.Max(0, totalPrompt - usage.CacheReadTokens);
+            return usage;
+        }
+
+        /// <summary>
+        /// Parses token counts from an Ollama /api/chat response: prompt_eval_count
+        /// (input) and eval_count (output). Local models are free, but the counts
+        /// matter for capacity monitoring. Returns null if neither field is present.
+        /// </summary>
+        private static ApiUsage ExtractOllamaUsage(string json)
+        {
+            var promptMatch = Regex.Match(json, @"""prompt_eval_count""\s*:\s*(\d+)");
+            var evalMatch = Regex.Match(json, @"""eval_count""\s*:\s*(\d+)");
+            if (!promptMatch.Success && !evalMatch.Success) return null;
+
+            return new ApiUsage
+            {
+                RegularInputTokens = promptMatch.Success ? int.Parse(promptMatch.Groups[1].Value) : 0,
+                OutputTokens = evalMatch.Success ? int.Parse(evalMatch.Groups[1].Value) : 0
+            };
         }
 
         private static string ExtractClaudeContent(string json)

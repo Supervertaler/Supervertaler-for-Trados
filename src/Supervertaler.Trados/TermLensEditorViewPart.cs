@@ -1423,6 +1423,43 @@ namespace Supervertaler.Trados
             return _currentInstance?.GetDocumentTargetLanguage();
         }
 
+        /// <summary>
+        /// Best-effort snapshot of the active project / file / language pair / client
+        /// for token-usage attribution, read at log time by <see cref="Core.UsageLogger"/>.
+        /// Every field is optional; any failure yields nulls and never throws.
+        /// </summary>
+        public static Core.UsageContextSnapshot GetCurrentUsageContext()
+        {
+            var snap = new Core.UsageContextSnapshot();
+            var inst = _currentInstance;
+            if (inst == null) return snap;
+            try
+            {
+                var doc = inst._activeDocument;
+                if (doc != null)
+                {
+                    snap.Project = Core.DocumentContextHelper.GetProjectName(doc);
+                    snap.File = Core.DocumentContextHelper.GetDocumentName(doc);
+                }
+                snap.SrcLang = inst.GetDocumentSourceLanguage();
+                snap.TgtLang = inst.GetDocumentTargetLanguage();
+
+                var projPath = inst._currentProjectPath;
+                if (!string.IsNullOrEmpty(projPath))
+                {
+                    snap.ProjectKey = Settings.ProjectSettings.GetProjectKey(projPath);
+                    var ps = Settings.ProjectSettings.Load(projPath);
+                    if (ps != null)
+                    {
+                        snap.Client = ps.Client;
+                        if (string.IsNullOrEmpty(snap.Project)) snap.Project = ps.ProjectName;
+                    }
+                }
+            }
+            catch { /* best-effort attribution */ }
+            return snap;
+        }
+
         private void OnActiveFilePropertiesChanged(object sender, EventArgs e)
         {
             // Fired when file/project properties change – reload MultiTerm

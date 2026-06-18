@@ -4466,6 +4466,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         private void OnPromptCompleted(object sender, PromptLogEntry entry)
         {
             if (entry == null) return;
+
+            // Persistent token-usage ledger (metadata only, on by default).
+            // Independent of the Reports-tab prompt log gated below.
+            Core.UsageLogger.Record(entry, _settings);
+
             if (_settings?.AiSettings?.LogPromptsToReports != true) return;
 
             SafeInvoke(() =>

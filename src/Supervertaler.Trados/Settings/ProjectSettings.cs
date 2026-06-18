@@ -35,6 +35,14 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "projectName")]
         public string ProjectName { get; set; } = "";
 
+        /// <summary>
+        /// Optional client / end-customer name for this project. Attributed to each
+        /// token-usage record so the ledger can produce per-client cost reports.
+        /// Free text; blank if unset.
+        /// </summary>
+        [DataMember(Name = "client")]
+        public string Client { get; set; } = "";
+
         // ─── Per-project termbase settings ──────────────────────────
 
         /// <summary>

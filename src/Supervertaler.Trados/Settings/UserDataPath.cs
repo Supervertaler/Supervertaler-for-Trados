@@ -568,6 +568,17 @@ namespace Supervertaler.Trados.Settings
                 $"batch_{timestamp:yyyy-MM-dd_HH-mm-ss}{safe}.tmx");
         }
 
+        /// <summary>Folder holding the persistent token-usage ledger (JSONL files).</summary>
+        public static string UsageDir => Path.Combine(TradosDir, "usage");
+
+        /// <summary>
+        /// Monthly-rotated usage ledger path, e.g. usage-2026-06.jsonl. One JSON
+        /// object per AI call is appended. Plain JSONL so it opens in a spreadsheet
+        /// or is parsed with a script. Pass a UTC timestamp.
+        /// </summary>
+        public static string UsageLogFilePath(DateTime timestampUtc) =>
+            Path.Combine(UsageDir, $"usage-{timestampUtc:yyyy-MM}.jsonl");
+
         // ── Configuration ────────────────────────────────────────────
 
         /// <summary>

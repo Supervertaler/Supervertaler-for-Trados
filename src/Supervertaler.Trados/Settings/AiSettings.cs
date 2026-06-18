@@ -317,6 +317,20 @@ namespace Supervertaler.Trados.Settings
         public bool LogPromptsToReports { get; set; }
 
         /// <summary>
+        /// When enabled (the default), every AI call's token usage and cost is
+        /// appended to a persistent JSONL ledger under {Trados}/usage/. This stores
+        /// metadata only — model, tokens, cost, project/file — and NEVER the prompt
+        /// or response text. Independent of <see cref="LogPromptsToReports"/>.
+        /// Stored as nullable so an absent value in older settings files is treated
+        /// as enabled (see <see cref="IsUsageLogEnabled"/>).
+        /// </summary>
+        [DataMember(Name = "persistUsageLog")]
+        public bool? PersistUsageLog { get; set; }
+
+        /// <summary>Resolves <see cref="PersistUsageLog"/> with on-by-default semantics.</summary>
+        public bool IsUsageLogEnabled => PersistUsageLog ?? true;
+
+        /// <summary>
         /// Sets the model for the given provider and makes it the active provider.
         /// </summary>
         public void SetProviderAndModel(string providerKey, string modelId)
