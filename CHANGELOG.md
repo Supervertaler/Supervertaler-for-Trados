@@ -1,17 +1,24 @@
 # Changelog
 
+## [4.20.61] – 2026-06-18
+
+### Fixed (Startup crash — abandons the menu-hide attempt)
+
+- **Studio starts reliably again; the duplicate "AI translate current segment" entry stays.** Two different ways of hiding that entry each crashed Studio on startup: deleting the action (4.20.57) failed because Studio instantiates every cached command-bar action on launch, and removing only its menu-layout from `plugin.xml` (4.20.60) made the action service throw a `NullReferenceException` because the cached editor command bar still referenced that item. Studio's persisted command-bar state makes both removals unsafe. This release restores the known-good configuration (the action and its menu placement both present), so Studio launches normally. The entry is a harmless exact duplicate of **"Translate active segment" (Ctrl+T)**; it is being left in place.
+
+
 ## [4.20.60] – 2026-06-18
 
-### Changed (Editor context menu — the fix that actually works)
+### Changed (Editor context menu) — REVERTED in 4.20.61
 
-- **The duplicate "AI translate current segment" entry is now genuinely gone from the editor right-click menu.** 4.20.59 removed the `[ActionLayout]` from the C# action, but Studio doesn't read that — it reads the plugin's `plugin.xml` manifest, a static file that still declared the menu placement, so the entry stayed. This release removes the `ActionLayoutAttribute` block for the action from `plugin.xml` itself, while keeping its `ActionAttribute` so the action stays **registered** (which is what prevents the 4.20.57 startup crash). Net effect: the entry drops out of the menu, no crash. Use **"Translate active segment" (Ctrl+T)** — they were always identical. The retired action still appears in the keyboard-shortcuts editor (that list includes every registered action; the SDK has no flag to hide one, and registration must stay).
+- Removed the action's `ActionLayoutAttribute` from `plugin.xml` to drop the menu entry. **This crashed Studio on startup** (`IActionService` NullReferenceException — the cached command bar still referenced the item). Reverted.
 
 
 ## [4.20.59] – 2026-06-18
 
 ### Changed (Editor context menu)
 
-- Attempted to hide the duplicate "AI translate current segment" entry by dropping its C# `[ActionLayout]`. **Ineffective** — Studio reads the menu layout from `plugin.xml`, not the C# attribute. Superseded by 4.20.60.
+- Attempted to hide the duplicate entry by dropping its C# `[ActionLayout]`. **Ineffective** — Studio reads the menu layout from `plugin.xml`, not the C# attribute. Superseded.
 
 
 ## [4.20.58] – 2026-06-18
