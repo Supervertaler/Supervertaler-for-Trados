@@ -1,10 +1,17 @@
 # Changelog
 
+## [4.20.58] – 2026-06-18
+
+### Fixed (Startup crash — reverts 4.20.57)
+
+- **Trados Studio 2024 and 2026 no longer crash on startup.** Version 4.20.57 deleted the legacy "AI translate current segment" action to declutter the right-click menu. But Studio caches the editor command bar by action id, and on startup it tries to instantiate every cached action — so with the action type gone it threw *"Failed to add view command bar extensions for view 'EditorView'"* and exited before the editor loaded. This release restores that action registration, so the cached reference resolves again and Studio starts normally. The action is intentionally kept registered for exactly this backward-compatibility reason; the menu still shows the (harmless) duplicate entry. **If you installed 4.20.57, update to this build.**
+
+
 ## [4.20.57] – 2026-06-18
 
 ### Changed (Editor context menu)
 
-- **Removed the duplicate "AI translate current segment" entry from the editor right-click menu.** It was a legacy alias that did exactly the same thing as **"Translate active segment" (Ctrl+T)** — translate the active segment using your Batch Translate settings — and only added clutter (and a confusing second Ctrl+T label). The single **"Translate active segment"** command remains, with Ctrl+T. The legacy action is also no longer listed under the plugin's keyboard-shortcuts settings.
+- **Removed the duplicate "AI translate current segment" entry from the editor right-click menu.** It was a legacy alias that did exactly the same thing as **"Translate active segment" (Ctrl+T)** — translate the active segment using your Batch Translate settings — and only added clutter (and a confusing second Ctrl+T label). The single **"Translate active segment"** command remains, with Ctrl+T. The legacy action is also no longer listed under the plugin's keyboard-shortcuts settings. **(Superseded: this change crashed Studio on startup — see 4.20.58.)**
 
 
 ## [4.20.56] – 2026-06-18
