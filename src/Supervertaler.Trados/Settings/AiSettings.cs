@@ -331,6 +331,14 @@ namespace Supervertaler.Trados.Settings
         public bool IsUsageLogEnabled => PersistUsageLog ?? true;
 
         /// <summary>
+        /// Optional soft monthly spend budget in USD (0 = no budget). When set,
+        /// starting a batch translation after this month's logged spend has reached
+        /// the budget shows a warn-and-continue prompt. Advisory only — never blocks.
+        /// </summary>
+        [DataMember(Name = "monthlyBudgetUsd")]
+        public double MonthlyBudgetUsd { get; set; }
+
+        /// <summary>
         /// Sets the model for the given provider and makes it the active provider.
         /// </summary>
         public void SetProviderAndModel(string providerKey, string modelId)

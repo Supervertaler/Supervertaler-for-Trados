@@ -66,6 +66,7 @@ namespace Supervertaler.Trados.Controls
         private CheckBox _chkIncludeSuperMemoryAutoPrompt;
         private CheckBox _chkLogPrompts;
         private CheckBox _chkPersistUsageLog;
+        private NumericUpDown _nudMonthlyBudget;
         private Label _lblBatchSize;
         private NumericUpDown _nudBatchSize;
         private Label _lblAiTermbases;
@@ -533,6 +534,15 @@ namespace Supervertaler.Trados.Controls
             };
             Span(root, ref row, btnUsageReport);
 
+            var lblMonthlyBudget = FieldLabel("Monthly budget (USD, 0 = none):");
+            _nudMonthlyBudget = SmallNud(0, 100000, 0, 10);
+            var budgetTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            budgetTip.SetToolTip(_nudMonthlyBudget,
+                "A soft monthly spend limit. When this month's logged AI cost reaches\r\n" +
+                "this amount, starting a batch translation shows a warning you can\r\n" +
+                "dismiss. Advisory only – it never blocks. 0 disables the budget.");
+            Pair(root, ref row, lblMonthlyBudget, _nudMonthlyBudget);
+
             _lblBatchSize = FieldLabel("Batch size:");
             _nudBatchSize = SmallNud(5, 100, 20, 1);
             var batchTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
@@ -733,6 +743,8 @@ namespace Supervertaler.Trados.Controls
             _chkIncludeSuperMemoryAutoPrompt.Enabled = settings.IncludeSuperMemoryContext;
             _chkLogPrompts.Checked = settings.LogPromptsToReports;
             _chkPersistUsageLog.Checked = settings.IsUsageLogEnabled;
+            _nudMonthlyBudget.Value = Math.Max(_nudMonthlyBudget.Minimum,
+                Math.Min(_nudMonthlyBudget.Maximum, (decimal)settings.MonthlyBudgetUsd));
             _nudBatchSize.Value = Math.Max(_nudBatchSize.Minimum,
                 Math.Min(_nudBatchSize.Maximum, settings.BatchSize > 0 ? settings.BatchSize : 20));
         }
@@ -813,6 +825,7 @@ namespace Supervertaler.Trados.Controls
             settings.IncludeSuperMemoryInAutoPrompt = _chkIncludeSuperMemoryAutoPrompt.Checked;
             settings.LogPromptsToReports = _chkLogPrompts.Checked;
             settings.PersistUsageLog = _chkPersistUsageLog.Checked;
+            settings.MonthlyBudgetUsd = (double)_nudMonthlyBudget.Value;
             settings.BatchSize = (int)_nudBatchSize.Value;
             // NOTE: DisabledAiTermbaseIds / AiTermbaseIdsInitialized are now owned by the
             // Termbases tab (the "AI" column in the termbase grid), not this panel.

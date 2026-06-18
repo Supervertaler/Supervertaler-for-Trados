@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Controls
 {
@@ -17,6 +18,8 @@ namespace Supervertaler.Trados.Controls
         private readonly DataGridView _grid;
         private readonly Label _lblTotals;
         private List<UsageRecord> _records = new List<UsageRecord>();
+        private decimal _mtdCost;
+        private decimal _budget;
 
         public UsageReportForm()
         {
@@ -108,6 +111,15 @@ namespace Supervertaler.Trados.Controls
                 _records = UsageReader.Load(range.Item1, range.Item2);
             }
             catch { _records = new List<UsageRecord>(); }
+
+            try
+            {
+                _mtdCost = UsageBudget.MonthToDateCostUsd();
+                var s = TermLensSettings.Load();
+                _budget = (decimal)(s != null && s.AiSettings != null ? s.AiSettings.MonthlyBudgetUsd : 0);
+            }
+            catch { _mtdCost = 0m; _budget = 0m; }
+
             Rebind();
         }
 
@@ -122,9 +134,13 @@ namespace Supervertaler.Trados.Controls
             _grid.DataSource = rows;
 
             var total = UsageAggregator.Total(_records);
+            string monthInfo = _budget > 0
+                ? string.Format("     |     This month: ${0:0.00} of ${1:0.00} budget ({2:0}%)",
+                    _mtdCost, _budget, _mtdCost / _budget * 100m)
+                : string.Format("     |     This month: ${0:0.00}", _mtdCost);
             _lblTotals.Text = string.Format(
-                "Total: {0:N0} calls · {1:N0} in / {2:N0} out · ${3:0.00} · {4} from provider",
-                total.Calls, total.InputTokens, total.OutputTokens, total.CostUsd, total.ActualShare);
+                "Range total: {0:N0} calls · {1:N0} in / {2:N0} out · ${3:0.00} · {4} from provider",
+                total.Calls, total.InputTokens, total.OutputTokens, total.CostUsd, total.ActualShare) + monthInfo;
         }
 
         private void FormatGrid()

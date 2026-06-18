@@ -3608,6 +3608,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     batchControl.AppendLog($"Backup TMX: {backupPath}");
                 }
 
+                // Warn-only monthly-budget pre-flight (advisory; never blocks).
+                if (!Core.UsageBudget.Preflight(null, aiSettings, segments != null ? segments.Count : 0))
+                    return;
+
                 _batchCts = new CancellationTokenSource();
                 _batchTranslator = new BatchTranslator();
 
