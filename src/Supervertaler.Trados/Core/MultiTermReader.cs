@@ -75,7 +75,17 @@ namespace Supervertaler.Trados.Core
             {
                 try
                 {
-                    var connStr = $"Provider={provider};Data Source={_filePath};Mode=Read;";
+                    // "OLE DB Services=-4" disables connection pooling (and auto-
+                    // enlistment). Without it, .NET pools the physical OleDb
+                    // connection after Dispose, so the ACE/JET engine keeps the
+                    // .sdltb (a Microsoft Access database) LOCKED via its .ldb/.laccdb
+                    // lock file long after we're done reading. Trados's own MultiTerm
+                    // engine then hits that lingering lock when it browses the same
+                    // termbase (e.g. after a Batch Processing task) and throws an
+                    // SEHException 0x80004005 ("An external component has thrown an
+                    // exception"). Disabling pooling makes Dispose() actually close the
+                    // connection and release the file lock immediately. (Issue #36.)
+                    var connStr = $"Provider={provider};Data Source={_filePath};Mode=Read;OLE DB Services=-4;";
                     _connection = new OleDbConnection(connStr);
                     _connection.Open();
                     UsedProvider = provider;
@@ -406,6 +416,12 @@ namespace Supervertaler.Trados.Core
             {
                 _connection?.Close();
                 _connection?.Dispose();
+                _connection = null;
+                // Belt-and-suspenders: force any physical connection that the OleDb
+                // layer may still be holding for this file to be torn down now, so the
+                // .sdltb lock is gone before Trados's MultiTerm engine touches it.
+                // (Harmless even with pooling already disabled above.)
+                OleDbConnection.ReleaseObjectPool();
             }
             catch { /* ignore close errors */ }
         }

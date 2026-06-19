@@ -1,6 +1,10 @@
 # Changelog
 
-## [4.20.62] – 2026-06-19
+## [4.20.63] – 2026-06-19
+
+### Fixed (MultiTerm · termbase file locking)
+
+- **Using Supervertaler with a MultiTerm (.sdltb) termbase no longer makes Trados's own terminology throw a `TermBaseDBAccess` / `SEHException (0x80004005)` error.** A `.sdltb` is a Microsoft Access (JET) database, and Supervertaler reads it directly via OleDb to load terms for TermLens and AI prompts. Those readers are opened and disposed correctly, but .NET pools the underlying OleDb connection by default, so the ACE/JET engine kept the file **locked** (via its `.ldb`/`.laccdb` lock file) long after Supervertaler was done with it. When Trados's *own* MultiTerm engine then browsed the same termbase — e.g. right after a Batch Processing task — it collided with that lingering lock and threw *"An external component has thrown an exception."* Supervertaler now disables OleDb connection pooling for `.sdltb` access (`OLE DB Services=-4`) and releases the connection pool on dispose, so the file lock is gone the moment it finishes reading and Trados can access the termbase normally. Reported in issue #36.
 
 ### Changed (Editor context menu — the proper fix)
 
