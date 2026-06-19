@@ -26,11 +26,13 @@ namespace Supervertaler.Trados.Core
     public class SupervertalerProjectSettingsGroup : SettingsGroup
     {
         /// <summary>
-        /// Newline-joined synthetic IDs of MultiTerm (.sdltb/.ttb) termbases that are
-        /// explicitly enabled for AI context. The synthetic ID is a stable hash of the
-        /// termbase file path (see <see cref="MultiTermProjectDetector"/>), so a template
-        /// and the projects created from it — which attach the same termbase paths —
-        /// resolve to the same IDs without any path translation at inherit time.
+        /// Newline-joined absolute paths of MultiTerm (.sdltb/.ttb) termbases that are
+        /// explicitly enabled for AI context — readable when a template is inspected by
+        /// hand. A termbase's identity (its synthetic ID, used everywhere else) is a stable
+        /// hash of this path, so a template and the projects created from it — which attach
+        /// the same termbase path — resolve to the same termbase. For backwards
+        /// compatibility the reader also accepts bare synthetic IDs, which is what builds
+        /// up to 4.20.65 wrote here (the setting key is unchanged for that reason).
         /// </summary>
         public Setting<string> AiEnabledMultiTermIds => GetSetting<string>("AiEnabledMultiTermIds");
     }
@@ -42,12 +44,14 @@ namespace Supervertaler.Trados.Core
     /// </summary>
     public static class ProjectBundleSettings
     {
-        private static readonly char[] Separators = { '\n', '\r', ',' };
+        private static readonly char[] Separators = { '\n', '\r' };
 
         /// <summary>
-        /// Reads the AI-enabled MultiTerm synthetic IDs stored in the project's settings
-        /// bundle (inherited from its template, if it was created from one). Returns an
-        /// empty list if absent or on any failure.
+        /// Reads the AI-enabled MultiTerm termbases stored in the project's settings bundle
+        /// (inherited from its template, if it was created from one) and returns them as
+        /// synthetic IDs — the form the rest of the plugin uses. Each stored entry is either
+        /// an absolute termbase path (current format) or a bare synthetic ID (pre-4.20.66
+        /// format); both are accepted. Returns an empty list if absent or on any failure.
         /// </summary>
         public static List<long> ReadEnabledMultiTermIds(FileBasedProject project)
         {
@@ -61,12 +65,17 @@ namespace Supervertaler.Trados.Core
                 var raw = group?.AiEnabledMultiTermIds?.Value ?? "";
                 foreach (var part in raw.Split(Separators, StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (long.TryParse(part.Trim(), out var id) && !ids.Contains(id))
-                        ids.Add(id);
+                    var entry = part.Trim();
+                    if (entry.Length == 0) continue;
+                    // A bare integer is a legacy synthetic ID; anything else is a path.
+                    long id = long.TryParse(entry, out var parsed)
+                        ? parsed
+                        : MultiTermProjectDetector.MakeStableSyntheticId(entry);
+                    if (!ids.Contains(id)) ids.Add(id);
                 }
                 if (ids.Count > 0)
                     DiagnosticLog.Log("ProjectBundle",
-                        $"Read {ids.Count} AI-enabled MultiTerm id(s) from the project settings bundle (template-inherited).");
+                        $"Read {ids.Count} AI-enabled MultiTerm termbase(s) from the project settings bundle (template-inherited).");
             }
             catch (Exception ex)
             {
@@ -76,17 +85,23 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// Mirrors the AI-enabled MultiTerm synthetic IDs into the project's settings
-        /// bundle and persists it, so the choice can be baked into a project template
-        /// and inherited by future projects. Writes (and dirties the .sdlproj) only when
-        /// the value actually changes. Never throws.
+        /// Mirrors the AI-enabled MultiTerm termbase paths into the project's settings
+        /// bundle and persists it, so the choice can be baked into a project template and
+        /// inherited by future projects. Stores absolute paths (readable in template XML);
+        /// the synthetic ID used elsewhere is a hash of the same path. Writes (and dirties
+        /// the .sdlproj) only when the value actually changes. Never throws.
         /// </summary>
-        public static void WriteEnabledMultiTermIds(FileBasedProject project, IEnumerable<long> ids)
+        public static void WriteEnabledMultiTermPaths(FileBasedProject project, IEnumerable<string> paths)
         {
             try
             {
                 if (project == null) return;
-                var list = (ids ?? Enumerable.Empty<long>()).Distinct().OrderBy(x => x).ToList();
+                var list = (paths ?? Enumerable.Empty<string>())
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => p.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
                 var newValue = string.Join("\n", list);
 
                 var bundle = project.GetSettings();
@@ -97,44 +112,44 @@ namespace Supervertaler.Trados.Core
                 if (string.Equals(current, newValue, StringComparison.Ordinal))
                 {
                     DiagnosticLog.Log("ProjectBundle",
-                        $"Project bundle already holds {list.Count} AI-enabled MultiTerm id(s) — no change written.");
+                        $"Project bundle already holds {list.Count} AI-enabled MultiTerm termbase(s) — no change written.");
                     return; // no change — don't churn the .sdlproj
                 }
 
                 setting.Value = newValue;
                 project.UpdateSettings(bundle);
                 DiagnosticLog.Log("ProjectBundle",
-                    $"Wrote {list.Count} AI-enabled MultiTerm id(s) to the project settings bundle.");
+                    $"Wrote {list.Count} AI-enabled MultiTerm termbase path(s) to the project settings bundle.");
             }
             catch (Exception ex)
             {
-                DiagnosticLog.Log("ProjectBundle", "WriteEnabledMultiTermIds failed: " + ex.Message);
+                DiagnosticLog.Log("ProjectBundle", "WriteEnabledMultiTermPaths failed: " + ex.Message);
             }
         }
 
         /// <summary>
-        /// Writes the AI-enabled MultiTerm synthetic IDs to the bundle of the project
+        /// Writes the AI-enabled MultiTerm termbase paths to the bundle of the project
         /// currently open in Trados. Call this at the moment the user changes the "AI"
         /// ticks — the value is then freshest and the right project is unambiguous.
         /// Best-effort; never throws.
         /// </summary>
-        public static void WriteForCurrentProject(IEnumerable<long> ids)
+        public static void WriteForCurrentProject(IEnumerable<string> paths)
         {
             try
             {
-                var list = (ids ?? Enumerable.Empty<long>()).ToList();
+                var list = (paths ?? Enumerable.Empty<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
                 var project = ResolveCurrentProject();
                 if (project == null)
                 {
                     DiagnosticLog.Log("ProjectBundle",
-                        $"WriteForCurrentProject: no project open in Trados — {list.Count} AI id(s) not mirrored to a bundle.");
+                        $"WriteForCurrentProject: no project open in Trados — {list.Count} AI termbase(s) not mirrored to a bundle.");
                     return;
                 }
                 string name = "";
                 try { name = project.GetProjectInfo()?.Name ?? ""; } catch { }
                 DiagnosticLog.Log("ProjectBundle",
-                    $"WriteForCurrentProject: project='{name}', {list.Count} AI-enabled MultiTerm id(s) to mirror.");
-                WriteEnabledMultiTermIds(project, list);
+                    $"WriteForCurrentProject: project='{name}', {list.Count} AI-enabled MultiTerm termbase(s) to mirror.");
+                WriteEnabledMultiTermPaths(project, list);
             }
             catch (Exception ex)
             {

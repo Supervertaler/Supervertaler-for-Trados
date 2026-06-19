@@ -205,7 +205,7 @@ namespace Supervertaler.Trados.Core
         /// .NET Core/.NET 5+. Always negative so it never collides with the
         /// positive IDs of Supervertaler's own .db termbases (issue #36).
         /// </summary>
-        private static long MakeStableSyntheticId(string filePath)
+        public static long MakeStableSyntheticId(string filePath)
         {
             string key = (filePath ?? string.Empty).ToLowerInvariant();
 

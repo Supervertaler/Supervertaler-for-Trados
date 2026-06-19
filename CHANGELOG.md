@@ -1,10 +1,10 @@
 # Changelog
 
-## [4.20.65] – 2026-06-19
+## [4.20.66] – 2026-06-19
 
 ### Added (MultiTerm · AI opt-in inherits from project templates)
 
-- **The MultiTerm "AI" opt-in now travels with Trados project templates.** Tick a MultiTerm termbase for AI in a project, then save that project as a project template (Create Project Template based on this project) — and every new project created from that template inherits the choice automatically, with no per-project re-ticking. This is aimed at automated / CLI-driven project creation, where many projects are spun up from one template each day (issue #36). It works by mirroring the opt-in into the **Trados project settings bundle** (which templates capture and pass on), in addition to Supervertaler's own per-project store; the existing explicit opt-in is preserved — the conscious decision just happens once, on the template. The choice is keyed by termbase, so it applies to any project that attaches the same termbase.
+- **The MultiTerm "AI" opt-in now travels with Trados project templates.** Tick a MultiTerm termbase for AI in a project, then save that project as a project template (Create Project Template based on this project) — and every new project created from that template inherits the choice automatically, with no per-project re-ticking. This is aimed at automated / CLI-driven project creation, where many projects are spun up from one template each day (issue #36). It works by mirroring the opt-in into the **Trados project settings bundle** (which templates capture and pass on), in addition to Supervertaler's own per-project store; the existing explicit opt-in is preserved — the conscious decision just happens once, on the template. The choice is stored as the termbase's path, so it applies to any project that attaches the same termbase.
 
 ### Fixed (MultiTerm · termbase file locking)
 
