@@ -1,6 +1,6 @@
 # Changelog
 
-## [4.20.64] – 2026-06-19
+## [4.20.65] – 2026-06-19
 
 ### Added (MultiTerm · AI opt-in inherits from project templates)
 

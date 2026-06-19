@@ -1864,6 +1864,11 @@ namespace Supervertaler.Trados.Settings
                 _settings.AiSettings.AiTermbaseIdsInitialized = true;
             }
 
+            // Mirror the MultiTerm "AI" opt-in into the Trados project settings bundle
+            // right here, while the value is fresh — so "Create Template from Project"
+            // captures it and new projects from that template inherit it (issue #36).
+            Supervertaler.Trados.Core.ProjectBundleSettings.WriteForCurrentProject(enabledAiMtIds);
+
             // AI settings
             _aiSettingsPanel.ApplyToSettings(_settings.AiSettings);
 

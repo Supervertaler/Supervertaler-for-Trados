@@ -1354,48 +1354,11 @@ namespace Supervertaler.Trados
             {
                 var ps = _settings.ExtractProjectSettings(_currentProjectPath, _currentProjectName);
                 ProjectSettings.Save(_currentProjectPath, ps);
-                MirrorAiOptInToBundle(_currentProjectPath, ps.EnabledAiMultiTermIds);
             }
             catch
             {
                 // Silently ignore save failures
             }
-        }
-
-        /// <summary>
-        /// Mirrors the project's MultiTerm "AI" opt-in into the Trados project settings
-        /// bundle (in addition to Supervertaler's sidecar JSON), so the choice can be baked
-        /// into a project template via "Create Template from Project" and inherited by every
-        /// project created from that template (issue #36). Best-effort; never throws.
-        /// </summary>
-        private static void MirrorAiOptInToBundle(string projectPath, List<long> enabledAiMtIds)
-        {
-            try
-            {
-                var proj = ResolveCurrentProject(projectPath);
-                if (proj != null)
-                    ProjectBundleSettings.WriteEnabledMultiTermIds(proj, enabledAiMtIds);
-            }
-            catch { }
-        }
-
-        /// <summary>
-        /// Returns the Trados CurrentProject only when its path matches
-        /// <paramref name="projectPath"/>, so we never write the wrong project's bundle
-        /// mid project-switch. Null on any mismatch or failure.
-        /// </summary>
-        private static FileBasedProject ResolveCurrentProject(string projectPath)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(projectPath)) return null;
-                var pc = SdlTradosStudio.Application.GetController<ProjectsController>();
-                var proj = pc?.CurrentProject;
-                if (proj != null && string.Equals(proj.FilePath, projectPath, StringComparison.OrdinalIgnoreCase))
-                    return proj;
-                return null;
-            }
-            catch { return null; }
         }
 
         /// <summary>
@@ -1931,10 +1894,6 @@ namespace Supervertaler.Trados
                     // readers (QuickAddTermAction, AddTermAction) see the
                     // current project's effective Write/Project termbase IDs.
                     instance._settings.Save();
-                    // The user may have just changed the MultiTerm "AI" ticks in the
-                    // settings dialog — mirror the choice into the Trados project bundle
-                    // now so "Create Template from Project" captures it (issue #36).
-                    MirrorAiOptInToBundle(instance._currentProjectPath, ps.EnabledAiMultiTermIds);
                 }
             }
 

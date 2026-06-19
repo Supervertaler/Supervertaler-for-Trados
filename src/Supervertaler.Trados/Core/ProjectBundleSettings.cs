@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Sdl.Core.Settings;
 using Sdl.ProjectAutomation.FileBased;
+using Sdl.TranslationStudioAutomation.IntegrationApi;
 
 namespace Supervertaler.Trados.Core
 {
@@ -94,7 +95,11 @@ namespace Supervertaler.Trados.Core
                 var setting = group.AiEnabledMultiTermIds;
                 var current = setting.Value ?? "";
                 if (string.Equals(current, newValue, StringComparison.Ordinal))
+                {
+                    DiagnosticLog.Log("ProjectBundle",
+                        $"Project bundle already holds {list.Count} AI-enabled MultiTerm id(s) — no change written.");
                     return; // no change — don't churn the .sdlproj
+                }
 
                 setting.Value = newValue;
                 project.UpdateSettings(bundle);
@@ -105,6 +110,42 @@ namespace Supervertaler.Trados.Core
             {
                 DiagnosticLog.Log("ProjectBundle", "WriteEnabledMultiTermIds failed: " + ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Writes the AI-enabled MultiTerm synthetic IDs to the bundle of the project
+        /// currently open in Trados. Call this at the moment the user changes the "AI"
+        /// ticks — the value is then freshest and the right project is unambiguous.
+        /// Best-effort; never throws.
+        /// </summary>
+        public static void WriteForCurrentProject(IEnumerable<long> ids)
+        {
+            try
+            {
+                var list = (ids ?? Enumerable.Empty<long>()).ToList();
+                var project = ResolveCurrentProject();
+                if (project == null)
+                {
+                    DiagnosticLog.Log("ProjectBundle",
+                        $"WriteForCurrentProject: no project open in Trados — {list.Count} AI id(s) not mirrored to a bundle.");
+                    return;
+                }
+                string name = "";
+                try { name = project.GetProjectInfo()?.Name ?? ""; } catch { }
+                DiagnosticLog.Log("ProjectBundle",
+                    $"WriteForCurrentProject: project='{name}', {list.Count} AI-enabled MultiTerm id(s) to mirror.");
+                WriteEnabledMultiTermIds(project, list);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("ProjectBundle", "WriteForCurrentProject failed: " + ex.Message);
+            }
+        }
+
+        private static FileBasedProject ResolveCurrentProject()
+        {
+            try { return SdlTradosStudio.Application?.GetController<ProjectsController>()?.CurrentProject; }
+            catch { return null; }
         }
     }
 }
