@@ -5,8 +5,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Supervertaler.Trados</RootNamespace>
     <AssemblyName>Supervertaler.Trados</AssemblyName>
-    <Version>4.20.63</Version>
-    <InformationalVersion>4.20.63</InformationalVersion>
+    <Version>4.20.64</Version>
+    <InformationalVersion>4.20.64</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Michael Beijer</Authors>
     <Company>Supervertaler</Company>
@@ -74,6 +74,10 @@
     </Reference>
     <Reference Include="Sdl.ProjectAutomation.Core">
       <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.Core.Settings">
+      <HintPath>$(TradosStudioPath)\Sdl.Core.Settings.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Sdl.Core.Globalization.Async">
