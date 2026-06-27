@@ -30,6 +30,7 @@ namespace Supervertaler.Trados.Controls
         // Config controls.
         private ComboBox _cmbFormat;
         private ComboBox _cmbLayout;
+        private Label _lblRoundTripStatus;   // dynamic "can / cannot be re-imported" hint
         private CheckBox _chkStrictTagCheck;
         private CheckBox _chkIncludeLocked;
         private System.Collections.Generic.List<CheckBox> _statusCheckBoxes;
@@ -91,6 +92,25 @@ namespace Supervertaler.Trados.Controls
         public ImportExportControl()
         {
             InitializeUI();
+        }
+
+        /// <summary>
+        /// Widen a drop-down list's popup so every item shows in full. WinForms
+        /// otherwise clips the popup to the control's width, which truncates the
+        /// longer Format/Layout names (and it's worse at high DPI / large fonts,
+        /// e.g. on a laptop). Measured with the control's own font so it stays
+        /// DPI- and theme-correct.
+        /// </summary>
+        private static void SizeDropDownToFitItems(ComboBox cmb)
+        {
+            int widest = cmb.Width;
+            foreach (var item in cmb.Items)
+            {
+                int w = TextRenderer.MeasureText(item?.ToString() ?? string.Empty, cmb.Font).Width;
+                if (w > widest) widest = w;
+            }
+            // Pad for the list's internal margins plus a possible scrollbar.
+            cmb.DropDownWidth = widest + SystemInformation.VerticalScrollBarWidth + UiScale.Pixels(8);
         }
 
         private void InitializeUI()
@@ -187,6 +207,7 @@ namespace Supervertaler.Trados.Controls
             _cmbFormat.Items.Add("Markdown (.md)");
             _cmbFormat.Items.Add("HTML report (.html, read-only)");
             _cmbFormat.SelectedIndex = 0;
+            SizeDropDownToFitItems(_cmbFormat);
             Controls.Add(_cmbFormat);
             y += UiScale.Pixels(30);
 
@@ -209,13 +230,35 @@ namespace Supervertaler.Trados.Controls
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = bodyFont
             };
-            _cmbLayout.Items.Add("Supervertaler Bilingual Table (5 columns, round-trippable)");
+            // Re-importability depends on Format × Layout, not layout alone
+            // (Markdown round-trips every layout; Word only the 5-column table;
+            // HTML never). So the per-item text no longer claims "round-trippable"
+            // — the dynamic status line below reflects the live selection instead.
+            _cmbLayout.Items.Add("Supervertaler Bilingual Table (5 columns)");
             _cmbLayout.Items.Add("Stacked — source on top, target below");
             _cmbLayout.Items.Add("Stacked — target on top, source below");
             _cmbLayout.Items.Add("Bracketed [SEGMENT NNNN] (AI-friendly, Markdown only)");
             _cmbLayout.SelectedIndex = 0;
+            SizeDropDownToFitItems(_cmbLayout);
             Controls.Add(_cmbLayout);
-            y += UiScale.Pixels(32);
+            y += UiScale.Pixels(30);
+
+            // ─── Re-import status line ───────────────────────────────
+            // Tells the user, for the current Format + Layout, whether the
+            // exported file can be edited and round-tripped back into Trados.
+            _lblRoundTripStatus = new Label
+            {
+                Location = new Point(leftMargin + UiScale.Pixels(72), y),
+                AutoSize = false,
+                Width = UiScale.Pixels(470),
+                Height = UiScale.Pixels(30),
+                Font = new Font("Segoe UI", UiScale.FontSize(8f))
+            };
+            Controls.Add(_lblRoundTripStatus);
+            _cmbFormat.SelectedIndexChanged += (s, e) => UpdateRoundTripStatus();
+            _cmbLayout.SelectedIndexChanged += (s, e) => UpdateRoundTripStatus();
+            UpdateRoundTripStatus();
+            y += UiScale.Pixels(34);
 
             // ─── Strict tag-integrity check ──────────────────────────
             // Default ON: re-import refuses to apply a segment when the
@@ -952,6 +995,60 @@ namespace Supervertaler.Trados.Controls
                 case 3: return ExportLayout.Bracketed;
                 default: return ExportLayout.Table;
             }
+        }
+
+        /// <summary>
+        /// Updates the re-import status line for the current Format + Layout.
+        /// Re-import support is format-driven: Markdown round-trips every layout;
+        /// Word (.docx) round-trips only the 5-column Bilingual Table; HTML is
+        /// always export-only.
+        /// </summary>
+        private void UpdateRoundTripStatus()
+        {
+            if (_lblRoundTripStatus == null) return;
+
+            var fmt = SelectedFormat();
+            var layout = SelectedLayout();
+
+            bool canReimport;
+            string msg;
+
+            if (fmt == ExportFormat.Html)
+            {
+                canReimport = false;
+                msg = "Export only. HTML reports cannot be re-imported.";
+            }
+            else if (fmt == ExportFormat.Markdown)
+            {
+                canReimport = true;
+                msg = "Can be edited and re-imported. Every layout round-trips in Markdown.";
+            }
+            else // Docx
+            {
+                if (layout == ExportLayout.Table)
+                {
+                    canReimport = true;
+                    msg = "Can be edited and re-imported back into Trados.";
+                }
+                else
+                {
+                    canReimport = false;
+                    msg = "Export only. In Word, only the Supervertaler Bilingual Table layout "
+                        + "can be re-imported. Switch to that layout, or use Markdown, to round-trip.";
+                }
+            }
+
+            // Bracketed only renders in Markdown; Word/HTML silently fall back to stacked.
+            if (layout == ExportLayout.Bracketed && fmt != ExportFormat.Markdown)
+            {
+                msg += " Bracketed layout applies to Markdown only; the file will use "
+                    + "stacked source-on-top.";
+            }
+
+            _lblRoundTripStatus.ForeColor = canReimport
+                ? Color.FromArgb(0, 128, 0)      // green
+                : Color.FromArgb(180, 100, 0);   // amber
+            _lblRoundTripStatus.Text = (canReimport ? "✓ " : "⚠ ") + msg;
         }
 
         private void SafeInvoke(Action a)

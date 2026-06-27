@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.20.68] – 2026-06-28
+
+### Fixed (Import/Export · readable dropdowns + clear re-import status)
+
+- **The Format and Layout dropdowns on the Import/Export tab no longer truncate their longer entries.** WinForms was clipping the drop-down list to the control width, so options like "Supervertaler Bilingual Table (5 columns)" and "Bracketed [SEGMENT NNNN] (AI-friendly, Markdown only)" were cut off mid-text (worse on high-DPI laptops). The popups now size to their widest item, matching the behaviour already used elsewhere in the plugin. Reported by Michael.
+- **It's now clear which export can be re-imported.** Re-import support actually depends on the **Format and Layout together**, not the layout alone: Markdown round-trips every layout; Word (.docx) round-trips only the 5-column Bilingual Table (stacked/bracketed are export-only in Word); HTML is always read-only. The old per-item "round-trippable" tag was misleading because it ignored the format. A **live status line under the dropdowns** now states, for the current selection, whether the file can be edited and re-imported (green) or is export-only (amber) — and notes that the Bracketed layout only applies to Markdown. Reported by Michael.
+
+
+## [4.20.67] – 2026-06-26
+
+### Added (Batch Operations · "All unfinished segments" scope)
+
+- **New Scope option in Batch Operations (Translate mode): "All unfinished segments".** It targets every segment whose status is *not* finalized — that is, everything **except Translated, Approved (translation), and Approved (sign-off)**. In practice it processes **Not Translated, Draft, and Rejected** segments, so you can batch-translate all the work that still needs doing in one go while leaving your confirmed and signed-off segments untouched. Drafts and rejected segments that already have target text are re-translated; empty ones are filled. Unlike "Filtered segments", it runs over the whole document, not the current display filter. The status is matched by name (`Translated` / `ApprovedTranslation` / `ApprovedSignOff`), so it's correct regardless of the ConfirmationLevel enum's ordering (where "Rejected" sorts above "Translated"). The Scope dropdown now also has a tooltip explaining every option, and the segment counter shows "*N* unfinished / *M* total" when this scope is selected. Works in Clipboard Mode too. Requested by Michael.
+
+
 ## [4.20.66] – 2026-06-19
 
 ### Added (MultiTerm · AI opt-in inherits from project templates)
