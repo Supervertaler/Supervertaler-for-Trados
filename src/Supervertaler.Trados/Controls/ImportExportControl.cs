@@ -250,15 +250,18 @@ namespace Supervertaler.Trados.Controls
             {
                 Location = new Point(leftMargin + UiScale.Pixels(72), y),
                 AutoSize = false,
-                Width = UiScale.Pixels(470),
-                Height = UiScale.Pixels(30),
+                // Wide + tall enough for the longest message to wrap to ~3 lines
+                // without clipping (the box has AutoSize off, so it clips text
+                // that overflows its bounds — see the earlier truncation bug).
+                Width = UiScale.Pixels(540),
+                Height = UiScale.Pixels(46),
                 Font = new Font("Segoe UI", UiScale.FontSize(8f))
             };
             Controls.Add(_lblRoundTripStatus);
             _cmbFormat.SelectedIndexChanged += (s, e) => UpdateRoundTripStatus();
             _cmbLayout.SelectedIndexChanged += (s, e) => UpdateRoundTripStatus();
             UpdateRoundTripStatus();
-            y += UiScale.Pixels(34);
+            y += UiScale.Pixels(50);
 
             // ─── Strict tag-integrity check ──────────────────────────
             // Default ON: re-import refuses to apply a segment when the

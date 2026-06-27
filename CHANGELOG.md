@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.69] – 2026-06-28
+
+### Fixed (Import/Export · re-import status line no longer truncated)
+
+- **The re-import status line under the Format/Layout dropdowns now shows its full text.** Introduced in 4.20.68, the line's box was too short, so the longer "export only" messages (e.g. the Word + stacked-layout case) were clipped mid-sentence. The box is now wide and tall enough for the message to wrap fully. Reported by Michael.
+
+
 ## [4.20.68] – 2026-06-28
 
 ### Fixed (Import/Export · readable dropdowns + clear re-import status)
