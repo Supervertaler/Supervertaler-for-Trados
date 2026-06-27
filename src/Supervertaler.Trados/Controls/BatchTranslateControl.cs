@@ -252,6 +252,16 @@ namespace Supervertaler.Trados.Controls
             };
             PopulateTranslateScopes();
             _cmbScope.SelectedIndexChanged += (s, e) => ScopeChanged?.Invoke(this, EventArgs.Empty);
+            var scopeTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+            scopeTip.SetToolTip(_cmbScope,
+                "Which segments the batch run targets.\n\n" +
+                "• Empty segments only – untranslated (empty target) segments\n" +
+                "• All segments – every segment\n" +
+                "• All unfinished segments – every status EXCEPT Translated,\n" +
+                "   Approved, and Signed off (i.e. Not Translated, Draft, Rejected),\n" +
+                "   so confirmed/signed-off work is left untouched\n" +
+                "• Filtered segments – whatever Trados' display filter currently shows\n" +
+                "• Filtered (empty only) – empty segments within the display filter");
             Controls.Add(_lblScopeLabel);
             Controls.Add(_cmbScope);
 
@@ -655,10 +665,11 @@ namespace Supervertaler.Trados.Controls
         private void PopulateTranslateScopes()
         {
             _cmbScope.Items.Clear();
-            _cmbScope.Items.Add("Empty segments only");
-            _cmbScope.Items.Add("All segments");
-            _cmbScope.Items.Add("Filtered segments");
-            _cmbScope.Items.Add("Filtered (empty only)");
+            _cmbScope.Items.Add("Empty segments only");          // 0
+            _cmbScope.Items.Add("All segments");                 // 1
+            _cmbScope.Items.Add("All unfinished segments");      // 2
+            _cmbScope.Items.Add("Filtered segments");            // 3
+            _cmbScope.Items.Add("Filtered (empty only)");        // 4
             _cmbScope.SelectedIndex = 0;
         }
 
@@ -819,11 +830,13 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// Updates the segment count display.
         /// </summary>
-        public void UpdateSegmentCounts(int emptyCount, int totalCount, int filteredCount = -1)
+        public void UpdateSegmentCounts(int emptyCount, int totalCount, int filteredCount = -1, int notFinalizedCount = -1)
         {
             var scope = GetSelectedScope();
             if ((scope == BatchScope.Filtered || scope == BatchScope.FilteredEmptyOnly) && filteredCount >= 0)
                 _lblSegmentCount.Text = $"Segments: {filteredCount} filtered / {emptyCount} empty / {totalCount} total";
+            else if (scope == BatchScope.NotFinalized && notFinalizedCount >= 0)
+                _lblSegmentCount.Text = $"Segments: {notFinalizedCount} unfinished / {totalCount} total";
             else
                 _lblSegmentCount.Text = $"Segments: {emptyCount} empty / {totalCount} total";
             UpdateTranslateButton();
@@ -981,8 +994,9 @@ namespace Supervertaler.Trados.Controls
             switch (_cmbScope.SelectedIndex)
             {
                 case 1: return BatchScope.All;
-                case 2: return BatchScope.Filtered;
-                case 3: return BatchScope.FilteredEmptyOnly;
+                case 2: return BatchScope.NotFinalized;
+                case 3: return BatchScope.Filtered;
+                case 4: return BatchScope.FilteredEmptyOnly;
                 default: return BatchScope.EmptyOnly;
             }
         }

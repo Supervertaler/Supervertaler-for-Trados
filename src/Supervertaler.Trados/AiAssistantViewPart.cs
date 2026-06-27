@@ -4641,6 +4641,25 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return segments;
         }
 
+        /// <summary>
+        /// True when a segment's status counts as "finalized" work that the
+        /// "All unfinished segments" scope should leave alone — Translated,
+        /// Approved (translation), or Approved (sign-off). NOT finalized:
+        /// Unspecified (Not Translated), Draft, and Rejected. Compared by enum
+        /// NAME (matching ConfirmationLevel.ToString(), as ImportExportControl
+        /// does) so it's robust to the enum's numeric ordering, where Rejected
+        /// actually sorts above Translated.
+        /// </summary>
+        private bool IsFinalizedStatus(ISegmentPair pair)
+        {
+            var cl = pair?.Properties?.ConfirmationLevel
+                ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified;
+            var name = cl.ToString();
+            return name == "Translated"
+                || name == "ApprovedTranslation"
+                || name == "ApprovedSignOff";
+        }
+
         private List<BatchSegment> CollectSegments(BatchScope scope)
         {
             var segments = new List<BatchSegment>();
@@ -4653,6 +4672,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     || scope == BatchScope.FilteredEmptyOnly;
                 var emptyOnly = scope == BatchScope.EmptyOnly
                     || scope == BatchScope.FilteredEmptyOnly;
+                // "All unfinished segments": every status except the finalized
+                // ones (Translated / Approved / Signed off). Runs over ALL pairs
+                // (not the display filter) and does not restrict to empty targets,
+                // so drafts and rejected segments get re-translated too.
+                var notFinalizedScope = scope == BatchScope.NotFinalized;
                 var pairs = useFiltered
                     ? _activeDocument.FilteredSegmentPairs
                     : _activeDocument.SegmentPairs;
@@ -4680,6 +4704,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     }
 
                     bool include = !emptyOnly || string.IsNullOrWhiteSpace(targetText);
+
+                    // "All unfinished segments" filters out finalized statuses.
+                    if (include && notFinalizedScope && IsFinalizedStatus(pair))
+                        include = false;
 
                     if (include)
                     {
@@ -4723,6 +4751,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     int total = 0;
                     int empty = 0;
+                    int notFinalized = 0;
 
                     foreach (var pair in _activeDocument.SegmentPairs)
                     {
@@ -4731,12 +4760,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             ? SegmentTagHandler.GetFinalText(pair.Target) : "";
                         if (string.IsNullOrWhiteSpace(targetText))
                             empty++;
+                        if (!IsFinalizedStatus(pair))
+                            notFinalized++;
                     }
 
                     // Get filtered count from Trados display filter
                     int filtered = _activeDocument.FilteredSegmentPairsCount;
 
-                    _control.Value.BatchTranslateControl.UpdateSegmentCounts(empty, total, filtered);
+                    _control.Value.BatchTranslateControl.UpdateSegmentCounts(empty, total, filtered, notFinalized);
                 }
                 catch (Exception)
                 {

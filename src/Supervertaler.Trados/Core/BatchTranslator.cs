@@ -43,7 +43,14 @@ namespace Supervertaler.Trados.Core
         EmptyOnly,
         All,
         Filtered,
-        FilteredEmptyOnly
+        FilteredEmptyOnly,
+        /// <summary>
+        /// Every segment whose status is NOT finalized — i.e. all statuses
+        /// except Translated, Approved (translation), and Approved (sign-off).
+        /// Includes Not Translated, Draft, and Rejected. Lets the user batch the
+        /// segments that still need work without touching confirmed/signed-off ones.
+        /// </summary>
+        NotFinalized
     }
 
     // ─── Event Args ──────────────────────────────────────────
