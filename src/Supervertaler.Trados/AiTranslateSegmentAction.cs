@@ -21,8 +21,8 @@ namespace Supervertaler.Trados
     /// No default shortcut; redirects to the same batch-translate pipeline as Ctrl+T.
     /// </summary>
     [Action("Supervertaler_AiTranslateSegment", typeof(EditorController),
-        Name = "AI translate current segment",
-        Description = "Translate the active segment (same as Ctrl+T)")]
+        Name = "Translate active segment (deprecated – use Ctrl+T)",
+        Description = "Deprecated duplicate of 'Translate active segment' (Ctrl+T). Kept registered to avoid a Studio startup crash; don't assign it a shortcut.")]
     public class AiTranslateSegmentAction : AbstractAction
     {
         protected override void Execute()

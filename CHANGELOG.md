@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.20.72] – 2026-06-28
+
+### Fixed (Translate active segment · works without the Assistant pane; clearer shortcut list)
+
+- **Ctrl+T "Translate active segment" (and the right-click command) now works even if the Supervertaler Assistant pane was never opened this session.** Like AutoTagger, the handler relied on the lazy/unpinned pane being initialized, so after a Trados restart Ctrl+T could silently do nothing until you opened the pane. It now falls back to a pane-independent path (active document from the editor, settings from disk) that runs the same translation pipeline without opening the pane. The normal path is unchanged when the pane is open. (#41)
+- **The duplicate "AI translate current segment" entry in Keyboard Shortcuts is now labelled "Translate active segment (deprecated – use Ctrl+T)".** That legacy action must stay registered (removing it crashes Studio on startup), so it can't be deleted from the shortcut list — but it's now clearly marked as the deprecated duplicate so it's obvious which command is the live one. The active command remains "Translate active segment" (Ctrl+T), the only one in the editor context menu.
+
+### Fixed (Token Usage & Costs · records every AI call, even with the Assistant pane closed)
+
+- **All AI usage is now logged to Token Usage & Costs regardless of whether the Supervertaler Assistant pane was opened.** Usage recording was wired up only when the pane first initialized, so in a session where you never opened the pane, nothing was logged — AutoTagger, Ctrl+T, and any other AI calls were all missed. The ledger subscription now runs at plugin startup (independent of the pane), so every call is recorded. (The pane's handler still drives the Reports tab; usage is not double-counted.)
+
+
 ## [4.20.71] – 2026-06-28
 
 ### Fixed (AutoTagger · usage now recorded in Token Usage & Costs)

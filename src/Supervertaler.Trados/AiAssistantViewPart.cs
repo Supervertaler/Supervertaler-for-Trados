@@ -4471,9 +4471,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         {
             if (entry == null) return;
 
-            // Persistent token-usage ledger (metadata only, on by default).
-            // Independent of the Reports-tab prompt log gated below.
-            Core.UsageLogger.Record(entry, _settings);
+            // Note: the persistent token-usage ledger is now recorded by a global
+            // subscriber wired in AppInitializer (UsageLogger.EnsureSubscribed), so
+            // it works even when this pane was never opened. This handler only
+            // updates the Reports-tab UI below (avoids double-counting usage).
 
             if (_settings?.AiSettings?.LogPromptsToReports != true) return;
 
@@ -5722,7 +5723,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         public static void HandleTranslateActiveSegment()
         {
             var instance = _currentInstance;
-            if (instance == null) return;
+            if (instance == null)
+            {
+                // The Assistant pane was never opened this session, so the
+                // instance/active-document tracking isn't wired up yet (#41). Run
+                // a pane-independent fallback so Ctrl+T / right-click still work.
+                // The pane-open path below is left untouched to avoid any
+                // regression to the common case.
+                TranslateActiveSegmentStandalone();
+                return;
+            }
 
             instance.SafeInvoke(() =>
             {
@@ -5882,6 +5892,210 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             });
+        }
+
+        /// <summary>
+        /// Pane-independent Ctrl+T fallback used when the Assistant ViewPart has not
+        /// been initialized this session (#41). Reads the active document from the
+        /// EditorController and settings from disk, runs the same BatchTranslator
+        /// pipeline with a local write-back, and marshals to the UI thread via the
+        /// captured SynchronizationContext. Never opens the Assistant pane.
+        /// </summary>
+        private static void TranslateActiveSegmentStandalone()
+        {
+            try
+            {
+                // Captured on the UI thread (editor action runs on it) so the
+                // BatchTranslator's background events can write on the UI thread.
+                var ui = System.Threading.SynchronizationContext.Current;
+
+                var editor = SdlTradosStudio.Application.GetController<EditorController>();
+                var doc = editor?.ActiveDocument;
+                if (doc?.ActiveSegmentPair == null)
+                {
+                    MessageBox.Show("No active segment.",
+                        "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var aiSettings = TermLensSettings.Load()?.AiSettings;
+                if (aiSettings == null)
+                {
+                    MessageBox.Show(
+                        "AI settings not configured.\n\nOpen Settings → AI Settings to configure a provider.",
+                        "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+                string apiKey;
+                string baseUrl = null;
+                string model = aiSettings.GetSelectedModel();
+                if (provider == LlmModels.ProviderOllama)
+                {
+                    apiKey = "ollama";
+                    baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+                }
+                else if (provider == LlmModels.ProviderCustomOpenAi)
+                {
+                    var profile = aiSettings.GetActiveCustomProfile();
+                    if (profile == null)
+                    {
+                        MessageBox.Show("No custom OpenAI profile configured.",
+                            "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    apiKey = profile.ApiKey; baseUrl = profile.Endpoint; model = profile.Model;
+                }
+                else
+                {
+                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                }
+                if (string.IsNullOrEmpty(apiKey))
+                {
+                    MessageBox.Show(
+                        $"No API key configured for {provider}.\n\nOpen Settings → AI Settings to add one.",
+                        "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string sourceLang = "", targetLang = "";
+                try
+                {
+                    var f = doc.ActiveFile;
+                    sourceLang = f?.SourceFile?.Language?.DisplayName ?? "";
+                    targetLang = f?.Language?.DisplayName ?? "";
+                }
+                catch { }
+
+                var pair = doc.ActiveSegmentPair;
+                var serialization = SegmentTagHandler.Serialize(pair.Source);
+                var hasTags = serialization.HasTags;
+                var sourceText = hasTags ? serialization.SerializedText : (pair.Source?.ToString() ?? "");
+                if (string.IsNullOrWhiteSpace(SegmentTagHandler.StripTagPlaceholders(sourceText)))
+                {
+                    BridgeLog.Write("Ctrl+T: active segment has no source text.");
+                    return;
+                }
+
+                var segments = new List<BatchSegment>
+                {
+                    new BatchSegment
+                    {
+                        Index = 0,
+                        SourceText = sourceText,
+                        ExistingTarget = pair.Target != null ? SegmentTagHandler.GetFinalText(pair.Target) : "",
+                        SegmentPairRef = pair,
+                        HasTags = hasTags,
+                        TagMap = hasTags ? serialization.TagMap : null
+                    }
+                };
+
+                var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
+                var termbaseTerms = allTerms.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
+
+                // Resolve the selected custom prompt from disk (no pane needed).
+                string customPromptContent = null;
+                try
+                {
+                    var lib = TermLensEditorViewPart.GetPromptLibrary();
+                    var sel = aiSettings.SelectedPromptPath;
+                    if (!string.IsNullOrEmpty(sel) && lib != null)
+                    {
+                        var p = lib.GetPromptByRelativePath(sel);
+                        if (p != null && !string.IsNullOrWhiteSpace(p.Content))
+                            customPromptContent = PromptLibrary.ApplyVariables(p.Content, sourceLang, targetLang);
+                    }
+                }
+                catch { }
+                var customSystemPrompt = aiSettings.CustomSystemPrompt;
+
+                BridgeLog.Write($"Ctrl+T (standalone): translating \"{Truncate(SegmentTagHandler.StripTagPlaceholders(sourceText), 60)}\"...");
+
+                var worker = new BatchTranslator();
+                worker.SegmentTranslated += (s, e) =>
+                {
+                    Action doWrite = () => WriteTranslatedSegment(doc, e);
+                    if (ui != null) ui.Send(_ => doWrite(), null);   // sync: WriteSucceeded set before worker reads it
+                    else doWrite();
+                };
+                worker.Completed += (s, e) =>
+                    BridgeLog.Write($"Ctrl+T (standalone): done ({e.Translated} translated, {e.Failed} failed).");
+
+                var cts = new CancellationTokenSource();
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await worker.TranslateAsync(
+                            segments, sourceLang, targetLang,
+                            aiSettings, termbaseTerms, 1, cts.Token,
+                            customPromptContent, customSystemPrompt);
+                    }
+                    catch (Exception ex)
+                    {
+                        BridgeLog.Write($"Ctrl+T (standalone) failed: {ex.Message}");
+                        if (ui != null)
+                            ui.Post(_ => MessageBox.Show($"Translate failed: {ex.Message}",
+                                "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Error), null);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Unexpected error: {ex.Message}",
+                    "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Pane-independent single-segment write-back, mirroring the tag-aware logic
+        /// in OnBatchSegmentTranslated (tagged → ReconstructTarget with plain-text
+        /// fallback; untagged → clone the source IText). Sets e.WriteSucceeded.
+        /// </summary>
+        private static void WriteTranslatedSegment(IStudioDocument doc, BatchSegmentResultEventArgs e)
+        {
+            try
+            {
+                if (e.SegmentPairRef == null || doc == null) { e.WriteSucceeded = false; return; }
+                var pair = e.SegmentPairRef as ISegmentPair;
+                if (pair == null) { e.WriteSucceeded = false; return; }
+
+                doc.ProcessSegmentPair(pair, "Supervertaler", (sp, cancel) =>
+                {
+                    if (e.HasTags && e.TagMap != null && e.TagMap.Count > 0)
+                    {
+                        bool reconstructed = SegmentTagHandler.ReconstructTarget(
+                            sp.Target, sp.Source, e.Translation, e.TagMap);
+                        if (!reconstructed)
+                        {
+                            var plain = SegmentTagHandler.StripTagPlaceholders(e.Translation);
+                            var tpl = SegmentTagHandler.FindFirstText(sp.Source);
+                            if (tpl != null && !string.IsNullOrEmpty(plain))
+                            {
+                                sp.Target.Clear();
+                                var clone = (IText)tpl.Clone();
+                                clone.Properties.Text = plain;
+                                sp.Target.Add(clone);
+                            }
+                        }
+                        return;
+                    }
+                    var textTpl = SegmentTagHandler.FindFirstText(sp.Source);
+                    if (textTpl != null && !string.IsNullOrEmpty(e.Translation))
+                    {
+                        sp.Target.Clear();
+                        var clone = (IText)textTpl.Clone();
+                        clone.Properties.Text = e.Translation;
+                        sp.Target.Add(clone);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                e.WriteSucceeded = false;
+                BridgeLog.Write($"Ctrl+T write error: {ex.Message}");
+            }
         }
 
         // ─── AutoTagger ───────────────────────────────────────────

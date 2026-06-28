@@ -17,6 +17,33 @@ namespace Supervertaler.Trados.Core
         private static readonly string _appVersion =
             Assembly.GetExecutingAssembly().GetName().Version?.ToString();
 
+        private static bool _subscribed;
+        private static readonly object _subLock = new object();
+
+        /// <summary>
+        /// Subscribe to <see cref="LlmClient.PromptCompleted"/> once, at app
+        /// startup (see AppInitializer), so EVERY AI call is recorded in the usage
+        /// ledger regardless of whether the Supervertaler Assistant pane was ever
+        /// opened. Idempotent. The pane's own PromptCompleted handler no longer
+        /// records usage (only the Reports-tab UI), so there is no double-count.
+        /// Project attribution still works because it reads the always-present
+        /// editor TermLens, not the Assistant pane.
+        /// </summary>
+        public static void EnsureSubscribed()
+        {
+            if (_subscribed) return;
+            lock (_subLock)
+            {
+                if (_subscribed) return;
+                LlmClient.PromptCompleted += (s, entry) =>
+                {
+                    try { Record(entry, TermLensSettings.Load()); }
+                    catch { /* never let logging disrupt anything */ }
+                };
+                _subscribed = true;
+            }
+        }
+
         public static void Record(PromptLogEntry entry, TermLensSettings settings)
         {
             try

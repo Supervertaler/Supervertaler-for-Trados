@@ -45,6 +45,11 @@ namespace Supervertaler.Trados
             // Enable TLS 1.2+ for HTTPS API calls (OpenAI, Anthropic, Google)
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
 
+            // Record token usage for EVERY AI call, independent of the Assistant
+            // pane. The pane's own handler only updates the Reports-tab UI now, so
+            // usage logging works even if the pane is never opened this session.
+            try { UsageLogger.EnsureSubscribed(); } catch { }
+
             // Order matters:
             // 1. AssemblyResolve first – so managed SQLitePCLRaw DLLs can be found
             // 2. PreloadNativeSQLite – pins e_sqlite3.dll in the Windows module table
