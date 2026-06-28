@@ -61,6 +61,15 @@ namespace Supervertaler.Trados.Controls
         private Dictionary<string, string> _shortcutAssignments; // FilePath -> shortcut display string
 
         private const string SystemPromptTag = "__SYSTEM_PROMPT__";
+
+        // AutoTagger instruction editor (mirrors the System Prompt node/panel)
+        private Panel _panelAutoTagger;
+        private TextBox _txtAutoTagger;
+        private Button _btnEditAutoTagger;
+        private Button _btnResetAutoTagger;
+        private Label _lblAutoTaggerStatus;
+        private string _autoTaggerInstruction; // null = use default
+        private const string AutoTaggerTag = "__AUTOTAGGER__";
         private string _activePromptPath; // per-project active prompt relative path
 
         /// <summary>
@@ -393,17 +402,170 @@ namespace Supervertaler.Trados.Controls
         private void BuildRightPanels()
         {
             BuildSystemPromptPanel();
+            BuildAutoTaggerPanel();
             BuildPromptDetailPanel();
             BuildFolderInfoPanel();
 
             _rightPanel.Controls.Add(_panelSystemPrompt);
+            _rightPanel.Controls.Add(_panelAutoTagger);
             _rightPanel.Controls.Add(_panelPromptDetail);
             _rightPanel.Controls.Add(_panelFolderInfo);
 
             // Hide all initially
             _panelSystemPrompt.Visible = false;
+            _panelAutoTagger.Visible = false;
             _panelPromptDetail.Visible = false;
             _panelFolderInfo.Visible = false;
+        }
+
+        private void BuildAutoTaggerPanel()
+        {
+            var headerFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+            var bodyFont = new Font("Segoe UI", 8.5f);
+
+            _panelAutoTagger = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
+
+            var topPanel = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = Color.White };
+            var lblHeader = new Label
+            {
+                Text = "AutoTagger Instruction",
+                Font = headerFont,
+                ForeColor = Color.FromArgb(50, 50, 50),
+                Location = new Point(6, 10),
+                AutoSize = true
+            };
+            var lblInfo = new Label
+            {
+                Text = "Tells the AI how to place the source segment's inline tags into the current translation (Ctrl+Alt+G). Placeholders: {{SOURCE_TEXT}}, {{TARGET_TEXT}}, {{TAG_LIST}}.",
+                Location = new Point(6, 30),
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
+                ForeColor = Color.FromArgb(130, 130, 130),
+                AutoSize = false,
+                Height = 44,
+                Width = 400,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            topPanel.Controls.AddRange(new Control[] { lblHeader, lblInfo });
+
+            var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 48, BackColor = Color.White };
+            _btnEditAutoTagger = new Button
+            {
+                Text = "Edit AutoTagger Instruction",
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(130, 25),
+                Padding = new Padding(8, 0, 8, 0),
+                Margin = new Padding(6, 4, 0, 4),
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont
+            };
+            _btnEditAutoTagger.Click += OnEditAutoTagger;
+            _btnResetAutoTagger = new Button
+            {
+                Text = "Reset to Default",
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(120, 25),
+                Padding = new Padding(8, 0, 8, 0),
+                Margin = new Padding(12, 4, 0, 4),
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont
+            };
+            _btnResetAutoTagger.Click += OnResetAutoTagger;
+            _lblAutoTaggerStatus = new Label
+            {
+                Text = "",
+                AutoSize = true,
+                Anchor = AnchorStyles.Left,
+                ForeColor = Color.FromArgb(100, 100, 100),
+                Font = new Font("Segoe UI", 8f),
+                Margin = new Padding(8, 8, 0, 0)
+            };
+            var buttonFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            buttonFlow.Controls.Add(_btnEditAutoTagger);
+            buttonFlow.Controls.Add(_btnResetAutoTagger);
+            buttonFlow.Controls.Add(_lblAutoTaggerStatus);
+            bottomPanel.Controls.Add(buttonFlow);
+
+            _txtAutoTagger = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 7.5f),
+                BackColor = Color.FromArgb(248, 248, 248),
+                ForeColor = Color.FromArgb(60, 60, 60),
+                WordWrap = true
+            };
+            var textPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 0, 6, 0), BackColor = Color.White };
+            textPanel.Controls.Add(_txtAutoTagger);
+
+            _panelAutoTagger.Controls.Add(textPanel);
+            _panelAutoTagger.Controls.Add(bottomPanel);
+            _panelAutoTagger.Controls.Add(topPanel);
+        }
+
+        private void UpdateAutoTaggerDisplay()
+        {
+            if (!string.IsNullOrWhiteSpace(_autoTaggerInstruction))
+            {
+                _txtAutoTagger.Text = _autoTaggerInstruction;
+                _lblAutoTaggerStatus.Text = "(customised)";
+                _lblAutoTaggerStatus.ForeColor = Color.FromArgb(180, 120, 0);
+            }
+            else
+            {
+                _txtAutoTagger.Text = AiSettings.DefaultAutoTaggerInstruction;
+                _lblAutoTaggerStatus.Text = "(default)";
+                _lblAutoTaggerStatus.ForeColor = Color.FromArgb(30, 130, 60);
+            }
+        }
+
+        private void OnEditAutoTagger(object sender, EventArgs e)
+        {
+            var content = !string.IsNullOrWhiteSpace(_autoTaggerInstruction)
+                ? _autoTaggerInstruction
+                : AiSettings.DefaultAutoTaggerInstruction;
+
+            var prompt = new PromptTemplate
+            {
+                Name = "AutoTagger Instruction",
+                Description = "Instruction for placing inline tags into the target",
+                Category = "System",
+                Content = content
+            };
+
+            using (var dlg = new PromptEditorDialog(prompt))
+            {
+                dlg.Text = "Edit AutoTagger Instruction";
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    _autoTaggerInstruction = dlg.Result.Content;
+                    UpdateAutoTaggerDisplay();
+                }
+            }
+        }
+
+        private void OnResetAutoTagger(object sender, EventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Reset the AutoTagger instruction to the default?\n\nThis will discard any customisations.",
+                "Reset AutoTagger Instruction",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+
+            if (result == DialogResult.Yes)
+            {
+                _autoTaggerInstruction = null;
+                UpdateAutoTaggerDisplay();
+            }
         }
 
         private void BuildSystemPromptPanel()
@@ -706,6 +868,7 @@ namespace Supervertaler.Trados.Controls
             _library = library ?? new PromptLibrary();
             _aiSettings = settings;
             _customSystemPrompt = settings?.CustomSystemPrompt;
+            _autoTaggerInstruction = settings?.AutoTaggerInstruction;
 
             // Per-project active prompt – use project override if set, else global
             _activePromptPath = !string.IsNullOrEmpty(projectActivePromptPath)
@@ -745,6 +908,7 @@ namespace Supervertaler.Trados.Controls
         {
             if (settings == null) return;
             settings.CustomSystemPrompt = _customSystemPrompt;
+            settings.AutoTaggerInstruction = _autoTaggerInstruction;
             settings.SelectedPromptPath = _activePromptPath ?? "";
 
             // Save shortcut slot assignments from _shortcutAssignments
@@ -805,6 +969,16 @@ namespace Supervertaler.Trados.Controls
                 // Pad text to work around WinForms bold node width calculation bug
                 sysNode.Text += "  ";
                 _tvPrompts.Nodes.Add(sysNode);
+
+                // 1b) AutoTagger Instruction node
+                var autoTagNode = new TreeNode("AutoTagger Instruction")
+                {
+                    Tag = AutoTaggerTag,
+                    NodeFont = new Font(_tvPrompts.Font, FontStyle.Bold),
+                    ForeColor = Color.FromArgb(30, 30, 30)
+                };
+                autoTagNode.Text += "  ";
+                _tvPrompts.Nodes.Add(autoTagNode);
 
                 // 2) Build folder structure
                 var root = _library.GetFolderStructure();
@@ -1023,6 +1197,7 @@ namespace Supervertaler.Trados.Controls
         private void OnTreeAfterSelect(object sender, TreeViewEventArgs e)
         {
             _panelSystemPrompt.Visible = false;
+            _panelAutoTagger.Visible = false;
             _panelPromptDetail.Visible = false;
             _panelFolderInfo.Visible = false;
 
@@ -1033,6 +1208,12 @@ namespace Supervertaler.Trados.Controls
                 // System prompt selected
                 UpdateSystemPromptDisplay();
                 _panelSystemPrompt.Visible = true;
+            }
+            else if (e.Node.Tag is string atTag && atTag == AutoTaggerTag)
+            {
+                // AutoTagger instruction selected
+                UpdateAutoTaggerDisplay();
+                _panelAutoTagger.Visible = true;
             }
             else if (e.Node.Tag is PromptTemplate prompt)
             {

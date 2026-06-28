@@ -96,6 +96,38 @@ namespace Supervertaler.Trados.Settings
         public string CustomSystemPrompt { get; set; }
 
         /// <summary>
+        /// Editable instruction used by AutoTagger (places the source segment's
+        /// inline tags into an existing translation). Null/empty means use
+        /// <see cref="DefaultAutoTaggerInstruction"/>. Supports the placeholders
+        /// {{SOURCE_TEXT}} (source with &lt;tN&gt; markers), {{TARGET_TEXT}}
+        /// (the tag-free target) and {{TAG_LIST}} (the ordered source tags).
+        /// </summary>
+        [DataMember(Name = "autoTaggerInstruction")]
+        public string AutoTaggerInstruction { get; set; }
+
+        /// <summary>Built-in default for <see cref="AutoTaggerInstruction"/>.</summary>
+        public const string DefaultAutoTaggerInstruction =
+            "The source segment below contains inline tags written as <t1>…</t1> " +
+            "(paired) and <t2/> (standalone). Insert these exact tags into the " +
+            "target translation at the positions that match the source meaning " +
+            "(a paired tag must wrap the translated word(s) it wrapped in the source).\n\n" +
+            "STRICT RULES:\n" +
+            "- Use every tag exactly once; keep each tag's number identical to the source.\n" +
+            "- Keep opening/closing tags correctly paired; never output an empty pair like <t1></t1>.\n" +
+            "- DO NOT change, add, remove, translate, reorder, or re-spell any WORDS of the " +
+            "target. Only insert tags between the existing words.\n" +
+            "- Output ONLY the tagged target text, with no labels or commentary.\n\n" +
+            "Tags to place: {{TAG_LIST}}\n\n" +
+            "Source (with tags):\n{{SOURCE_TEXT}}\n\n" +
+            "Target (no tags):\n{{TARGET_TEXT}}";
+
+        /// <summary>The active AutoTagger instruction (user override or default).</summary>
+        public string GetAutoTaggerInstruction() =>
+            string.IsNullOrWhiteSpace(AutoTaggerInstruction)
+                ? DefaultAutoTaggerInstruction
+                : AutoTaggerInstruction;
+
+        /// <summary>
         /// IDs of termbases disabled for AI context.
         /// Empty means all termbases contribute to AI prompts.
         /// Separate from TermLensSettings.DisabledTermbaseIds (which controls TermLens display).

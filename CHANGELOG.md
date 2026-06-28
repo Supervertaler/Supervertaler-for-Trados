@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.70] – 2026-06-28
+
+### Added (AutoTagger · AI places inline tags into the target)
+
+- **New AutoTagger feature: the AI looks at where the inline tags sit in the source segment and inserts that same set of tags into your existing translation at the right places, without changing any of the translated words.** Useful when a target has the right translation but is missing its tags or has them in the wrong spots (after MT, pasting, or typing the target by hand), which otherwise trips Trados' tag QA. It validates the result before writing (the tag set must match the source, the words must be unchanged, and tags must be well-formed); it re-inserts the tags into your exact target so punctuation like curly quotes is preserved; and if the AI's output doesn't validate it retries once and otherwise leaves the segment untouched, so it never writes broken tags. Reuses the same tag engine as batch translate.
+  - **Where:** editor right-click → "Auto-tag active segment", and the **Ctrl+Alt+G** shortcut. Trados Undo (Ctrl+Z) reverts it.
+  - **Shortcut change:** Ctrl+Alt+G now triggers AutoTagger. The floating TermLens popup keeps its **Ctrl-tap** trigger (the redundant Ctrl+Alt+G binding was removed); you can reassign a key to it via Trados' keyboard settings if you like.
+  - **Configurable:** the instruction is an editable field under Settings → Prompts → "AutoTagger Instruction" (placeholders `{{SOURCE_TEXT}}`, `{{TARGET_TEXT}}`, `{{TAG_LIST}}`).
+  - v1 is single-segment; a batch mode may follow. Mirrors the Supervertaler Workbench AutoTagger. (#39)
+
+
 ## [4.20.69] – 2026-06-28
 
 ### Fixed (Import/Export · re-import status line no longer truncated)

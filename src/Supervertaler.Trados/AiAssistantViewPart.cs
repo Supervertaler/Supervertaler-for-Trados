@@ -5884,6 +5884,157 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             });
         }
 
+        // ─── AutoTagger ───────────────────────────────────────────
+
+        /// <summary>
+        /// AutoTagger: place the active source segment's inline tags into the
+        /// existing (tag-free) target via the AI, without changing the words.
+        /// Validated before writing; on failure the segment is left untouched.
+        /// </summary>
+        public static void HandleAutoTagActiveSegment()
+        {
+            var instance = _currentInstance;
+            if (instance == null) return;
+
+            instance.SafeInvoke(() =>
+            {
+                try
+                {
+                    if (instance._activeDocument?.ActiveSegmentPair == null)
+                    {
+                        MessageBox.Show("No active segment.",
+                            "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    var aiSettings = instance._settings?.AiSettings;
+                    if (aiSettings == null)
+                    {
+                        MessageBox.Show(
+                            "AI settings not configured.\n\nOpen Settings → AI Settings to configure a provider.",
+                            "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    // Resolve provider (same logic as Ctrl+T)
+                    var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+                    string apiKey;
+                    string baseUrl = null;
+                    string model = aiSettings.GetSelectedModel();
+                    if (provider == LlmModels.ProviderOllama)
+                    {
+                        apiKey = "ollama";
+                        baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+                    }
+                    else if (provider == LlmModels.ProviderCustomOpenAi)
+                    {
+                        var profile = aiSettings.GetActiveCustomProfile();
+                        if (profile == null)
+                        {
+                            _control.Value.BatchTranslateControl.AppendLog("No custom OpenAI profile configured.", true);
+                            return;
+                        }
+                        apiKey = profile.ApiKey; baseUrl = profile.Endpoint; model = profile.Model;
+                    }
+                    else
+                    {
+                        apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    }
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        _control.Value.BatchTranslateControl.AppendLog(
+                            $"No API key configured for {provider}. Open Settings → AI Settings to add one.", true);
+                        return;
+                    }
+
+                    var pair = instance._activeDocument.ActiveSegmentPair;
+                    var serialization = SegmentTagHandler.Serialize(pair.Source);
+                    if (!serialization.HasTags)
+                    {
+                        MessageBox.Show("The source segment has no inline tags, so there is nothing to place.",
+                            "AutoTagger", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    var plainTarget = pair.Target != null ? SegmentTagHandler.GetFinalText(pair.Target) : "";
+                    if (string.IsNullOrWhiteSpace(plainTarget))
+                    {
+                        MessageBox.Show("Translate this segment first – AutoTagger places tags into an existing translation.",
+                            "AutoTagger", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    var serializedSource = serialization.SerializedText;
+                    var tagMap = serialization.TagMap;
+                    var userPrompt = AutoTagger.BuildUserPrompt(
+                        aiSettings.GetAutoTaggerInstruction(), serializedSource, plainTarget);
+
+                    var batchControl = _control.Value.BatchTranslateControl;
+                    batchControl.AppendLog(
+                        $"AutoTagger: placing {AutoTagger.ExtractTags(serializedSource).Count} tag(s)...");
+
+                    var client = new LlmClient(provider, model, apiKey, baseUrl);
+
+                    Task.Run(async () =>
+                    {
+                        string finalMarker = null;
+                        string failReason = "no result";
+                        try
+                        {
+                            for (int attempt = 0; attempt < 2 && finalMarker == null; attempt++)
+                            {
+                                var resp = await client.SendPromptAsync(userPrompt, AutoTagger.SystemPrompt);
+                                var candidate = (resp ?? "").Trim();
+                                if (AutoTagger.Validate(serializedSource, candidate, plainTarget, out failReason))
+                                    finalMarker = AutoTagger.ReinsertTagsIntoExactTarget(candidate, plainTarget) ?? candidate;
+                            }
+                        }
+                        catch (Exception ex) { failReason = ex.Message; }
+
+                        instance.SafeInvoke(() =>
+                        {
+                            if (finalMarker == null)
+                            {
+                                batchControl.AppendLog($"AutoTagger: target left unchanged – {failReason}", true);
+                                return;
+                            }
+                            bool ok = instance.WriteAutoTaggedTarget(pair, finalMarker, tagMap);
+                            batchControl.AppendLog(ok ? "AutoTagger: tags placed." : "AutoTagger: write failed.", !ok);
+                        });
+                    });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Unexpected error: {ex.Message}",
+                        "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Writes a reconstructed (tagged) target into the segment via ProcessSegmentPair.
+        /// Returns true when ReconstructTarget succeeded. Unlike the batch path it does
+        /// NOT fall back to plain text – AutoTagger must never strip the existing tags.
+        /// </summary>
+        private bool WriteAutoTaggedTarget(ISegmentPair pair, string markerText, Dictionary<int, TagInfo> tagMap)
+        {
+            try
+            {
+                var doc = _activeDocument;
+                if (pair == null || doc == null) return false;
+                bool wrote = false;
+                doc.ProcessSegmentPair(pair, "Supervertaler", (sp, cancel) =>
+                {
+                    wrote = SegmentTagHandler.ReconstructTarget(sp.Target, sp.Source, markerText, tagMap);
+                });
+                return wrote;
+            }
+            catch (Exception ex)
+            {
+                _control.Value.BatchTranslateControl.AppendLog($"AutoTagger write error: {ex.Message}", true);
+                return false;
+            }
+        }
+
         // ─── Helpers ──────────────────────────────────────────────
 
         /// <summary>
