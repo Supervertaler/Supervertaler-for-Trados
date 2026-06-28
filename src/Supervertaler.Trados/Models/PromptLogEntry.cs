@@ -13,7 +13,8 @@ namespace Supervertaler.Trados.Models
         QuickLauncher,
         PromptGeneration,
         ConnectionTest,
-        SuperMemory
+        SuperMemory,
+        AutoTag
     }
 
     /// <summary>
@@ -81,6 +82,7 @@ namespace Supervertaler.Trados.Models
                     case PromptLogFeature.QuickLauncher: baseLabel = "QuickLauncher"; break;
                     case PromptLogFeature.PromptGeneration: baseLabel = "AutoPrompt"; break;
                     case PromptLogFeature.ConnectionTest: baseLabel = "Connection Test"; break;
+                    case PromptLogFeature.AutoTag: baseLabel = "AutoTagger"; break;
                     default: baseLabel = "Unknown"; break;
                 }
 

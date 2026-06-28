@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.71] – 2026-06-28
+
+### Fixed (AutoTagger · usage now recorded in Token Usage & Costs)
+
+- **AutoTagger's AI calls now show up in Token Usage & Costs.** The call passed no prompt "feature", and the usage ledger only records calls that carry one, so AutoTagger runs were silently omitted from the table. They are now logged under a new **"AutoTagger"** task, with token counts and cost like every other AI call.
+
+### Fixed (AutoTagger · works without the Assistant pane, and never pops it open)
+
+- **AutoTagger (Ctrl+Alt+G / right-click) now works reliably even if the Supervertaler Assistant pane was never opened this session, and it no longer opens that pane.** The pane is lazy (unpinned) and the handler previously did nothing until it had been created — so after a Trados restart the command appeared dead until you opened the pane or Settings. AutoTagger is now fully independent of the pane: it reads the active segment from the editor and its settings from disk, so it just works without disturbing your layout.
+
+
 ## [4.20.70] – 2026-06-28
 
 ### Added (AutoTagger · AI places inline tags into the target)
