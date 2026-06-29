@@ -235,7 +235,7 @@ namespace Supervertaler.Trados.TranslationProviders
             _tms = tms ?? throw new ArgumentNullException(nameof(tms));
             SelectedTms = new List<TmInfo>();
 
-            Text = "Add Supervertaler TM";
+            Text = "Add bridged Supervertaler Workbench TM";
             Icon = IconHelper.AppIcon;
             Size = new Size(560, 420);
             MinimumSize = new Size(420, 280);

@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.74] – 2026-06-29
+
+### Changed (Shared TM Bridge · clearer picker dialog title)
+
+- **The "Add Supervertaler TM" picker is now titled "Add bridged Supervertaler Workbench TM".** New users were mistaking this dialog (reached via *Use… → Supervertaler TM* in a project's TM settings) for a place to create translation memories. It only lists TMs created in the separate **Supervertaler Workbench** app and ticked as **Bridge**, so the title now spells that out. The body text already notes that all listed TMs are flagged "Bridge" in Workbench. Prompted by a support question.
+
+
 ## [4.20.73] – 2026-06-29
 
 ### Added (Help · AutoTagger documentation + contextual "?" link)
