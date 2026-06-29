@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.73] – 2026-06-29
+
+### Added (Help · AutoTagger documentation + contextual "?" link)
+
+- **AutoTagger is now documented at [docs.supervertaler.com](https://docs.supervertaler.com/trados/autotagger/), with a contextual "?" link in the app.** The **AutoTagger Instruction** panel in *Settings → Prompts* now has a **"?"** button in its header that opens the AutoTagger help page (what it does, the Ctrl+Alt+G / right-click triggers, validation behaviour, and the instruction placeholders).
+
+
 ## [4.20.72] – 2026-06-28
 
 ### Fixed (Translate active segment · works without the Assistant pane; clearer shortcut list)

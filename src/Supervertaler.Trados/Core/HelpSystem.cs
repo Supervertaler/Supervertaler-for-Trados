@@ -78,6 +78,7 @@ namespace Supervertaler.Trados.Core
             public const string Reports             = "trados/reports/";
             public const string ClipboardMode       = "trados/clipboard-mode/";
             public const string GeneratePrompt      = "trados/generate-prompt/";
+            public const string AutoTagger          = "trados/autotagger/";
             public const string ImportExport       = "trados/import-export/";
 
             public const string TermbaseEditor      = "trados/termbase-management/";

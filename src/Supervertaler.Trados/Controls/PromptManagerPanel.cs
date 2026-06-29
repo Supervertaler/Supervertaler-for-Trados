@@ -445,7 +445,22 @@ namespace Supervertaler.Trados.Controls
                 Width = 400,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            topPanel.Controls.AddRange(new Control[] { lblHeader, lblInfo });
+            var btnHelpAutoTagger = new Button
+            {
+                Text = "?",
+                Size = new Size(22, 22),
+                FlatStyle = FlatStyle.System,
+                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            btnHelpAutoTagger.Click += (s, e) => HelpSystem.OpenHelp(HelpSystem.Topics.AutoTagger);
+            _toolTip.SetToolTip(btnHelpAutoTagger, "Open AutoTagger help (online)");
+            topPanel.Controls.AddRange(new Control[] { lblHeader, lblInfo, btnHelpAutoTagger });
+            void PositionAutoTaggerHelp() => btnHelpAutoTagger.Location = new Point(topPanel.Width - btnHelpAutoTagger.Width - 8, 6);
+            topPanel.SizeChanged += (s, e) => PositionAutoTaggerHelp();
+            PositionAutoTaggerHelp();
 
             var bottomPanel = new Panel { Dock = DockStyle.Bottom, Height = 48, BackColor = Color.White };
             _btnEditAutoTagger = new Button
