@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.76] – 2026-06-29
+
+### Added (Diagnostics · crashes are now captured to the log)
+
+- **Global crash handlers now write any unhandled/terminating exception to the diagnostic log, even when "Enable diagnostic logging" is off.** Previously a silent, no-dialog close left the Supervertaler log empty, with nothing to go on. The plugin now subscribes at startup to `AppDomain.UnhandledException`, `TaskScheduler.UnobservedTaskException` and `Application.ThreadException`, and writes a crash banner (plugin version, source, full stack trace) to `…\Supervertaler\trados\logs\diagnostic.log`. A one-line startup marker is also written each launch so a crash can be tied to a version/time. (Managed exceptions are captured; a true native AccessViolation/StackOverflow can still bypass these — in which case Windows Event Viewer's faulting-module entry is the source of truth, and "log still empty after a crash" is itself a strong signal that the fault is native.)
+
+### Fixed (Batch Translate · no longer reads the Trados document model off-thread)
+
+- **Token-usage attribution no longer touches the Trados document model from a background thread.** Batch translation fires its completion callback off the UI thread, and the usage logger was reading thread-affine Trados objects (active file, project/document names, language pair) from there — a potential source of hard, no-dialog crashes during long batch runs. The usage context is now built only on the UI thread, cached, and the cached snapshot is returned to off-thread callers (the cache is warmed on the UI thread when a batch starts). Attribution is unchanged; the off-thread model access is gone.
+
+
 ## [4.20.75] – 2026-06-29
 
 ### Changed (Shared TM Bridge · clearer "Workbench" naming throughout)

@@ -36,6 +36,18 @@ namespace Supervertaler.Trados
 
         public void Execute()
         {
+            // Install global crash handlers FIRST, so any fatal/unhandled exception
+            // from here on is captured to the diagnostic log even when verbose
+            // diagnostic logging is switched off. A silent, no-dialog crash with an
+            // empty log is otherwise impossible to diagnose.
+            InstallCrashHandlers();
+            try
+            {
+                Core.DiagnosticLog.WriteAlways("Startup",
+                    "Supervertaler for Trados v" + (UpdateChecker.GetCurrentVersion() ?? "?") + " starting.");
+            }
+            catch { }
+
             // Check for stale Unpacked folder (user installed a newer .sdlplugin
             // but Trados didn't re-extract).  If detected, rename the old folder
             // and prompt for restart.
@@ -131,6 +143,56 @@ namespace Supervertaler.Trados
 
             // Initialize licensing – loads cached state, triggers background validation
             LicenseManager.Instance.InitializeAsync();
+        }
+
+        // ── Global crash handlers ────────────────────────────────────
+
+        private static bool _crashHandlersInstalled;
+
+        /// <summary>
+        /// Subscribe to the process-wide unhandled-exception events and write any
+        /// terminating exception to the diagnostic log, regardless of the verbose
+        /// "Enable diagnostic logging" toggle. Idempotent. Managed exceptions are
+        /// captured here; a native AccessViolation / StackOverflow can still bypass
+        /// these (the host exe.config governs corrupted-state policy), in which case
+        /// Windows Event Viewer remains the source of truth — but "log still empty
+        /// even with handlers installed" is itself a useful diagnostic signal.
+        /// </summary>
+        private static void InstallCrashHandlers()
+        {
+            if (_crashHandlersInstalled) return;
+            _crashHandlersInstalled = true;
+            try
+            {
+                AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
+                System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, e) =>
+                {
+                    try { Core.DiagnosticLog.WriteCrash("TaskScheduler.UnobservedTaskException", e.Exception); } catch { }
+                    e.SetObserved();
+                };
+
+                // WinForms UI-thread exceptions (delivered only if the host hasn't
+                // switched to ThrowUnhandledExceptionMode; best-effort).
+                Application.ThreadException += (s, e) =>
+                {
+                    try { Core.DiagnosticLog.WriteCrash("Application.ThreadException", e.Exception); } catch { }
+                };
+            }
+            catch { /* never let crash-handler setup break startup */ }
+        }
+
+        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+        [System.Security.SecurityCritical]
+        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                Core.DiagnosticLog.WriteCrash(
+                    "AppDomain.UnhandledException (terminating=" + e.IsTerminating + ")",
+                    e.ExceptionObject);
+            }
+            catch { }
         }
 
         // ── Multi-memory-bank migration ─────────────────────────────

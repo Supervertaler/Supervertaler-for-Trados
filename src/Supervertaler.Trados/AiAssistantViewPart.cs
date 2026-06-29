@@ -3621,6 +3621,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 var ct = _batchCts.Token;
 
+                // Warm the usage-attribution cache on the UI thread before the
+                // background batch starts, so the off-thread usage logger reads the
+                // cached snapshot instead of touching the Trados model off-thread.
+                try { TermLensEditorViewPart.GetCurrentUsageContext(); } catch { }
+
                 Task.Run(async () =>
                 {
                     try

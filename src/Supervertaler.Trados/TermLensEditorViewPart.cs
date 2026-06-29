@@ -42,6 +42,16 @@ namespace Supervertaler.Trados
         // Used by AddTermAction to trigger a reload after inserting a term.
         private static TermLensEditorViewPart _currentInstance;
 
+        // Captured on the UI thread in Initialize(). Lets GetCurrentUsageContext()
+        // tell whether it may safely touch the (thread-affine) Trados document model.
+        private static int _uiThreadId;
+
+        // Last usage-attribution snapshot, built on the UI thread and cached so the
+        // usage logger can read it from a background thread (batch translation fires
+        // PromptCompleted off the UI thread) WITHOUT touching the Trados model off-
+        // thread, which can throw or fault natively.
+        private static volatile Core.UsageContextSnapshot _cachedUsageContext;
+
         private EditorController _editorController;
         private IStudioDocument _activeDocument;
         private TermLensSettings _settings;
@@ -105,6 +115,7 @@ namespace Supervertaler.Trados
         protected override void Initialize()
         {
             _currentInstance = this;
+            _uiThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
 
             // Ctrl-tap filter: pressing and releasing Ctrl alone opens the
             // floating TermLens popup. Faster than the picker dialog and
@@ -1442,9 +1453,20 @@ namespace Supervertaler.Trados
         /// </summary>
         public static Core.UsageContextSnapshot GetCurrentUsageContext()
         {
-            var snap = new Core.UsageContextSnapshot();
+            // The Trados document model is thread-affine: reading it off the UI
+            // thread can throw or fault natively (the batch-translation path fires
+            // PromptCompleted on a background thread). So we only build a fresh
+            // snapshot when we're on the UI thread, cache it, and hand the cached
+            // copy back to off-thread callers. Worst case off-thread is slightly
+            // stale/empty attribution — never a crash.
             var inst = _currentInstance;
-            if (inst == null) return snap;
+            if (inst == null)
+                return _cachedUsageContext ?? new Core.UsageContextSnapshot();
+
+            if (System.Threading.Thread.CurrentThread.ManagedThreadId != _uiThreadId)
+                return _cachedUsageContext ?? new Core.UsageContextSnapshot();
+
+            var snap = new Core.UsageContextSnapshot();
             try
             {
                 var doc = inst._activeDocument;
@@ -1469,6 +1491,8 @@ namespace Supervertaler.Trados
                 }
             }
             catch { /* best-effort attribution */ }
+
+            _cachedUsageContext = snap;
             return snap;
         }
 

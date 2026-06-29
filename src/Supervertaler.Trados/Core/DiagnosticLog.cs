@@ -44,6 +44,49 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Append one timestamped line REGARDLESS of <see cref="Enabled"/>. Used for
+        /// crash/fatal reporting so it is captured to disk even when verbose
+        /// diagnostic logging is switched off.
+        /// </summary>
+        public static void WriteAlways(string category, string message)
+        {
+            try
+            {
+                Directory.CreateDirectory(LogDir);
+                var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{category}] {message}{Environment.NewLine}";
+                lock (_lock) File.AppendAllText(LogFilePath, line, Encoding.UTF8);
+            }
+            catch { /* logging must never throw */ }
+        }
+
+        /// <summary>
+        /// Write a prominent crash banner with the exception/stack trace, regardless
+        /// of <see cref="Enabled"/>. Accepts an object so it can take
+        /// <c>UnhandledExceptionEventArgs.ExceptionObject</c> directly.
+        /// </summary>
+        public static void WriteCrash(string source, object exceptionObj)
+        {
+            try
+            {
+                var version = typeof(DiagnosticLog).Assembly.GetName().Version?.ToString();
+                var ex = exceptionObj as Exception;
+                var detail = (ex != null ? ex.ToString() : (exceptionObj?.ToString() ?? "(no exception object)"))
+                    .Replace("\n", "\n  ");
+                var sb = new StringBuilder();
+                sb.AppendLine();
+                sb.AppendLine("########################################################");
+                sb.AppendLine($"  CRASH — {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                sb.AppendLine("  Plugin: v" + (version ?? "?"));
+                sb.AppendLine("  Source: " + source);
+                sb.AppendLine("  " + detail);
+                sb.AppendLine("########################################################");
+                Directory.CreateDirectory(LogDir);
+                lock (_lock) File.AppendAllText(LogFilePath, sb.ToString(), Encoding.UTF8);
+            }
+            catch { /* logging must never throw */ }
+        }
+
+        /// <summary>
         /// Write a session banner (plugin/OS/Studio info). Called when logging is turned
         /// on and at startup if it was already on, so each run is easy to find in the file.
         /// </summary>
