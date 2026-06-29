@@ -28,7 +28,7 @@ namespace Supervertaler.Trados.TranslationProviders
         Description = "Attach one of your Supervertaler Workbench TMs as a Trados translation provider")]
     public class SupervertalerTmProviderWinFormsUI : ITranslationProviderWinFormsUI
     {
-        public string TypeName => "Supervertaler TM";
+        public string TypeName => "Supervertaler Workbench TM (bridged)";
 
         public string TypeDescription =>
             "Reads translation memories directly from a Supervertaler Workbench user-data folder. " +
@@ -184,12 +184,12 @@ namespace Supervertaler.Trados.TranslationProviders
             var tmInfo = SupervertalerTmProviderFactory.ResolveTmInfo(dbPath, tmId);
 
             var name = tmInfo != null
-                ? "Supervertaler TM: " + tmInfo.Name
-                : "Supervertaler TM: " + (tmId ?? "(unknown)");
+                ? "Supervertaler Workbench TM: " + tmInfo.Name
+                : "Supervertaler Workbench TM: " + (tmId ?? "(unknown)");
             var tooltip = tmInfo != null
                 ? "Bridged from Supervertaler Workbench (" + tmInfo.EntryCount + " entries; " +
                   (tmInfo.SourceLang ?? "?") + " → " + (tmInfo.TargetLang ?? "?") + ")"
-                : "Supervertaler TM is no longer marked as Bridged in Workbench";
+                : "Supervertaler Workbench TM is no longer marked as Bridged in Workbench";
 
             return new TranslationProviderDisplayInfo
             {
@@ -235,7 +235,7 @@ namespace Supervertaler.Trados.TranslationProviders
             _tms = tms ?? throw new ArgumentNullException(nameof(tms));
             SelectedTms = new List<TmInfo>();
 
-            Text = "Add bridged Supervertaler Workbench TM";
+            Text = "Add bridged Supervertaler Workbench TMs";
             Icon = IconHelper.AppIcon;
             Size = new Size(560, 420);
             MinimumSize = new Size(420, 280);

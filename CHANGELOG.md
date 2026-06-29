@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.75] – 2026-06-29
+
+### Changed (Shared TM Bridge · clearer "Workbench" naming throughout)
+
+- **The bridged-TM provider and its dialogs now consistently say "Supervertaler Workbench TM".** Following the 4.20.74 picker-title change, the rest of the bridge UI is aligned so it's obvious these TMs come from the Supervertaler Workbench app:
+  - The entry in Trados' *Use…* (add translation provider) menu is now **"Supervertaler Workbench TM (bridged)"** (was "Supervertaler TM").
+  - The picker dialog title is now **"Add bridged Supervertaler Workbench TMs"** (pluralised).
+  - Each attached TM shows in the Translation Memory list as **"Supervertaler Workbench TM: \<name\>"** (was "Supervertaler TM: \<name\>"), and the related status/error messages match.
+
+
 ## [4.20.74] – 2026-06-29
 
 ### Changed (Shared TM Bridge · clearer picker dialog title)

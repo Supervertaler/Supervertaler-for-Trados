@@ -78,8 +78,8 @@ namespace Supervertaler.Trados.TranslationProviders
             var tmInfo = ResolveTmInfo(dbPath, tmId);
 
             info.Name = tmInfo != null
-                ? "Supervertaler TM: " + tmInfo.Name
-                : "Supervertaler TM: " + (tmId ?? "(unknown)");
+                ? "Supervertaler Workbench TM: " + tmInfo.Name
+                : "Supervertaler Workbench TM: " + (tmId ?? "(unknown)");
             return info;
         }
 

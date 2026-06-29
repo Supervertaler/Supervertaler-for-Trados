@@ -84,8 +84,8 @@ namespace Supervertaler.Trados.TranslationProviders
             get
             {
                 var n = _tmInfo != null
-                    ? "Supervertaler TM: " + _tmInfo.Name
-                    : "Supervertaler TM (not found)";
+                    ? "Supervertaler Workbench TM: " + _tmInfo.Name
+                    : "Supervertaler Workbench TM (not found)";
                 TmBridgeLog.Info("Provider.Name get => " + n);
                 return n;
             }
@@ -119,7 +119,7 @@ namespace Supervertaler.Trados.TranslationProviders
                     {
                         TmBridgeLog.Info("Provider.StatusInfo get => Unavailable (no TmInfo)");
                         return new ProviderStatusInfo(false,
-                            "The Supervertaler TM '" + ExtractTmIdFromUri(_uri) +
+                            "The Supervertaler Workbench TM '" + ExtractTmIdFromUri(_uri) +
                             "' is no longer marked as Bridged in Supervertaler Workbench.");
                     }
                     if (string.IsNullOrEmpty(_dbPath) || !File.Exists(_dbPath))
