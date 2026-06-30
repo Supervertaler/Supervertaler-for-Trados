@@ -254,6 +254,7 @@ namespace Supervertaler.Trados
             batchControl.CopyToClipboardRequested += OnCopyToClipboardRequested;
             batchControl.PasteFromClipboardRequested += OnPasteFromClipboardRequested;
             batchControl.PreviewPromptRequested += OnPreviewPromptRequested;
+            batchControl.TranslateViaWorkbenchRequested += OnTranslateViaWorkbenchRequested;
             batchControl.ModelChangeRequested += OnModelChangeRequested;
 
             // Wire reports control events
@@ -3442,6 +3443,188 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         }
 
         // ─── Batch Translate ────────────────────────────────────────
+
+        // ── Translate via Workbench (64-bit large-file offload, #42 – Design B) ──
+        //
+        // Hands the active document's .sdlxliff to the headless 64-bit Workbench,
+        // which translates it round-trip (tags preserved) and writes a translated
+        // .sdlxliff. The document is CLOSED first (so the file is free and Trados
+        // does no heavy work), then the translated file is swapped in and the
+        // document REOPENED. A .sv-backup copy of the original is kept.
+        private void OnTranslateViaWorkbenchRequested(object sender, EventArgs e)
+        {
+            SafeInvoke(() =>
+            {
+                var batchControl = _control.Value.BatchTranslateControl;
+                var doc = _activeDocument;
+                if (doc == null || _editorController == null)
+                { batchControl.AppendLog("No document open.", true); return; }
+
+                var aiSettings = _settings.AiSettings;
+                if (aiSettings == null)
+                { batchControl.AppendLog("AI settings not configured. Open Settings to configure a provider.", true); return; }
+
+                // Provider / key / model (mirrors Batch Translate).
+                var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+                string apiKey; string baseUrl = null; string model = aiSettings.GetSelectedModel();
+                if (provider == LlmModels.ProviderOllama)
+                { apiKey = "ollama"; baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434"; }
+                else if (provider == LlmModels.ProviderCustomOpenAi)
+                {
+                    var profile = aiSettings.GetActiveCustomProfile();
+                    if (profile == null) { batchControl.AppendLog("No custom OpenAI profile configured.", true); return; }
+                    apiKey = profile.ApiKey; baseUrl = profile.Endpoint; model = profile.Model;
+                }
+                else apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                if (string.IsNullOrEmpty(apiKey))
+                { batchControl.AppendLog($"No API key configured for {provider}. Open Settings → AI Settings to add one.", true); return; }
+
+                var sourceLang = GetDocumentSourceLanguage();
+                var targetLang = GetDocumentTargetLanguage();
+                if (string.IsNullOrEmpty(sourceLang) || string.IsNullOrEmpty(targetLang))
+                { batchControl.AppendLog("Cannot determine source/target language from document.", true); return; }
+
+                // The bilingual .sdlxliff for the active file, and its ProjectFile (to reopen).
+                var projFile = doc.ActiveFile;
+                var sdlxliffPath = projFile?.LocalFilePath;
+                if (projFile == null || string.IsNullOrEmpty(sdlxliffPath) || !File.Exists(sdlxliffPath))
+                {
+                    batchControl.AppendLog("Could not find the .sdlxliff file for the active document. " +
+                        "Open a single file in the editor and try again.", true);
+                    return;
+                }
+
+                // Locate the 64-bit Workbench engine.
+                var exe = Core.WorkbenchOffload.ResolveWorkbenchExe(null);
+                if (string.IsNullOrEmpty(exe))
+                {
+                    batchControl.AppendLog("Supervertaler Workbench was not found. Install it (e.g. `pip install supervertaler`, " +
+                        "or download it from https://supervertaler.com), then try again.", true);
+                    return;
+                }
+
+                var scope = batchControl.GetSelectedScope();
+                var scopeStr = (scope == BatchScope.EmptyOnly || scope == BatchScope.FilteredEmptyOnly) ? "EmptyOnly" : "All";
+
+                // System prompt = same prompt + termbase as Batch Translate, but WITHOUT
+                // the document-context embed (that would load the whole doc into 32-bit
+                // Trados, which is exactly what we're offloading to avoid).
+                var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
+                var termbaseTerms = allTerms.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
+                var selectedPromptPath = batchControl.GetSelectedPromptPath();
+                aiSettings.SelectedPromptPath = selectedPromptPath; _settings.Save();
+                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
+                var customSystemPrompt = aiSettings.CustomSystemPrompt;
+                var projectName = GetProjectName();
+                var kbContext = LoadKbContextForPrompt(projectName, sourceLang, targetLang);
+                var systemPrompt = Core.TranslationPrompt.BuildSystemPrompt(
+                    sourceLang, targetLang, customPromptContent, termbaseTerms, customSystemPrompt,
+                    null, 0, aiSettings.IncludeTermMetadata, kbContext);
+
+                var modelInfo = LlmModels.FindModel(model);
+                int maxTokens = modelInfo?.DefaultMaxTokens ?? 16384;
+                int batchSize = aiSettings.BatchSize > 0 ? aiSettings.BatchSize : 20;
+
+                var confirm = MessageBox.Show(
+                    "Translate this document in the 64-bit Supervertaler Workbench?\n\n" +
+                    "The current document will be CLOSED, translated externally (scope: " + scopeStr + "), " +
+                    "then reopened. A backup of the original .sdlxliff is kept.\n\nFile: " +
+                    Path.GetFileName(sdlxliffPath),
+                    "Translate via Workbench", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+                if (confirm != DialogResult.OK) return;
+
+                var config = new Core.WorkbenchOffload.OffloadJob
+                {
+                    SourceLang = sourceLang,
+                    TargetLang = targetLang,
+                    Provider = provider,
+                    Model = model,
+                    BaseUrl = baseUrl,
+                    ApiKey = apiKey,
+                    SystemPrompt = systemPrompt,
+                    Scope = scopeStr,
+                    BatchSize = batchSize,
+                    MaxTokens = maxTokens,
+                };
+
+                var workDir = Path.Combine(Path.GetTempPath(), "Supervertaler", "offload",
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+                var outPath = Path.Combine(workDir, "translated.sdlxliff");
+
+                // Close the document so the file is free and Trados isn't holding it.
+                batchControl.SetRunning(true);
+                batchControl.AppendLog($"Closing document and offloading to 64-bit Workbench ({Path.GetFileName(exe)})…");
+                try { _editorController.Close(doc); }
+                catch (Exception ex)
+                {
+                    batchControl.AppendLog("Could not close the document: " + ex.Message, true);
+                    batchControl.SetRunning(false);
+                    return;
+                }
+
+                _batchCts = new CancellationTokenSource();
+                var ct = _batchCts.Token;
+
+                Task.Run(() =>
+                {
+                    Core.WorkbenchOffload.OffloadResult res = null;
+                    try
+                    {
+                        res = Core.WorkbenchOffload.RunSdlxliff(exe, sdlxliffPath, outPath, config, workDir,
+                            line => SafeInvoke(() => batchControl.AppendLog(line)), ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeInvoke(() => batchControl.AppendLog("Workbench offload failed: " + ex.Message, true));
+                    }
+
+                    SafeInvoke(() =>
+                    {
+                        batchControl.SetRunning(false);
+                        bool applied = false;
+                        try
+                        {
+                            if (res != null && res.Translated > 0 && File.Exists(outPath))
+                            {
+                                if (res.Errors != null)
+                                    foreach (var er in res.Errors) batchControl.AppendLog("  " + er, true);
+                                try { File.Copy(sdlxliffPath, sdlxliffPath + ".sv-backup", true); } catch { }
+                                CopyWithRetry(outPath, sdlxliffPath);
+                                batchControl.AppendLog($"✓ Workbench translated {res.Translated} segment(s) (failed: {res.Failed}). Reopening…");
+                                applied = true;
+                            }
+                            else
+                            {
+                                if (res?.Errors != null)
+                                    foreach (var er in res.Errors) batchControl.AppendLog("  " + er, true);
+                                batchControl.AppendLog("Workbench returned no translations; the original file is unchanged.", true);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            batchControl.AppendLog("Failed to swap in the translated file: " + ex.Message +
+                                " (the original is backed up next to it).", true);
+                        }
+
+                        // Reopen the document either way, so the user is back where they were.
+                        try { _editorController.Open(projFile, EditingMode.Translation); }
+                        catch (Exception ex)
+                        { batchControl.AppendLog("Please reopen the document manually – auto-reopen failed: " + ex.Message, true); }
+                        if (applied) batchControl.AppendLog("Done.");
+                    });
+                });
+            });
+        }
+
+        private static void CopyWithRetry(string src, string dest)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                try { File.Copy(src, dest, true); return; }
+                catch { System.Threading.Thread.Sleep(300); }
+            }
+            File.Copy(src, dest, true); // final attempt – throw if still locked
+        }
 
         private void OnBatchTranslateRequested(object sender, EventArgs e)
         {

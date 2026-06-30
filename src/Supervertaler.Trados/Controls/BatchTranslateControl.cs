@@ -55,6 +55,9 @@ namespace Supervertaler.Trados.Controls
         private Button _btnCopyToClipboard;
         private Button _btnPasteFromClipboard;
 
+        // Offload to 64-bit Workbench (for files too large for 32-bit Trados)
+        private Button _btnViaWorkbench;
+
         // TMX backup
         private CheckBox _chkTmxBackup;
         private LinkLabel _lnkOpenBackupFolder;
@@ -100,6 +103,9 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Fired when user clicks "Paste from Clipboard" in Clipboard Mode.</summary>
         public event EventHandler PasteFromClipboardRequested;
+
+        /// <summary>Fired when user clicks "Translate via Workbench (large files)".</summary>
+        public event EventHandler TranslateViaWorkbenchRequested;
 
         /// <summary>Fired when user clicks "Preview prompt" – pops a dialog showing
         /// exactly what would be sent to the AI (system prompt + termbase + document
@@ -232,6 +238,25 @@ namespace Supervertaler.Trados.Controls
                 "Claude, Gemini, etc.), then paste translations back when done.");
             Controls.Add(_chkClipboardMode);
             y += Px(24);
+
+            // ─── Translate via Workbench (large-file offload) ────
+            _btnViaWorkbench = new Button
+            {
+                Text = "Translate via Workbench (large files)",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Font = bodyFont,
+                FlatStyle = FlatStyle.System
+            };
+            _btnViaWorkbench.Click += (s, e) => TranslateViaWorkbenchRequested?.Invoke(this, EventArgs.Empty);
+            var wbTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+            wbTip.SetToolTip(_btnViaWorkbench,
+                "Runs the batch in the 64-bit Supervertaler Workbench and brings the\r\n" +
+                "results back as a TMX – for files too large for 32-bit Trados Studio 2024.\r\n" +
+                "Requires Supervertaler Workbench to be installed.");
+            Controls.Add(_btnViaWorkbench);
+            y += Px(30);
 
             // ─── Scope ─────────────────────────────────────────
             _lblScopeLabel = new Label

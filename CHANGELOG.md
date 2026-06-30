@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.78] – 2026-06-30
+
+### Added (Batch Operations · "Translate via Workbench" – offload large files to 64-bit Workbench)
+
+- **New "Translate via Workbench (large files)" button on the Batch Operations tab** hands the whole document to the 64-bit Supervertaler Workbench, which translates it and hands it back – so jobs too large for 32-bit Trados Studio 2024 finish without crashing. Trados does **no** heavy lifting. Flow: the plugin builds a job (your provider/model/key/prompt/termbase, and the scope from the dropdown), **closes the active document**, runs `supervertaler --translate-sdlxliff` on its `.sdlxliff` (round-trip, inline tags preserved), then **swaps in the translated file and reopens** the document. A `.sv-backup` copy of the original is kept next to it. Requires Supervertaler Workbench v1.10.322+ installed and discoverable (the plugin runs `supervertaler` / `supervertaler-debug` from PATH). The API key is passed from the plugin, so Workbench needs no separate setup. **First release of this feature – please test on a small project first** ([#42](https://github.com/Supervertaler/Supervertaler-for-Trados/issues/42)).
+
+
 ## [4.20.77] – 2026-06-30
 
 ### Added (Batch Translate · memory guardrails for 32-bit Trados Studio 2024)
