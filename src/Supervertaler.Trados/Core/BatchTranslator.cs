@@ -93,7 +93,7 @@ namespace Supervertaler.Trados.Core
         /// the final report. Default <c>true</c> so handlers that don't write
         /// (or that don't exist) don't get penalised.
         ///
-        /// Requires the event to be raised SYNCHRONOUSLY – any async handler
+        /// Requires the event to be raised SYNCHRONOUSLY - any async handler
         /// (BeginInvoke, fire-and-forget Task) will return before setting the
         /// flag and the translator will record success regardless of the
         /// actual write outcome.
@@ -104,7 +104,7 @@ namespace Supervertaler.Trados.Core
     // ─── Engine ──────────────────────────────────────────────
 
     /// <summary>
-    /// Core batch translation engine. UI-agnostic – communicates via events.
+    /// Core batch translation engine. UI-agnostic - communicates via events.
     /// Ported from Python Supervertaler's PreTranslationWorker.
     /// </summary>
     public class BatchTranslator
@@ -136,7 +136,7 @@ namespace Supervertaler.Trados.Core
             int failed = 0;
             int skipped = 0;
 
-            // Aggregated prompt log accumulators – combined into one Reports entry at the end
+            // Aggregated prompt log accumulators - combined into one Reports entry at the end
             int aggInputTokens = 0;
             int aggOutputTokens = 0;
             bool aggHasError = false;
@@ -144,7 +144,7 @@ namespace Supervertaler.Trados.Core
             // Real API-reported usage, if every batch returned parseable usage info.
             // If even one batch fails to report (e.g. Ollama, parse failure on a
             // weird response shape), we drop back to the chars/4 estimate for the
-            // whole run – mixing the two would produce a misleading "actual" total.
+            // whole run - mixing the two would produce a misleading "actual" total.
             int aggActualRegularIn = 0;
             int aggActualCacheRead = 0;
             int aggActualCacheWrite = 0;
@@ -160,10 +160,29 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
-            // Build system prompt (composable: base → custom prompt → termbase → document context)
+            // Build system prompt (composable: base -> custom prompt -> termbase -> document context)
             var includeDoc = aiSettings?.IncludeDocumentContext != false;
             var maxDocSegs = aiSettings?.DocumentContextMaxSegments ?? 500;
             var includeTermMeta = aiSettings?.IncludeTermMetadata != false;
+
+            // 32-bit hosts (Trados Studio 2024 runs as x86) can address only ~2-4 GB.
+            // A large document plus a long AI batch can exhaust that and crash Trados
+            // in its own renderer, so pre-emptively shrink OUR footprint on 32-bit:
+            // cap the document-context embed (a large Large-Object-Heap string) and
+            // the batch size. No effect on 64-bit (Studio 2026).
+            if (MemoryGuard.Is32Bit)
+            {
+                if (maxDocSegs > 50) maxDocSegs = 50;
+                int requestedBatch = batchSize > 0 ? batchSize : 20;
+                int clampedBatch = MemoryGuard.ClampBatchSize(requestedBatch);
+                if (clampedBatch < requestedBatch)
+                    RaiseProgress(0, segments.Count,
+                        "32-bit Trados detected - using a smaller batch size (" + clampedBatch +
+                        ") and reduced document context to stay within memory limits.",
+                        false, TimeSpan.Zero);
+                batchSize = clampedBatch;
+            }
+
             var systemPrompt = TranslationPrompt.BuildSystemPrompt(
                 sourceLang, targetLang,
                 customPromptContent, termbaseTerms, customSystemPrompt,
@@ -214,6 +233,25 @@ namespace Supervertaler.Trados.Core
                     int endIdx = Math.Min(startIdx + batchSize, segments.Count);
                     int batchCount = endIdx - startIdx;
 
+                    // Memory watchdog (32-bit hosts only). Climbing toward the
+                    // address-space ceiling -> compact the heap (the big per-batch
+                    // strings live on the LOH, the main fragmentation source). Past
+                    // the hard limit -> stop gracefully with a clear message rather
+                    // than letting Trados crash/hang in its renderer.
+                    if (MemoryGuard.IsOverHardLimit())
+                    {
+                        aggHasError = true;
+                        RaiseProgress(startIdx, segments.Count,
+                            "✗ Stopped to protect Trados: this job is too large for 32-bit Trados " +
+                            "Studio 2024 (memory limit reached). Translate the remaining segments in smaller " +
+                            "batches, split the file, or use Supervertaler Workbench / Trados Studio 2026 (64-bit). " +
+                            translated + " segment(s) translated before stopping.",
+                            true, sw.Elapsed);
+                        break;
+                    }
+                    if (MemoryGuard.IsOverSoftLimit())
+                        MemoryGuard.CollectAndCompact();
+
                     RaiseProgress(startIdx, segments.Count,
                         $"Translating batch {batchNum + 1}/{totalBatches} " +
                         $"(segments {startIdx + 1}\u2013{endIdx})...",
@@ -237,10 +275,10 @@ namespace Supervertaler.Trados.Core
                         // Build user prompt
                         var userPrompt = TranslationPrompt.BuildBatchUserPrompt(promptSegments);
 
-                        // Call LLM – suppress per-batch log entries; we fire one aggregated entry at the end.
+                        // Call LLM - suppress per-batch log entries; we fire one aggregated entry at the end.
                         // enablePromptCaching: the system prompt (base instructions + custom prompt + KB +
                         // termbase + document context) is byte-stable across every batch in this run, so
-                        // caching pays off from batch 2 onwards. Anthropic native and OpenRouter→Anthropic
+                        // caching pays off from batch 2 onwards. Anthropic native and OpenRouter->Anthropic
                         // get explicit cache_control markers; OpenAI/DeepSeek/Gemini 2.5+ get implicit
                         // automatic caching at the provider layer; other providers ignore the flag.
                         var response = await client.SendPromptAsync(
@@ -264,7 +302,7 @@ namespace Supervertaler.Trados.Core
                         }
                         else
                         {
-                            // Provider didn't report usage – disqualify the run
+                            // Provider didn't report usage - disqualify the run
                             // from showing actuals so we don't display a partial total.
                             aggActualUsageComplete = false;
                         }
@@ -367,7 +405,7 @@ namespace Supervertaler.Trados.Core
                     DisplayModel = aggModelInfo?.DisplayName ?? model,
                     SystemPrompt = systemPrompt,
                     UserPrompt = totalBatches > 1
-                        ? $"({totalBatches} batches combined – expand system prompt to see translation instructions)"
+                        ? $"({totalBatches} batches combined - expand system prompt to see translation instructions)"
                         : null,
                     EstimatedInputTokens = aggInputTokens,
                     EstimatedOutputTokens = aggOutputTokens,
