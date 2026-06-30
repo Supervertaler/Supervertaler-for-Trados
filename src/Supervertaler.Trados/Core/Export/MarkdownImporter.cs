@@ -108,14 +108,49 @@ namespace Supervertaler.Trados.Core.Export
                 // languages 2-3 letters; the renderer also emits a
                 // "Status: …" line, but that's 6 letters so the
                 // BracketedLangLineRe regex skips it naturally.
+                // Collect lang-line fields, each of which may span MULTIPLE
+                // physical lines. A field opens on a "XX: body" line and
+                // continues onto the following lines until the next "XX:"
+                // lang-line or the "Status:" line.
+                //
+                // v4.20.83 fix: previously this matched only the first physical
+                // line of each field (BracketedLangLineRe is single-line), so a
+                // segment whose body contains a hard line break — e.g. a source
+                // "VEILIGHEIDS-\nHELM" exported as
+                //     NL: VEILIGHEIDS-
+                //     HELM
+                // — silently lost everything after the first line on re-import
+                // (the target came back as just "SAFETY-"). The renderer emits
+                // segment text verbatim (newlines preserved), so the importer
+                // must reassemble them.
                 var langBodies = new List<string>(4);
-                foreach (Match lm in BracketedLangLineRe.Matches(blockText))
+                string curBody = null;        // body being accumulated (null = no open field)
+                foreach (var line in blockText.Split('\n'))
                 {
-                    var code = lm.Groups[1].Value.Trim();
-                    if (string.Equals(code, "Status", System.StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    langBodies.Add(lm.Groups[2].Value.Trim());
+                    var lm = BracketedLangLineRe.Match(line);
+                    if (lm.Success)
+                    {
+                        // A new lang-line ("NL:", "EN:", …) opens a new field;
+                        // close out the previous one.
+                        if (curBody != null) langBodies.Add(curBody.Trim());
+                        curBody = lm.Groups[2].Value;
+                    }
+                    else if (Regex.IsMatch(line, @"^Status:", RegexOptions.IgnoreCase))
+                    {
+                        // The "Status:" line terminates the current field. It's
+                        // 6 letters so it never matches BracketedLangLineRe (2-3),
+                        // and without this guard it would be wrongly appended as a
+                        // continuation of the target body. The status value itself
+                        // is captured separately below.
+                        if (curBody != null) { langBodies.Add(curBody.Trim()); curBody = null; }
+                    }
+                    else if (curBody != null)
+                    {
+                        curBody += "\n" + line; // continuation line — preserve the hard break
+                    }
+                    // else: line before any field (e.g. the "[SEGMENT N]" anchor) — ignore
                 }
+                if (curBody != null) langBodies.Add(curBody.Trim());
                 string sourceBody;
                 string targetBody;
                 if (langBodies.Count >= 2)

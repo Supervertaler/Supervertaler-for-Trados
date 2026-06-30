@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.83] – 2026-07-01
+
+### Fixed
+
+- **Markdown re-import dropped multi-line segments.** In the *Bracketed [SEGMENT NNNN]* (AI-friendly Markdown) layout, a segment whose text contains a hard line break – e.g. a source `VEILIGHEIDS-` / `HELM` exported across two lines – only had its **first** line re-imported; the continuation line (and the rest of the translation) was silently lost. The importer now reassembles multi-line `NL:` / `EN:` bodies, stopping correctly at the next language line or the `Status:` line. Single-line segments, empty targets, and proofreader-inserted extra lines round-trip exactly as before.
+
+### Improved (Translate via Workbench · resilience)
+
+- **Clear message when Trados can't close the document.** If the offload's `Close(document)` call fails because the 32-bit Trados process is in a degraded / low-memory state (an `AccessViolationException` – "Attempted to read or write protected memory… memory is corrupt"), the plugin now cancels cleanly (your file is untouched) and shows a plain-language prompt to **save, restart Trados Studio, and try again** instead of surfacing the cryptic SDK error.
+
 ## [4.20.82] – 2026-06-30
 
 ### Improved (Batch Operations · retry + layout)

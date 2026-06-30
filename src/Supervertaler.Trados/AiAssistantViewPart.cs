@@ -3573,9 +3573,33 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 try { _editorController.Close(doc); }
                 catch (Exception ex)
                 {
-                    batchControl.AppendLog("Could not close the document: " + ex.Message, true);
+                    // A failure here is almost always 32-bit Trados in a degraded /
+                    // low-memory state: closing the document calls into the native SDK,
+                    // which throws an AccessViolation ("Attempted to read or write
+                    // protected memory… memory is corrupt") once the process is poisoned.
+                    // The offload is aborted and the file is left untouched – the user
+                    // just needs a fresh Trados session. Show a plain-language message
+                    // instead of the cryptic SDK text.
+                    bool unstable = ex is AccessViolationException
+                        || (ex.Message != null
+                            && (ex.Message.IndexOf("protected memory", StringComparison.OrdinalIgnoreCase) >= 0
+                                || ex.Message.IndexOf("memory is corrupt", StringComparison.OrdinalIgnoreCase) >= 0));
+                    batchControl.AppendLog(unstable
+                        ? "✗ Offload cancelled: Trados couldn't close the document (low-memory / unstable state). " +
+                          "Restart Trados Studio and try again – your file is untouched."
+                        : "Could not close the document: " + ex.Message, true);
                     batchControl.SetRunning(false);
                     progress.Dispose();
+                    MessageBox.Show(
+                        unstable
+                            ? "Trados is in a low-memory / unstable state and couldn't close the document, " +
+                              "so Translate via Workbench was cancelled. Your file has not been changed.\n\n" +
+                              "Please save any other work, restart Trados Studio, reopen the project, and run " +
+                              "Translate via Workbench again on the fresh session."
+                            : "Could not close the document:\n\n" + ex.Message,
+                        "Translate via Workbench",
+                        MessageBoxButtons.OK,
+                        unstable ? MessageBoxIcon.Warning : MessageBoxIcon.Error);
                     return;
                 }
                 progress.Show();
