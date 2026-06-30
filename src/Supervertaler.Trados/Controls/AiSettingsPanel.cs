@@ -814,7 +814,7 @@ namespace Supervertaler.Trados.Controls
                     settings.OpenAiModel = modelId ?? "gpt-5.4-mini";
                     break;
                 case LlmModels.ProviderClaude:
-                    settings.ClaudeModel = modelId ?? "claude-sonnet-4-6";
+                    settings.ClaudeModel = modelId ?? "claude-sonnet-5";
                     break;
                 case LlmModels.ProviderGemini:
                     settings.GeminiModel = modelId ?? "gemini-3.1-flash-lite";

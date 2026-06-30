@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.20.84] – 2026-07-01
+
+### Added (Claude Sonnet 5)
+
+- **Claude Sonnet 5 (`claude-sonnet-5`) is now the default Claude model.** Anthropic's newest Sonnet (released June 30, 2026) gives near-Opus quality – with substantial gains in reasoning, tool use, and knowledge work over Sonnet 4.6 – at the same Sonnet price tier. It's added to the Claude model list, the cost ledger (`pricing.json` + `PricingTable`), and is selected by default for new setups.
+- **Sonnet 4.6 is kept as a selectable fallback**, so existing per-project model choices keep working.
+- **Pricing note:** the ledger uses Sonnet 5's standard rate of **$3 / M input, $15 / M output** (same as 4.6). Anthropic's introductory pricing ($2 / $10) runs through Aug 31, 2026, so during that window the cost estimate is slightly *higher* than actual; from Sep 1 it matches.
+
 ## [4.20.83] – 2026-07-01
 
 ### Fixed

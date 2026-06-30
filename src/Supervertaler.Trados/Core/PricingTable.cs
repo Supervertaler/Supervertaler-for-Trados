@@ -89,6 +89,7 @@ namespace Supervertaler.Trados.Core
                 { "gpt-5.5", (5.00m, 30.00m) },
                 { "gpt-5.4-mini", (0.75m, 4.50m) },
                 { "claude-opus-4-8", (5.00m, 25.00m) },
+                { "claude-sonnet-5", (3.00m, 15.00m) },
                 { "claude-sonnet-4-6", (3.00m, 15.00m) },
                 { "claude-haiku-4-5-20251001", (1.00m, 5.00m) },
                 { "gemini-3.1-flash-lite", (0.25m, 1.50m) },

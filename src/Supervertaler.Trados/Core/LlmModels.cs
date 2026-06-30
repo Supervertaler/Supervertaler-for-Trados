@@ -73,8 +73,14 @@ namespace Supervertaler.Trados.Core
         {
             new LlmModelInfo
             {
+                Id = "claude-sonnet-5", DisplayName = "Claude Sonnet 5",
+                Description = "Recommended – newest Sonnet, near-Opus quality at Sonnet cost",
+                Provider = LlmProvider.Claude
+            },
+            new LlmModelInfo
+            {
                 Id = "claude-sonnet-4-6", DisplayName = "Claude Sonnet 4.6",
-                Description = "Recommended – best balance of speed, quality, and cost",
+                Description = "Previous generation – kept as a fallback",
                 Provider = LlmProvider.Claude
             },
             new LlmModelInfo
