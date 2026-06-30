@@ -57,6 +57,7 @@ namespace Supervertaler.Trados.Controls
 
         // Offload to 64-bit Workbench (for files too large for 32-bit Trados)
         private Button _btnViaWorkbench;
+        private CheckBox _chkWorkbenchRetry;
 
         // TMX backup
         private CheckBox _chkTmxBackup;
@@ -117,6 +118,9 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Whether Clipboard Mode is active.</summary>
         public bool IsClipboardMode => _chkClipboardMode?.Checked ?? false;
+
+        /// <summary>Whether "Retry segments left empty" is ticked for the Workbench offload.</summary>
+        public bool IsWorkbenchRetryEnabled => _chkWorkbenchRetry?.Checked ?? false;
 
         /// <summary>Whether proofreading issues should also be added as Trados comments.</summary>
         public bool AddAsComments => _chkAddComments?.Checked ?? false;
@@ -252,11 +256,27 @@ namespace Supervertaler.Trados.Controls
             _btnViaWorkbench.Click += (s, e) => TranslateViaWorkbenchRequested?.Invoke(this, EventArgs.Empty);
             var wbTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
             wbTip.SetToolTip(_btnViaWorkbench,
-                "Runs the batch in the 64-bit Supervertaler Workbench and brings the\r\n" +
-                "results back as a TMX – for files too large for 32-bit Trados Studio 2024.\r\n" +
+                "Translates the whole document in the 64-bit Supervertaler Workbench and\r\n" +
+                "swaps the result back in – for files too large for 32-bit Trados Studio 2024.\r\n" +
                 "Requires Supervertaler Workbench to be installed.");
             Controls.Add(_btnViaWorkbench);
-            y += Px(30);
+            y += Px(28);
+
+            _chkWorkbenchRetry = new CheckBox
+            {
+                Text = "Retry segments left empty",
+                Location = new Point(leftMargin + Px(2), y),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor,
+                Checked = false
+            };
+            var wbRetryTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            wbRetryTip.SetToolTip(_chkWorkbenchRetry,
+                "When using Translate via Workbench, re-translate any segments the model\r\n" +
+                "leaves empty, in extra passes.");
+            Controls.Add(_chkWorkbenchRetry);
+            y += Px(26);
 
             // ─── Scope ─────────────────────────────────────────
             _lblScopeLabel = new Label

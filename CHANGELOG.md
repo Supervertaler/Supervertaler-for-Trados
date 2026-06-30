@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.81] – 2026-06-30
+
+### Improved (Translate via Workbench · parity with a normal Batch Translate)
+
+- **The offload now matches a normal Batch Translate much more closely:**
+  - **Document context is included.** It's collected from the open document (capped like the normal batch) and sent along – cheap for the media-heavy/text-light files this targets, so there's no reason to drop it.
+  - **Token usage is recorded in Trados's Token Usage & Costs.** The AI calls run in Workbench, but the engine now reports tokens back and the plugin logs the cost into the Trados ledger (as a *BatchTranslate · via Workbench* entry, attributed to the project). Cost is computed at the no-cache rate (a slight overestimate).
+  - **"Retry segments left empty" checkbox** next to the button: re-translate any segments the model leaves empty, in extra passes.
+  - **Scope respects status.** *Empty segments only* and *All segments* as before, plus *All unfinished segments* now translates Not Translated + Draft and leaves Confirmed/Signed-off untouched (it no longer flattens to "All"). Locked segments are always skipped. *Filtered* scopes map to All, since the editor's display filter can't apply to a closed-document run.
+
+
 ## [4.20.80] – 2026-06-30
 
 ### Added (Translate via Workbench · finding Workbench without a terminal)

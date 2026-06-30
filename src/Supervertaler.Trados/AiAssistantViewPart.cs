@@ -3503,22 +3503,29 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
 
                 var scope = batchControl.GetSelectedScope();
-                var scopeStr = (scope == BatchScope.EmptyOnly || scope == BatchScope.FilteredEmptyOnly) ? "EmptyOnly" : "All";
+                string scopeStr;
+                if (scope == BatchScope.EmptyOnly || scope == BatchScope.FilteredEmptyOnly) scopeStr = "EmptyOnly";
+                else if (scope == BatchScope.NotFinalized) scopeStr = "NotFinalized";
+                else scopeStr = "All";
 
-                // System prompt = same prompt + termbase as Batch Translate, but WITHOUT
-                // the document-context embed (that would load the whole doc into 32-bit
-                // Trados, which is exactly what we're offloading to avoid).
+                // System prompt = same prompt + termbase + document context as Batch Translate.
+                // Document context is collected here (while the doc is still open) and capped
+                // like the normal batch; it's cheap for the media-heavy/text-light files this
+                // targets, so there's no reason to drop it.
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                 var termbaseTerms = allTerms.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
                 aiSettings.SelectedPromptPath = selectedPromptPath; _settings.Save();
                 var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
                 var customSystemPrompt = aiSettings.CustomSystemPrompt;
+                List<string> docSegments = aiSettings.IncludeDocumentContext ? CollectDocumentContext().Item1 : null;
+                var maxDocSegs = aiSettings.DocumentContextMaxSegments > 0 ? aiSettings.DocumentContextMaxSegments : 500;
                 var projectName = GetProjectName();
                 var kbContext = LoadKbContextForPrompt(projectName, sourceLang, targetLang);
                 var systemPrompt = Core.TranslationPrompt.BuildSystemPrompt(
                     sourceLang, targetLang, customPromptContent, termbaseTerms, customSystemPrompt,
-                    null, 0, aiSettings.IncludeTermMetadata, kbContext);
+                    aiSettings.IncludeDocumentContext ? docSegments : null, maxDocSegs,
+                    aiSettings.IncludeTermMetadata, kbContext);
 
                 var modelInfo = LlmModels.FindModel(model);
                 int maxTokens = modelInfo?.DefaultMaxTokens ?? 16384;
@@ -3542,6 +3549,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ApiKey = apiKey,
                     SystemPrompt = systemPrompt,
                     Scope = scopeStr,
+                    RetryUntilComplete = batchControl.IsWorkbenchRetryEnabled,
                     BatchSize = batchSize,
                     MaxTokens = maxTokens,
                 };
@@ -3619,6 +3627,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         catch (Exception ex)
                         { batchControl.AppendLog("Please reopen the document manually – auto-reopen failed: " + ex.Message, true); }
                         if (applied) batchControl.AppendLog("Done.");
+                        if (applied && res != null && (res.InputTokens > 0 || res.OutputTokens > 0))
+                            try { LogOffloadUsage(provider, model, res.InputTokens, res.OutputTokens, res.Translated); } catch { }
                         progress.Finish();
                     });
                 });
@@ -3633,6 +3643,32 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 catch { System.Threading.Thread.Sleep(300); }
             }
             File.Copy(src, dest, true); // final attempt – throw if still locked
+        }
+
+        /// <summary>
+        /// Record an offloaded Batch Translate run in Trados's own Token Usage & Costs.
+        /// The AI calls happened in Workbench, so without this the cost would be missing
+        /// from the Trados ledger. Fired after reopen so project attribution is available.
+        /// (Cost is computed at the no-cache rate – a slight overestimate – since the
+        /// engine reports total tokens, not the cache breakdown.)
+        /// </summary>
+        private void LogOffloadUsage(string provider, string model, long inputTokens, long outputTokens, int segs)
+        {
+            var modelInfo = LlmModels.FindModel(model);
+            var entry = new Models.PromptLogEntry
+            {
+                Timestamp = DateTime.Now,
+                Feature = Models.PromptLogFeature.BatchTranslate,
+                PromptName = "via Workbench · " + segs + " segments",
+                Provider = provider,
+                Model = model,
+                DisplayModel = modelInfo?.DisplayName ?? model,
+                ActualRegularInputTokens = (int)inputTokens,
+                ActualOutputTokens = (int)outputTokens,
+                ActualCost = Core.TokenEstimator.ComputeActualCost(model, (int)inputTokens, 0, 0, (int)outputTokens),
+                IsCostKnown = Core.TokenEstimator.HasPricing(model),
+            };
+            LlmClient.FirePromptCompleted(entry);
         }
 
         /// <summary>

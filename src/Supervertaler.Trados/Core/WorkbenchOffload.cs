@@ -45,6 +45,8 @@ namespace Supervertaler.Trados.Core
             [DataMember(Name = "httpProxy")] public string HttpProxy { get; set; }
             [DataMember(Name = "systemPrompt")] public string SystemPrompt { get; set; }
             [DataMember(Name = "scope")] public string Scope { get; set; } = "EmptyOnly";
+            [DataMember(Name = "retryUntilComplete")] public bool RetryUntilComplete { get; set; }
+            [DataMember(Name = "maxRetries")] public int MaxRetries { get; set; } = 3;
             [DataMember(Name = "batchSize")] public int BatchSize { get; set; } = 20;
             [DataMember(Name = "maxTokens")] public int MaxTokens { get; set; } = 16384;
             [DataMember(Name = "segments")] public List<OffloadSegment> Segments { get; set; } = new List<OffloadSegment>();
@@ -56,6 +58,8 @@ namespace Supervertaler.Trados.Core
             [DataMember(Name = "ok")] public bool Ok { get; set; }
             [DataMember(Name = "translated")] public int Translated { get; set; }
             [DataMember(Name = "failed")] public int Failed { get; set; }
+            [DataMember(Name = "inputTokens")] public long InputTokens { get; set; }
+            [DataMember(Name = "outputTokens")] public long OutputTokens { get; set; }
             [DataMember(Name = "out")] public string Out { get; set; }
             [DataMember(Name = "errors")] public string[] Errors { get; set; }
         }
