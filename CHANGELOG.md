@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.79] – 2026-06-30
+
+### Added (Translate via Workbench · progress window)
+
+- **The "Translate via Workbench" offload now shows a floating progress window** while it runs. Because the document is closed during the offload, the in-editor Batch log was invisible – this top-level window gives live feedback instead: a status line, a progress bar that becomes determinate once batches start (`batch n of N`), and a **Cancel** button (cancels the engine and reopens the document). It closes automatically when the translated document reopens. First live test of the feature (v4.20.78) worked end to end; this adds the missing feedback.
+
+
 ## [4.20.78] – 2026-06-30
 
 ### Added (Batch Operations · "Translate via Workbench" – offload large files to 64-bit Workbench)

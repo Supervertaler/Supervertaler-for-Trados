@@ -3551,6 +3551,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     DateTime.Now.ToString("yyyyMMdd-HHmmss"));
                 var outPath = Path.Combine(workDir, "translated.sdlxliff");
 
+                _batchCts = new CancellationTokenSource();
+                var ct = _batchCts.Token;
+
+                // Top-level progress window. The Batch log lives inside the editor,
+                // which is closed during the offload, so it would be invisible – this
+                // floating window is the user's feedback while the document is closed.
+                var progress = new Controls.OffloadProgressForm(Path.GetFileName(sdlxliffPath));
+                progress.CancelRequested += (s2, e2) => { try { _batchCts.Cancel(); } catch { } };
+
                 // Close the document so the file is free and Trados isn't holding it.
                 batchControl.SetRunning(true);
                 batchControl.AppendLog($"Closing document and offloading to 64-bit Workbench ({Path.GetFileName(exe)})…");
@@ -3559,11 +3568,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     batchControl.AppendLog("Could not close the document: " + ex.Message, true);
                     batchControl.SetRunning(false);
+                    progress.Dispose();
                     return;
                 }
-
-                _batchCts = new CancellationTokenSource();
-                var ct = _batchCts.Token;
+                progress.Show();
 
                 Task.Run(() =>
                 {
@@ -3571,15 +3579,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     try
                     {
                         res = Core.WorkbenchOffload.RunSdlxliff(exe, sdlxliffPath, outPath, config, workDir,
-                            line => SafeInvoke(() => batchControl.AppendLog(line)), ct);
+                            line => progress.UpdateProgress(line), ct);
                     }
                     catch (Exception ex)
                     {
-                        SafeInvoke(() => batchControl.AppendLog("Workbench offload failed: " + ex.Message, true));
+                        progress.UpdateProgress("Error: " + ex.Message);
                     }
 
                     SafeInvoke(() =>
                     {
+                        progress.SetStatus("Applying translation and reopening…");
                         batchControl.SetRunning(false);
                         bool applied = false;
                         try
@@ -3611,6 +3620,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         catch (Exception ex)
                         { batchControl.AppendLog("Please reopen the document manually – auto-reopen failed: " + ex.Message, true); }
                         if (applied) batchControl.AppendLog("Done.");
+                        progress.Finish();
                     });
                 });
             });
