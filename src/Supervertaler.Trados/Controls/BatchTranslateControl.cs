@@ -57,7 +57,8 @@ namespace Supervertaler.Trados.Controls
 
         // Offload to 64-bit Workbench (for files too large for 32-bit Trados)
         private Button _btnViaWorkbench;
-        private CheckBox _chkWorkbenchRetry;
+        // Shared "retry segments left empty" – applies to Translate and the offload
+        private CheckBox _chkRetry;
 
         // TMX backup
         private CheckBox _chkTmxBackup;
@@ -119,8 +120,8 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Whether Clipboard Mode is active.</summary>
         public bool IsClipboardMode => _chkClipboardMode?.Checked ?? false;
 
-        /// <summary>Whether "Retry segments left empty" is ticked for the Workbench offload.</summary>
-        public bool IsWorkbenchRetryEnabled => _chkWorkbenchRetry?.Checked ?? false;
+        /// <summary>Whether "Retry segments left empty" is ticked (Translate + offload).</summary>
+        public bool IsRetryEnabled => _chkRetry?.Checked ?? false;
 
         /// <summary>Whether proofreading issues should also be added as Trados comments.</summary>
         public bool AddAsComments => _chkAddComments?.Checked ?? false;
@@ -243,26 +244,8 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_chkClipboardMode);
             y += Px(24);
 
-            // ─── Translate via Workbench (large-file offload) ────
-            _btnViaWorkbench = new Button
-            {
-                Text = "Translate via Workbench (large files)",
-                Location = new Point(leftMargin, y),
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Font = bodyFont,
-                FlatStyle = FlatStyle.System
-            };
-            _btnViaWorkbench.Click += (s, e) => TranslateViaWorkbenchRequested?.Invoke(this, EventArgs.Empty);
-            var wbTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
-            wbTip.SetToolTip(_btnViaWorkbench,
-                "Translates the whole document in the 64-bit Supervertaler Workbench and\r\n" +
-                "swaps the result back in – for files too large for 32-bit Trados Studio 2024.\r\n" +
-                "Requires Supervertaler Workbench to be installed.");
-            Controls.Add(_btnViaWorkbench);
-            y += Px(28);
-
-            _chkWorkbenchRetry = new CheckBox
+            // ─── Retry option (shared by Translate and Translate via Workbench) ────
+            _chkRetry = new CheckBox
             {
                 Text = "Retry segments left empty",
                 Location = new Point(leftMargin + Px(2), y),
@@ -271,11 +254,11 @@ namespace Supervertaler.Trados.Controls
                 ForeColor = labelColor,
                 Checked = false
             };
-            var wbRetryTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
-            wbRetryTip.SetToolTip(_chkWorkbenchRetry,
-                "When using Translate via Workbench, re-translate any segments the model\r\n" +
-                "leaves empty, in extra passes.");
-            Controls.Add(_chkWorkbenchRetry);
+            var retryTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            retryTip.SetToolTip(_chkRetry,
+                "Re-translate any segments the model leaves empty, in extra passes.\r\n" +
+                "Applies to both Translate and Translate via Workbench.");
+            Controls.Add(_chkRetry);
             y += Px(26);
 
             // ─── Scope ─────────────────────────────────────────
@@ -478,6 +461,25 @@ namespace Supervertaler.Trados.Controls
             _btnTranslate.Click += OnActionClick;
             Controls.Add(_btnTranslate);
 
+            // ─── Translate via Workbench – sits to the right of the Translate button ───
+            _btnViaWorkbench = new Button
+            {
+                Text = "Translate via Workbench (large files)",
+                Location = new Point(_btnTranslate.Right + Px(8), y),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Height = Px(28),
+                FlatStyle = FlatStyle.System,
+                Font = bodyFont
+            };
+            _btnViaWorkbench.Click += (s, e) => TranslateViaWorkbenchRequested?.Invoke(this, EventArgs.Empty);
+            var wbTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+            wbTip.SetToolTip(_btnViaWorkbench,
+                "Translates the whole document in the 64-bit Supervertaler Workbench and\r\n" +
+                "swaps the result back in – for files too large for 32-bit Trados Studio 2024.\r\n" +
+                "Requires Supervertaler Workbench to be installed.");
+            Controls.Add(_btnViaWorkbench);
+
             _chkAddComments = new CheckBox
             {
                 Text = "Also add issues as Trados comments",
@@ -504,6 +506,7 @@ namespace Supervertaler.Trados.Controls
             int actionRowY = y;
             _btnTranslate.SizeChanged += (s, ev) =>
             {
+                _btnViaWorkbench.Location = new Point(_btnTranslate.Right + Px(8), actionRowY);
                 _chkAddComments.Location = new Point(_btnTranslate.Right + Px(8), actionRowY + Px(4));
                 RepositionPreviewPromptLink();
             };
@@ -701,6 +704,7 @@ namespace Supervertaler.Trados.Controls
             var isTranslateMode = _currentMode == BatchMode.Translate && !(_chkClipboardMode?.Checked ?? false);
             _chkTmxBackup.Visible = isTranslateMode;
             _lnkOpenBackupFolder.Visible = isTranslateMode;
+            if (_btnViaWorkbench != null) _btnViaWorkbench.Visible = isTranslateMode;
             RepositionPreviewPromptLink();
 
             // Notify listeners to refresh prompt dropdown
@@ -770,6 +774,7 @@ namespace Supervertaler.Trados.Controls
             var showTmx = !clip && _currentMode == BatchMode.Translate;
             _chkTmxBackup.Visible = showTmx;
             _lnkOpenBackupFolder.Visible = showTmx;
+            if (_btnViaWorkbench != null) _btnViaWorkbench.Visible = showTmx;
 
             // Preview prompt link sits after the rightmost visible control on the
             // action row – position depends on which controls are showing.
@@ -989,6 +994,8 @@ namespace Supervertaler.Trados.Controls
                 rightEdge = Math.Max(rightEdge, _btnPasteFromClipboard.Right);
             if (_chkAddComments != null && _chkAddComments.Visible)
                 rightEdge = Math.Max(rightEdge, _chkAddComments.Right);
+            if (_btnViaWorkbench != null && _btnViaWorkbench.Visible)
+                rightEdge = Math.Max(rightEdge, _btnViaWorkbench.Right);
 
             // Nothing visible on the action row (shouldn't happen in practice,
             // but guard rather than write a negative X).

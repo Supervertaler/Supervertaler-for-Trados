@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.20.82] – 2026-06-30
+
+### Improved (Batch Operations · retry + layout)
+
+- **"Retry segments left empty" now applies to a normal Batch Translate too**, not just *Translate via Workbench*. One shared checkbox in Batch Operations controls both: when ticked, any segment the model leaves empty (or fails to write) is re-translated in extra passes (up to 5) until none remain. The token usage from the retries is rolled into the same Trados ledger entry, and the translated/failed counts are corrected as segments fill in.
+- **The *Translate via Workbench* button moved to the right of the ▶ Translate button** instead of sitting up among the scope/option controls. It shows only in normal (non-clipboard) Translate mode, alongside the Translate button it complements.
+
 ## [4.20.81] – 2026-06-30
 
 ### Improved (Translate via Workbench · parity with a normal Batch Translate)

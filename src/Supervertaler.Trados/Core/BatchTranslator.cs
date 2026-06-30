@@ -129,12 +129,14 @@ namespace Supervertaler.Trados.Core
             string customPromptContent = null,
             string customSystemPrompt = null,
             List<string> documentSegments = null,
-            string kbContext = null)
+            string kbContext = null,
+            bool retryUntilComplete = false)
         {
             var sw = Stopwatch.StartNew();
             int translated = 0;
             int failed = 0;
             int skipped = 0;
+            var notTranslated = new List<BatchSegment>(); // collected during the pass; retried if enabled
 
             // Aggregated prompt log accumulators - combined into one Reports entry at the end
             int aggInputTokens = 0;
@@ -354,12 +356,14 @@ namespace Supervertaler.Trados.Core
                                 {
                                     batchFailed++;
                                     failed++;
+                                    notTranslated.Add(segments[i]);
                                 }
                             }
                             else
                             {
                                 batchFailed++;
                                 failed++;
+                                notTranslated.Add(segments[i]);
                             }
 
                             RaiseProgress(i + 1, segments.Count, null, false, sw.Elapsed);
@@ -382,9 +386,102 @@ namespace Supervertaler.Trados.Core
                         // Log the batch error and continue to next batch
                         failed += batchCount;
                         aggHasError = true;
+                        for (int i = startIdx; i < endIdx; i++) notTranslated.Add(segments[i]);
                         RaiseProgress(endIdx, segments.Count,
                             $"\u2717 Batch {batchNum + 1} failed: {ex.Message}",
                             true, sw.Elapsed);
+                    }
+                }
+
+                // \u2500\u2500 Optional retry passes ("Retry segments left empty") \u2500\u2500
+                // Re-translate the segments the main pass left empty, in extra
+                // passes, until none remain or we hit the cap. Each retried
+                // segment that fills in corrects the translated/failed counters
+                // (it was counted as failed in the pass that left it empty).
+                // Local numbering (1..N per chunk) so a subset re-runs cleanly.
+                if (retryUntilComplete)
+                {
+                    const int maxRetryPasses = 5;
+                    var pending = notTranslated;
+                    for (int pass = 1;
+                         pass <= maxRetryPasses && pending.Count > 0 && !cancellationToken.IsCancellationRequested;
+                         pass++)
+                    {
+                        RaiseProgress(translated, segments.Count,
+                            $"Retry {pass}/{maxRetryPasses}: re-translating {pending.Count} segment(s) left empty...",
+                            false, sw.Elapsed);
+
+                        var stillEmpty = new List<BatchSegment>();
+                        int rChunks = (pending.Count + batchSize - 1) / batchSize;
+                        for (int b = 0; b < rChunks && !cancellationToken.IsCancellationRequested; b++)
+                        {
+                            int rs = b * batchSize;
+                            int re = Math.Min(rs + batchSize, pending.Count);
+                            try
+                            {
+                                var ps = new List<BatchSegmentInput>();
+                                for (int i = rs; i < re; i++)
+                                    ps.Add(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = pending[i].SourceText });
+
+                                var rUserPrompt = TranslationPrompt.BuildBatchUserPrompt(ps);
+                                var rResponse = await client.SendPromptAsync(
+                                    rUserPrompt, systemPrompt, maxTokens, cancellationToken,
+                                    feature: Models.PromptLogFeature.BatchTranslate,
+                                    suppressLog: true, enablePromptCaching: true);
+
+                                aggInputTokens += TokenEstimator.EstimateInputTokens(rUserPrompt, systemPrompt);
+                                aggOutputTokens += TokenEstimator.EstimateTokens(rResponse);
+                                var rUsage = client.LastUsage;
+                                if (rUsage != null)
+                                {
+                                    aggActualRegularIn += rUsage.RegularInputTokens;
+                                    aggActualCacheRead += rUsage.CacheReadTokens;
+                                    aggActualCacheWrite += rUsage.CacheWriteTokens;
+                                    aggActualOutput += rUsage.OutputTokens;
+                                }
+                                else aggActualUsageComplete = false;
+
+                                var rParsed = TranslationPrompt.ParseBatchResponse(rResponse, re - rs);
+                                var rMap = new Dictionary<int, string>();
+                                foreach (var p in rParsed) rMap[p.Number] = p.Translation;
+
+                                for (int i = rs; i < re; i++)
+                                {
+                                    string t;
+                                    if (rMap.TryGetValue((i - rs) + 1, out t) && !string.IsNullOrWhiteSpace(t))
+                                    {
+                                        var args = new BatchSegmentResultEventArgs
+                                        {
+                                            SegmentIndex = pending[i].Index,
+                                            SourceText = pending[i].SourceText,
+                                            Translation = t,
+                                            SegmentPairRef = pending[i].SegmentPairRef,
+                                            HasTags = pending[i].HasTags,
+                                            TagMap = pending[i].TagMap
+                                        };
+                                        SegmentTranslated?.Invoke(this, args);
+                                        if (args.WriteSucceeded) { translated++; failed--; }
+                                        else stillEmpty.Add(pending[i]);
+                                    }
+                                    else stillEmpty.Add(pending[i]);
+                                    RaiseProgress(translated, segments.Count, null, false, sw.Elapsed);
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                for (int i = rs; i < re; i++) stillEmpty.Add(pending[i]);
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                aggHasError = true;
+                                for (int i = rs; i < re; i++) stillEmpty.Add(pending[i]);
+                                RaiseProgress(translated, segments.Count,
+                                    $"\u2717 Retry {pass} batch {b + 1} failed: {ex.Message}",
+                                    true, sw.Elapsed);
+                            }
+                        }
+                        pending = stillEmpty;
                     }
                 }
             }

@@ -3549,7 +3549,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ApiKey = apiKey,
                     SystemPrompt = systemPrompt,
                     Scope = scopeStr,
-                    RetryUntilComplete = batchControl.IsWorkbenchRetryEnabled,
+                    RetryUntilComplete = batchControl.IsRetryEnabled,
                     BatchSize = batchSize,
                     MaxTokens = maxTokens,
                 };
@@ -3908,7 +3908,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             segments, sourceLang, targetLang,
                             aiSettings, termbaseTerms, batchSize, ct,
                             customPromptContent, customSystemPrompt,
-                            docSegments, kbContext);
+                            docSegments, kbContext,
+                            retryUntilComplete: batchControl.IsRetryEnabled);
                     }
                     catch (Exception ex)
                     {
