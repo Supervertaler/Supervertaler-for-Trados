@@ -44,6 +44,9 @@ namespace Supervertaler.Trados.Controls
         // Ollama section
         private TextBox _txtOllamaEndpoint;
         private NumericUpDown _nudOllamaTimeout;
+
+        // Workbench engine path (large-file offload). Blank = auto-detect.
+        private TextBox _txtWorkbenchPath;
         private Label _lblOllamaTimeoutHint;
 
         // Custom OpenAI section
@@ -377,6 +380,47 @@ namespace Supervertaler.Trados.Controls
             Pair(root, ref row, lblOllamaTimeout, ollamaTimeoutHost);
             _ollamaRows.Add(lblOllamaTimeout);
             _ollamaRows.Add(ollamaTimeoutHost);
+
+            // ===== Supervertaler Workbench (64-bit engine for "Translate via Workbench") =====
+            // Always visible. Blank = auto-detect (PATH, then common install locations).
+            var lblWorkbench = FieldLabel("Workbench (.exe):");
+            _txtWorkbenchPath = FillBox();
+            var btnBrowseWb = new Button
+            {
+                Text = "Browse…",
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlatStyle = FlatStyle.System,
+                Margin = new Padding(UiScale.Pixels(4), 0, 0, 0),
+            };
+            btnBrowseWb.Click += (s, e) =>
+            {
+                using (var dlg = new OpenFileDialog
+                {
+                    Title = "Locate Supervertaler Workbench",
+                    Filter = "Executables (*.exe)|*.exe|All files (*.*)|*.*",
+                })
+                {
+                    if (dlg.ShowDialog() == DialogResult.OK) _txtWorkbenchPath.Text = dlg.FileName;
+                }
+            };
+            new ToolTip().SetToolTip(_txtWorkbenchPath,
+                "Path to Supervertaler Workbench – the 64-bit engine used by \"Translate via Workbench\"" +
+                " (large-file offload).\nLeave blank to auto-detect; set it if the offload can't find Workbench.");
+            var wbHost = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+            };
+            wbHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            wbHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            wbHost.Controls.Add(_txtWorkbenchPath, 0, 0);
+            wbHost.Controls.Add(btnBrowseWb, 1, 0);
+            Pair(root, ref row, lblWorkbench, wbHost);
 
             // ===== Custom OpenAI section (rows shown only when Custom is selected) =====
             var sepCustom = new Label
@@ -720,6 +764,7 @@ namespace Supervertaler.Trados.Controls
 
             // Ollama
             _txtOllamaEndpoint.Text = settings.OllamaEndpoint ?? "http://localhost:11434";
+            _txtWorkbenchPath.Text = settings.WorkbenchExePath ?? "";
             _nudOllamaTimeout.Value = Math.Max(_nudOllamaTimeout.Minimum,
                 Math.Min(_nudOllamaTimeout.Maximum, settings.OllamaTimeoutMinutes));
 
@@ -809,6 +854,7 @@ namespace Supervertaler.Trados.Controls
             // Ollama endpoint + timeout
             settings.OllamaEndpoint = _txtOllamaEndpoint.Text.Trim();
             settings.OllamaTimeoutMinutes = (int)_nudOllamaTimeout.Value;
+            settings.WorkbenchExePath = _txtWorkbenchPath.Text.Trim();
 
             // Custom OpenAI profiles – save current profile values first
             SaveCurrentCustomProfile(settings);

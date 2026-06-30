@@ -42,6 +42,15 @@ namespace Supervertaler.Trados.Settings
         public string OllamaEndpoint { get; set; } = "http://localhost:11434";
 
         /// <summary>
+        /// Optional path to the Supervertaler Workbench executable – the 64-bit engine
+        /// used by "Translate via Workbench (large files)". Empty = auto-detect
+        /// (the <c>supervertaler</c> launcher on PATH, then common install locations).
+        /// Set it here, or via the "locate Workbench" prompt, if auto-detect fails.
+        /// </summary>
+        [DataMember(Name = "workbenchExePath")]
+        public string WorkbenchExePath { get; set; } = "";
+
+        /// <summary>
         /// User-configurable timeout for Ollama requests, in minutes.
         /// 0 means automatic (based on model size: 3–10 min).
         /// </summary>

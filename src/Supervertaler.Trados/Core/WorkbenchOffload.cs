@@ -75,6 +75,49 @@ namespace Supervertaler.Trados.Core
                 var found = WhichOnPath(name);
                 if (!string.IsNullOrEmpty(found)) return found;
             }
+            return ProbeCommonLocations();
+        }
+
+        /// <summary>
+        /// Best-effort probe of common install locations for the bundled Workbench
+        /// desktop app and the pip --user console scripts. Returns null if none found.
+        /// </summary>
+        private static string ProbeCommonLocations()
+        {
+            try
+            {
+                var localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+                // Bundled desktop app (the Windows zip extracts to a Supervertaler.exe).
+                foreach (var c in new[]
+                {
+                    Path.Combine(localApp, "Programs", "Supervertaler", "Supervertaler.exe"),
+                    Path.Combine(localApp, "Supervertaler", "Supervertaler.exe"),
+                    Path.Combine(progFiles, "Supervertaler", "Supervertaler.exe"),
+                    Path.Combine(userProfile, "Supervertaler", "Supervertaler.exe"),
+                })
+                {
+                    if (File.Exists(c)) return c;
+                }
+
+                // pip --user console scripts: %APPDATA%\Python\Python3xx\Scripts\supervertaler*.exe
+                var pyRoot = Path.Combine(appData, "Python");
+                if (Directory.Exists(pyRoot))
+                {
+                    foreach (var dir in Directory.GetDirectories(pyRoot))
+                    {
+                        foreach (var n in new[] { "supervertaler-debug.exe", "supervertaler.exe" })
+                        {
+                            var p = Path.Combine(dir, "Scripts", n);
+                            if (File.Exists(p)) return p;
+                        }
+                    }
+                }
+            }
+            catch { }
             return null;
         }
 

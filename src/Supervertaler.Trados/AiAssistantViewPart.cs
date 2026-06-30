@@ -3494,13 +3494,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     return;
                 }
 
-                // Locate the 64-bit Workbench engine.
-                var exe = Core.WorkbenchOffload.ResolveWorkbenchExe(null);
+                // Locate the 64-bit Workbench engine: settings override -> PATH -> common locations.
+                var exe = Core.WorkbenchOffload.ResolveWorkbenchExe(aiSettings.WorkbenchExePath);
                 if (string.IsNullOrEmpty(exe))
                 {
-                    batchControl.AppendLog("Supervertaler Workbench was not found. Install it (e.g. `pip install supervertaler`, " +
-                        "or download it from https://supervertaler.com), then try again.", true);
-                    return;
+                    exe = PromptLocateWorkbench(aiSettings);
+                    if (string.IsNullOrEmpty(exe)) return;
                 }
 
                 var scope = batchControl.GetSelectedScope();
@@ -3634,6 +3633,52 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 catch { System.Threading.Thread.Sleep(300); }
             }
             File.Copy(src, dest, true); // final attempt – throw if still locked
+        }
+
+        /// <summary>
+        /// Friendly "Workbench not found" flow: offer to locate the executable (which is
+        /// then remembered in <see cref="AiSettings.WorkbenchExePath"/>) or to open the
+        /// download page. Returns the chosen exe path, or null if the user cancelled.
+        /// </summary>
+        private string PromptLocateWorkbench(AiSettings aiSettings)
+        {
+            var choice = MessageBox.Show(
+                "Supervertaler Workbench (the 64-bit engine for the large-file offload) wasn't found.\n\n" +
+                "• Yes – locate it now (pick Supervertaler.exe, or supervertaler-debug.exe).\n" +
+                "• No – open the download page.\n" +
+                "• Cancel – do nothing.\n\n" +
+                "Your choice is remembered, so you only need to do this once.",
+                "Supervertaler Workbench not found",
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+            if (choice == DialogResult.Yes)
+            {
+                using (var dlg = new OpenFileDialog
+                {
+                    Title = "Locate Supervertaler Workbench",
+                    Filter = "Supervertaler (Supervertaler.exe;supervertaler*.exe)|Supervertaler.exe;supervertaler*.exe|" +
+                             "Executables (*.exe)|*.exe",
+                })
+                {
+                    if (dlg.ShowDialog() == DialogResult.OK && File.Exists(dlg.FileName))
+                    {
+                        aiSettings.WorkbenchExePath = dlg.FileName;
+                        try { _settings.Save(); } catch { }
+                        return dlg.FileName;
+                    }
+                }
+                return null;
+            }
+            if (choice == DialogResult.No)
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo("https://supervertaler.com") { UseShellExecute = true });
+                }
+                catch { }
+            }
+            return null;
         }
 
         private void OnBatchTranslateRequested(object sender, EventArgs e)

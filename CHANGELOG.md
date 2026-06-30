@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.80] – 2026-06-30
+
+### Added (Translate via Workbench · finding Workbench without a terminal)
+
+- **The plugin now finds Supervertaler Workbench on its own, and lets you point at it if needed – no terminal required.** Three parts:
+  - **Auto-detect:** in addition to the `supervertaler` launcher on PATH, the plugin now probes common install locations for the bundled desktop app (`%LocalAppData%\Programs\Supervertaler`, `Program Files\Supervertaler`, etc.) and the pip `--user` scripts folder.
+  - **A "Workbench (.exe)" setting** on *Settings → AI Settings*, with a **Browse** button, so you can point the offload at any Supervertaler executable. Blank = auto-detect.
+  - **A friendly prompt when it still can't be found:** instead of a log line, a dialog offers to **locate** Workbench (the choice is remembered) or **open the download page**.
+
+
 ## [4.20.79] – 2026-06-30
 
 ### Added (Translate via Workbench · progress window)
