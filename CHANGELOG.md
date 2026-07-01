@@ -10,6 +10,7 @@
   - **HTML report (`.html`)** – read-only, as before.
 - **Retired the standalone Markdown (`.md`) format and both Stacked layouts** ("source on top" / "target on top"). They were confusing and duplicated the Table/Text formats. The **Layout** dropdown is gone entirely – each format now has one natural layout (DOCX/HTML → table, Text → bracketed). Existing `.md`/stacked files can **still be re-imported** (the importer stays backward-compatible); they just can't be produced any more.
 - **In-field line breaks in the Text format are now encoded as a `[newline]` token** (decoded back to a real break on re-import), so every segment field stays on one physical line. This matches the Workbench's "Bilingual Text" export, so a file produced by either tool round-trips through the other. Older multi-line files without the token still re-import unchanged.
+- The multi-file output-mode radios are now format-neutral ("Combine into one file" / "Separate file per file") since they apply to both DOCX and Text exports, not just DOCX.
 
 ## [4.20.84] – 2026-07-01
 

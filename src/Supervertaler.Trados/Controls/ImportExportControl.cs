@@ -444,7 +444,7 @@ namespace Supervertaler.Trados.Controls
 
             _rbCombineOne = new RadioButton
             {
-                Text = "Combine into one DOCX",
+                Text = "Combine into one file",
                 Location = new Point(leftMargin + UiScale.Pixels(60), y),
                 AutoSize = true,
                 Font = bodyFont,
@@ -455,11 +455,11 @@ namespace Supervertaler.Trados.Controls
 
             _rbSeparatePerFile = new RadioButton
             {
-                Text = "Separate DOCX per file",
+                Text = "Separate file per file",
                 // .Right at construction time hasn't been widened by
                 // AutoSize yet, so we'd end up overlapping the previous
                 // radio. Use a fixed offset that's wide enough for the
-                // "Combine into one DOCX" label at typical font/dpi.
+                // "Combine into one file" label at typical font/dpi.
                 Location = new Point(leftMargin + UiScale.Pixels(60) + UiScale.Pixels(190), y),
                 AutoSize = true,
                 Font = bodyFont,
