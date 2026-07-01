@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.20.85] – 2026-07-01
+
+### Changed (Bilingual export/import simplified to two round-trippable formats + one report)
+
+- **The bilingual export now offers just three formats, matching the Supervertaler Workbench:**
+  - **Word document (`.docx`)** – the 5-column Bilingual Table, re-importable.
+  - **Bilingual Text (AI-friendly) (`.txt`)** – the `[SEGMENT NNNN]` plain-text format, re-importable. **New:** promoted from the old "Bracketed" *layout* to a standalone *format* with a `.txt` extension.
+  - **HTML report (`.html`)** – read-only, as before.
+- **Retired the standalone Markdown (`.md`) format and both Stacked layouts** ("source on top" / "target on top"). They were confusing and duplicated the Table/Text formats. The **Layout** dropdown is gone entirely – each format now has one natural layout (DOCX/HTML → table, Text → bracketed). Existing `.md`/stacked files can **still be re-imported** (the importer stays backward-compatible); they just can't be produced any more.
+- **In-field line breaks in the Text format are now encoded as a `[newline]` token** (decoded back to a real break on re-import), so every segment field stays on one physical line. This matches the Workbench's "Bilingual Text" export, so a file produced by either tool round-trips through the other. Older multi-line files without the token still re-import unchanged.
+
 ## [4.20.84] – 2026-07-01
 
 ### Added (Claude Sonnet 5)

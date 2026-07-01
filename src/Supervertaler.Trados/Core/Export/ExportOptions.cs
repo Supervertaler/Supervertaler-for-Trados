@@ -2,36 +2,39 @@ namespace Supervertaler.Trados.Core.Export
 {
     public enum ExportFormat
     {
+        /// <summary>Word .docx — the 5-column Supervertaler Bilingual Table.
+        /// Re-importable.</summary>
         Docx,
-        Markdown,
+
+        /// <summary>Plain-text .txt — the "Bilingual Text (AI-friendly)"
+        /// [SEGMENT NNNN] format, matching the Supervertaler Workbench.
+        /// Re-importable.</summary>
+        Text,
+
+        /// <summary>HTML report — read-only, cannot be re-imported.</summary>
         Html
     }
 
     public enum ExportLayout
     {
         /// <summary>5-column table (#, Source, Target, Status, Notes).
-        /// This is the canonical Supervertaler Bilingual Table format and
-        /// the only one that the DOCX importer round-trips.</summary>
+        /// The canonical Supervertaler Bilingual Table, used by the DOCX and
+        /// HTML renderers; the only DOCX layout that round-trips on
+        /// re-import.</summary>
         Table,
 
-        /// <summary>Source paragraph above target paragraph, segment by segment.</summary>
-        StackedSourceTop,
-
-        /// <summary>Target paragraph above source paragraph, segment by segment.</summary>
-        StackedTargetTop,
-
-        /// <summary>Compact AI-friendly Markdown format that matches the
-        /// Supervertaler Workbench's "AI-readable" segment-export style.
+        /// <summary>Compact AI-friendly plain-text layout matching the
+        /// Supervertaler Workbench's "Bilingual Text (AI-friendly)" export.
         /// One block per segment, separated by blank lines:
         ///   <code>
         ///   [SEGMENT 0001]
         ///   EN: source text
         ///   NL: target text
         ///   </code>
-        /// Some LLMs reportedly parse this format more reliably than
-        /// markdown tables. Re-importable; the segment-anchor regex
-        /// keys off the bracketed number. Only meaningful with the
-        /// Markdown format — DOCX / HTML fall back to StackedSourceTop.</summary>
+        /// In-field hard line breaks are encoded as the literal token
+        /// <c>[newline]</c> so every field stays on one physical line (decoded
+        /// back to a real break on re-import). Used by the Text (.txt) format;
+        /// re-importable via the bracketed parser.</summary>
         Bracketed
     }
 

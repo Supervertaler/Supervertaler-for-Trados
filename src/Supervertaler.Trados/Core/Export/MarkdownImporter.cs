@@ -144,6 +144,14 @@ namespace Supervertaler.Trados.Core.Export
                         // is captured separately below.
                         if (curBody != null) { langBodies.Add(curBody.Trim()); curBody = null; }
                     }
+                    else if (line.StartsWith("📄"))
+                    {
+                        // File-boundary marker ("📄 File: …") emitted by the Text
+                        // renderer in multi-file (merged-document) exports. Like
+                        // Status:, it terminates the current field so the marker
+                        // never leaks into the preceding segment's target body.
+                        if (curBody != null) { langBodies.Add(curBody.Trim()); curBody = null; }
+                    }
                     else if (curBody != null)
                     {
                         curBody += "\n" + line; // continuation line — preserve the hard break
@@ -175,8 +183,11 @@ namespace Supervertaler.Trados.Core.Export
                 var seg = new ImportedSegment
                 {
                     Number = number,
-                    SourceText = sourceBody ?? "",
-                    TargetText = targetBody
+                    // Decode the [newline] token (Text-format single-line
+                    // encoding) back into real breaks. A no-op on older
+                    // multi-line files that never used the token.
+                    SourceText = DecodeBreaks(sourceBody ?? ""),
+                    TargetText = DecodeBreaks(targetBody)
                 };
                 // Status line, if present anywhere in the block.
                 var statusMatch = Regex.Match(blockText, @"^Status:\s*(.+)$", RegexOptions.Multiline);
@@ -228,6 +239,16 @@ namespace Supervertaler.Trados.Core.Export
         {
             if (string.IsNullOrEmpty(cell)) return "";
             return cell.Trim().Replace("\\|", "|");
+        }
+
+        /// <summary>Decode the <c>[newline]</c> token (written by the Text
+        /// renderer to keep each field on one physical line) back into a real
+        /// line break. A no-op on older multi-line bracketed/markdown files
+        /// that never used the token, so re-import stays backward-compatible.</summary>
+        private static string DecodeBreaks(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            return text.Replace("[newline]", "\n");
         }
 
         private static List<ImportedSegment> ParseStackedLayout(string text)

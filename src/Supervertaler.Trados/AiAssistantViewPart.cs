@@ -7266,9 +7266,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             dlg.Filter = "Word document (*.docx)|*.docx";
                             dlg.DefaultExt = "docx";
                             break;
-                        case Core.Export.ExportFormat.Markdown:
-                            dlg.Filter = "Markdown (*.md)|*.md";
-                            dlg.DefaultExt = "md";
+                        case Core.Export.ExportFormat.Text:
+                            dlg.Filter = "Bilingual Text (*.txt)|*.txt";
+                            dlg.DefaultExt = "txt";
                             break;
                         case Core.Export.ExportFormat.Html:
                             dlg.Filter = "HTML (*.html)|*.html";
@@ -7718,7 +7718,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 if (result.TotalImported == 0)
                 {
                     ctrl.AppendLog("No segments parsed from the file. " +
-                        "Check that it's a Supervertaler-exported DOCX or Markdown.", true);
+                        "Check that it's a Supervertaler-exported DOCX or Bilingual Text (.txt) file.", true);
                     return;
                 }
 

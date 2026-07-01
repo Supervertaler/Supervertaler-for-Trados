@@ -39,10 +39,10 @@ namespace Supervertaler.Trados.Core.Export
         {
             switch (format)
             {
-                case ExportFormat.Docx:     return new DocxRenderer();
-                case ExportFormat.Markdown: return new MarkdownRenderer();
-                case ExportFormat.Html:     return new HtmlRenderer();
-                default:                    return new MarkdownRenderer();
+                case ExportFormat.Docx: return new DocxRenderer();
+                case ExportFormat.Text: return new BilingualTextRenderer();
+                case ExportFormat.Html: return new HtmlRenderer();
+                default:                return new DocxRenderer();
             }
         }
 
@@ -97,11 +97,9 @@ namespace Supervertaler.Trados.Core.Export
         public static string DefaultFileName(ExportOptions opts)
         {
             var safe = SanitiseForFileName(opts.ProjectName);
-            var layoutSuffix = opts.Layout == ExportLayout.Table ? "_bilingual" :
-                               opts.Layout == ExportLayout.StackedSourceTop ? "_bilingual_source_top" :
-                               "_bilingual_target_top";
+            var layoutSuffix = opts.Format == ExportFormat.Text ? "_bilingual_text" : "_bilingual";
             var ext = opts.Format == ExportFormat.Docx ? ".docx" :
-                      opts.Format == ExportFormat.Markdown ? ".md" : ".html";
+                      opts.Format == ExportFormat.Text ? ".txt" : ".html";
             return safe + layoutSuffix + ext;
         }
 

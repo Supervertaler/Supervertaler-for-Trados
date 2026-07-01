@@ -11,20 +11,13 @@ namespace Supervertaler.Trados.Core.Export
 {
     /// <summary>
     /// Renders bilingual data as a Word (.docx) document using
-    /// DocumentFormat.OpenXml. Two shapes:
-    ///
-    /// 1. <see cref="ExportLayout.Table"/> — a 5-column table matching
-    ///    the Supervertaler Workbench's "Bilingual Table" format
-    ///    (columns: #, Source, Target, Status, Notes). This is the
-    ///    canonical round-trippable shape — files exported from the
-    ///    Trados plugin can be re-imported by Supervertaler Workbench
-    ///    and vice versa, as long as the structure is preserved.
-    ///
-    /// 2. Stacked layouts — segment number, source paragraph, target
-    ///    paragraph (or target above source), one segment after the
-    ///    other. Each segment has an invisible bookmark naming it
-    ///    "SV_seg_N" so a future DOCX re-importer can match segments
-    ///    by ID even if surrounding paragraphs are reformatted.
+    /// DocumentFormat.OpenXml, as a 5-column table (columns: #, Source,
+    /// Target, Status, Notes) matching the Supervertaler Workbench's
+    /// "Bilingual Table" format. This is the canonical round-trippable
+    /// shape — files exported from the Trados plugin can be re-imported by
+    /// Supervertaler Workbench and vice versa, as long as the structure is
+    /// preserved. (The old stacked layouts were retired in favour of the
+    /// Text (.txt) format; see <see cref="BilingualTextRenderer"/>.)
     ///
     /// Note: OpenXml WordprocessingML is verbose; keep formatting
     /// minimal here. The DOCX is a deliverable, not a place to
@@ -51,22 +44,12 @@ namespace Supervertaler.Trados.Core.Export
 
                 AppendHeader(mainPart, body, options, segments.Count);
 
-                switch (options.Layout)
-                {
-                    case ExportLayout.Table:
-                        AppendBilingualTable(body, segments, options);
-                        break;
-                    case ExportLayout.StackedTargetTop:
-                        AppendStacked(body, segments, options, targetFirst: true);
-                        break;
-                    case ExportLayout.StackedSourceTop:
-                    default:
-                        AppendStacked(body, segments, options, targetFirst: false);
-                        break;
-                }
+                // Only the 5-column Bilingual Table remains; the stacked
+                // layouts were retired in favour of the Text (.txt) format.
+                AppendBilingualTable(body, segments, options);
 
                 // Landscape page setup (better for long segments in table form).
-                AppendSectionProperties(body, options.Layout == ExportLayout.Table);
+                AppendSectionProperties(body, true);
 
                 mainPart.Document.Save();
             }
@@ -285,76 +268,6 @@ namespace Supervertaler.Trados.Core.Export
             body.AppendChild(table);
         }
 
-        // ─── Stacked layouts ──────────────────────────────────────────
-
-        private static void AppendStacked(Body body, List<ExportSegment> segments,
-            ExportOptions opts, bool targetFirst)
-        {
-            foreach (var seg in segments)
-            {
-                // Segment header line — also doubles as anchor for re-import.
-                body.AppendChild(MakeSegmentHeading(seg.Number));
-
-                if (targetFirst)
-                {
-                    AppendStackedTarget(body, seg, opts);
-                    AppendStackedSource(body, seg, opts);
-                }
-                else
-                {
-                    AppendStackedSource(body, seg, opts);
-                    AppendStackedTarget(body, seg, opts);
-                }
-
-                if (!string.IsNullOrEmpty(seg.DisplayStatus))
-                {
-                    body.AppendChild(new Paragraph(
-                        new ParagraphProperties(new SpacingBetweenLines() { After = "120" }),
-                        MakeRun("Status: ", bold: true, fontSize: "16", color: "888888"),
-                        MakeRun(seg.DisplayStatus, fontSize: "16", color: "888888")));
-                }
-
-                // Visual separator between segments.
-                body.AppendChild(new Paragraph(
-                    new ParagraphProperties(
-                        new ParagraphBorders(
-                            new TopBorder() { Val = BorderValues.Single, Size = 4, Color = "DDDDDD", Space = 1 })),
-                    MakeRun("")));
-            }
-        }
-
-        private static void AppendStackedSource(Body body, ExportSegment seg, ExportOptions opts)
-        {
-            body.AppendChild(new Paragraph(
-                new ParagraphProperties(new SpacingBetweenLines() { After = "60" }),
-                MakeRun(opts.SourceLanguageDisplay + ":", bold: true, color: "555555")));
-            var sourcePara = new Paragraph(
-                new ParagraphProperties(new SpacingBetweenLines() { After = "180" }));
-            // Carry any paragraph-level formatting (Heading-1 bold,
-            // whole-segment italic) so the stacked source paragraph
-            // matches what Trados renders in its editor.
-            AppendTagAwareRuns(sourcePara, seg.SourceText ?? "",
-                bold: seg.IsBold, italic: seg.IsItalic, underline: seg.IsUnderline);
-            body.AppendChild(sourcePara);
-        }
-
-        private static void AppendStackedTarget(Body body, ExportSegment seg, ExportOptions opts)
-        {
-            body.AppendChild(new Paragraph(
-                new ParagraphProperties(new SpacingBetweenLines() { After = "60" }),
-                MakeRun(opts.TargetLanguageDisplay + ":", bold: true, color: "555555")));
-            var targetPara = new Paragraph(
-                new ParagraphProperties(new SpacingBetweenLines() { After = "180" }));
-            // Tag-aware so <tN> markers come through coloured. Mirrors the
-            // table layout: paragraph-level formatting applies to BOTH the
-            // body text and the red tag markers, so a Heading-1 segment
-            // with inline tags renders as a uniformly-bold cell with red
-            // markers inside.
-            AppendTagAwareRuns(targetPara, seg.TargetText ?? "",
-                bold: seg.IsBold, italic: seg.IsItalic, underline: seg.IsUnderline);
-            body.AppendChild(targetPara);
-        }
-
         // ─── Section / page setup ─────────────────────────────────────
 
         private static void AppendSectionProperties(Body body, bool landscape)
@@ -439,23 +352,6 @@ namespace Supervertaler.Trados.Core.Export
                 new ParagraphProperties(new SpacingBetweenLines() { After = "60" }),
                 MakeRun(key, bold: true),
                 MakeRun(value ?? ""));
-        }
-
-        private static Paragraph MakeSegmentHeading(int number)
-        {
-            // Bookmarks let a future DOCX re-importer locate segments by ID
-            // even if the visible "Segment N" heading is reflowed.
-            var p = new Paragraph();
-            p.AppendChild(new ParagraphProperties(
-                new SpacingBetweenLines() { Before = "200", After = "60" }));
-
-            var bookmarkName = "SV_seg_" + number.ToString(CultureInfo.InvariantCulture);
-            p.AppendChild(new BookmarkStart() { Id = number.ToString(CultureInfo.InvariantCulture), Name = bookmarkName });
-            p.AppendChild(MakeRun(
-                "Segment " + number.ToString(CultureInfo.InvariantCulture),
-                bold: true, fontSize: "22", color: "0066CC"));
-            p.AppendChild(new BookmarkEnd() { Id = number.ToString(CultureInfo.InvariantCulture) });
-            return p;
         }
 
         private static TableCell MakeHeaderCell(string text, int widthPct)

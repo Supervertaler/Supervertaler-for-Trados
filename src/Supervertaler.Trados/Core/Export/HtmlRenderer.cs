@@ -21,19 +21,9 @@ namespace Supervertaler.Trados.Core.Export
             var sb = new StringBuilder();
             AppendHeader(sb, options, segments.Count);
 
-            switch (options.Layout)
-            {
-                case ExportLayout.Table:
-                    AppendTable(sb, segments, options);
-                    break;
-                case ExportLayout.StackedTargetTop:
-                    AppendStacked(sb, segments, options, targetFirst: true);
-                    break;
-                case ExportLayout.StackedSourceTop:
-                default:
-                    AppendStacked(sb, segments, options, targetFirst: false);
-                    break;
-            }
+            // The HTML report always uses the table layout; the stacked
+            // layouts were retired in favour of the Text (.txt) format.
+            AppendTable(sb, segments, options);
 
             AppendFooter(sb);
             File.WriteAllText(outputPath, sb.ToString(), new UTF8Encoding(false));
@@ -87,45 +77,6 @@ namespace Supervertaler.Trados.Core.Export
               .Append(" → ").Append(HtmlEscape(opts.TargetLanguageDisplay)).Append("</div>\n");
             sb.Append("  <div><strong>Segments:</strong> ").Append(total.ToString(CultureInfo.InvariantCulture)).Append("</div>\n");
             sb.Append("</div>\n");
-        }
-
-        private static void AppendStacked(StringBuilder sb, List<ExportSegment> segments,
-            ExportOptions opts, bool targetFirst)
-        {
-            foreach (var seg in segments)
-            {
-                sb.Append("<div class=\"seg\">\n");
-                sb.Append("  <!-- sv-seg:").Append(seg.Number).Append(" -->\n");
-                sb.Append("  <div class=\"num\">Segment ").Append(seg.Number).Append("</div>\n");
-
-                if (targetFirst)
-                {
-                    AppendHtmlTarget(sb, seg, opts);
-                    AppendHtmlSource(sb, seg, opts);
-                }
-                else
-                {
-                    AppendHtmlSource(sb, seg, opts);
-                    AppendHtmlTarget(sb, seg, opts);
-                }
-
-                if (!string.IsNullOrEmpty(seg.DisplayStatus))
-                    sb.Append("  <div class=\"status\">").Append(HtmlEscape(seg.DisplayStatus)).Append("</div>\n");
-
-                sb.Append("</div>\n");
-            }
-        }
-
-        private static void AppendHtmlSource(StringBuilder sb, ExportSegment seg, ExportOptions opts)
-        {
-            sb.Append("  <div class=\"source\"><div class=\"label\">").Append(HtmlEscape(opts.SourceLanguageDisplay))
-              .Append("</div><div class=\"text\">").Append(HtmlEscape(seg.SourceText)).Append("</div></div>\n");
-        }
-
-        private static void AppendHtmlTarget(StringBuilder sb, ExportSegment seg, ExportOptions opts)
-        {
-            sb.Append("  <div class=\"target\"><div class=\"label\">").Append(HtmlEscape(opts.TargetLanguageDisplay))
-              .Append("</div><div class=\"text\">").Append(HtmlEscape(seg.TargetText ?? "")).Append("</div></div>\n");
         }
 
         private static void AppendTable(StringBuilder sb, List<ExportSegment> segments, ExportOptions opts)

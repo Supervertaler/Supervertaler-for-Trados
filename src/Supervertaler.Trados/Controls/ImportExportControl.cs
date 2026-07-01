@@ -29,7 +29,6 @@ namespace Supervertaler.Trados.Controls
     {
         // Config controls.
         private ComboBox _cmbFormat;
-        private ComboBox _cmbLayout;
         private Label _lblRoundTripStatus;   // dynamic "can / cannot be re-imported" hint
         private CheckBox _chkStrictTagCheck;
         private CheckBox _chkIncludeLocked;
@@ -204,44 +203,17 @@ namespace Supervertaler.Trados.Controls
                 Font = bodyFont
             };
             _cmbFormat.Items.Add("Word document (.docx)");
-            _cmbFormat.Items.Add("Markdown (.md)");
+            _cmbFormat.Items.Add("Bilingual Text (AI-friendly) (.txt)");
             _cmbFormat.Items.Add("HTML report (.html, read-only)");
             _cmbFormat.SelectedIndex = 0;
             SizeDropDownToFitItems(_cmbFormat);
             Controls.Add(_cmbFormat);
             y += UiScale.Pixels(30);
 
-            // ─── Layout row ──────────────────────────────────────────
-            var lblLayout = new Label
-            {
-                Text = "Layout:",
-                Location = new Point(leftMargin, y + UiScale.Pixels(4)),
-                AutoSize = false,
-                Width = UiScale.Pixels(70),
-                Font = bodyFont,
-                ForeColor = labelColor
-            };
-            Controls.Add(lblLayout);
-
-            _cmbLayout = new ComboBox
-            {
-                Location = new Point(leftMargin + UiScale.Pixels(72), y),
-                Width = UiScale.Pixels(330),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = bodyFont
-            };
-            // Re-importability depends on Format × Layout, not layout alone
-            // (Markdown round-trips every layout; Word only the 5-column table;
-            // HTML never). So the per-item text no longer claims "round-trippable"
-            // — the dynamic status line below reflects the live selection instead.
-            _cmbLayout.Items.Add("Supervertaler Bilingual Table (5 columns)");
-            _cmbLayout.Items.Add("Stacked — source on top, target below");
-            _cmbLayout.Items.Add("Stacked — target on top, source below");
-            _cmbLayout.Items.Add("Bracketed [SEGMENT NNNN] (AI-friendly, Markdown only)");
-            _cmbLayout.SelectedIndex = 0;
-            SizeDropDownToFitItems(_cmbLayout);
-            Controls.Add(_cmbLayout);
-            y += UiScale.Pixels(30);
+            // Layout is no longer user-selectable: each format has exactly one
+            // layout (DOCX/HTML → 5-column Bilingual Table; Text → bracketed
+            // [SEGMENT NNNN]). The stacked layouts and the standalone Markdown
+            // format were retired to keep the export choices simple.
 
             // ─── Re-import status line ───────────────────────────────
             // Tells the user, for the current Format + Layout, whether the
@@ -259,7 +231,6 @@ namespace Supervertaler.Trados.Controls
             };
             Controls.Add(_lblRoundTripStatus);
             _cmbFormat.SelectedIndexChanged += (s, e) => UpdateRoundTripStatus();
-            _cmbLayout.SelectedIndexChanged += (s, e) => UpdateRoundTripStatus();
             UpdateRoundTripStatus();
             y += UiScale.Pixels(50);
 
@@ -939,7 +910,7 @@ namespace Supervertaler.Trados.Controls
         {
             using (var dlg = new OpenFileDialog())
             {
-                dlg.Filter = "Supported (*.docx;*.md;*.markdown)|*.docx;*.md;*.markdown|Word documents (*.docx)|*.docx|Markdown (*.md;*.markdown)|*.md;*.markdown|All files|*.*";
+                dlg.Filter = "Supported (*.docx;*.txt;*.md;*.markdown)|*.docx;*.txt;*.md;*.markdown|Word documents (*.docx)|*.docx|Bilingual Text (*.txt)|*.txt|Markdown (*.md;*.markdown)|*.md;*.markdown|All files|*.*";
                 dlg.Title = "Choose a Supervertaler bilingual file to re-import";
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
@@ -982,7 +953,7 @@ namespace Supervertaler.Trados.Controls
             switch (_cmbFormat.SelectedIndex)
             {
                 case 0: return ExportFormat.Docx;
-                case 1: return ExportFormat.Markdown;
+                case 1: return ExportFormat.Text;
                 case 2: return ExportFormat.Html;
                 default: return ExportFormat.Docx;
             }
@@ -990,28 +961,24 @@ namespace Supervertaler.Trados.Controls
 
         private ExportLayout SelectedLayout()
         {
-            switch (_cmbLayout.SelectedIndex)
-            {
-                case 0: return ExportLayout.Table;
-                case 1: return ExportLayout.StackedSourceTop;
-                case 2: return ExportLayout.StackedTargetTop;
-                case 3: return ExportLayout.Bracketed;
-                default: return ExportLayout.Table;
-            }
+            // Layout is implied by the format: the Text format uses the
+            // bracketed [SEGMENT NNNN] layout; DOCX and HTML use the table.
+            return SelectedFormat() == ExportFormat.Text
+                ? ExportLayout.Bracketed
+                : ExportLayout.Table;
         }
 
         /// <summary>
-        /// Updates the re-import status line for the current Format + Layout.
-        /// Re-import support is format-driven: Markdown round-trips every layout;
-        /// Word (.docx) round-trips only the 5-column Bilingual Table; HTML is
-        /// always export-only.
+        /// Updates the re-import status line for the current format. Re-import
+        /// support is format-driven: DOCX (Bilingual Table) and Text (bracketed
+        /// [SEGMENT NNNN]) round-trip back into Trados; the HTML report is
+        /// export-only.
         /// </summary>
         private void UpdateRoundTripStatus()
         {
             if (_lblRoundTripStatus == null) return;
 
             var fmt = SelectedFormat();
-            var layout = SelectedLayout();
 
             bool canReimport;
             string msg;
@@ -1021,31 +988,16 @@ namespace Supervertaler.Trados.Controls
                 canReimport = false;
                 msg = "Export only. HTML reports cannot be re-imported.";
             }
-            else if (fmt == ExportFormat.Markdown)
+            else if (fmt == ExportFormat.Text)
             {
                 canReimport = true;
-                msg = "Can be edited and re-imported. Every layout round-trips in Markdown.";
+                msg = "Can be edited (in any text editor or by an AI) and re-imported. "
+                    + "The AI-friendly [SEGMENT NNNN] format round-trips back into Trados.";
             }
             else // Docx
             {
-                if (layout == ExportLayout.Table)
-                {
-                    canReimport = true;
-                    msg = "Can be edited and re-imported back into Trados.";
-                }
-                else
-                {
-                    canReimport = false;
-                    msg = "Export only. In Word, only the Supervertaler Bilingual Table layout "
-                        + "can be re-imported. Switch to that layout, or use Markdown, to round-trip.";
-                }
-            }
-
-            // Bracketed only renders in Markdown; Word/HTML silently fall back to stacked.
-            if (layout == ExportLayout.Bracketed && fmt != ExportFormat.Markdown)
-            {
-                msg += " Bracketed layout applies to Markdown only; the file will use "
-                    + "stacked source-on-top.";
+                canReimport = true;
+                msg = "Can be edited and re-imported back into Trados.";
             }
 
             _lblRoundTripStatus.ForeColor = canReimport
