@@ -5,8 +5,6 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Supervertaler.Trados</RootNamespace>
     <AssemblyName>Supervertaler.Trados</AssemblyName>
-    <Version>4.20.86</Version>
-    <InformationalVersion>4.20.86</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Michael Beijer</Authors>
     <Company>Supervertaler</Company>
@@ -27,6 +25,16 @@
   -->
   <PropertyGroup>
     <TradosStudioVersion Condition="'$(TradosStudioVersion)' == ''">18</TradosStudioVersion>
+  </PropertyGroup>
+
+  <!-- Plugin version ("Option 3"): the MAJOR tracks the Trados Studio major this
+       build targets, so Studio 2024 -> 18.x and Studio 2026 -> 19.x can never
+       collide in the RWS App Store. Defined AFTER TradosStudioVersion above so
+       the token still resolves for IDE builds (which do not pass /p:...). Only
+       the shared 20.86 tail is hand-bumped, via bump_version.py. -->
+  <PropertyGroup>
+    <Version>$(TradosStudioVersion).20.86</Version>
+    <InformationalVersion>$(TradosStudioVersion).20.86</InformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TradosStudioVersion)' == '18'">

@@ -1,6 +1,13 @@
 # Changelog
 
-## [4.20.86] – 2026-07-02
+> **Versioning change (2026-07-02):** from this release on, the plugin's major
+> version tracks the Trados Studio major it targets – **Studio 2024 = 18**,
+> **Studio 2026 = 19** – so the two builds always carry distinct, non-colliding
+> version numbers that share one tail (e.g. `18.20.86` / `19.20.86`). Earlier
+> releases (`4.20.85` and below) used a single independent sequence for both
+> builds.
+
+## [18.20.86 / 19.20.86] – 2026-07-02
 
 ### Fixed (Bilingual re-import · no longer freezes and crashes on large multi-file projects)
 

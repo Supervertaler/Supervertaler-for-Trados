@@ -33,7 +33,9 @@ if sys.stdout.encoding != "utf-8":
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANGELOG = os.path.join(BASE_DIR, "CHANGELOG.md")
-CSPROJ = os.path.join(BASE_DIR, "src", "Supervertaler.Trados", "Supervertaler.Trados.csproj")
+SRC_DIR = os.path.join(BASE_DIR, "src", "Supervertaler.Trados")
+MANIFEST_18 = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
+MANIFEST_19 = os.path.join(SRC_DIR, "pluginpackage.manifest.19.xml")
 DIST_DIR = os.path.join(BASE_DIR, "dist")
 
 # (sdlplugin filename in dist/, zip asset name, human label). The .sdlplugin names are
@@ -49,10 +51,25 @@ PLUGINS = [
 ]
 
 
-def read_current_version():
-    with open(CSPROJ, "r", encoding="utf-8") as f:
+def _read_manifest_three(path):
+    """3-part version from a manifest (18.20.86.0 -> 18.20.86). The .csproj holds
+    a $(TradosStudioVersion) token, so versions are read from the manifests now."""
+    with open(path, "r", encoding="utf-8") as f:
         match = re.search(r"<Version>([\d.]+)</Version>", f.read())
-    return match.group(1) if match else None
+    if not match:
+        return None
+    v = match.group(1)
+    return v[:-2] if v.endswith(".0") else v
+
+
+def read_current_version():
+    """The Studio 2024 (major 18) number — used for the git tag and title."""
+    return _read_manifest_three(MANIFEST_18)
+
+
+def read_current_version_19():
+    """The Studio 2026 (major 19) number — shown alongside in the release body."""
+    return _read_manifest_three(MANIFEST_19)
 
 
 def last_github_tag():
@@ -73,7 +90,9 @@ def parse_changelog():
         text = f.read()
     entries = []
     for part in re.split(r"(?=^## \[)", text, flags=re.MULTILINE):
-        m = re.match(r"^## \[([\d.]+)\]", part)
+        # Headers are "## [18.x / 19.x] - date" (or the older "## [4.x] - date");
+        # key on the first (Studio 2024) version token.
+        m = re.match(r"^## \[([\d.]+)(?:\s*/\s*[\d.]+)?\]", part)
         if m:
             entries.append((m.group(1), part.strip()))
     return entries
@@ -90,14 +109,14 @@ def select_entries(entries, since):
     return selected, versions
 
 
-def build_body(version, selected):
+def build_body(version, version19, selected):
     span = (f"{selected[-1][0]} → {selected[0][0]}"
             if len(selected) > 1 else selected[0][0]) if selected else version
 
     table = "\n".join(f"| `{zip_name}` | {label} |" for _sdl, zip_name, label in PLUGINS)
     changelog = "\n\n".join(content for _v, content in selected) if selected else "_See CHANGELOG.md._"
 
-    return f"""Supervertaler for Trados **v{version}** — unsigned builds for Trados Studio 2024 and 2026 (beta) are attached below. Covers {span}.
+    return f"""Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026 beta) — unsigned builds are attached below. Covers {span}.
 
 ## 📦 Installing from here (unsigned build – read first)
 
@@ -154,8 +173,9 @@ def main():
         return
 
     version = read_current_version()
+    version19 = read_current_version_19()
     if not version:
-        print("ERROR: could not read version from .csproj")
+        print("ERROR: could not read version from pluginpackage.manifest.xml")
         sys.exit(1)
 
     if since is None:
@@ -168,7 +188,7 @@ def main():
     print(f"v{version}: baseline = {since or '(none)'}, "
           f"{len(selected)} changelog version(s): {', '.join(v for v, _ in selected) or '—'}")
 
-    body = build_body(version, selected)
+    body = build_body(version, version19, selected)
     body_file = os.path.join(BASE_DIR, f"release-body-v{version}.md")
     with open(body_file, "w", encoding="utf-8") as f:
         f.write(body)

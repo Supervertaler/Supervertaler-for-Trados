@@ -1,13 +1,23 @@
-"""Patch plugin.xml in the Studio 19 build output to reference Studio 19's Sdl.* assemblies.
+"""Patch plugin.xml in the Studio 19 build output for Trados Studio 2026.
 
-The canonical source plugin.xml in src/Supervertaler.Trados/ contains
-``Sdl.*, Version=18.0.0.0`` extension-attribute assembly references (Trados Studio 2024).
-Studio 2026 ships the same Sdl.* assemblies at ``Version=19.0.0.0`` (same PublicKeyToken,
-verified by inspecting Studio19Beta/Sdl.TranslationResourcesApi.dll), so the only thing the
-Studio 19 build needs is a textual ``18.0.0.0`` → ``19.0.0.0`` swap on the Sdl.* refs.
+Two rewrites are applied to the build-output copy only (never the source tree):
 
-Invoked from the .csproj as a post-build step when TradosStudioVersion=19. Operates on
-the file in the build output directory, never on the source-tree copy.
+  (a) Sdl.* framework assembly refs. The canonical source plugin.xml references
+      ``Sdl.*, Version=18.0.0.0`` (Trados Studio 2024). Studio 2026 ships the same
+      Sdl.* assemblies at ``Version=19.0.0.0`` (same PublicKeyToken, verified by
+      inspecting Studio19Beta/Sdl.TranslationResourcesApi.dll), so a textual
+      18.0.0.0 -> 19.0.0.0 swap on those refs is all that is needed.
+
+  (b) The plugin's OWN version. Under the "Option 3" scheme the plugin major
+      tracks the Studio major it targets, so the Studio 2026 build must carry
+      major 19. The source copy is the canonical Studio 2024 build (major 18);
+      here we bump 18.<tail>.0 -> 19.<tail>.0 on both the <plugin version="...">
+      attribute and the Supervertaler.Trados assembly bindings, leaving the
+      shared tail intact. This keeps the manifest version, the plugin.xml version
+      and the compiled assembly identity all consistent at 19.<tail>.0.
+
+Invoked from the .csproj as a post-build step when TradosStudioVersion=19.
+Operates on the file in the build output directory, never on the source-tree copy.
 
 Usage:
     python patch_plugin_xml_for_studio19.py <path/to/output/Supervertaler.Trados.plugin.xml>
@@ -33,16 +43,24 @@ def patch(path: str) -> None:
         encoding = "utf-8"
         write_bom = False
 
-    # Match only Sdl.* assembly references to avoid touching unrelated 18.0.0.0 strings
-    # (the plugin's own version uses a different format and lives in different attrs).
-    pattern = re.compile(r"(Sdl\.[A-Za-z0-9_.]+, Version=)18\.0\.0\.0(,)")
-    new_text, count = pattern.subn(r"\g<1>19.0.0.0\g<2>", text)
+    # (a) Sdl.* framework refs: 18.0.0.0 -> 19.0.0.0. Matches only Sdl.* refs so
+    #     the plugin's own 18.<tail>.0 version (handled below) is left for (b).
+    sdl_re = re.compile(r"(Sdl\.[A-Za-z0-9_.]+, Version=)18\.0\.0\.0(,)")
+    text, count = sdl_re.subn(r"\g<1>19.0.0.0\g<2>", text)
 
-    if count == 0:
-        print(f"  [patch_plugin_xml] WARNING: no Sdl.*, Version=18.0.0.0 refs found in {path}")
+    # (b) The plugin's own version: 18.<tail>.0 -> 19.<tail>.0 on the <plugin>
+    #     attribute and the Supervertaler.Trados assembly bindings. Only the
+    #     leading major changes; the shared tail is preserved.
+    ver_re = re.compile(r'(<plugin\s[^>]*?version=")18\.(\d+\.\d+\.\d+)(")')
+    text, cver = ver_re.subn(r"\g<1>19.\g<2>\g<3>", text)
+    asm_re = re.compile(r"(Supervertaler\.Trados, Version=)18\.(\d+\.\d+\.\d+)(,)")
+    text, casm = asm_re.subn(r"\g<1>19.\g<2>\g<3>", text)
+
+    if count == 0 and cver == 0 and casm == 0:
+        print(f"  [patch_plugin_xml] WARNING: nothing to patch (no 18.* refs) in {path}")
         return
 
-    out = new_text.encode(encoding)
+    out = text.encode(encoding)
     if write_bom:
         bom = b"\xff\xfe" if encoding == "utf-16-le" else b"\xfe\xff"
         out = bom + out
@@ -50,7 +68,8 @@ def patch(path: str) -> None:
     with open(path, "wb") as f:
         f.write(out)
 
-    print(f"  [patch_plugin_xml] Rewrote {count} Sdl.* assembly refs 18.0.0.0 -> 19.0.0.0")
+    print(f"  [patch_plugin_xml] Rewrote {count} Sdl.* refs + {cver} plugin version "
+          f"+ {casm} assembly bindings (major 18 -> 19)")
 
 
 if __name__ == "__main__":

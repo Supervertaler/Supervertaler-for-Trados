@@ -143,31 +143,26 @@ def build_manifest_rels(files):
     )
 
 
-def read_version_from_csproj(build_dir):
-    """Read the <Version> from the .csproj and return it as a 4-part version string."""
-    # Walk up from build_dir to find the .csproj
-    csproj_path = os.path.join(
-        os.path.dirname(os.path.dirname(build_dir)),
-        "Supervertaler.Trados.csproj",
-    )
-    if not os.path.exists(csproj_path):
-        # Fallback: look relative to this script
-        csproj_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "src", "Supervertaler.Trados", "Supervertaler.Trados.csproj",
-        )
-    with open(csproj_path, "r", encoding="utf-8") as f:
+def read_version_from_build_dir(build_dir):
+    """Read the 4-part <Version> from the manifest in the build output.
+
+    The build output's pluginpackage.manifest.xml is the per-Studio-version file
+    (major 18 for Studio 2024, 19 for Studio 2026), so this yields the correct
+    version for whichever build is being packaged. The .csproj no longer holds a
+    literal version — it uses a $(TradosStudioVersion) token — so reading it here
+    would not give a real number.
+    """
+    src = os.path.join(build_dir, "pluginpackage.manifest.xml")
+    if not os.path.exists(src):
+        print(f"ERROR: Manifest not found in build output: {src}")
+        sys.exit(1)
+    with open(src, "r", encoding="utf-8-sig") as f:
         content = f.read()
     match = re.search(r"<Version>([\d.]+)</Version>", content)
     if not match:
-        print("ERROR: Could not find <Version> in .csproj")
+        print("ERROR: Could not find <Version> in build-output manifest")
         sys.exit(1)
-    version = match.group(1)
-    # Ensure 4-part version (e.g. 4.16.0 → 4.16.0.0)
-    parts = version.split(".")
-    while len(parts) < 4:
-        parts.append("0")
-    return ".".join(parts[:4])
+    return match.group(1)
 
 
 def read_manifest_from_build_dir(build_dir):
@@ -202,8 +197,9 @@ def main():
             print(f"ERROR: Missing file: {path}")
             sys.exit(1)
 
-    # Read version from .csproj (for the log line only — manifest comes from build output)
-    version = read_version_from_csproj(build_dir)
+    # Read version from the build-output manifest (for the log line; the manifest
+    # itself is shipped verbatim from the build output below).
+    version = read_version_from_build_dir(build_dir)
     print(f"Creating OPC package: {output_path} (version {version})")
 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:

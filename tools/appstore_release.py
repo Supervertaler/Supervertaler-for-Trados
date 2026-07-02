@@ -1,17 +1,23 @@
 """Generate RWS App Store Manager release info from CHANGELOG.md and build artifacts.
 
-Produces a single Markdown file with all fields needed for the App Store Manager form:
-version number, min/max studio version, checksum, and combined changelog.
+Produces a single Markdown file with the fields needed for the App Store Manager
+form, covering BOTH builds (Studio 2024 = major 18, Studio 2026 = major 19):
+version numbers, min/max studio versions, checksums, and the combined changelog.
 
 Usage:
-    python tools/appstore_release.py                  # all entries since last App Store release
-    python tools/appstore_release.py 4.16.0           # all entries after 4.16.0
-    python tools/appstore_release.py 4.17.0 4.18.3    # entries from 4.17.0 through 4.18.3
+    python tools/appstore_release.py                    # all entries since last release
+    python tools/appstore_release.py 18.16.0            # all entries after 18.16.0
+    python tools/appstore_release.py 18.17.0 18.20.86   # entries from 18.17.0 through 18.20.86
+
+Version numbers are read from the manifests (the .csproj keeps a
+$(TradosStudioVersion) token, so it is not a literal number). Changelog entries
+are headed "## [18.<tail> / 19.<tail>] - date"; the first (Studio 2024) number is
+used for filtering. Older single-number headers (e.g. "## [4.20.85]") still parse.
 
 Output:
-    RWS AppStore/release_notes_v<version>.md
-    (build.sh mirrors the .sdlplugin into the same folder so the
-    AppStore Manager upload has both files in one place to drag from.)
+    RWS AppStore/release_notes_v<studio2024-version>.md
+    (build.sh mirrors both .sdlplugin files into the same folder so the
+    AppStore Manager upload has everything in one place to drag from.)
 """
 import hashlib
 import os
@@ -24,23 +30,25 @@ if sys.stdout.encoding != "utf-8":
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANGELOG = os.path.join(BASE_DIR, "CHANGELOG.md")
-CSPROJ = os.path.join(BASE_DIR, "src", "Supervertaler.Trados", "Supervertaler.Trados.csproj")
-MANIFEST = os.path.join(BASE_DIR, "src", "Supervertaler.Trados", "pluginpackage.manifest.xml")
-SDLPLUGIN = os.path.join(BASE_DIR, "dist", "Supervertaler for Trados.sdlplugin")
+SRC_DIR = os.path.join(BASE_DIR, "src", "Supervertaler.Trados")
+MANIFEST_18 = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
+MANIFEST_19 = os.path.join(SRC_DIR, "pluginpackage.manifest.19.xml")
+SDLPLUGIN_18 = os.path.join(BASE_DIR, "dist", "Supervertaler for Trados.sdlplugin")
+SDLPLUGIN_19 = os.path.join(BASE_DIR, "dist", "Supervertaler for Trados (Studio 2026).sdlplugin")
 OUTPUT_DIR = os.path.join(BASE_DIR, "RWS AppStore")
 
 
-def read_current_version():
-    """Read current version from .csproj (3-part, e.g. 4.18.3)."""
-    with open(CSPROJ, "r", encoding="utf-8") as f:
+def read_manifest_version(path):
+    """Read the 4-part <Version> from a manifest (e.g. 18.20.86.0)."""
+    with open(path, "r", encoding="utf-8") as f:
         text = f.read()
     match = re.search(r"<Version>([\d.]+)</Version>", text)
     return match.group(1) if match else None
 
 
-def read_studio_versions():
-    """Read min/max studio versions from pluginpackage.manifest.xml."""
-    with open(MANIFEST, "r", encoding="utf-8") as f:
+def read_studio_versions(path):
+    """Read min/max studio versions from a manifest."""
+    with open(path, "r", encoding="utf-8") as f:
         text = f.read()
     match = re.search(
         r'<RequiredProduct\s+name="TradosStudio"\s+minversion="([\d.]+)"\s+maxversion="([\d.]+)"',
@@ -63,7 +71,11 @@ def compute_checksum(filepath):
 
 
 def parse_changelog(changelog_path):
-    """Parse CHANGELOG.md into a list of (version, content) tuples."""
+    """Parse CHANGELOG.md into a list of (version, content) tuples.
+
+    Entry headers look like "## [18.20.86 / 19.20.86] - date" (or the older
+    "## [4.20.85] - date"); we key on the FIRST version token in the brackets.
+    """
     with open(changelog_path, "r", encoding="utf-8") as f:
         text = f.read()
 
@@ -71,7 +83,7 @@ def parse_changelog(changelog_path):
     parts = re.split(r"(?=^## \[)", text, flags=re.MULTILINE)
 
     for part in parts:
-        match = re.match(r"^## \[([\d.]+)\]", part)
+        match = re.match(r"^## \[([\d.]+)(?:\s*/\s*[\d.]+)?\]", part)
         if not match:
             continue
         version = match.group(1)
@@ -99,7 +111,7 @@ def collect_sections(entries):
                 continue
             if stripped.startswith("### "):
                 header = stripped[4:].strip().lower()
-                # Allow parenthetical suffixes, e.g. "Fixed (TermLens popup – ...)"
+                # Allow parenthetical suffixes, e.g. "Fixed (TermLens popup - ...)"
                 head_word = header.split("(", 1)[0].strip()
                 if head_word in ("added", "new features"):
                     current_section = "added"
@@ -139,26 +151,30 @@ def main():
         print("ERROR: No changelog entries found")
         sys.exit(1)
 
-    current_version = read_current_version()
-    if not current_version:
-        print("ERROR: Could not read version from .csproj")
+    ver18_four = read_manifest_version(MANIFEST_18)
+    ver19_four = read_manifest_version(MANIFEST_19)
+    if not ver18_four:
+        print("ERROR: Could not read version from pluginpackage.manifest.xml")
         sys.exit(1)
+    # 3-part Studio 2024 number, used for changelog filtering and the filename.
+    ver18_three = ver18_four[:-2] if ver18_four.endswith(".0") else ver18_four
 
-    version_four = current_version + ".0"
-    min_studio, max_studio = read_studio_versions()
-    checksum = compute_checksum(SDLPLUGIN)
+    min18, max18 = read_studio_versions(MANIFEST_18)
+    min19, max19 = read_studio_versions(MANIFEST_19)
+    checksum18 = compute_checksum(SDLPLUGIN_18)
+    checksum19 = compute_checksum(SDLPLUGIN_19)
 
     if len(sys.argv) == 3:
         from_version = sys.argv[1]
         to_version = sys.argv[2]
     elif len(sys.argv) == 2:
         from_version = sys.argv[1]
-        to_version = current_version
+        to_version = ver18_three
     else:
         from_version = None
-        to_version = current_version
+        to_version = ver18_three
 
-    # Filter entries – entries are newest-first in the list
+    # Filter entries - entries are newest-first in the list
     all_versions = [v for v, _ in entries]
 
     if from_version:
@@ -194,14 +210,23 @@ def main():
         sections.append("### Fixed\n" + "\n".join(fixed))
     changelog_text = "\n\n".join(sections)
 
+    build_not_found = "BUILD NOT FOUND - run bash build.sh first"
+
     # Build the full release notes file
     output_lines = []
-    output_lines.append(f"# RWS App Store Manager – v{version_four}")
+    output_lines.append(f"# RWS App Store Manager - v{ver18_three}")
     output_lines.append("")
-    output_lines.append(f"**Version number:** `{version_four}`")
-    output_lines.append(f"**Minimum studio version:** `{min_studio or '?'}`")
-    output_lines.append(f"**Maximum studio version:** `{max_studio or '?'}`")
-    output_lines.append(f"**Checksum:** `{checksum or 'BUILD NOT FOUND – run bash build.sh first'}`")
+    output_lines.append("Two builds ship from this one release (identical feature set, distinct")
+    output_lines.append("version numbers so the App Store never sees a collision):")
+    output_lines.append("")
+    output_lines.append("| Build | Version number | Min studio | Max studio | Checksum (SHA-256) |")
+    output_lines.append("|-------|----------------|------------|------------|--------------------|")
+    output_lines.append(
+        f"| Studio 2024 | `{ver18_four}` | `{min18 or '?'}` | `{max18 or '?'}` | `{checksum18 or build_not_found}` |"
+    )
+    output_lines.append(
+        f"| Studio 2026 | `{ver19_four or '?'}` | `{min19 or '?'}` | `{max19 or '?'}` | `{checksum19 or build_not_found}` |"
+    )
     output_lines.append("")
     output_lines.append("---")
     output_lines.append("")
@@ -215,16 +240,17 @@ def main():
 
     # Write output
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    output_file = os.path.join(OUTPUT_DIR, f"release_notes_v{current_version}.md")
+    output_file = os.path.join(OUTPUT_DIR, f"release_notes_v{ver18_three}.md")
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(full_output)
 
-    print(f"Release notes for v{version_four} (changes: {version_range}):")
+    print(f"Release notes for v{ver18_three} (Studio 2024 {ver18_four} / Studio 2026 {ver19_four}); changes: {version_range}")
     print(f"  Written to: {output_file}")
     print(f"  {len(added)} added, {len(changed)} changed, {len(fixed)} fixed items")
-    if not checksum:
-        print(f"  WARNING: {SDLPLUGIN} not found – run bash build.sh first")
+    for label, cs, sp in (("Studio 2024", checksum18, SDLPLUGIN_18), ("Studio 2026", checksum19, SDLPLUGIN_19)):
+        if not cs:
+            print(f"  WARNING: {sp} not found - run bash build.sh first ({label})")
 
 
 if __name__ == "__main__":

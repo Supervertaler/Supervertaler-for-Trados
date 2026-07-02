@@ -47,26 +47,44 @@ OLD_ROAMING_UNPACKED_18="$APPDATA/Trados/Trados Studio/18/Plugins/Unpacked/Super
 PLUGIN_FILENAME_18="Supervertaler for Trados.sdlplugin"
 PLUGIN_FILENAME_19="Supervertaler for Trados (Studio 2026).sdlplugin"
 
-# Verify all version files are in sync before building.
-CSPROJ_VER=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' "$PROJECT_DIR/Supervertaler.Trados.csproj" | head -1)
+# Verify all version files share one MINOR.PATCH tail before building.
+# "Option 3" scheme: each file's MAJOR is the Studio major it targets — the
+# manifests / plugin.xml carry 18 (Studio 2024) or 19 (Studio 2026), and the
+# .csproj keeps $(TradosStudioVersion) so its major resolves per build. Only the
+# tail is shared and hand-bumped, so that is what we cross-check here (plus a
+# guard that the two manifests carry different majors — a shared major was the
+# exact App Store collision this scheme prevents).
+tail_of() { echo "$1" | sed -n 's/^[0-9][0-9]*\.\([0-9][0-9]*\.[0-9][0-9]*\)\.[0-9][0-9]*$/\1/p'; }
+major_of() { echo "$1" | cut -d. -f1; }
+
+CSPROJ_TAIL=$(sed -n 's|.*<Version>\$(TradosStudioVersion)\.\([0-9][0-9.]*\)</Version>.*|\1|p' "$PROJECT_DIR/Supervertaler.Trados.csproj" | head -1)
 MANIFEST_VER=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' "$PROJECT_DIR/pluginpackage.manifest.xml")
 MANIFEST_VER_19=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' "$PROJECT_DIR/pluginpackage.manifest.19.xml")
 PLUGIN_VER=$(python "$SCRIPT_DIR/tools/read_plugin_version.py" "$PROJECT_DIR/Supervertaler.Trados.plugin.xml" 2>/dev/null || echo "?")
 
-CSPROJ_FOUR="${CSPROJ_VER}.0"
-if [ "$CSPROJ_FOUR" != "$MANIFEST_VER" ] || [ "$CSPROJ_FOUR" != "$MANIFEST_VER_19" ] || [ "$CSPROJ_FOUR" != "$PLUGIN_VER" ]; then
+MANIFEST_TAIL=$(tail_of "$MANIFEST_VER")
+MANIFEST_TAIL_19=$(tail_of "$MANIFEST_VER_19")
+PLUGIN_TAIL=$(tail_of "$PLUGIN_VER")
+
+if [ -z "$CSPROJ_TAIL" ] \
+   || [ "$CSPROJ_TAIL" != "$MANIFEST_TAIL" ] \
+   || [ "$CSPROJ_TAIL" != "$MANIFEST_TAIL_19" ] \
+   || [ "$CSPROJ_TAIL" != "$PLUGIN_TAIL" ] \
+   || [ "$(major_of "$MANIFEST_VER")" = "$(major_of "$MANIFEST_VER_19")" ]; then
     echo ""
     echo "  ERROR: Version mismatch detected!"
-    echo "    .csproj:     $CSPROJ_VER ($CSPROJ_FOUR)"
-    echo "    manifest 18: $MANIFEST_VER"
-    echo "    manifest 19: $MANIFEST_VER_19"
-    echo "    plugin.xml:  $PLUGIN_VER"
+    echo "    .csproj tail: ${CSPROJ_TAIL:-<none>}"
+    echo "    manifest 18:  $MANIFEST_VER  (tail ${MANIFEST_TAIL:-<none>})"
+    echo "    manifest 19:  $MANIFEST_VER_19  (tail ${MANIFEST_TAIL_19:-<none>})"
+    echo "    plugin.xml:   $PLUGIN_VER  (tail ${PLUGIN_TAIL:-<none>})"
     echo ""
-    echo "  Run: python bump_version.py $CSPROJ_VER"
+    echo "  All four must share one MINOR.PATCH tail, and the two manifests must"
+    echo "  carry different majors (18 vs 19)."
+    echo "  Run: python bump_version.py ${CSPROJ_TAIL:-<minor>.<patch>}"
     echo ""
     exit 1
 fi
-echo "  Version check passed: $CSPROJ_FOUR"
+echo "  Version check passed: Studio 2024 $MANIFEST_VER / Studio 2026 $MANIFEST_VER_19"
 echo ""
 
 # Abort if Trados Studio is running — it locks plugin files and prevents
