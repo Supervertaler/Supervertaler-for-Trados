@@ -7651,11 +7651,22 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// changes via <c>ProcessSegmentPair</c> (same writeback path the
         /// batch AI translator uses).
         /// </summary>
+        // Guards the bilingual re-import writeback against re-entrancy: the loop
+        // pumps the message queue (Application.DoEvents) so the Cancel button and
+        // the progress bar stay live, which means a second import request could
+        // otherwise arrive while one is still running.
+        private bool _reimportInProgress;
+
         private void OnBilingualImportRequested(object sender, ImportRequestedEventArgs e)
         {
             SafeInvoke(() =>
             {
                 var ctrl = _control.Value.ImportExportControl;
+                if (_reimportInProgress)
+                {
+                    ctrl.AppendLog("A re-import is already running — please wait for it to finish.", true);
+                    return;
+                }
                 if (_activeDocument == null)
                 {
                     ctrl.AppendLog("No document open.", true);
@@ -7748,11 +7759,39 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 if (dr != DialogResult.OK) return;
 
                 int applied = 0, failed = 0, skippedTagMismatch = 0;
+
+                // Build a (puId/segId → pair) index ONCE. The previous code
+                // called FindSegmentPair for every changed segment, and each
+                // call re-scanned the whole document's SegmentPairs (an
+                // expensive GetParentParagraphUnit per pair) — O(n²), ≈1.4M SDK
+                // model calls on a 1000+-segment merged multi-file document.
+                // That froze the UI thread for minutes and, on 32-bit Trados
+                // Studio 2024, exhausted the ~2 GB address space into a silent
+                // crash.
+                var pairIndex = BuildSegmentPairIndex(ctrl);
+
+                // Workload size for the progress bar (only segments that will
+                // actually be written back).
+                int toApply = 0;
+                foreach (var d in result.Diffs)
+                    if (d.Kind == Core.Export.ImportChangeKind.Changed
+                        || (d.Kind == Core.Export.ImportChangeKind.TagMismatch && !strict))
+                        toApply++;
+
+                bool cancelled = false, stoppedForMemory = false;
+                var progress = new Controls.ReimportProgressForm(Path.GetFileName(e.FilePath), toApply);
+                progress.CancelRequested += (s2, e2) => cancelled = true;
+
+                _reimportInProgress = true;
                 ctrl.SetBusy(true);
                 try
                 {
+                    try { progress.Show(_control.Value); progress.BringToFront(); } catch { }
+                    int processed = 0;
                     foreach (var d in result.Diffs)
                     {
+                        if (cancelled) break;
+
                         // Strict mode: skip TagMismatch entirely.
                         // Permissive mode: treat TagMismatch as Changed.
                         bool isWriteableNow =
@@ -7780,11 +7819,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 "Strict tag-integrity check is OFF; verify Trados QA after import.",
                                 true);
                         }
-                        var pair = FindSegmentPair(d.ParagraphUnitId, d.SegmentId);
-                        if (pair == null)
+                        ISegmentPair pair;
+                        if (!pairIndex.TryGetValue(KeyOf(d.ParagraphUnitId, d.SegmentId), out pair) || pair == null)
                         {
                             ctrl.AppendLog($"Segment {d.Number}: not found in document, skipped.", true);
                             failed++;
+                            processed++;
                             continue;
                         }
                         try
@@ -7875,21 +7915,57 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             ctrl.AppendLog($"Segment {d.Number}: write failed — {ex.Message}", true);
                             failed++;
                         }
+
+                        processed++;
+                        // Every 20 writes: advance the bar, pump the message
+                        // queue so Cancel + repainting stay live, and run the
+                        // 32-bit memory watchdog (a no-op on 64-bit Studio 2026).
+                        if (processed % 20 == 0)
+                        {
+                            try { progress.SetProgress(processed, $"Applying changes… {processed} of {toApply}"); } catch { }
+                            System.Windows.Forms.Application.DoEvents();
+                            if (cancelled) break;
+                            if (Core.MemoryGuard.IsOverSoftLimit())
+                                Core.MemoryGuard.CollectAndCompact();
+                            if (Core.MemoryGuard.IsOverHardLimit())
+                            {
+                                stoppedForMemory = true;
+                                break;
+                            }
+                        }
                     }
                 }
                 finally
                 {
+                    _reimportInProgress = false;
+                    try { progress.Finish(); } catch { }
                     ctrl.SetBusy(false);
                 }
 
                 var otherIssues = result.IssueCount - skippedTagMismatch;
-                var summary = $"Re-import complete: {applied} applied, {failed} failed";
+                var summary = (stoppedForMemory ? "Re-import stopped early: "
+                        : cancelled ? "Re-import cancelled: "
+                        : "Re-import complete: ")
+                    + $"{applied} applied, {failed} failed";
                 if (skippedTagMismatch > 0)
                     summary += $", {skippedTagMismatch} skipped (tag mismatch)";
                 if (otherIssues > 0)
                     summary += $", {otherIssues} other issue(s) skipped";
                 summary += ".";
-                ctrl.AppendLog(summary);
+                ctrl.AppendLog(summary, stoppedForMemory || cancelled);
+
+                if (stoppedForMemory)
+                {
+                    MessageBox.Show(_control.Value,
+                        $"Applied {applied} change(s), then stopped to avoid a 32-bit memory crash " +
+                        "in Trados Studio 2024.\n\n" +
+                        "The remaining changes were NOT applied. To finish them, either:\n" +
+                        "  •  re-run this same re-import in Trados Studio 2026 (64-bit), or\n" +
+                        "  •  open fewer files at once (or one file at a time) and re-import again.\n\n" +
+                        "Re-importing is safe to repeat — already-applied segments simply show as unchanged.",
+                        "Re-import stopped (memory limit)",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             });
         }
 
@@ -8603,26 +8679,40 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// <summary>Find the live <c>ISegmentPair</c> for a given
         /// (paragraph-unit, segment) id pair. Returns <c>null</c> if not
         /// found.</summary>
-        private ISegmentPair FindSegmentPair(string paragraphUnitId, string segmentId)
+        private static string KeyOf(string puId, string segId) =>
+            (puId ?? "") + "/" + (segId ?? "");
+
+        /// <summary>Build a one-shot (puId/segId → pair) lookup for the whole
+        /// active document, so the re-import writeback can resolve each segment
+        /// in O(1) instead of re-scanning every SegmentPair per change (the old
+        /// FindSegmentPair path — O(n²), which froze/crashed on large merged
+        /// multi-file documents). Keeps the FIRST pair for a given key, exactly
+        /// matching FindSegmentPair's old "first match wins" behaviour, and logs
+        /// when keys collide across merged files (paragraph-unit ids are only
+        /// unique within a single .sdlxliff, so a merged multi-file document CAN
+        /// collide — full file-aware routing is a planned follow-up).</summary>
+        private Dictionary<string, ISegmentPair> BuildSegmentPairIndex(Controls.ImportExportControl ctrl)
         {
-            if (_activeDocument == null) return null;
-            if (string.IsNullOrEmpty(paragraphUnitId) || string.IsNullOrEmpty(segmentId)) return null;
+            var index = new Dictionary<string, ISegmentPair>(StringComparer.Ordinal);
+            if (_activeDocument == null) return index;
+            int collisions = 0;
             foreach (var pair in _activeDocument.SegmentPairs)
             {
                 string puId = "", segId = "";
                 try { puId = _activeDocument.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; } catch { }
                 try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
-                if (string.Equals(puId, paragraphUnitId, StringComparison.Ordinal) &&
-                    string.Equals(segId, segmentId, StringComparison.Ordinal))
-                {
-                    return pair;
-                }
+                if (string.IsNullOrEmpty(puId) || string.IsNullOrEmpty(segId)) continue;
+                var key = KeyOf(puId, segId);
+                if (index.ContainsKey(key)) { collisions++; continue; } // first wins (matches old FindSegmentPair)
+                index[key] = pair;
             }
-            return null;
+            if (collisions > 0 && ctrl != null)
+                ctrl.AppendLog(
+                    $"Note: {collisions} segment(s) share a paragraph/segment id across the merged files. " +
+                    "Re-import writes to the first match for those; if a translation lands in the wrong file, " +
+                    "re-import one file at a time. (File-aware routing is a planned improvement.)", true);
+            return index;
         }
-
-        private static string KeyOf(string puId, string segId) =>
-            (puId ?? "") + "/" + (segId ?? "");
 
         /// <summary>Build a unified <see cref="Core.TagInfo"/> dictionary
         /// that combines source-side and target-side tag references. Source

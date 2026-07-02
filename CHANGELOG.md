@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.20.86] – 2026-07-02
+
+### Fixed (Bilingual re-import · no longer freezes and crashes on large multi-file projects)
+
+- **Re-importing a bilingual file into a big merged multi-file project no longer freezes the editor and crashes Trados.** A user re-importing a 1,178-segment, 9-file Bilingual Text (`.txt`) file saw the same segments appear to loop endlessly, then Trados closed with no warning. The cause was the writeback path, not the file (which was structurally perfect): for **every** changed segment it re-scanned the *entire* document's segment list to find the match (an expensive `GetParentParagraphUnit` per segment pair) — roughly **1.4 million SDK model calls** (O(n²)) on a document that size — all on the UI thread, with no memory guardrail. That froze the UI (the "looping" the user saw was a hung, mid-scroll editor) and, on 32-bit Trados Studio 2024, exhausted the ~2 GB address space into a silent crash. Three changes fix it:
+  - **O(1) segment lookup.** The document's segments are now indexed once up front into a `(paragraph-unit-id / segment-id) → segment` map, so each change is resolved by a dictionary lookup instead of a full re-scan. This removes the ~1.4M-call blow-up; the writeback is now linear in the number of changes.
+  - **32-bit memory watchdog.** The writeback now uses the same guard as Batch Translate (added in 4.20.77): it compacts the heap when memory climbs and **stops gracefully with a clear message** before it can crash the 32-bit host, telling you to finish in Trados Studio 2026 (64-bit) or to re-import with fewer files open. A no-op on 64-bit. Re-importing is safe to repeat — already-applied segments come back as "unchanged".
+  - **Responsive progress + Cancel.** A small progress window now shows "Applying changes… N of M" with a **Cancel** button; the loop pumps the UI so it stays responsive instead of appearing frozen.
+- **Collision note for merged files.** Paragraph-unit ids are only unique *within* a single `.sdlxliff`, so a merged multi-file document can in principle have colliding ids across files. Re-import now detects this and logs a note (it writes to the first match; full file-aware routing via the manifest's `SourceFileId` is a planned follow-up). The reported project did not collide — all 1,178 ids were unique — so this is hardening, not the fix for that case.
+
 ## [4.20.85] – 2026-07-01
 
 ### Changed (Bilingual export/import simplified to two round-trippable formats + one report)
