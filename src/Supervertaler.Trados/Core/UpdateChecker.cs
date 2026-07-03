@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
@@ -50,26 +51,46 @@ namespace Supervertaler.Trados.Core
                 entry = await FetchEntryFromApiAsync().ConfigureAwait(false);
                 if (entry != null) SaveCachedEntry(entry);
             }
-            if (entry == null) return null;
-
-            // API returns 4-part versions (e.g. "4.19.22.0"); normalise to 3-part
-            // so the string compare against SkippedUpdateVersion and the assembly
-            // InformationalVersion (which is 3-part) agree.
-            var latestTag = NormaliseVersion(entry.Version);
-            if (string.IsNullOrEmpty(latestTag)) return null;
+            if (entry?.Versions == null || entry.Versions.Length == 0) return null;
 
             var currentVersion = GetCurrentVersion();
             if (string.IsNullOrEmpty(currentVersion)) return null;
+            ParseVersion(currentVersion, out int currentMajor, out _, out _, out _);
 
-            if (CompareVersions(latestTag, currentVersion) <= 0) return null;
+            // Only offer updates that target the SAME Studio generation. The
+            // version major encodes the target Studio (18.x = Studio 2024,
+            // 19.x = Studio 2026), and the AppStore lists every generation's
+            // build side by side. Without this filter a Studio 2024 user (18.x)
+            // gets offered the 19.x build that only runs on Studio 2026.
+            //
+            // API returns 4-part versions (e.g. "18.20.86.0"); NormaliseVersion
+            // trims to 3-part so the compare against SkippedUpdateVersion and the
+            // assembly InformationalVersion (both 3-part) agree.
+            string bestTag = null;
+            string bestDownloadUrl = null;
+            foreach (var cv in entry.Versions)
+            {
+                var tag = NormaliseVersion(cv.Version);
+                if (string.IsNullOrEmpty(tag)) continue;
+                ParseVersion(tag, out int major, out _, out _, out _);
+                if (major != currentMajor) continue;
+                if (bestTag == null || CompareVersions(tag, bestTag) > 0)
+                {
+                    bestTag = tag;
+                    bestDownloadUrl = cv.DownloadUrl;
+                }
+            }
+            if (bestTag == null) return null;
 
-            if (string.Equals(settings.SkippedUpdateVersion, latestTag, StringComparison.OrdinalIgnoreCase))
+            if (CompareVersions(bestTag, currentVersion) <= 0) return null;
+
+            if (string.Equals(settings.SkippedUpdateVersion, bestTag, StringComparison.OrdinalIgnoreCase))
                 return null;
 
-            var releaseUrl = string.Format(ReleaseNotesUrlFormat, latestTag);
-            var pluginUrl = ToHttps(entry.DownloadUrl);
+            var releaseUrl = string.Format(ReleaseNotesUrlFormat, bestTag);
+            var pluginUrl = ToHttps(bestDownloadUrl);
 
-            return (latestTag, releaseUrl, pluginUrl);
+            return (bestTag, releaseUrl, pluginUrl);
         }
 
         /// <summary>
@@ -220,7 +241,9 @@ namespace Supervertaler.Trados.Core
                 if (!File.Exists(CacheFilePath)) return null;
                 var json = File.ReadAllText(CacheFilePath, Encoding.UTF8);
                 var entry = DeserializeCache(json);
-                if (entry == null) return null;
+                // Reject empty/old-schema caches (pre-multi-version) so they get
+                // refetched rather than silently suppressing the update check.
+                if (entry?.Versions == null || entry.Versions.Length == 0) return null;
                 if ((DateTime.UtcNow - entry.FetchedAtUtc).TotalHours >= CacheTtlHours) return null;
                 return entry;
             }
@@ -281,14 +304,25 @@ namespace Supervertaler.Trados.Core
                             if (plugin.Id != PluginId) continue;
                             if (plugin.Versions == null || plugin.Versions.Length == 0) return null;
 
-                            // The API only returns published versions, so index 0
-                            // is always the live one for our plugin.
-                            var v = plugin.Versions[0];
+                            // Keep ALL published versions – the AppStore lists a
+                            // build per Studio generation (18.x, 19.x, …), and the
+                            // caller picks the one matching the installed major.
+                            var versions = new List<CachedVersion>();
+                            foreach (var v in plugin.Versions)
+                            {
+                                if (string.IsNullOrEmpty(v.VersionNumber)) continue;
+                                versions.Add(new CachedVersion
+                                {
+                                    Version = v.VersionNumber,
+                                    DownloadUrl = v.DownloadUrl
+                                });
+                            }
+                            if (versions.Count == 0) return null;
+
                             return new CachedEntry
                             {
                                 FetchedAtUtc = DateTime.UtcNow,
-                                Version = v.VersionNumber,
-                                DownloadUrl = v.DownloadUrl
+                                Versions = versions.ToArray()
                             };
                         }
                     }
@@ -365,6 +399,13 @@ namespace Supervertaler.Trados.Core
             [DataMember(Name = "fetchedAtUtc")]
             public DateTime FetchedAtUtc { get; set; }
 
+            [DataMember(Name = "versions")]
+            public CachedVersion[] Versions { get; set; }
+        }
+
+        [DataContract]
+        private class CachedVersion
+        {
             [DataMember(Name = "version")]
             public string Version { get; set; }
 

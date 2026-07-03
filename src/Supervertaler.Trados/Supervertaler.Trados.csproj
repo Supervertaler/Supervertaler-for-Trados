@@ -31,10 +31,10 @@
        build targets, so Studio 2024 -> 18.x and Studio 2026 -> 19.x can never
        collide in the RWS App Store. Defined AFTER TradosStudioVersion above so
        the token still resolves for IDE builds (which do not pass /p:...). Only
-       the shared 20.86 tail is hand-bumped, via bump_version.py. -->
+       the shared 20.87 tail is hand-bumped, via bump_version.py. -->
   <PropertyGroup>
-    <Version>$(TradosStudioVersion).20.86</Version>
-    <InformationalVersion>$(TradosStudioVersion).20.86</InformationalVersion>
+    <Version>$(TradosStudioVersion).20.87</Version>
+    <InformationalVersion>$(TradosStudioVersion).20.87</InformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TradosStudioVersion)' == '18'">
