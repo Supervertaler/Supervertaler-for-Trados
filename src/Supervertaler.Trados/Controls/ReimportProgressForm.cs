@@ -24,8 +24,17 @@ namespace Supervertaler.Trados.Controls
         public event EventHandler CancelRequested;
 
         public ReimportProgressForm(string fileName, int total)
+            : this("Re-import bilingual file", "Applying changes to " + fileName + "…", total)
         {
-            Text = "Re-import bilingual file";
+        }
+
+        /// <summary>
+        /// Custom-title overload so other writeback loops (e.g. Clipboard Mode
+        /// paste-back) can reuse the same progress window + memory-guard cadence.
+        /// </summary>
+        public ReimportProgressForm(string title, string statusText, int total)
+        {
+            Text = title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
@@ -37,7 +46,7 @@ namespace Supervertaler.Trados.Controls
 
             _status = new Label
             {
-                Text = "Applying changes to " + fileName + "…",
+                Text = statusText,
                 Location = new Point(14, 16),
                 AutoSize = false,
                 Size = new Size(432, 18),

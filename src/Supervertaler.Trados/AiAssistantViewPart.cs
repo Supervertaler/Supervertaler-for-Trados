@@ -4372,6 +4372,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             });
         }
 
+        // Guards the clipboard paste-back writeback against re-entrancy: like the
+        // re-import loop it pumps the message queue (Application.DoEvents) so the
+        // Cancel button and the editor grid stay live, which means a second paste
+        // could otherwise arrive while one is still running.
+        private bool _clipboardPasteInProgress;
+
         private void OnPasteFromClipboardRequested(object sender, EventArgs e)
         {
             SafeInvoke(() =>
@@ -4387,6 +4393,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 if (_activeDocument == null)
                 {
                     batchControl.AppendLog("No document open.", true);
+                    return;
+                }
+
+                if (_clipboardPasteInProgress)
+                {
+                    batchControl.AppendLog("A clipboard paste is already running \u2013 please wait for it to finish.", true);
                     return;
                 }
 
@@ -4413,85 +4425,151 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         return;
                     }
 
-                    // Write translations back to Trados
+                    // Write translations back to Trados. This mutates the live
+                    // Trados document one segment at a time on the UI thread; on
+                    // 32-bit Trados Studio 2024 a large paste-back would spike
+                    // memory and crash (reported: RAM ~1.8 GB, grid looping,
+                    // crash). We use the same safe writeback cadence as the
+                    // bilingual re-import: a progress window + Cancel, message
+                    // pumping so the editor grid stays live, and the 32-bit
+                    // memory watchdog (compact on the soft limit, stop gracefully
+                    // on the hard limit). All a no-op on 64-bit Studio 2026.
                     int success = 0;
                     int failed = 0;
                     int tagWarnings = 0;
+                    int processed = 0;
+                    bool cancelled = false, stoppedForMemory = false;
 
-                    foreach (var pt in parsed)
+                    var progress = new Controls.ReimportProgressForm(
+                        "Paste from Clipboard",
+                        "Writing translations back into Trados…",
+                        parsed.Count);
+                    progress.CancelRequested += (s2, e2) => cancelled = true;
+
+                    _clipboardPasteInProgress = true;
+                    batchControl.EnablePasteButton(false);
+                    try
                     {
-                        // Map 1-based segment number to 0-based index
-                        var segIdx = pt.Number - 1;
-                        if (segIdx < 0 || segIdx >= _clipboardSegments.Count)
-                        {
-                            failed++;
-                            continue;
-                        }
+                        try { progress.Show(_control.Value); progress.BringToFront(); } catch { }
 
-                        var seg = _clipboardSegments[segIdx];
-                        var pair = seg.SegmentPairRef as ISegmentPair;
-                        if (pair == null)
+                        foreach (var pt in parsed)
                         {
-                            failed++;
-                            continue;
-                        }
+                            if (cancelled) break;
 
-                        try
-                        {
-                            _activeDocument.ProcessSegmentPair(pair, "Supervertaler",
-                                (sp, cancel) =>
-                                {
-                                    if (seg.HasTags && seg.TagMap != null && seg.TagMap.Count > 0)
+                            // Map 1-based segment number to 0-based index
+                            var segIdx = pt.Number - 1;
+                            if (segIdx < 0 || segIdx >= _clipboardSegments.Count)
+                            {
+                                failed++;
+                                processed++;
+                                continue;
+                            }
+
+                            var seg = _clipboardSegments[segIdx];
+                            var pair = seg.SegmentPairRef as ISegmentPair;
+                            if (pair == null)
+                            {
+                                failed++;
+                                processed++;
+                                continue;
+                            }
+
+                            try
+                            {
+                                _activeDocument.ProcessSegmentPair(pair, "Supervertaler",
+                                    (sp, cancel) =>
                                     {
-                                        // Validate tags
-                                        if (!SegmentTagHandler.ValidateTagsPresent(pt.Translation, seg.TagMap))
-                                            tagWarnings++;
-
-                                        bool reconstructed = SegmentTagHandler.ReconstructTarget(
-                                            sp.Target, sp.Source, pt.Translation, seg.TagMap);
-
-                                        if (!reconstructed)
+                                        if (seg.HasTags && seg.TagMap != null && seg.TagMap.Count > 0)
                                         {
-                                            var plainTranslation = SegmentTagHandler.StripTagPlaceholders(pt.Translation);
-                                            var textTemplate = SegmentTagHandler.FindFirstText(sp.Source);
-                                            if (textTemplate != null && !string.IsNullOrEmpty(plainTranslation))
+                                            // Validate tags
+                                            if (!SegmentTagHandler.ValidateTagsPresent(pt.Translation, seg.TagMap))
+                                                tagWarnings++;
+
+                                            bool reconstructed = SegmentTagHandler.ReconstructTarget(
+                                                sp.Target, sp.Source, pt.Translation, seg.TagMap);
+
+                                            if (!reconstructed)
+                                            {
+                                                var plainTranslation = SegmentTagHandler.StripTagPlaceholders(pt.Translation);
+                                                var textTemplate = SegmentTagHandler.FindFirstText(sp.Source);
+                                                if (textTemplate != null && !string.IsNullOrEmpty(plainTranslation))
+                                                {
+                                                    sp.Target.Clear();
+                                                    var textClone = (IText)textTemplate.Clone();
+                                                    textClone.Properties.Text = plainTranslation;
+                                                    sp.Target.Add(textClone);
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            var textTpl = SegmentTagHandler.FindFirstText(sp.Source);
+                                            if (textTpl != null && !string.IsNullOrEmpty(pt.Translation))
                                             {
                                                 sp.Target.Clear();
-                                                var textClone = (IText)textTemplate.Clone();
-                                                textClone.Properties.Text = plainTranslation;
+                                                var textClone = (IText)textTpl.Clone();
+                                                textClone.Properties.Text = pt.Translation;
                                                 sp.Target.Add(textClone);
                                             }
                                         }
-                                    }
-                                    else
-                                    {
-                                        var textTpl = SegmentTagHandler.FindFirstText(sp.Source);
-                                        if (textTpl != null && !string.IsNullOrEmpty(pt.Translation))
-                                        {
-                                            sp.Target.Clear();
-                                            var textClone = (IText)textTpl.Clone();
-                                            textClone.Properties.Text = pt.Translation;
-                                            sp.Target.Add(textClone);
-                                        }
-                                    }
-                                });
-                            success++;
+                                    });
+                                success++;
+                            }
+                            catch (Exception ex)
+                            {
+                                batchControl.AppendLog(
+                                    $"Failed to write segment {pt.Number}: {ex.Message}", true);
+                                failed++;
+                            }
+
+                            processed++;
+                            // Every 20 writes: advance the bar, pump the message
+                            // queue so Cancel + the editor grid stay live, and run
+                            // the 32-bit memory watchdog (a no-op on 64-bit).
+                            if (processed % 20 == 0)
+                            {
+                                try { progress.SetProgress(processed, $"Writing translations… {processed} of {parsed.Count}"); } catch { }
+                                System.Windows.Forms.Application.DoEvents();
+                                if (cancelled) break;
+                                if (Core.MemoryGuard.IsOverSoftLimit())
+                                    Core.MemoryGuard.CollectAndCompact();
+                                if (Core.MemoryGuard.IsOverHardLimit())
+                                {
+                                    stoppedForMemory = true;
+                                    break;
+                                }
+                            }
                         }
-                        catch (Exception ex)
-                        {
-                            batchControl.AppendLog(
-                                $"Failed to write segment {pt.Number}: {ex.Message}", true);
-                            failed++;
-                        }
+                    }
+                    finally
+                    {
+                        _clipboardPasteInProgress = false;
+                        try { progress.Finish(); } catch { }
                     }
 
                     // Report results
-                    var msg = $"Imported {success} translation{(success != 1 ? "s" : "")}";
+                    var msg = (stoppedForMemory ? "Paste stopped early – imported "
+                            : cancelled ? "Paste cancelled – imported "
+                            : "Imported ")
+                        + $"{success} translation{(success != 1 ? "s" : "")}";
                     if (failed > 0) msg += $", {failed} failed";
                     if (tagWarnings > 0) msg += $", {tagWarnings} tag warning{(tagWarnings != 1 ? "s" : "")}";
                     var missing = _clipboardSegments.Count - parsed.Count;
                     if (missing > 0) msg += $", {missing} segment{(missing != 1 ? "s" : "")} not found in response";
-                    batchControl.AppendLog(msg + ".");
+                    batchControl.AppendLog(msg + ".", stoppedForMemory || cancelled);
+
+                    if (stoppedForMemory)
+                    {
+                        MessageBox.Show(_control.Value,
+                            $"Applied {success} translation(s), then stopped to avoid a 32-bit memory crash " +
+                            "in Trados Studio 2024.\n\n" +
+                            "The applied segments are now translated in Trados; the rest were left untouched.\n\n" +
+                            "To finish them, either:\n" +
+                            "  •  copy the still-untranslated segments to the clipboard again as a smaller batch and paste back, or\n" +
+                            "  •  continue in Trados Studio 2026 (64-bit), where this limit does not apply.",
+                            "Paste stopped (memory limit)",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
                 }
                 else
                 {

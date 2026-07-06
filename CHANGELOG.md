@@ -7,6 +7,15 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.88 / 19.20.88] – 2026-07-06
+
+### Fixed (Clipboard Mode · paste-back no longer crashes 32-bit Trados on large batches)
+
+- **Pasting a large Clipboard-Mode batch back into Trados Studio 2024 no longer spikes memory and crashes.** After running a Batch Translate in Clipboard Mode and clicking "Paste from Clipboard" to write the LLM's response back, a large batch made the editor grid appear to loop endlessly and Trados closed with RAM up around 1.8 GB – far past what a 32-bit process can safely hold. The paste-back applied every parsed segment on the UI thread with no memory guard, no progress window, and no message pumping, so memory climbed unchecked and the grid never got a chance to repaint. It now uses the same safe writeback system as the bilingual re-import (added in 18.20.86):
+  - **32-bit memory watchdog.** Every 20 segments the writeback compacts the heap when memory climbs (soft limit) and **stops gracefully with a clear message** before it can crash the host (hard limit), telling you to finish the remaining segments as a smaller batch or in Trados Studio 2026 (64-bit). A no-op on 64-bit.
+  - **Responsive progress + Cancel.** A small progress window shows "Writing translations… N of M" with a **Cancel** button; the loop pumps the UI every 20 segments so the editor stays responsive instead of appearing frozen (the "looping" grid).
+  - **Re-entrancy guard.** The paste button is disabled while a paste runs, and a second paste is refused until the first finishes.
+
 ## [18.20.87 / 19.20.87] – 2026-07-04
 
 ### Fixed (Auto-updater · no longer offers the wrong Studio generation)
