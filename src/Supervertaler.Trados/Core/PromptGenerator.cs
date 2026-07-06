@@ -337,6 +337,21 @@ namespace Supervertaler.Trados.Core
                 sb.AppendLine();
             }
 
+            // Translator-supplied briefing (from the AutoPrompt context dialog).
+            // Surfaced as authoritative because the human knows the document's real
+            // purpose better than any inference – this is what lets a user rescue a
+            // misclassified text ("this is creative copy, not a patent").
+            if (!string.IsNullOrWhiteSpace(ctx.UserContextHint))
+            {
+                sb.AppendLine("=== TRANSLATOR-PROVIDED CONTEXT (AUTHORITATIVE) ===");
+                sb.AppendLine("The translator supplied the following briefing about this document. Treat it");
+                sb.AppendLine("as authoritative: where it conflicts with the detected domain or any inference");
+                sb.AppendLine("below, follow the briefing.");
+                sb.AppendLine();
+                sb.AppendLine(ctx.UserContextHint);
+                sb.AppendLine();
+            }
+
             sb.AppendLine("=== DOMAIN-SPECIFIC ROLE ===");
             sb.AppendLine(template.Role);
             sb.AppendLine();
@@ -862,5 +877,12 @@ namespace Supervertaler.Trados.Core
         /// and style guides.
         /// </summary>
         public string KbContext { get; set; }
+
+        /// <summary>
+        /// Optional free-text briefing the translator supplied in the AutoPrompt
+        /// context dialog. Injected as an authoritative context block so it
+        /// overrides the inferred domain where they conflict.
+        /// </summary>
+        public string UserContextHint { get; set; }
     }
 }

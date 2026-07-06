@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.89 / 19.20.89] – 2026-07-06
+
+### Changed (AutoPrompt · AI-based context detection with a confirm step)
+
+- **AutoPrompt now detects the document's context with the AI instead of a keyword heuristic, and lets you confirm or steer it before generating.** Clicking AutoPrompt sends a sample of the source to the model, which classifies the domain and describes the text type; a short "Reading the document…" window shows while it works. A confirm-context dialog then shows the detected domain with a dropdown to correct it and an optional briefing box (e.g. "creative marketing copy, playful tone"), which is fed to the generator as authoritative context. The default is one click straight through (**Generate**). This mirrors the Supervertaler Workbench AutoPrompt and fixes the cases where the old keyword detector misread a document (e.g. a creative text read as a patent). The keyword detector is kept for word/segment statistics and as an offline fallback if the AI call fails; its keyword "tone" read is dropped in favour of the AI's description. Each AutoPrompt run makes one small extra classification call (a few hundred tokens).
+
 ## [18.20.88 / 19.20.88] – 2026-07-06
 
 ### Fixed (Clipboard Mode · paste-back no longer crashes 32-bit Trados on large batches)

@@ -1226,6 +1226,66 @@ namespace Supervertaler.Trados
                         return;
                 }
 
+                // Phase 3c: AI context detection + optional steering. Ask the model
+                // to read a sample of the source and classify the domain + describe
+                // the text type, then let the translator confirm or correct it and
+                // add a short briefing. This replaces the keyword DocumentAnalyzer as
+                // the authoritative domain source (its stats are still used), and
+                // mirrors the Supervertaler Workbench AutoPrompt flow.
+                string detectedDomain = analysis.PrimaryDomain;   // keyword fallback
+                string contextDescription = "";
+                try
+                {
+                    var sample = DocumentContextClassifier.BuildSample(sourceSegments);
+                    if (!string.IsNullOrEmpty(sample))
+                    {
+                        string classifyResp = null;
+                        using (var classifyClient = new LlmClient(provider, model, apiKey, baseUrl))
+                        using (var busy = new Controls.AutoPromptBusyForm(
+                            () => classifyClient.SendPromptAsync(
+                                DocumentContextClassifier.BuildUserPrompt(sample),
+                                DocumentContextClassifier.SystemPrompt,
+                                maxTokens: 300, suppressLog: true)))
+                        {
+                            busy.ShowDialog(_control.Value.FindForm());
+                            classifyResp = busy.Result;
+                        }
+                        DocumentContextClassifier.Parse(classifyResp, out var aiDomain, out var aiDesc);
+                        if (!string.IsNullOrEmpty(aiDomain))
+                        {
+                            detectedDomain = aiDomain;
+                            contextDescription = aiDesc;
+                        }
+                        BridgeLog.Write(
+                            $"[AutoPrompt] AI-detected domain: {detectedDomain}" +
+                            (string.IsNullOrEmpty(contextDescription) ? "" : $" ({contextDescription})"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Classification is best-effort; on any failure fall back to the
+                    // keyword domain and continue.
+                    BridgeLog.Write($"[AutoPrompt] Context classification failed: {ex.Message} – using keyword domain '{detectedDomain}'.");
+                }
+
+                // Confirm-context dialog: let the user override the domain / add a briefing.
+                string userContextHint = "";
+                using (var ctxDlg = new Controls.AutoPromptContextDialog(detectedDomain, contextDescription))
+                {
+                    if (ctxDlg.ShowDialog(_control.Value.FindForm()) != DialogResult.OK)
+                        return;
+                    detectedDomain = ctxDlg.SelectedDomain;
+                    userContextHint = ctxDlg.ContextHint;
+                }
+
+                // Analysis summary for the meta-prompt: the AI's context description
+                // (authoritative text-type read) plus the factual document stats
+                // DocumentAnalyzer still provides. No keyword tone line — the AI's
+                // description now carries the tone/register signal.
+                string analysisSummary = string.IsNullOrEmpty(contextDescription)
+                    ? $"{analysis.SegmentCount:N0} segments | {analysis.WordCount:N0} words"
+                    : $"Context: {contextDescription} | {analysis.SegmentCount:N0} segments | {analysis.WordCount:N0} words";
+
                 // Phase 4: Gather TM reference pairs from translated segments
                 // Respects the "Include TM matches" toggle in AI Settings
                 var includeTm = aiSettings.IncludeTmMatches;
@@ -1244,14 +1304,15 @@ namespace Supervertaler.Trados
                 {
                     SourceLang = sourceLang,
                     TargetLang = targetLang,
-                    DetectedDomain = analysis.PrimaryDomain,
-                    AnalysisSummary = analysis.ToSummary(),
+                    DetectedDomain = detectedDomain,
+                    AnalysisSummary = analysisSummary,
                     SegmentCount = sourceSegments.Count,
                     SourceSegments = sourceSegments,
                     TermbaseTerms = termbaseTerms,
                     TotalTermCount = totalTermCount,
                     TmPairs = tmPairs,
-                    KbContext = kbContext
+                    KbContext = kbContext,
+                    UserContextHint = userContextHint
                 };
 
                 var metaPrompt = PromptGenerator.BuildMetaPrompt(ctx);
