@@ -7,6 +7,15 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.90 / 19.20.90] – 2026-07-10
+
+### Added (GroupShare · SuperSearch can now search your server-based GroupShare TMs)
+
+- **SuperSearch now searches server-based (GroupShare) translation memories, not just local `.sdltm` files.** When your project uses a GroupShare TM, SuperSearch queries it alongside your project files and any local TMs and shows the hits inline. Server-TM results are badged **"GroupShare"** in the Status column so you can tell them apart from local files at a glance, and each appears under its own TM name (e.g. `en-US to nl-BE`) rather than a raw server address. This was the top request from institutional users running GroupShare.
+- **New "GroupShare" tab in Supervertaler Settings, where you enter your server login once.** Trados Studio does not hand its stored server credentials to plugins, so you set the server URL, login provider, username and password here. The password is encrypted at rest with Windows DPAPI (current user) and is never written in clear text. It lives in Settings rather than inside SuperSearch because these credentials are meant to power more GroupShare-aware features over time.
+- **Both GroupShare and Windows (AD) authentication are supported**, via a Login provider dropdown that mirrors GroupShare's own two options – for organisations that authenticate GroupShare against Active Directory.
+- Works on both **Trados Studio 2024 and 2026**. (Under the bonnet, server concordance requests are capped to the GroupShare TM Server's limit so they are not rejected; local TMs are unaffected.)
+
 ## [18.20.89 / 19.20.89] – 2026-07-06
 
 ### Changed (AutoPrompt · AI-based context detection with a confirm step)
