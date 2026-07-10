@@ -893,7 +893,7 @@ namespace Supervertaler.Trados.Controls
 
                 foreach (var tm in _allProjectTms)
                 {
-                    var shortName = Path.GetFileNameWithoutExtension(tm);
+                    var shortName = Core.TmSearcher.DisplayName(tm);
                     bool isChecked = !_excludedTms.Contains(tm);
                     clb.Items.Add(shortName, isChecked);
                 }

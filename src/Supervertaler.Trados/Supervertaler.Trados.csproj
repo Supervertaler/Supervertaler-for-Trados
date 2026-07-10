@@ -44,12 +44,17 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TradosStudioVersion)' == '19'">
-    <TradosStudioPath>C:\Program Files\Trados\Trados Studio\Studio19Beta</TradosStudioPath>
+    <TradosStudioPath>C:\Program Files\Trados\Trados Studio\Studio19</TradosStudioPath>
     <PluginManifestFile>pluginpackage.manifest.19.xml</PluginManifestFile>
     <PlatformTarget>x64</PlatformTarget>
     <BaseOutputPath>bin\Studio19\</BaseOutputPath>
     <DefineConstants>$(DefineConstants);STUDIO19</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DPAPI (ProtectedData) for the encrypted GroupShare password. -->
+    <Reference Include="System.Security" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="Sdl.Core.PluginFramework">
