@@ -110,6 +110,26 @@ namespace Supervertaler.Trados.Core
                 .ToList();
         }
 
+        /// <summary>
+        /// Friendly display name for a TM entry returned by <see cref="FindProjectTms"/>:
+        /// the file name (no extension) for a file-based <c>.sdltm</c>, or the
+        /// GroupShare TM name with a "(GroupShare)" suffix for a server
+        /// <c>sdltm.http(s)://</c> URI. Safe on server URIs, which would otherwise
+        /// throw in <see cref="Path.GetFileNameWithoutExtension"/> (invalid path chars).
+        /// </summary>
+        public static string DisplayName(string tmEntry)
+        {
+            if (string.IsNullOrEmpty(tmEntry)) return "";
+            if (ServerTmClient.IsServerTmUri(tmEntry))
+            {
+                if (ServerTmClient.TryParseServerTmUri(tmEntry, out var sref))
+                    return sref.TmName + " (GroupShare)";
+                return "GroupShare TM";
+            }
+            try { return Path.GetFileNameWithoutExtension(tmEntry); }
+            catch { return tmEntry; }
+        }
+
         private static string ResolveTmUri(string uri, string projectDir)
         {
             if (string.IsNullOrEmpty(uri)) return null;
@@ -200,7 +220,7 @@ namespace Supervertaler.Trados.Core
             var ld = tm.LanguageDirection;
             if (ld == null) return;
 
-            SearchLanguageDirection(ld, tmName, tmPath, query, scope,
+            SearchLanguageDirection(ld, tmName, tmPath, "TM", query, scope,
                 caseSensitive, useRegex, wholeWord, modes, results, ct);
         }
 
@@ -216,7 +236,7 @@ namespace Supervertaler.Trados.Core
             {
                 ct.ThrowIfCancellationRequested();
                 if (ld == null) continue;
-                SearchLanguageDirection(ld, sref.TmName, tmUri, query, scope,
+                SearchLanguageDirection(ld, sref.TmName, tmUri, "GroupShare", query, scope,
                     caseSensitive, useRegex, wholeWord, modes, results, ct);
             }
         }
@@ -228,6 +248,7 @@ namespace Supervertaler.Trados.Core
             ITranslationMemoryLanguageDirection ld,
             string tmName,
             string sourceLabel,
+            string status,
             string query,
             SearchScope scope,
             bool caseSensitive,
@@ -289,7 +310,7 @@ namespace Supervertaler.Trados.Core
                         SourceText = sourceText,
                         TargetText = targetText,
                         MatchScore = r.ScoringResult?.Match ?? 0,
-                        Status = "TM"
+                        Status = status
                     });
                 }
             }
