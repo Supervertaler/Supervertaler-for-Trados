@@ -209,17 +209,28 @@ namespace Supervertaler.Trados.Core
                 var settings = TermLensSettings.Load();
                 var match = settings?.GroupShareServers?
                     .FirstOrDefault(g => HostMatches(g.BaseUrl, baseUri));
-                if (match != null && !string.IsNullOrEmpty(match.Username))
+                if (match != null)
                 {
-                    var pw = DpapiSecret.Unprotect(match.PasswordProtected);
-                    DiagnosticLog.Log("ServerTM", "Using settings-based credential for host "
-                        + baseUri.Host + " (user='" + match.Username + "').");
-                    return new ServerTmCredentials
+                    // "Windows" => AD / Windows authentication (useWindowsCredentials
+                    // = true). Anything else (incl. null from an older settings file)
+                    // => GroupShare/SDL authentication.
+                    bool useWin = string.Equals(match.AuthMode, "Windows", StringComparison.OrdinalIgnoreCase);
+
+                    // GroupShare auth needs a username; Windows auth may also rely on
+                    // the current Windows identity (blank username), so allow that.
+                    if (useWin || !string.IsNullOrEmpty(match.Username))
                     {
-                        UseWindowsCredentials = false,
-                        UserName = match.Username,
-                        Password = pw
-                    };
+                        var pw = DpapiSecret.Unprotect(match.PasswordProtected);
+                        DiagnosticLog.Log("ServerTM", "Using settings-based credential for host "
+                            + baseUri.Host + " (user='" + match.Username + "', auth="
+                            + (useWin ? "Windows" : "GroupShare") + ").");
+                        return new ServerTmCredentials
+                        {
+                            UseWindowsCredentials = useWin,
+                            UserName = match.Username ?? string.Empty,
+                            Password = pw
+                        };
+                    }
                 }
             }
             catch (Exception ex) { DiagnosticLog.Log("ServerTM", "Settings credential lookup failed: " + ex.Message); }

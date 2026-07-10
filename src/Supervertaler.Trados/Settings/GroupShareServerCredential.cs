@@ -16,6 +16,16 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "baseUrl")]
         public string BaseUrl { get; set; } = "";
 
+        /// <summary>
+        /// Login provider: <c>"GroupShare"</c> (SDL/GroupShare authentication, the
+        /// default) or <c>"Windows"</c> (AD / Windows authentication, e.g. FAU).
+        /// Maps to the SDK's <c>TranslationProviderServer useWindowsCredentials</c>
+        /// flag. NB: DataContract deserialization of an older settings file leaves
+        /// this null, which callers treat as "GroupShare".
+        /// </summary>
+        [DataMember(Name = "authMode")]
+        public string AuthMode { get; set; } = "GroupShare";
+
         /// <summary>GroupShare username.</summary>
         [DataMember(Name = "username")]
         public string Username { get; set; } = "";

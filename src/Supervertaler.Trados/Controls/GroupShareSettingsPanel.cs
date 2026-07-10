@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -21,8 +22,13 @@ namespace Supervertaler.Trados.Controls
     public class GroupShareSettingsPanel : UserControl
     {
         private readonly TextBox _txtUrl;
+        private readonly ComboBox _cboAuthMode;
         private readonly TextBox _txtUser;
         private readonly TextBox _txtPassword;
+
+        // Combo index 0 = GroupShare/SDL auth, 1 = Windows/AD auth.
+        private const int AuthIdxGroupShare = 0;
+        private const int AuthIdxWindows = 1;
 
         public GroupShareSettingsPanel()
         {
@@ -76,6 +82,17 @@ namespace Supervertaler.Trados.Controls
             _txtUser = Box();
             _txtPassword = Box(password: true);
 
+            _cboAuthMode = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = UiScale.Pixels(340),
+                Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                Margin = new Padding(0, UiScale.Pixels(4), 0, UiScale.Pixels(4))
+            };
+            _cboAuthMode.Items.Add("GroupShare Authentication");
+            _cboAuthMode.Items.Add("Windows Authentication");
+            _cboAuthMode.SelectedIndex = AuthIdxGroupShare;
+
             int row = 0;
             void AddSpan(Control c) { layout.Controls.Add(c, 0, row); layout.SetColumnSpan(c, 2); row++; }
             void AddField(string label, Control c) { layout.Controls.Add(FieldLabel(label), 0, row); layout.Controls.Add(c, 1, row); row++; }
@@ -83,11 +100,14 @@ namespace Supervertaler.Trados.Controls
             AddSpan(Header("GroupShare server", first: true));
             AddSpan(Hint("Enter your GroupShare login once. SuperSearch uses it to search server-based\r\n"
                        + "translation memories. The password is encrypted (Windows DPAPI) and stored\r\n"
-                       + "only on this machine. Leave all three fields blank to remove the stored login."));
+                       + "only on this machine. Leave all fields blank to remove the stored login."));
             AddField("Server URL:", _txtUrl);
             layout.Controls.Add(Hint("e.g. https://groupshare.example.com/"), 1, row); row++;
+            AddField("Login provider:", _cboAuthMode);
             AddField("Username:", _txtUser);
             AddField("Password:", _txtPassword);
+            layout.Controls.Add(Hint("For Windows (AD) authentication, choose Windows Authentication and enter\r\n"
+                       + "your AD username and password."), 1, row); row++;
 
             Controls.Add(layout);
         }
@@ -97,6 +117,9 @@ namespace Supervertaler.Trados.Controls
         {
             var gs = settings?.GroupShareServers?.FirstOrDefault();
             _txtUrl.Text = gs?.BaseUrl ?? "";
+            _cboAuthMode.SelectedIndex =
+                string.Equals(gs?.AuthMode, "Windows", StringComparison.OrdinalIgnoreCase)
+                    ? AuthIdxWindows : AuthIdxGroupShare;
             _txtUser.Text = gs?.Username ?? "";
             _txtPassword.Text = gs != null ? DpapiSecret.Unprotect(gs.PasswordProtected) : "";
         }
@@ -129,6 +152,7 @@ namespace Supervertaler.Trados.Controls
                 settings.GroupShareServers.Add(gs);
             }
             gs.BaseUrl = url;
+            gs.AuthMode = _cboAuthMode.SelectedIndex == AuthIdxWindows ? "Windows" : "GroupShare";
             gs.Username = user;
             gs.PasswordProtected = DpapiSecret.Protect(pass);
         }
