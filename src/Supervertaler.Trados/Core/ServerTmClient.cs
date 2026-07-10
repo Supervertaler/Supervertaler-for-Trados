@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Sdl.LanguagePlatform.TranslationMemory;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
+using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Core
 {
@@ -201,7 +202,30 @@ namespace Supervertaler.Trados.Core
             var overridden = CredentialResolver?.Invoke(baseUri);
             if (overridden != null) return overridden;
 
-            // 2. Studio's credential store ("Option A").
+            // 2. Settings-based GroupShare credentials (primary, reliable). The
+            //    user enters the server login once; the password is DPAPI-encrypted.
+            try
+            {
+                var settings = TermLensSettings.Load();
+                var match = settings?.GroupShareServers?
+                    .FirstOrDefault(g => HostMatches(g.BaseUrl, baseUri));
+                if (match != null && !string.IsNullOrEmpty(match.Username))
+                {
+                    var pw = DpapiSecret.Unprotect(match.PasswordProtected);
+                    DiagnosticLog.Log("ServerTM", "Using settings-based credential for host "
+                        + baseUri.Host + " (user='" + match.Username + "').");
+                    return new ServerTmCredentials
+                    {
+                        UseWindowsCredentials = false,
+                        UserName = match.Username,
+                        Password = pw
+                    };
+                }
+            }
+            catch (Exception ex) { DiagnosticLog.Log("ServerTM", "Settings credential lookup failed: " + ex.Message); }
+
+            // 3. Studio's credential store (opportunistic fallback; only populated
+            //    when a Supervertaler bridged TM is also in the project).
             var store = _credentialStore;
             if (store == null)
             {
@@ -252,6 +276,13 @@ namespace Supervertaler.Trados.Core
 
             DiagnosticLog.Log("ServerTM", "No GroupShare credential found under any candidate key.");
             return null;
+        }
+
+        private static bool HostMatches(string baseUrl, Uri baseUri)
+        {
+            if (string.IsNullOrEmpty(baseUrl)) return false;
+            try { return string.Equals(new Uri(baseUrl).Host, baseUri.Host, StringComparison.OrdinalIgnoreCase); }
+            catch { return false; }
         }
 
         private static IEnumerable<Uri> CredentialKeyCandidates(Uri baseUri)

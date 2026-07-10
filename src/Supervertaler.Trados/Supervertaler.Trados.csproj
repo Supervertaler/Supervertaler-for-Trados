@@ -52,6 +52,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- DPAPI (ProtectedData) for the encrypted GroupShare password. -->
+    <Reference Include="System.Security" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="Sdl.Core.PluginFramework">
       <HintPath>$(TradosStudioPath)\Sdl.Core.PluginFramework.dll</HintPath>
       <Private>false</Private>

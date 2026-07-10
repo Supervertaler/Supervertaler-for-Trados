@@ -309,6 +309,17 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "aiSettings")]
         public AiSettings AiSettings { get; set; } = new AiSettings();
 
+        // ─── GroupShare server credentials ──────────────────────────
+        /// <summary>
+        /// Stored GroupShare server credentials for SuperSearch's server-based
+        /// TM support (issue #35). Passwords are DPAPI-encrypted. Studio does not
+        /// expose its own credential store to plugin code, so the user enters the
+        /// login once here.
+        /// </summary>
+        [DataMember(Name = "groupShareServers")]
+        public List<GroupShareServerCredential> GroupShareServers { get; set; }
+            = new List<GroupShareServerCredential>();
+
         /// <summary>
         /// Loads settings from disk. Returns default settings if the file doesn't exist or can't be read.
         /// </summary>
@@ -368,6 +379,8 @@ namespace Supervertaler.Trados.Settings
                         s.AiSettings.DisabledAiTermbaseIds = new List<long>();
                     if (s.AiSettings.EnabledAiMultiTermIds == null)
                         s.AiSettings.EnabledAiMultiTermIds = new List<long>();
+                    if (s.GroupShareServers == null)
+                        s.GroupShareServers = new List<GroupShareServerCredential>();
 
                     // Ensure prompt settings have safe defaults
                     if (s.AiSettings.SelectedPromptPath == null)
