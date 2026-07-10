@@ -37,6 +37,15 @@ namespace Supervertaler.Trados.TranslationProviders
             TranslationProviders.TmBridgeLog.Info(
                 "Factory.CreateTranslationProvider: uri=" + (translationProviderUri == null ? "(null)" : translationProviderUri.ToString()));
 
+            // Opportunistically capture Studio's translation-provider credential
+            // store so SuperSearch can reuse the user's already-entered GroupShare
+            // credentials when searching server-based TMs (issue #35, "Option A").
+            // Studio hands us this store whenever it instantiates any provider, so
+            // by the time a project with a GroupShare TM is open it is usually
+            // populated. Best-effort only — ServerTmClient degrades gracefully
+            // (skips server TMs) if no credentials are found.
+            Supervertaler.Trados.Core.ServerTmClient.CaptureCredentialStore(credentialStore);
+
             if (!SupportsTranslationProviderUri(translationProviderUri))
                 throw new ArgumentException(
                     "URI does not match the Supervertaler TM scheme.",
