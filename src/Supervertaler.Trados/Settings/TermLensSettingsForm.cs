@@ -38,6 +38,7 @@ namespace Supervertaler.Trados.Settings
         // Tab control
         private TabControl _tabControl;
         private AiSettingsPanel _aiSettingsPanel;
+        private GroupShareSettingsPanel _groupShareSettingsPanel;
         private PromptManagerPanel _promptManagerPanel;
 
         // TermLens tab controls
@@ -186,6 +187,12 @@ namespace Supervertaler.Trados.Settings
             };
             aiPage.Controls.Add(_aiSettingsPanel);
             _tabControl.TabPages.Add(aiPage);
+
+            // --- GroupShare tab ---
+            var groupSharePage = new TabPage("GroupShare") { BackColor = Color.White };
+            _groupShareSettingsPanel = new GroupShareSettingsPanel { Dock = DockStyle.Fill };
+            groupSharePage.Controls.Add(_groupShareSettingsPanel);
+            _tabControl.TabPages.Add(groupSharePage);
 
             // --- Prompts tab ---
             var promptsPage = new TabPage("Prompts") { BackColor = Color.White };
@@ -1270,6 +1277,7 @@ namespace Supervertaler.Trados.Settings
 
             // AI settings
             _aiSettingsPanel.PopulateFromSettings(_settings.AiSettings);
+            _groupShareSettingsPanel.PopulateFromSettings(_settings);
 
             // Prompts – pass per-project active prompt if available
             string projectActivePrompt = null;
@@ -1877,6 +1885,7 @@ namespace Supervertaler.Trados.Settings
 
             // AI settings
             _aiSettingsPanel.ApplyToSettings(_settings.AiSettings);
+            _groupShareSettingsPanel.ApplyToSettings(_settings);
 
             // Prompts
             _promptManagerPanel.ApplyToSettings(_settings.AiSettings);
