@@ -262,28 +262,62 @@ namespace Supervertaler.Trados.Core
             // dedupe on the source/target text pair.
             var seen = new HashSet<string>();
 
+            // Server-TM diagnostics: SearchText behaviour on a GroupShare LD is
+            // the thing we're verifying, so trace each stage when this is a server TM.
+            bool logSrv = status == "GroupShare";
+            int rawTotal = 0, nullTuTotal = 0, addedTotal = 0;
+
             foreach (var mode in modes)
             {
                 ct.ThrowIfCancellationRequested();
 
-                var settings = new SearchSettings
+                SearchResults sr = null;
+                if (logSrv)
                 {
-                    Mode = mode,
-                    MaxResults = 500,
-                    MinScore = 30
-                };
-
-                SearchResults sr;
-                try { sr = ld.SearchText(settings, query); }
-                catch { continue; }
+                    // The GroupShare TM Server rejects concordance requests whose
+                    // MaxResults exceeds its server-side cap with 400 Bad Request
+                    // (Studio's own concordance asks for far fewer). Observed on
+                    // GroupShare 2020 SR1: MaxResults=100 -> 400, MaxResults=50 -> OK.
+                    // So 50 is the primary; 30 is a fallback for any stricter server.
+                    var attempts = new List<SearchSettings>
+                    {
+                        new SearchSettings { Mode = mode, MaxResults = 50, MinScore = 30 },
+                        new SearchSettings { Mode = mode, MaxResults = 30, MinScore = 30 },
+                    };
+                    foreach (var attempt in attempts)
+                    {
+                        try
+                        {
+                            sr = ld.SearchText(attempt, query);
+                            DiagnosticLog.Log("ServerTM", "SearchText(mode=" + mode
+                                + ", MaxResults=" + attempt.MaxResults + ") OK: "
+                                + (sr?.Results?.Count ?? 0) + " raw hit(s).");
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            DiagnosticLog.Log("ServerTM", "SearchText(mode=" + mode
+                                + ", MaxResults=" + attempt.MaxResults + ") THREW: "
+                                + ex.GetType().Name + ": " + ex.Message);
+                            sr = null;
+                        }
+                    }
+                }
+                else
+                {
+                    var settings = new SearchSettings { Mode = mode, MaxResults = 500, MinScore = 30 };
+                    try { sr = ld.SearchText(settings, query); }
+                    catch { continue; }
+                }
                 if (sr?.Results == null) continue;
 
                 foreach (var r in sr.Results)
                 {
                     ct.ThrowIfCancellationRequested();
+                    rawTotal++;
 
                     var tu = r.MemoryTranslationUnit;
-                    if (tu == null) continue;
+                    if (tu == null) { nullTuTotal++; continue; }
 
                     var sourceText = tu.SourceSegment?.ToPlain() ?? "";
                     var targetText = tu.TargetSegment?.ToPlain() ?? "";
@@ -298,6 +332,7 @@ namespace Supervertaler.Trados.Core
                     if (!matches) continue;
 
                     if (!seen.Add(sourceText + "" + targetText)) continue;
+                    addedTotal++;
 
                     results.Add(new SearchResult
                     {
@@ -314,6 +349,10 @@ namespace Supervertaler.Trados.Core
                     });
                 }
             }
+
+            if (logSrv) DiagnosticLog.Log("ServerTM",
+                "TM '" + tmName + "' search summary: raw=" + rawTotal
+                + ", nullTU=" + nullTuTotal + ", added=" + addedTotal + ".");
         }
     }
 }
