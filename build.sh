@@ -13,25 +13,25 @@ DIST_DIR="$SCRIPT_DIR/dist"
 DOTNET="${HOME}/.dotnet/dotnet"
 
 STUDIO18_INSTALL="/c/Program Files (x86)/Trados/Trados Studio/Studio18"
-STUDIO19_INSTALL="/c/Program Files/Trados/Trados Studio/Studio19Beta"
+STUDIO19_INSTALL="/c/Program Files/Trados/Trados Studio/Studio19"
 
 BUILD_DIR_18="$PROJECT_DIR/bin/Studio18/Release"
 BUILD_DIR_19="$PROJECT_DIR/bin/Studio19/Release"
 
 PACKAGES_DIR_18="$LOCALAPPDATA/Trados/Trados Studio/18/Plugins/Packages"
 UNPACKED_DIR_18="$LOCALAPPDATA/Trados/Trados Studio/18/Plugins/Unpacked/Supervertaler for Trados"
-# Studio 2026 Beta uses the "19beta" version key (not "19") and ships its bundled
-# plugins (LanguageWeaver Provider, OpenAI Provider for Trados Studio) in Roaming
-# rather than Local. We deploy to Roaming\19beta to match where the beta actually
-# looks. The matching "stale plugin" cleanups below also clear any leftover Local
-# \19 or Local\19beta copies a previous build.sh attempt may have left behind.
-PACKAGES_DIR_19="$APPDATA/Trados/Trados Studio/19beta/Plugins/Packages"
+# Studio 2026 (release) uses the "19" version key and ships its bundled plugins
+# (AI Bridge, LanguageWeaver Provider) in Roaming\19\Plugins\Packages, so we
+# deploy there to match where Studio 2026 actually looks. (The 2026 *Beta* used
+# a "19beta" key; that build is uninstalled. The "stale plugin" cleanups below
+# also clear any leftover Local\19 / Local\19beta copies from earlier attempts.)
+PACKAGES_DIR_19="$APPDATA/Trados/Trados Studio/19/Plugins/Packages"
 # Studio extracts to Unpacked/<sdlplugin-filename-without-extension>/, NOT to
 # Unpacked/<PlugInName>/. So for "Supervertaler for Trados (Studio 2026).sdlplugin"
 # the extracted folder is "Supervertaler for Trados (Studio 2026)" (with suffix).
 # Targeting the wrong name leaves the old DLL in place; Studio re-loads it
 # without re-extracting from the new .sdlplugin and we keep seeing stale crashes.
-UNPACKED_DIR_19="$APPDATA/Trados/Trados Studio/19beta/Plugins/Unpacked/Supervertaler for Trados (Studio 2026)"
+UNPACKED_DIR_19="$APPDATA/Trados/Trados Studio/19/Plugins/Unpacked/Supervertaler for Trados (Studio 2026)"
 STALE_LOCAL_19_DIR="$LOCALAPPDATA/Trados/Trados Studio/19/Plugins/Packages"
 STALE_LOCAL_19BETA_DIR="$LOCALAPPDATA/Trados/Trados Studio/19beta/Plugins/Packages"
 STALE_LOCAL_19_UNPACKED="$LOCALAPPDATA/Trados/Trados Studio/19/Plugins/Unpacked/Supervertaler for Trados (Studio 2026)"
