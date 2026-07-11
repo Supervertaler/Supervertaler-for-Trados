@@ -230,7 +230,7 @@ if [ -d "$STUDIO19_INSTALL" ]; then
     echo "  Installed: $PACKAGES_DIR_19/$PLUGIN_FILENAME_19"
     echo ""
 else
-    echo "  [Studio19] Trados Studio 2026 Beta not installed at $STUDIO19_INSTALL — skipping 19 build."
+    echo "  [Studio19] Trados Studio 2026 not installed at $STUDIO19_INSTALL — skipping 19 build."
     echo "  Install Studio 2026 to ${STUDIO19_INSTALL/\/c\//C:\\} to enable the 19 build."
     echo ""
 fi

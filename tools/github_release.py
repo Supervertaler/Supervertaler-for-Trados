@@ -46,8 +46,8 @@ PLUGINS = [
      "Supervertaler-for-Trados-Studio-2024.zip",
      "Trados Studio 2024"),
     ("Supervertaler for Trados (Studio 2026).sdlplugin",
-     "Supervertaler-for-Trados-Studio-2026-beta.zip",
-     "Trados Studio 2026 (beta)"),
+     "Supervertaler-for-Trados-Studio-2026.zip",
+     "Trados Studio 2026"),
 ]
 
 
@@ -116,7 +116,7 @@ def build_body(version, version19, selected):
     table = "\n".join(f"| `{zip_name}` | {label} |" for _sdl, zip_name, label in PLUGINS)
     changelog = "\n\n".join(content for _v, content in selected) if selected else "_See CHANGELOG.md._"
 
-    return f"""Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026 beta) — unsigned builds are attached below. Covers {span}.
+    return f"""Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026) — unsigned builds are attached below. Covers {span}.
 
 ## 📦 Installing from here (unsigned build – read first)
 

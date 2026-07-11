@@ -23,7 +23,7 @@ body:
       label: Trados Studio version
       options:
         - Studio 2024
-        - Studio 2026 (beta)
+        - Studio 2026
         - Other / not sure
     validations:
       required: true
