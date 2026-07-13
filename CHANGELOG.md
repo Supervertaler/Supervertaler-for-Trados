@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.92 / 19.20.92] – 2026-07-13
+
+### Fixed (SuperSearch · dialog text no longer clips on high-resolution screens)
+
+- **The "Select translation memories / files to include" pickers now scale their text properly on high-DPI displays.** The instruction line and the buttons had fixed pixel sizes, so on a high-resolution screen the heading was cut off and "Select None" was truncated to "Select". The label and buttons now auto-size to their (scaled) text, and the buttons sit in a proper layout bar, so everything stays readable at any display scaling. Applies to both the Select-TMs and Select-Files dialogs.
+
 ## [18.20.91 / 19.20.91] – 2026-07-13
 
 ### Fixed (SuperSearch · now searches your TMs out of the box)

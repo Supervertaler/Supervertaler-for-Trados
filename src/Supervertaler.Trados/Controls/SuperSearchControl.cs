@@ -743,8 +743,8 @@ namespace Supervertaler.Trados.Controls
                 {
                     Text = "Select which files to include in the search:",
                     Dock = DockStyle.Top,
-                    Height = 28,
-                    Padding = new Padding(8, 8, 8, 0),
+                    AutoSize = true,           // grow to fit the (scaled) text; fixed 28px clipped it on high-DPI
+                    Padding = new Padding(8, 8, 8, 4),
                     ForeColor = TextColor
                 };
                 dlg.Controls.Add(lblInfo);
@@ -766,36 +766,22 @@ namespace Supervertaler.Trados.Controls
                 }
                 dlg.Controls.Add(clb);
 
-                // Bottom panel with Select All / None / OK
-                var bottomPanel = new Panel
-                {
-                    Dock = DockStyle.Bottom,
-                    Height = 40,
-                    BackColor = HeaderBg,
-                    Padding = new Padding(8, 6, 8, 6)
-                };
-
+                // Bottom bar: Select All / Select None / OK (AutoSize, DPI-safe).
                 var btnSelectAll = CreateButton("Select All", dlg.Font, 90, 28);
-                btnSelectAll.Location = new Point(8, 6);
                 btnSelectAll.Click += (s, e) =>
                 {
                     for (int i = 0; i < clb.Items.Count; i++)
                         clb.SetItemChecked(i, true);
                 };
-                bottomPanel.Controls.Add(btnSelectAll);
 
                 var btnSelectNone = CreateButton("Select None", dlg.Font, 100, 28);
-                btnSelectNone.Location = new Point(btnSelectAll.Right + 4, 6);
                 btnSelectNone.Click += (s, e) =>
                 {
                     for (int i = 0; i < clb.Items.Count; i++)
                         clb.SetItemChecked(i, false);
                 };
-                bottomPanel.Controls.Add(btnSelectNone);
 
                 var btnOk = CreateButton("OK", dlg.Font, 70, 28);
-                btnOk.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                btnOk.Location = new Point(bottomPanel.Width - btnOk.Width - 8, 6);
                 btnOk.Click += (s, e) =>
                 {
                     _excludedFiles.Clear();
@@ -807,9 +793,8 @@ namespace Supervertaler.Trados.Controls
                     UpdateFilesButton();
                     dlg.DialogResult = DialogResult.OK;
                 };
-                bottomPanel.Controls.Add(btnOk);
 
-                dlg.Controls.Add(bottomPanel);
+                dlg.Controls.Add(BuildPickerBottomBar(btnSelectAll, btnSelectNone, btnOk, HeaderBg));
                 dlg.AcceptButton = btnOk;
 
                 // Fix z-order
@@ -879,8 +864,8 @@ namespace Supervertaler.Trados.Controls
                 {
                     Text = "Select which translation memories to include in the search:",
                     Dock = DockStyle.Top,
-                    Height = 28,
-                    Padding = new Padding(8, 8, 8, 0),
+                    AutoSize = true,           // grow to fit the (scaled) text; fixed 28px clipped it on high-DPI
+                    Padding = new Padding(8, 8, 8, 4),
                     ForeColor = TextColor
                 };
                 dlg.Controls.Add(lblInfo);
@@ -902,36 +887,22 @@ namespace Supervertaler.Trados.Controls
                 }
                 dlg.Controls.Add(clb);
 
-                // Bottom panel with Select All / None / OK
-                var bottomPanel = new Panel
-                {
-                    Dock = DockStyle.Bottom,
-                    Height = 40,
-                    BackColor = HeaderBg,
-                    Padding = new Padding(8, 6, 8, 6)
-                };
-
+                // Bottom bar: Select All / Select None / OK (AutoSize, DPI-safe).
                 var btnSelectAll = CreateButton("Select All", dlg.Font, 90, 28);
-                btnSelectAll.Location = new Point(8, 6);
                 btnSelectAll.Click += (s, e) =>
                 {
                     for (int i = 0; i < clb.Items.Count; i++)
                         clb.SetItemChecked(i, true);
                 };
-                bottomPanel.Controls.Add(btnSelectAll);
 
                 var btnSelectNone = CreateButton("Select None", dlg.Font, 100, 28);
-                btnSelectNone.Location = new Point(btnSelectAll.Right + 4, 6);
                 btnSelectNone.Click += (s, e) =>
                 {
                     for (int i = 0; i < clb.Items.Count; i++)
                         clb.SetItemChecked(i, false);
                 };
-                bottomPanel.Controls.Add(btnSelectNone);
 
                 var btnOk = CreateButton("OK", dlg.Font, 70, 28);
-                btnOk.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                btnOk.Location = new Point(bottomPanel.Width - btnOk.Width - 8, 6);
                 btnOk.Click += (s, e) =>
                 {
                     _excludedTms.Clear();
@@ -943,9 +914,8 @@ namespace Supervertaler.Trados.Controls
                     UpdateTmsButton();
                     dlg.DialogResult = DialogResult.OK;
                 };
-                bottomPanel.Controls.Add(btnOk);
 
-                dlg.Controls.Add(bottomPanel);
+                dlg.Controls.Add(BuildPickerBottomBar(btnSelectAll, btnSelectNone, btnOk, HeaderBg));
                 dlg.AcceptButton = btnOk;
 
                 // Fix z-order
@@ -1461,6 +1431,49 @@ namespace Supervertaler.Trados.Controls
             btn.FlatAppearance.BorderColor = Color.FromArgb(200, 200, 200);
             btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(230, 230, 230);
             return btn;
+        }
+
+        /// <summary>
+        /// Lays out the "Select All / Select None / OK" bottom bar shared by the
+        /// picker dialogs. Uses a TableLayoutPanel of <b>AutoSize</b> buttons so the
+        /// button labels and the bar height grow with the font on high-DPI / high-
+        /// resolution screens instead of clipping (the fixed-width version truncated
+        /// "Select None" to "Select"). Select All / None sit on the left; a spring
+        /// column pushes OK to the right.
+        /// </summary>
+        private static TableLayoutPanel BuildPickerBottomBar(
+            Button btnSelectAll, Button btnSelectNone, Button btnOk, Color headerBg)
+        {
+            foreach (var b in new[] { btnSelectAll, btnSelectNone, btnOk })
+            {
+                b.MinimumSize = b.Size;                 // keep the base size as a floor
+                b.AutoSize = true;                      // but grow to fit scaled text
+                b.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                b.Margin = new Padding(0, 0, 6, 0);
+                b.Anchor = AnchorStyles.Left;
+            }
+            btnOk.Margin = new Padding(0);
+            btnOk.Anchor = AnchorStyles.Right;
+
+            var bar = new TableLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 4,
+                RowCount = 1,
+                BackColor = headerBg,
+                Padding = new Padding(8, 6, 8, 6)
+            };
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // Select All
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // Select None
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f)); // spring
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // OK
+            bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            bar.Controls.Add(btnSelectAll, 0, 0);
+            bar.Controls.Add(btnSelectNone, 1, 0);
+            bar.Controls.Add(btnOk, 3, 0);
+            return bar;
         }
     }
 
