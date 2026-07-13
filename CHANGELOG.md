@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.91 / 19.20.91] – 2026-07-13
+
+### Fixed (SuperSearch · now searches your TMs out of the box)
+
+- **SuperSearch now searches your translation memories by default, not just the project files.** The search-scope dropdown shipped defaulting to **"Project files"** (SDLXLIFF files only), which silently skipped every TM – so on a fresh install, TM and GroupShare hits never appeared even though the TMs were ticked in the list, and there was no error to explain why. The default is now **"Files + TMs"**, and that option is listed first in the dropdown as the recommended scope. If you had previously left the scope on "Project files", just switch it to "Files + TMs" once (your choice is remembered). "Project files" and "TMs only" remain available for when you want to narrow the search.
+
 ## [18.20.90 / 19.20.90] – 2026-07-10
 
 ### Added (GroupShare · SuperSearch can now search your server-based GroupShare TMs)

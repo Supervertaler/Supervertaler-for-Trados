@@ -202,7 +202,10 @@ namespace Supervertaler.Trados.Controls
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Width = 110
             };
-            _cboMode.Items.AddRange(new object[] { "Project files", "Files + TMs", "TMs only" });
+            // "Files + TMs" first so it reads as the recommended/default scope
+            // (searching both files AND TMs, incl. GroupShare). Index order here
+            // must stay in lockstep with SelectedSourceMode / SetSourceMode below.
+            _cboMode.Items.AddRange(new object[] { "Files + TMs", "Project files", "TMs only" });
             _cboMode.SelectedIndex = 0;
             _cboMode.SelectedIndexChanged += (s, e) =>
             {
@@ -1049,11 +1052,12 @@ namespace Supervertaler.Trados.Controls
         {
             get
             {
+                // Item order: 0 = Files + TMs, 1 = Project files, 2 = TMs only.
                 switch (_cboMode.SelectedIndex)
                 {
-                    case 1: return SuperSearchSourceMode.FilesAndTms;
+                    case 1: return SuperSearchSourceMode.ProjectFiles;
                     case 2: return SuperSearchSourceMode.TmsOnly;
-                    default: return SuperSearchSourceMode.ProjectFiles;
+                    default: return SuperSearchSourceMode.FilesAndTms;
                 }
             }
         }
@@ -1064,12 +1068,13 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public void SetSourceMode(SuperSearchSourceMode mode)
         {
+            // Item order: 0 = Files + TMs, 1 = Project files, 2 = TMs only.
             int idx;
             switch (mode)
             {
-                case SuperSearchSourceMode.FilesAndTms: idx = 1; break;
+                case SuperSearchSourceMode.ProjectFiles: idx = 1; break;
                 case SuperSearchSourceMode.TmsOnly: idx = 2; break;
-                default: idx = 0; break;
+                default: idx = 0; break; // FilesAndTms
             }
 
             // Suppress the ModeChanged event for a programmatic restore.

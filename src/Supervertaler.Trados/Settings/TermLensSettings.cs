@@ -160,11 +160,14 @@ namespace Supervertaler.Trados.Settings
         /// SuperSearch search source: "ProjectFiles" (SDLXLIFF files only),
         /// "FilesAndTms" (files + project translation memories), or "TmsOnly"
         /// (concordance — project TMs only). Persisted until the user changes
-        /// it. Default: "ProjectFiles". Stored as a string for forward
+        /// it. Default: "FilesAndTms" so a fresh install searches BOTH the
+        /// project files and the TMs (incl. GroupShare) out of the box —
+        /// otherwise TM/GroupShare hits silently never appear and users assume
+        /// the TM search is broken. Stored as a string for forward
         /// compatibility with future modes.
         /// </summary>
         [DataMember(Name = "superSearchMode")]
-        public string SuperSearchMode { get; set; } = "ProjectFiles";
+        public string SuperSearchMode { get; set; } = "FilesAndTms";
 
         // ─── Term shortcut style ────────────────────────────────────────
         /// <summary>
