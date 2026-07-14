@@ -174,6 +174,10 @@ namespace Supervertaler.Trados
                 try { await UsageStatistics.SendPingAsync(); } catch { }
             });
 
+            // One-question dev survey (issue #43) – shown only if there's an
+            // active question the user hasn't answered/dismissed yet.
+            ShowSurveyPrompt(ctrl);
+
             // Load persisted settings – needed even when unlicensed so the
             // settings dialog can open and let the user enter a license key.
             _settings = TermLensSettings.Load();
@@ -2793,6 +2797,121 @@ namespace Supervertaler.Trados
                 }
                 catch { }
             });
+        }
+
+        /// <summary>
+        /// Shows the one-question dev survey (issue #43) if the worker has an
+        /// active question this user hasn't answered or dismissed. Non-blocking,
+        /// fails silent, and never nags: a question is re-asked on at most 3
+        /// startups until answered or "Don't ask again". Anonymous — only the
+        /// existing usage-stats UUID and a coarse licence tier are sent.
+        /// </summary>
+        private void ShowSurveyPrompt(TermLensControl ctrl)
+        {
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var survey = await SurveyClient.GetActiveSurveyAsync("trados");
+                    if (survey == null) return;
+
+                    var settings = TermLensSettings.Load();
+                    if (settings.AnsweredSurveyIds != null &&
+                        settings.AnsweredSurveyIds.Contains(survey.SurveyId))
+                        return;
+
+                    // Re-ask at most 3 startups until answered / dismissed.
+                    var key = survey.SurveyId.ToString();
+                    int shown = 0;
+                    if (settings.SurveyShownCounts != null &&
+                        settings.SurveyShownCounts.ContainsKey(key))
+                        shown = settings.SurveyShownCounts[key];
+                    if (shown >= 3) return;
+
+                    // Wait for the control's window handle (same pattern as the
+                    // update checker / usage-stats dialogs).
+                    for (int i = 0; i < 30 && !ctrl.IsHandleCreated; i++)
+                        await System.Threading.Tasks.Task.Delay(500);
+                    if (!ctrl.IsHandleCreated) return;
+
+                    // Record the impression now, so an unanswered close still
+                    // counts toward the 3-startup cap.
+                    if (settings.SurveyShownCounts == null)
+                        settings.SurveyShownCounts = new System.Collections.Generic.Dictionary<string, int>();
+                    settings.SurveyShownCounts[key] = shown + 1;
+                    settings.Save();
+
+                    ctrl.BeginInvoke(new Action(() =>
+                    {
+                        using (var dlg = new SurveyDialog(survey.Question, survey.YesLabel, survey.NoLabel, survey.Kind))
+                        {
+                            dlg.ShowDialog();
+
+                            var answer = dlg.Answer;               // yes | no | answered | ignored
+                            var comment = dlg.Comment;
+                            var dontAsk = dlg.DontAskAgain;
+                            bool answered = (answer == "yes" || answer == "no" || answer == "answered");
+
+                            // Ensure an anonymous id exists. Reuse the usage-stats
+                            // UUID — it's just a random id, not tied to the stats
+                            // opt-in — generating one here if the user never opted in.
+                            if (string.IsNullOrEmpty(settings.UsageStatisticsId))
+                                settings.UsageStatisticsId = Guid.NewGuid().ToString("D");
+
+                            // Never show this question again once answered, dismissed
+                            // via "Don't ask again", or shown the full 3 times.
+                            bool stop = answered || dontAsk || (shown + 1) >= 3;
+                            if (stop)
+                            {
+                                if (settings.AnsweredSurveyIds == null)
+                                    settings.AnsweredSurveyIds = new System.Collections.Generic.List<int>();
+                                if (!settings.AnsweredSurveyIds.Contains(survey.SurveyId))
+                                    settings.AnsweredSurveyIds.Add(survey.SurveyId);
+                            }
+                            settings.Save();
+
+                            // Send a response when they actually answered, or when
+                            // they closed it but left a comment worth capturing.
+                            if (answered || !string.IsNullOrEmpty(comment))
+                            {
+                                var response = new SurveyResponse
+                                {
+                                    SurveyId = survey.SurveyId,
+                                    AnonymousId = settings.UsageStatisticsId,
+                                    Answer = answered ? answer : "ignored",
+                                    Text = comment ?? "",
+                                    Tier = SurveyTierString(),
+                                    Product = "trados",
+                                    PluginVersion = UpdateChecker.GetCurrentVersion() ?? "unknown",
+                                };
+                                System.Threading.Tasks.Task.Run(async () =>
+                                {
+                                    try { await SurveyClient.SendResponseAsync(response); } catch { }
+                                });
+                            }
+                        }
+                    }));
+                }
+                catch
+                {
+                    // Silent – the survey must never disrupt startup.
+                }
+            });
+        }
+
+        /// <summary>Coarse, non-identifying licence tier for a survey response.</summary>
+        private static string SurveyTierString()
+        {
+            try
+            {
+                switch (LicenseManager.Instance.CurrentTier)
+                {
+                    case LicenseTier.Trial: return "trial";
+                    case LicenseTier.None: return "unlicensed";
+                    default: return "licensed"; // Licensed + legacy paid tiers
+                }
+            }
+            catch { return "unknown"; }
         }
 
         private void ShowUpdateDialog(string newVersion, string releaseUrl, string pluginDownloadUrl)

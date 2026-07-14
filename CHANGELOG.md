@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.93 / 19.20.93] – 2026-07-14
+
+### Added (an occasional one-question survey, so I can ask what you think)
+
+- **Once in a while, a small dialog may appear at startup with a single question about Supervertaler's development** – for example, whether you use a particular feature, or what you'd most like improved. You can answer with one click (plus an optional comment), or just close it – it's completely optional and designed to be easy to ignore, and each question is only ever asked once. **No personal data is sent** – only the same anonymous ID and licence/trial status as the existing anonymous usage statistics, nothing that identifies you. Most of the time there is no active question and nothing appears at all. This lets me make better decisions about which features to keep, improve, or retire, based on what people actually use.
+
 ## [18.20.92 / 19.20.92] – 2026-07-13
 
 ### Fixed (SuperSearch · dialog text no longer clips on high-resolution screens)

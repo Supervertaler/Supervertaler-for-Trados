@@ -305,6 +305,24 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "usageStatisticsAskedV2")]
         public bool UsageStatisticsAskedV2 { get; set; } = false;
 
+        // ─── In-app survey (issue #43) ──────────────────────────────
+        /// <summary>
+        /// Survey ids the user has answered or dismissed ("Don't ask again", or
+        /// shown the maximum number of times). A question in this list is never
+        /// shown again.
+        /// </summary>
+        [DataMember(Name = "answeredSurveyIds")]
+        public List<int> AnsweredSurveyIds { get; set; } = new List<int>();
+
+        /// <summary>
+        /// How many times each survey id has been shown without an answer, so an
+        /// ignored question is re-asked at most a few startups rather than nagging
+        /// forever. Keyed by survey id as a string (DataContractJsonSerializer
+        /// dictionary keys must be strings).
+        /// </summary>
+        [DataMember(Name = "surveyShownCounts")]
+        public Dictionary<string, int> SurveyShownCounts { get; set; } = new Dictionary<string, int>();
+
         // ─── AI settings ────────────────────────────────────────────
         /// <summary>
         /// AI provider configuration (API keys, provider selection, model selection).
@@ -424,6 +442,12 @@ namespace Supervertaler.Trados.Settings
                     // Ensure usage statistics ID is never null
                     if (s.UsageStatisticsId == null)
                         s.UsageStatisticsId = "";
+
+                    // Ensure survey collections are never null
+                    if (s.AnsweredSurveyIds == null)
+                        s.AnsweredSurveyIds = new List<int>();
+                    if (s.SurveyShownCounts == null)
+                        s.SurveyShownCounts = new Dictionary<string, int>();
 
                     // Keep the global diagnostic-logging switch in sync with the
                     // persisted preference on every load.
