@@ -123,7 +123,7 @@ def build_body(version, version19, selected):
 
     table = "\n".join(f"| `{zip_name}` | {label} |" for _sdl, zip_name, label in PLUGINS)
     table += f"\n| `{MCPB_NAME}` | AI assistant extension for Claude Desktop (optional, see below) |"
-    table += f"\n| `{MCPB_EXE_ZIP}` | AI assistant server for ChatGPT desktop / other MCP apps (optional, see below) |"
+    table += f"\n| `{MCPB_EXE_ZIP}` | AI assistant server for other local MCP clients, e.g. Claude Code (optional, see below) |"
     changelog = "\n\n".join(content for _v, content in selected) if selected else "_See CHANGELOG.md._"
 
     return f"""Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026) — unsigned builds are attached below. Covers {span}.
