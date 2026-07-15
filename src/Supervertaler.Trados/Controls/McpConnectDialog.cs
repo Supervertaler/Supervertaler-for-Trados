@@ -131,7 +131,7 @@ namespace Supervertaler.Trados.Controls
             var stepHint = new Label
             {
                 Text = "1.  Download the extension file (Supervertaler-MCP-Server.mcpb).\r\n" +
-                       "2.  Double-click it – Claude Desktop installs it as an extension.\r\n" +
+                       "2.  In Claude Desktop, open Settings → Extensions and drag the file onto that page.\r\n" +
                        "3.  Restart Claude Desktop and ask: \"What's the status of my Trados project?\"",
                 AutoSize = true,
                 MaximumSize = new Size(UiScale.Pixels(520), 0),
