@@ -936,7 +936,9 @@ namespace Supervertaler.Trados
                     getSegments: BuildBridgeSegments,
                     getDbPath: ResolveSupervertalerDbPath,
                     updateSegments: BridgeUpdateSegments,
-                    addTerm: BridgeAddTerm);
+                    addTerm: BridgeAddTerm,
+                    getFiles: BuildBridgeFiles,
+                    findInconsistencies: BuildBridgeInconsistencies);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -1197,6 +1199,39 @@ namespace Supervertaler.Trados
                 return response;
             }
 
+            // File filter / attribution (merged multi-file documents). The
+            // pu→file map comes from RefreshFileToSegmentMap (SDLXLIFF GUID
+            // scan); refresh it lazily when the document changed.
+            string filterFileId = null;
+            bool attributeFiles = false;
+            if (!string.IsNullOrEmpty(query.File))
+            {
+                EnsureBridgeFileMapFresh();
+                if (!_perFileMappingWorked)
+                {
+                    response.Available = true;
+                    response.Note = "This document's segments could not be attributed to files, so the " +
+                                    "'file' filter is unavailable – query without it.";
+                    return response;
+                }
+                filterFileId = ResolveBridgeFileId(query.File);
+                if (filterFileId == null)
+                {
+                    response.Available = true;
+                    response.Note = $"No file matching '{query.File}' in this document – call get_files " +
+                                    "for the list of files.";
+                    return response;
+                }
+                attributeFiles = true;
+            }
+            else if (_fileIdToName.Count > 1 || TryGetEnumerable(_activeDocument, "Files") != null)
+            {
+                // Attribute fileName on multi-file documents even without a
+                // filter, so the AI can tell files apart in the results.
+                EnsureBridgeFileMapFresh();
+                attributeFiles = _perFileMappingWorked && _fileIdToName.Count > 1;
+            }
+
             try
             {
                 response.Available = true;
@@ -1205,6 +1240,7 @@ namespace Supervertaler.Trados
                 foreach (var pair in _activeDocument.SegmentPairs)
                 {
                     string source, target, status, id;
+                    string segFileName = null;
                     bool isLocked;
                     try
                     {
@@ -1241,6 +1277,16 @@ namespace Supervertaler.Trados
                         var segId = pair.Properties?.Id.Id ?? "";
                         id = puId + ":" + segId;
                         isLocked = pair.Properties?.IsLocked == true;
+
+                        if (filterFileId != null || attributeFiles)
+                        {
+                            string fid;
+                            _puIdToFileId.TryGetValue(puId, out fid);
+                            if (filterFileId != null && fid != filterFileId)
+                                continue;
+                            if (attributeFiles && fid != null)
+                                _fileIdToName.TryGetValue(fid, out segFileName);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -1263,7 +1309,8 @@ namespace Supervertaler.Trados
                         Source = source,
                         Target = string.IsNullOrEmpty(target) ? null : target,
                         Status = status,
-                        IsLocked = isLocked
+                        IsLocked = isLocked,
+                        FileName = string.IsNullOrEmpty(segFileName) ? null : segFileName
                     });
                 }
 
@@ -1452,6 +1499,271 @@ namespace Supervertaler.Trados
             if (response.Applied > 0)
                 response.Note = "Changes are applied to the open document in Trados Studio; the user still " +
                                 "needs to save the document to persist them. Tell the user exactly what was changed.";
+            return response;
+        }
+
+        /// <summary>Document the pu→file map was last built for. The map itself
+        /// lives in the export-panel fields (_puIdToFileId etc.); this tracker
+        /// lets the bridge refresh it lazily on document switches without
+        /// touching the export code paths.</summary>
+        private IStudioDocument _bridgeFileMapDoc;
+
+        private void EnsureBridgeFileMapFresh()
+        {
+            if (!ReferenceEquals(_bridgeFileMapDoc, _activeDocument) || _fileIdToName.Count == 0)
+            {
+                RefreshFileToSegmentMap();
+                _bridgeFileMapDoc = _activeDocument;
+            }
+        }
+
+        /// <summary>Resolves a get_segments 'file' filter value (file id, exact
+        /// name, or unique name substring, case-insensitive) to a file id.
+        /// Returns null when nothing matches or a substring is ambiguous.</summary>
+        private string ResolveBridgeFileId(string fileRef)
+        {
+            if (string.IsNullOrEmpty(fileRef)) return null;
+
+            if (_fileIdToName.ContainsKey(fileRef)) return fileRef;
+
+            foreach (var kv in _fileIdToName)
+                if (string.Equals(kv.Value, fileRef, StringComparison.OrdinalIgnoreCase))
+                    return kv.Key;
+
+            string match = null;
+            foreach (var kv in _fileIdToName)
+            {
+                if ((kv.Value ?? "").IndexOf(fileRef, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (match != null) return null; // ambiguous substring
+                    match = kv.Key;
+                }
+            }
+            return match;
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/files (MCP get_files). Lists the files
+        /// of the document open in the editor (one for normal documents, many
+        /// for merged documents) with per-file segment counts. Marshals to the
+        /// UI thread.
+        /// </summary>
+        private BridgeFilesResponse BuildBridgeFiles()
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeFilesResponse { Available = false };
+
+            if (ctrl.InvokeRequired)
+            {
+                return (BridgeFilesResponse)ctrl.Invoke(
+                    new Func<BridgeFilesResponse>(BuildBridgeFiles));
+            }
+
+            var response = new BridgeFilesResponse { Available = false, Files = new List<BridgeFileInfo>() };
+            if (_activeDocument == null)
+            {
+                response.Note = "No document is open in the Trados editor.";
+                return response;
+            }
+
+            try
+            {
+                response.Available = true;
+                EnsureBridgeFileMapFresh();
+
+                string activeFileId = null;
+                try
+                {
+                    var af = _activeDocument.ActiveFile;
+                    if (af != null)
+                        activeFileId = TryGetStringProp(af, "Id") ?? TryGetStringProp(af, "FileId");
+                }
+                catch { }
+
+                foreach (var kv in _fileIdToName)
+                {
+                    response.Files.Add(new BridgeFileInfo
+                    {
+                        Id = kv.Key,
+                        Name = kv.Value,
+                        Segments = LookupSegmentCount(kv.Key),
+                        IsActive = kv.Key == activeFileId
+                    });
+                }
+
+                if (response.Files.Count == 0)
+                {
+                    // Single-file document without a Files collection: report
+                    // the active file so the tool always returns something.
+                    response.Files.Add(new BridgeFileInfo
+                    {
+                        Id = activeFileId ?? "",
+                        Name = GetFileName() ?? "(unknown file)",
+                        Segments = 0,
+                        IsActive = true
+                    });
+                    response.Note = "Single-file document.";
+                }
+                else if (!_perFileMappingWorked && response.Files.Count > 1)
+                {
+                    response.Note = "Multiple files, but segments could not be attributed to them – " +
+                                    "the get_segments 'file' filter is unavailable for this document.";
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupervertalerBridge] BuildBridgeFiles threw: {ex.Message}");
+                return new BridgeFilesResponse { Available = false, Note = "error reading files: " + ex.Message };
+            }
+
+            return response;
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/inconsistencies (MCP find_inconsistencies).
+        /// Groups repeated source texts (tag-stripped, trimmed) and reports the
+        /// groups whose non-empty targets differ. Marshals to the UI thread.
+        /// </summary>
+        private BridgeInconsistenciesResponse BuildBridgeInconsistencies(int limit)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeInconsistenciesResponse { Available = false };
+
+            if (ctrl.InvokeRequired)
+            {
+                return (BridgeInconsistenciesResponse)ctrl.Invoke(
+                    new Func<int, BridgeInconsistenciesResponse>(BuildBridgeInconsistencies), limit);
+            }
+
+            var response = new BridgeInconsistenciesResponse
+            {
+                Available = false,
+                Groups = new List<BridgeInconsistencyGroup>()
+            };
+            if (_activeDocument == null)
+            {
+                response.Note = "No document is open in the Trados editor.";
+                return response;
+            }
+
+            try
+            {
+                response.Available = true;
+                EnsureBridgeFileMapFresh();
+                bool attributeFiles = _perFileMappingWorked && _fileIdToName.Count > 1;
+
+                // source text → occurrences, in document order.
+                var groups = new Dictionary<string, List<BridgeInconsistencyOccurrence>>(StringComparer.Ordinal);
+                var order = new List<string>();
+                int processed = 0;
+
+                foreach (var pair in _activeDocument.SegmentPairs)
+                {
+                    processed++;
+                    if (processed % 200 == 0)
+                        System.Windows.Forms.Application.DoEvents();
+
+                    string sourceKey, target, status, id;
+                    string fileName = null;
+                    try
+                    {
+                        // Compare on plain text: tags stripped, whitespace
+                        // collapsed – "same sentence, different bolding" still
+                        // counts as a repetition.
+                        var sourceSer = Core.SegmentTagHandler.Serialize(pair.Source);
+                        sourceKey = System.Text.RegularExpressions.Regex.Replace(
+                            Core.SegmentTagHandler.StripTagPlaceholders(sourceSer.SerializedText ?? ""),
+                            @"\s+", " ").Trim();
+                        if (sourceKey.Length == 0) continue;
+
+                        target = pair.Target != null
+                            ? System.Text.RegularExpressions.Regex.Replace(
+                                Core.SegmentTagHandler.StripTagPlaceholders(
+                                    Core.SegmentTagHandler.Serialize(pair.Target).SerializedText ?? ""),
+                                @"\s+", " ").Trim()
+                            : "";
+                        status = (pair.Properties?.ConfirmationLevel
+                            ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
+
+                        var puId = _activeDocument.GetParentParagraphUnit(pair)
+                            ?.Properties?.ParagraphUnitId.Id ?? "";
+                        var segId = pair.Properties?.Id.Id ?? "";
+                        id = puId + ":" + segId;
+
+                        if (attributeFiles)
+                        {
+                            string fid;
+                            if (_puIdToFileId.TryGetValue(puId, out fid) && fid != null)
+                                _fileIdToName.TryGetValue(fid, out fileName);
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    List<BridgeInconsistencyOccurrence> list;
+                    if (!groups.TryGetValue(sourceKey, out list))
+                    {
+                        list = new List<BridgeInconsistencyOccurrence>();
+                        groups[sourceKey] = list;
+                        order.Add(sourceKey);
+                    }
+                    list.Add(new BridgeInconsistencyOccurrence
+                    {
+                        Id = id,
+                        Target = string.IsNullOrEmpty(target) ? null : target,
+                        Status = status,
+                        FileName = fileName
+                    });
+                }
+
+                // Inconsistent = more than one DISTINCT non-empty target.
+                // Repeated-but-untranslated segments are consistent (so far).
+                foreach (var key in order)
+                {
+                    var occurrences = groups[key];
+                    if (occurrences.Count < 2) continue;
+                    var distinctTargets = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var o in occurrences)
+                        if (!string.IsNullOrEmpty(o.Target))
+                            distinctTargets.Add(o.Target);
+                    if (distinctTargets.Count < 2) continue;
+
+                    response.GroupsFound++;
+                    if (response.Groups.Count >= limit)
+                    {
+                        response.Truncated = true;
+                        continue;
+                    }
+                    response.Groups.Add(new BridgeInconsistencyGroup
+                    {
+                        Source = key,
+                        Occurrences = occurrences
+                    });
+                }
+
+                response.Returned = response.Groups.Count;
+                if (response.GroupsFound == 0)
+                    response.Note = "No inconsistencies: every repeated source segment has a single " +
+                                    "consistent translation (or is not translated yet).";
+                else if (response.Truncated)
+                    response.Note = $"Only the first {response.Returned} of {response.GroupsFound} " +
+                                    "inconsistent groups returned – raise 'limit' to see more.";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SupervertalerBridge] BuildBridgeInconsistencies threw: {ex.Message}");
+                return new BridgeInconsistenciesResponse
+                {
+                    Available = false,
+                    Note = "error finding inconsistencies: " + ex.Message
+                };
+            }
+
             return response;
         }
 

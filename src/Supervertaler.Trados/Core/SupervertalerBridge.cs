@@ -210,6 +210,8 @@ namespace Supervertaler.Trados.Core
     {
         public string Status;
         public string Contains;
+        /// <summary>File id or (partial) file name – restricts results to one file of a merged document.</summary>
+        public string File;
         public int Limit = 200;
         public int Offset;
     }
@@ -223,6 +225,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "target", Order = 2, EmitDefaultValue = false)] public string Target { get; set; }
         [DataMember(Name = "status", Order = 3)] public string Status { get; set; }
         [DataMember(Name = "isLocked", Order = 4, EmitDefaultValue = false)] public bool IsLocked { get; set; }
+        /// <summary>Only set on merged multi-file documents where file attribution worked.</summary>
+        [DataMember(Name = "fileName", Order = 5, EmitDefaultValue = false)] public string FileName { get; set; }
     }
 
     [DataContract]
@@ -255,6 +259,53 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "hits", Order = 2, EmitDefaultValue = false)]
         public List<BridgeTermbaseHit> Hits { get; set; }
         [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeFileInfo
+    {
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "name", Order = 1)] public string Name { get; set; }
+        [DataMember(Name = "segments", Order = 2)] public int Segments { get; set; }
+        [DataMember(Name = "isActive", Order = 3, EmitDefaultValue = false)] public bool IsActive { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeFilesResponse
+    {
+        [DataMember(Name = "available", Order = 0)] public bool Available { get; set; }
+        [DataMember(Name = "files", Order = 1, EmitDefaultValue = false)]
+        public List<BridgeFileInfo> Files { get; set; }
+        [DataMember(Name = "note", Order = 2, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeInconsistencyOccurrence
+    {
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "target", Order = 1, EmitDefaultValue = false)] public string Target { get; set; }
+        [DataMember(Name = "status", Order = 2)] public string Status { get; set; }
+        [DataMember(Name = "fileName", Order = 3, EmitDefaultValue = false)] public string FileName { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeInconsistencyGroup
+    {
+        [DataMember(Name = "source", Order = 0)] public string Source { get; set; }
+        [DataMember(Name = "occurrences", Order = 1)]
+        public List<BridgeInconsistencyOccurrence> Occurrences { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeInconsistenciesResponse
+    {
+        [DataMember(Name = "available", Order = 0)] public bool Available { get; set; }
+        [DataMember(Name = "groupsFound", Order = 1)] public int GroupsFound { get; set; }
+        [DataMember(Name = "returned", Order = 2)] public int Returned { get; set; }
+        [DataMember(Name = "truncated", Order = 3)] public bool Truncated { get; set; }
+        [DataMember(Name = "groups", Order = 4, EmitDefaultValue = false)]
+        public List<BridgeInconsistencyGroup> Groups { get; set; }
+        [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
     // ─── MCP write endpoints (v1: /update-segments, /add-term) ──────────────
@@ -356,6 +407,8 @@ namespace Supervertaler.Trados.Core
         private readonly Func<string> _getDbPath; // resolves supervertaler.db for TM/termbase lookups
         private readonly Func<BridgeUpdateSegmentsRequest, BridgeUpdateSegmentsResponse> _updateSegments;
         private readonly Func<BridgeAddTermRequest, BridgeAddTermResponse> _addTerm;
+        private readonly Func<BridgeFilesResponse> _getFiles;
+        private readonly Func<int, BridgeInconsistenciesResponse> _findInconsistencies;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -376,7 +429,9 @@ namespace Supervertaler.Trados.Core
             Func<BridgeSegmentsQuery, BridgeSegmentsResponse> getSegments = null,
             Func<string> getDbPath = null,
             Func<BridgeUpdateSegmentsRequest, BridgeUpdateSegmentsResponse> updateSegments = null,
-            Func<BridgeAddTermRequest, BridgeAddTermResponse> addTerm = null)
+            Func<BridgeAddTermRequest, BridgeAddTermResponse> addTerm = null,
+            Func<BridgeFilesResponse> getFiles = null,
+            Func<int, BridgeInconsistenciesResponse> findInconsistencies = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -385,6 +440,8 @@ namespace Supervertaler.Trados.Core
             _getDbPath = getDbPath;
             _updateSegments = updateSegments;
             _addTerm = addTerm;
+            _getFiles = getFiles;
+            _findInconsistencies = findInconsistencies;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -612,6 +669,24 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            if (method == "GET" && path == "/v1/files")
+            {
+                HandleGetFiles(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/statistics")
+            {
+                HandleGetStatistics(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/inconsistencies")
+            {
+                HandleGetInconsistencies(context);
+                return;
+            }
+
             TryWriteError(context, 404, "not found");
         }
 
@@ -716,7 +791,8 @@ namespace Supervertaler.Trados.Core
             var query = new BridgeSegmentsQuery
             {
                 Status = qs["status"],
-                Contains = qs["contains"]
+                Contains = qs["contains"],
+                File = qs["file"]
             };
             int limit, offset;
             if (int.TryParse(qs["limit"], out limit) && limit > 0)
@@ -1028,6 +1104,141 @@ namespace Supervertaler.Trados.Core
             }
 
             WriteJson(context, 200, response);
+        }
+
+        private void HandleGetFiles(HttpListenerContext context)
+        {
+            if (_getFiles == null)
+            {
+                TryWriteError(context, 501, "files endpoint not wired");
+                return;
+            }
+
+            BridgeFilesResponse response;
+            try
+            {
+                response = _getFiles() ?? new BridgeFilesResponse { Available = false };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] files provider threw: {ex.Message}");
+                response = new BridgeFilesResponse { Available = false, Note = "error: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleGetStatistics(HttpListenerContext context)
+        {
+            // Statistics come from the .sdlproj / projects.xml on disk via
+            // TradosTools – no editor state needed, so no UI-thread hop for
+            // the numbers themselves. The project name defaults to the one
+            // open in the editor (via the project delegate).
+            var projectName = context.Request.QueryString["project"];
+            if (string.IsNullOrWhiteSpace(projectName))
+            {
+                try { projectName = _getProject?.Invoke()?.Name; } catch { }
+            }
+
+            if (string.IsNullOrWhiteSpace(projectName))
+            {
+                TryWriteError(context, 400,
+                    "no project name given and no project is open in the editor – pass ?project=<name>");
+                return;
+            }
+
+            string stats, fileStatus;
+            try
+            {
+                var input = SerializeProjectNameJson(projectName);
+                stats = TradosTools.ExecuteTool("studio_get_project_statistics", input);
+                fileStatus = TradosTools.ExecuteTool("studio_get_file_status", input);
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] statistics threw: {ex.Message}");
+                TryWriteError(context, 500, "statistics failed: " + ex.Message);
+                return;
+            }
+
+            // TradosTools returns ready-made JSON – embed it verbatim.
+            WriteRawJson(context, 200,
+                "{\"ok\":true,\"project\":" + JsonQuote(projectName) +
+                ",\"analysisStatistics\":" + (stats ?? "null") +
+                ",\"confirmationStatistics\":" + (fileStatus ?? "null") + "}");
+        }
+
+        private void HandleGetInconsistencies(HttpListenerContext context)
+        {
+            if (_findInconsistencies == null)
+            {
+                TryWriteError(context, 501, "inconsistencies endpoint not wired");
+                return;
+            }
+
+            int limit;
+            if (!int.TryParse(context.Request.QueryString["limit"], out limit) || limit <= 0)
+                limit = 50;
+            limit = Math.Min(limit, 200);
+
+            BridgeInconsistenciesResponse response;
+            try
+            {
+                response = _findInconsistencies(limit) ?? new BridgeInconsistenciesResponse { Available = false };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] inconsistencies threw: {ex.Message}");
+                response = new BridgeInconsistenciesResponse
+                {
+                    Available = false,
+                    Note = "error finding inconsistencies: " + ex.Message
+                };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private static string SerializeProjectNameJson(string projectName)
+            => "{\"project_name\":" + JsonQuote(projectName) + "}";
+
+        private static string JsonQuote(string s)
+        {
+            var sb = new StringBuilder("\"");
+            foreach (var c in s ?? "")
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < ' ') sb.AppendFormat("\\u{0:x4}", (int)c);
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.Append('"').ToString();
+        }
+
+        private static void WriteRawJson(HttpListenerContext context, int statusCode, string json)
+        {
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(json);
+                context.Response.StatusCode = statusCode;
+                context.Response.ContentType = "application/json; charset=utf-8";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] WriteRawJson failed: {ex.Message}");
+            }
         }
 
         private string ResolveDbPathSafe()

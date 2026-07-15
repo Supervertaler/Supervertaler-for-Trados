@@ -38,15 +38,52 @@ public static class TradosTools
         int? limit = null,
         [Description("Number of matching segments to skip, for paging (default 0).")]
         int? offset = null,
+        [Description("Only segments from this file of a merged multi-file document – a file id or " +
+                     "(partial) file name from get_files. Omit for all files.")]
+        string? file = null,
         CancellationToken ct = default)
     {
         var query = BuildQuery(
             ("status", status),
             ("contains", contains),
             ("limit", limit?.ToString()),
-            ("offset", offset?.ToString()));
+            ("offset", offset?.ToString()),
+            ("file", file));
         return Safe(() => bridge.GetAsync("/v1/segments" + query, ct));
     }
+
+    [McpServerTool(Name = "get_files"),
+     Description("List the files of the document open in the Trados editor: file id, name, segment count, " +
+                 "and which one is active. Normal documents have one file; merged documents have several. " +
+                 "Use the names/ids with get_segments' 'file' filter to work per file.")]
+    public static Task<string> GetFiles(BridgeClient bridge, CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/files", ct));
+
+    [McpServerTool(Name = "get_project_statistics"),
+     Description("Get the project's analysis statistics (per language direction: perfect/exact/fuzzy/new/" +
+                 "repetition words and segments) and per-file confirmation statistics (not started, draft, " +
+                 "translated, approved, signed off) from the project file on disk. Use this for questions " +
+                 "about word counts, progress, or how much work is left. Defaults to the project open in " +
+                 "the editor.")]
+    public static Task<string> GetProjectStatistics(
+        BridgeClient bridge,
+        [Description("Project name. Omit to use the project open in the Trados editor.")]
+        string? projectName = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/statistics" + BuildQuery(("project", projectName)), ct));
+
+    [McpServerTool(Name = "find_inconsistencies"),
+     Description("Find translation inconsistencies in the document open in the Trados editor: repeated " +
+                 "source segments (compared tag-stripped) whose translations differ. Returns each " +
+                 "inconsistent group with its source text and every occurrence (segment id, target, " +
+                 "status, file). Pair with update_segments to align occurrences after the user chooses " +
+                 "the preferred translation.")]
+    public static Task<string> FindInconsistencies(
+        BridgeClient bridge,
+        [Description("Maximum number of inconsistent groups to return (default 50).")]
+        int? limit = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/inconsistencies" + BuildQuery(("limit", limit?.ToString())), ct));
 
     [McpServerTool(Name = "get_active_segment"),
      Description("Get the segment the translator is working on right now, with its surrounding segments, " +
