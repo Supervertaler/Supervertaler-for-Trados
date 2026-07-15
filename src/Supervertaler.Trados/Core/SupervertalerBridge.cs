@@ -317,6 +317,71 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    /// <summary>Parsed query for GET /v1/qa-check.</summary>
+    public class BridgeQaQuery
+    {
+        /// <summary>"numbers", "tags", or "terminology".</summary>
+        public string Type;
+        public int Limit = 50;
+    }
+
+    [DataContract]
+    public class BridgeQaIssue
+    {
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "status", Order = 1)] public string Status { get; set; }
+        [DataMember(Name = "detail", Order = 2)] public string Detail { get; set; }
+        [DataMember(Name = "source", Order = 3, EmitDefaultValue = false)] public string Source { get; set; }
+        [DataMember(Name = "target", Order = 4, EmitDefaultValue = false)] public string Target { get; set; }
+        [DataMember(Name = "fileName", Order = 5, EmitDefaultValue = false)] public string FileName { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeQaResponse
+    {
+        [DataMember(Name = "available", Order = 0)] public bool Available { get; set; }
+        [DataMember(Name = "check", Order = 1, EmitDefaultValue = false)] public string Check { get; set; }
+        [DataMember(Name = "segmentsChecked", Order = 2)] public int SegmentsChecked { get; set; }
+        [DataMember(Name = "issuesFound", Order = 3)] public int IssuesFound { get; set; }
+        [DataMember(Name = "returned", Order = 4)] public int Returned { get; set; }
+        [DataMember(Name = "truncated", Order = 5)] public bool Truncated { get; set; }
+        [DataMember(Name = "issues", Order = 6, EmitDefaultValue = false)]
+        public List<BridgeQaIssue> Issues { get; set; }
+        [DataMember(Name = "note", Order = 7, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeTmResource
+    {
+        [DataMember(Name = "name", Order = 0)] public string Name { get; set; }
+        /// <summary>"studio-file", "studio-server", or "supervertaler".</summary>
+        [DataMember(Name = "kind", Order = 1)] public string Kind { get; set; }
+        [DataMember(Name = "languages", Order = 2, EmitDefaultValue = false)] public string Languages { get; set; }
+        [DataMember(Name = "entries", Order = 3, EmitDefaultValue = false)] public int Entries { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeTermbaseResource
+    {
+        [DataMember(Name = "name", Order = 0)] public string Name { get; set; }
+        [DataMember(Name = "languages", Order = 1, EmitDefaultValue = false)] public string Languages { get; set; }
+        [DataMember(Name = "terms", Order = 2)] public int Terms { get; set; }
+        [DataMember(Name = "isProjectTermbase", Order = 3, EmitDefaultValue = false)] public bool IsProjectTermbase { get; set; }
+        [DataMember(Name = "readEnabled", Order = 4)] public bool ReadEnabled { get; set; }
+        [DataMember(Name = "writeEnabled", Order = 5)] public bool WriteEnabled { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeResourcesResponse
+    {
+        [DataMember(Name = "available", Order = 0)] public bool Available { get; set; }
+        [DataMember(Name = "tms", Order = 1, EmitDefaultValue = false)]
+        public List<BridgeTmResource> Tms { get; set; }
+        [DataMember(Name = "termbases", Order = 2, EmitDefaultValue = false)]
+        public List<BridgeTermbaseResource> Termbases { get; set; }
+        [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
     // ─── MCP write endpoints (v1: /update-segments, /add-term) ──────────────
 
     [DataContract]
@@ -419,6 +484,8 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeFilesResponse> _getFiles;
         private readonly Func<int, BridgeInconsistenciesResponse> _findInconsistencies;
         private readonly Func<BridgeStudioTmQuery, BridgeTmSearchResponse> _searchStudioTm;
+        private readonly Func<BridgeQaQuery, BridgeQaResponse> _runQaCheck;
+        private readonly Func<BridgeResourcesResponse> _listResources;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -442,7 +509,9 @@ namespace Supervertaler.Trados.Core
             Func<BridgeAddTermRequest, BridgeAddTermResponse> addTerm = null,
             Func<BridgeFilesResponse> getFiles = null,
             Func<int, BridgeInconsistenciesResponse> findInconsistencies = null,
-            Func<BridgeStudioTmQuery, BridgeTmSearchResponse> searchStudioTm = null)
+            Func<BridgeStudioTmQuery, BridgeTmSearchResponse> searchStudioTm = null,
+            Func<BridgeQaQuery, BridgeQaResponse> runQaCheck = null,
+            Func<BridgeResourcesResponse> listResources = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -454,6 +523,8 @@ namespace Supervertaler.Trados.Core
             _getFiles = getFiles;
             _findInconsistencies = findInconsistencies;
             _searchStudioTm = searchStudioTm;
+            _runQaCheck = runQaCheck;
+            _listResources = listResources;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -702,6 +773,18 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/studio-tm-search")
             {
                 HandleStudioTmSearch(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/qa-check")
+            {
+                HandleQaCheck(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/resources")
+            {
+                HandleListResources(context);
                 return;
             }
 
@@ -1217,6 +1300,66 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] studio-tm-search threw: {ex.Message}");
                 response = new BridgeTmSearchResponse { Ok = false, Error = "studio TM search failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleQaCheck(HttpListenerContext context)
+        {
+            if (_runQaCheck == null)
+            {
+                TryWriteError(context, 501, "qa-check endpoint not wired");
+                return;
+            }
+
+            var type = (context.Request.QueryString["type"] ?? "").ToLowerInvariant();
+            if (type != "numbers" && type != "tags" && type != "terminology")
+            {
+                WriteJson(context, 400, new BridgeQaResponse
+                {
+                    Available = false,
+                    Note = "missing or unknown 'type' – use numbers, tags, or terminology"
+                });
+                return;
+            }
+
+            var q = new BridgeQaQuery { Type = type };
+            int limit;
+            if (int.TryParse(context.Request.QueryString["limit"], out limit) && limit > 0)
+                q.Limit = Math.Min(limit, 200);
+
+            BridgeQaResponse response;
+            try
+            {
+                response = _runQaCheck(q) ?? new BridgeQaResponse { Available = false };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] qa-check threw: {ex.Message}");
+                response = new BridgeQaResponse { Available = false, Note = "qa check failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleListResources(HttpListenerContext context)
+        {
+            if (_listResources == null)
+            {
+                TryWriteError(context, 501, "resources endpoint not wired");
+                return;
+            }
+
+            BridgeResourcesResponse response;
+            try
+            {
+                response = _listResources() ?? new BridgeResourcesResponse { Available = false };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] resources threw: {ex.Message}");
+                response = new BridgeResourcesResponse { Available = false, Note = "error: " + ex.Message };
             }
 
             WriteJson(context, 200, response);

@@ -136,6 +136,50 @@ public static class TradosTools
         CancellationToken ct)
         => Safe(() => bridge.GetAsync("/v1/term-lookup" + BuildQuery(("q", term)), ct));
 
+    [McpServerTool(Name = "check_numbers"),
+     Description("QA check: find translated segments where the numbers in source and target don't match " +
+                 "(digits compared with thousand/decimal separators normalised, so 1.234,56 matches " +
+                 "1,234.56). Returns each mismatch with the segment's numbers listed. Only translated " +
+                 "segments are checked. Chain with update_segments after the user approves fixes.")]
+    public static Task<string> CheckNumbers(
+        BridgeClient bridge,
+        [Description("Maximum issues to return (default 50).")]
+        int? limit = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/qa-check" + BuildQuery(("type", "numbers"), ("limit", limit?.ToString())), ct));
+
+    [McpServerTool(Name = "check_tags"),
+     Description("QA check: find translated segments whose inline tag count differs between source and " +
+                 "target (missing or extra formatting/placeholder tags). A difference is not always an " +
+                 "error – formatting can legitimately differ – so present findings for review rather than " +
+                 "auto-fixing.")]
+    public static Task<string> CheckTags(
+        BridgeClient bridge,
+        [Description("Maximum issues to return (default 50).")]
+        int? limit = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/qa-check" + BuildQuery(("type", "tags"), ("limit", limit?.ToString())), ct));
+
+    [McpServerTool(Name = "check_terminology"),
+     Description("QA check: find translated segments where a termbase term appears in the source but none " +
+                 "of its expected target translations (including synonyms) appears in the target. Uses the " +
+                 "user's enabled termbases. Substring-based, so inflected target forms can be false " +
+                 "positives – present findings for review, don't auto-fix without asking.")]
+    public static Task<string> CheckTerminology(
+        BridgeClient bridge,
+        [Description("Maximum issues to return (default 50).")]
+        int? limit = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/qa-check" + BuildQuery(("type", "terminology"), ("limit", limit?.ToString())), ct));
+
+    [McpServerTool(Name = "list_resources"),
+     Description("List the translation resources available: the Trados TMs attached to the open project " +
+                 "(file-based and GroupShare server TMs), the Supervertaler bridged TMs, and the " +
+                 "Supervertaler termbases (with language pair, term count, and read/write flags). Useful " +
+                 "for orientation before searching, and to answer 'what TMs/termbases am I using?'.")]
+    public static Task<string> ListResources(BridgeClient bridge, CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/resources", ct));
+
     [McpServerTool(Name = "insert_into_active_segment"),
      Description("Insert text into the target side of the segment the translator is currently editing in " +
                  "Trados Studio (same as Supervertaler's Apply-to-target button). Replaces the current " +

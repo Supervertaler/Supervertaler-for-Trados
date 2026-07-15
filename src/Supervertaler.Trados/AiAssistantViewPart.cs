@@ -939,7 +939,9 @@ namespace Supervertaler.Trados
                     addTerm: BridgeAddTerm,
                     getFiles: BuildBridgeFiles,
                     findInconsistencies: BuildBridgeInconsistencies,
-                    searchStudioTm: BridgeSearchStudioTm);
+                    searchStudioTm: BridgeSearchStudioTm,
+                    runQaCheck: BridgeRunQaCheck,
+                    listResources: BridgeListResources);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -1541,6 +1543,358 @@ namespace Supervertaler.Trados
                 }
             }
             return match;
+        }
+
+        /// <summary>Plain-text snapshot of one segment for off-thread QA analysis.</summary>
+        private sealed class BridgeRawSegment
+        {
+            public string Id;
+            public string Source;        // tag-stripped, whitespace-collapsed
+            public string Target;        // tag-stripped, whitespace-collapsed ("" if empty)
+            public string Status;
+            public int SourceTagCount;
+            public int TargetTagCount;
+            public string FileName;      // null unless multi-file attribution worked
+        }
+
+        /// <summary>Collects a plain snapshot of every segment on the UI thread,
+        /// so QA analysis can run off-thread without touching the Trados SDK.</summary>
+        private List<BridgeRawSegment> BridgeCollectRawSegments()
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed) return null;
+            if (ctrl.InvokeRequired)
+                return (List<BridgeRawSegment>)ctrl.Invoke(
+                    new Func<List<BridgeRawSegment>>(BridgeCollectRawSegments));
+
+            if (_activeDocument == null) return null;
+
+            EnsureBridgeFileMapFresh();
+            bool attributeFiles = _perFileMappingWorked && _fileIdToName.Count > 1;
+
+            var list = new List<BridgeRawSegment>();
+            int processed = 0;
+            foreach (var pair in _activeDocument.SegmentPairs)
+            {
+                processed++;
+                if (processed % 200 == 0)
+                    System.Windows.Forms.Application.DoEvents();
+                try
+                {
+                    var sourceSer = Core.SegmentTagHandler.Serialize(pair.Source);
+                    var source = System.Text.RegularExpressions.Regex.Replace(
+                        Core.SegmentTagHandler.StripTagPlaceholders(sourceSer.SerializedText ?? ""),
+                        @"\s+", " ").Trim();
+                    if (source.Length == 0) continue;
+
+                    var targetSer = pair.Target != null
+                        ? Core.SegmentTagHandler.Serialize(pair.Target) : null;
+                    var target = targetSer != null
+                        ? System.Text.RegularExpressions.Regex.Replace(
+                            Core.SegmentTagHandler.StripTagPlaceholders(targetSer.SerializedText ?? ""),
+                            @"\s+", " ").Trim()
+                        : "";
+
+                    var puId = _activeDocument.GetParentParagraphUnit(pair)
+                        ?.Properties?.ParagraphUnitId.Id ?? "";
+                    var segId = pair.Properties?.Id.Id ?? "";
+
+                    string fileName = null;
+                    if (attributeFiles)
+                    {
+                        string fid;
+                        if (_puIdToFileId.TryGetValue(puId, out fid) && fid != null)
+                            _fileIdToName.TryGetValue(fid, out fileName);
+                    }
+
+                    list.Add(new BridgeRawSegment
+                    {
+                        Id = puId + ":" + segId,
+                        Source = source,
+                        Target = target,
+                        Status = (pair.Properties?.ConfirmationLevel
+                            ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString(),
+                        SourceTagCount = sourceSer.TagMap?.Count ?? 0,
+                        TargetTagCount = targetSer?.TagMap?.Count ?? 0,
+                        FileName = fileName
+                    });
+                }
+                catch { /* skip unreadable segment */ }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/qa-check (MCP check_numbers / check_tags /
+        /// check_terminology). Snapshot on the UI thread, analysis off-thread.
+        /// Only segments with a non-empty target are checked – untranslated
+        /// segments can't have QA issues yet.
+        /// </summary>
+        private BridgeQaResponse BridgeRunQaCheck(BridgeQaQuery q)
+        {
+            var raw = BridgeCollectRawSegments();
+            if (raw == null)
+                return new BridgeQaResponse
+                {
+                    Available = false,
+                    Note = "No document is open in the Trados editor."
+                };
+
+            var response = new BridgeQaResponse
+            {
+                Available = true,
+                Check = q.Type,
+                Issues = new List<BridgeQaIssue>()
+            };
+
+            var translated = raw.Where(s => !string.IsNullOrEmpty(s.Target)).ToList();
+            response.SegmentsChecked = translated.Count;
+
+            void AddIssue(BridgeRawSegment s, string detail)
+            {
+                response.IssuesFound++;
+                if (response.Issues.Count >= q.Limit) { response.Truncated = true; return; }
+                response.Issues.Add(new BridgeQaIssue
+                {
+                    Id = s.Id,
+                    Status = s.Status,
+                    Detail = detail,
+                    Source = s.Source.Length > 160 ? s.Source.Substring(0, 160) + "…" : s.Source,
+                    Target = s.Target.Length > 160 ? s.Target.Substring(0, 160) + "…" : s.Target,
+                    FileName = s.FileName
+                });
+            }
+
+            if (q.Type == "numbers")
+            {
+                foreach (var s in translated)
+                {
+                    var src = ExtractNumbers(s.Source);
+                    var tgt = ExtractNumbers(s.Target);
+                    if (!src.OrderBy(x => x).SequenceEqual(tgt.OrderBy(x => x)))
+                        AddIssue(s, $"source numbers [{string.Join(", ", src)}] vs target [{string.Join(", ", tgt)}]");
+                }
+                if (response.IssuesFound == 0)
+                    response.Note = "All numbers in translated segments match between source and target.";
+            }
+            else if (q.Type == "tags")
+            {
+                foreach (var s in translated)
+                {
+                    if (s.SourceTagCount != s.TargetTagCount)
+                        AddIssue(s, $"source has {s.SourceTagCount} inline tag(s), target has {s.TargetTagCount}");
+                }
+                if (response.IssuesFound == 0)
+                    response.Note = "Inline tag counts match in every translated segment.";
+                else
+                    response.Note = (response.Note ?? "") +
+                        "A count difference is not always an error (formatting may legitimately differ) – review each case.";
+            }
+            else // terminology
+            {
+                Dictionary<string, List<Models.TermEntry>> index;
+                try
+                {
+                    var settings = TermLensSettings.Load();
+                    var dbPath = ResolveSupervertalerDbPath();
+                    if (dbPath == null)
+                        return new BridgeQaResponse
+                        {
+                            Available = false,
+                            Note = "Supervertaler database not found – terminology check unavailable."
+                        };
+                    using (var reader = new TermbaseReader(dbPath))
+                    {
+                        if (!reader.Open())
+                            return new BridgeQaResponse { Available = false, Note = "could not open Supervertaler database" };
+                        var disabled = settings.DisabledTermbaseIds != null && settings.DisabledTermbaseIds.Count > 0
+                            ? new HashSet<long>(settings.DisabledTermbaseIds) : null;
+                        string projSrcLang = null;
+                        try
+                        {
+                            var ctrl = _control?.Value;
+                            projSrcLang = ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired
+                                ? (string)ctrl.Invoke(new Func<string>(GetDocumentSourceLanguage))
+                                : GetDocumentSourceLanguage();
+                        }
+                        catch { }
+                        index = reader.LoadAllTerms(disabled, settings.CaseSensitiveMatching, projSrcLang);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new BridgeQaResponse { Available = false, Note = "terminology check failed: " + ex.Message };
+                }
+
+                foreach (var s in translated)
+                {
+                    // Word n-grams (1..5) of the source, looked up in the term index.
+                    var words = System.Text.RegularExpressions.Regex
+                        .Split(s.Source, @"[^\p{L}\p{Nd}\-']+")
+                        .Where(w => w.Length > 0).ToArray();
+                    var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                    for (int i = 0; i < words.Length; i++)
+                    {
+                        for (int n = 1; n <= 5 && i + n <= words.Length; n++)
+                        {
+                            var gram = string.Join(" ", words, i, n);
+                            List<Models.TermEntry> entries;
+                            if (!index.TryGetValue(gram, out entries)) continue;
+
+                            foreach (var entry in entries)
+                            {
+                                if (entry.Forbidden) continue;
+                                if (string.IsNullOrWhiteSpace(entry.TargetTerm)) continue;
+                                if (reported.Contains(entry.SourceTerm)) continue;
+
+                                var expected = new List<string> { entry.TargetTerm };
+                                if (entry.TargetSynonyms != null) expected.AddRange(entry.TargetSynonyms);
+
+                                bool found = expected.Any(t => !string.IsNullOrWhiteSpace(t)
+                                    && s.Target.IndexOf(t.Trim(), StringComparison.OrdinalIgnoreCase) >= 0);
+                                if (!found)
+                                {
+                                    reported.Add(entry.SourceTerm);
+                                    AddIssue(s, $"term '{entry.SourceTerm}' ({entry.TermbaseName}): expected " +
+                                                $"'{string.Join("' or '", expected.Where(t => !string.IsNullOrWhiteSpace(t)))}' " +
+                                                "not found in target");
+                                }
+                            }
+                        }
+                    }
+                }
+                if (response.IssuesFound == 0)
+                    response.Note = "Every termbase term found in a source segment has its expected translation in the target.";
+                else
+                    response.Note = (response.Note ?? "") +
+                        "Substring check – inflected target forms can be false positives; review each case.";
+            }
+
+            response.Returned = response.Issues.Count;
+            if (response.Truncated)
+                response.Note = $"Only {response.Returned} of {response.IssuesFound} issues returned – raise 'limit' for more. "
+                    + (response.Note ?? "");
+            return response;
+        }
+
+        private static List<string> ExtractNumbers(string text)
+        {
+            // Number tokens incl. decimal/thousand separators; normalized by
+            // stripping separators so 1.234,56 == 1,234.56 == 1234.56 digits-wise.
+            var result = new List<string>();
+            foreach (System.Text.RegularExpressions.Match m in
+                System.Text.RegularExpressions.Regex.Matches(text ?? "", @"\p{Nd}+(?:[.,  ]\p{Nd}+)*"))
+            {
+                result.Add(System.Text.RegularExpressions.Regex.Replace(m.Value, @"[.,  ]", ""));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/resources (MCP list_resources). Lists the
+        /// TMs (Studio project TMs + Supervertaler bridged TMs) and Supervertaler
+        /// termbases with their settings flags. Only the active-file path and
+        /// language read hop to the UI thread.
+        /// </summary>
+        private BridgeResourcesResponse BridgeListResources()
+        {
+            var response = new BridgeResourcesResponse
+            {
+                Available = true,
+                Tms = new List<BridgeTmResource>(),
+                Termbases = new List<BridgeTermbaseResource>()
+            };
+
+            // Studio project TMs (file + GroupShare) – needs the active file path.
+            string activeFilePath = null;
+            try
+            {
+                var ctrl = _control?.Value;
+                if (ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired)
+                    activeFilePath = (string)ctrl.Invoke(new Func<string>(
+                        () => { try { return _activeDocument?.ActiveFile?.LocalFilePath; } catch { return null; } }));
+                else
+                    activeFilePath = _activeDocument?.ActiveFile?.LocalFilePath;
+            }
+            catch { }
+
+            if (!string.IsNullOrEmpty(activeFilePath))
+            {
+                try
+                {
+                    foreach (var entry in Core.TmSearcher.FindProjectTms(activeFilePath) ?? new List<string>())
+                    {
+                        response.Tms.Add(new BridgeTmResource
+                        {
+                            Name = Core.TmSearcher.DisplayName(entry),
+                            Kind = ServerTmClient.IsServerTmUri(entry) ? "studio-server" : "studio-file"
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    response.Note = "Studio TMs could not be enumerated: " + ex.Message;
+                }
+            }
+            else
+            {
+                response.Note = "No document open in the editor – Studio project TMs not listed.";
+            }
+
+            var dbPath = ResolveSupervertalerDbPath();
+            if (dbPath != null)
+            {
+                try
+                {
+                    using (var tmReader = new TmReader(dbPath))
+                    {
+                        if (tmReader.Open())
+                        {
+                            foreach (var tm in tmReader.GetBridgedTms() ?? new List<TmInfo>())
+                            {
+                                response.Tms.Add(new BridgeTmResource
+                                {
+                                    Name = tm.Name,
+                                    Kind = "supervertaler",
+                                    Languages = $"{tm.SourceLang} → {tm.TargetLang}",
+                                    Entries = (int)Math.Min(tm.EntryCount, int.MaxValue)
+                                });
+                            }
+                        }
+                    }
+
+                    var settings = TermLensSettings.Load();
+                    var write = settings.WriteTermbaseIds != null
+                        ? new HashSet<long>(settings.WriteTermbaseIds) : new HashSet<long>();
+                    var disabled = settings.DisabledTermbaseIds != null
+                        ? new HashSet<long>(settings.DisabledTermbaseIds) : new HashSet<long>();
+                    using (var tbReader = new TermbaseReader(dbPath))
+                    {
+                        if (tbReader.Open())
+                        {
+                            foreach (var tb in tbReader.GetTermbases() ?? new List<Models.TermbaseInfo>())
+                            {
+                                response.Termbases.Add(new BridgeTermbaseResource
+                                {
+                                    Name = tb.Name,
+                                    Languages = $"{tb.SourceLang} → {tb.TargetLang}",
+                                    Terms = tb.TermCount,
+                                    IsProjectTermbase = tb.IsProjectTermbase,
+                                    ReadEnabled = !disabled.Contains(tb.Id),
+                                    WriteEnabled = write.Contains(tb.Id)
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    response.Note = ((response.Note ?? "") + " Supervertaler resources error: " + ex.Message).Trim();
+                }
+            }
+
+            return response;
         }
 
         /// <summary>
