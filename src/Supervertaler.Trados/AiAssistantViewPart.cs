@@ -938,7 +938,8 @@ namespace Supervertaler.Trados
                     updateSegments: BridgeUpdateSegments,
                     addTerm: BridgeAddTerm,
                     getFiles: BuildBridgeFiles,
-                    findInconsistencies: BuildBridgeInconsistencies);
+                    findInconsistencies: BuildBridgeInconsistencies,
+                    searchStudioTm: BridgeSearchStudioTm);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -1540,6 +1541,99 @@ namespace Supervertaler.Trados
                 }
             }
             return match;
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/studio-tm-search (MCP search_studio_tm).
+        /// Concordance search across the Trados project's native .sdltm TMs and
+        /// GroupShare server TMs (the same TMs SuperSearch uses), which are the
+        /// TMs most users actually work with – distinct from search_tm, which
+        /// covers only Supervertaler bridged TMs. The active file path (needed
+        /// to locate the project's TMs) is read on the UI thread; the TM search
+        /// itself runs synchronously on the calling thread.
+        /// </summary>
+        private BridgeTmSearchResponse BridgeSearchStudioTm(BridgeStudioTmQuery q)
+        {
+            if (q == null || string.IsNullOrWhiteSpace(q.Query))
+                return new BridgeTmSearchResponse { Ok = false, Error = "empty query" };
+
+            // Resolve the active file path on the UI thread.
+            string activeFilePath = null;
+            var ctrl = _control?.Value;
+            try
+            {
+                if (ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired)
+                    activeFilePath = (string)ctrl.Invoke(new Func<string>(
+                        () => { try { return _activeDocument?.ActiveFile?.LocalFilePath; } catch { return null; } }));
+                else
+                    activeFilePath = _activeDocument?.ActiveFile?.LocalFilePath;
+            }
+            catch { /* fall through to the no-path error below */ }
+
+            if (string.IsNullOrEmpty(activeFilePath))
+                return new BridgeTmSearchResponse
+                {
+                    Ok = false,
+                    Error = "No document is open in the Trados editor, so the project's TMs can't be located."
+                };
+
+            List<string> tms;
+            try
+            {
+                tms = Core.TmSearcher.FindProjectTms(activeFilePath);
+            }
+            catch (Exception ex)
+            {
+                return new BridgeTmSearchResponse { Ok = false, Error = "could not enumerate project TMs: " + ex.Message };
+            }
+
+            if (tms == null || tms.Count == 0)
+                return new BridgeTmSearchResponse
+                {
+                    Ok = true,
+                    Matches = new List<BridgeTmMatch>(),
+                    Note = "No translation memories are attached to this Trados project."
+                };
+
+            var scope = (q.In ?? "both").ToLowerInvariant() == "source"
+                ? Core.SearchScope.SourceOnly
+                : (q.In ?? "both").ToLowerInvariant() == "target"
+                    ? Core.SearchScope.TargetOnly
+                    : Core.SearchScope.SourceAndTarget;
+
+            var response = new BridgeTmSearchResponse { Ok = true, Matches = new List<BridgeTmMatch>() };
+            try
+            {
+                var results = Core.TmSearcher.Search(
+                    tms, q.Query, scope,
+                    caseSensitive: false, useRegex: false, wholeWord: false,
+                    progress: null, ct: System.Threading.CancellationToken.None);
+
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var r in results)
+                {
+                    if (response.Matches.Count >= q.Limit) break;
+                    var key = (r.SourceText ?? "") + "" + (r.TargetText ?? "");
+                    if (!seen.Add(key)) continue;
+                    response.Matches.Add(new BridgeTmMatch
+                    {
+                        Score = r.MatchScore,
+                        Source = r.SourceText ?? "",
+                        Target = r.TargetText ?? "",
+                        TmName = r.FileName
+                    });
+                }
+
+                if (response.Matches.Count == 0)
+                    response.Note = $"No concordance matches for '{q.Query}' in the project's " +
+                                    $"{tms.Count} TM(s). Try a shorter or more distinctive phrase.";
+            }
+            catch (Exception ex)
+            {
+                return new BridgeTmSearchResponse { Ok = false, Error = "studio TM search failed: " + ex.Message };
+            }
+
+            return response;
         }
 
         /// <summary>

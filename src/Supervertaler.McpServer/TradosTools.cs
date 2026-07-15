@@ -93,18 +93,36 @@ public static class TradosTools
         => Safe(() => bridge.GetAsync("/v1/active-context", ct));
 
     [McpServerTool(Name = "search_tm"),
-     Description("Search the user's Supervertaler translation memories for matches to a source-language " +
-                 "text. Returns previous translations with similarity scores. Use this before proposing a " +
-                 "translation so your suggestion is grounded in how the user actually translated similar " +
-                 "text before.")]
+     Description("Search the user's *Supervertaler* translation memories (the ones bridged from Supervertaler " +
+                 "Workbench) for matches to a text. For the native Trados TMs attached to the project – which " +
+                 "is what most users work with – use search_studio_tm instead, or call both. Returns previous " +
+                 "translations with scores; use before proposing a translation to ground it in the user's past work.")]
     public static Task<string> SearchTm(
         BridgeClient bridge,
-        [Description("The source-language text to find TM matches for (typically one segment or sentence).")]
+        [Description("The text to find TM matches for (typically one segment or sentence).")]
         string text,
         [Description("Maximum number of matches to return (default 5).")]
         int? limit = null,
         CancellationToken ct = default)
         => Safe(() => bridge.GetAsync("/v1/tm-search" + BuildQuery(("q", text), ("limit", limit?.ToString())), ct));
+
+    [McpServerTool(Name = "search_studio_tm"),
+     Description("Concordance-search the native Trados translation memories attached to the open project – " +
+                 "the .sdltm files and GroupShare server TMs the user actually translates against (the same " +
+                 "TMs as Supervertaler's SuperSearch). Returns previous source/target pairs with match scores " +
+                 "and the TM name. This is usually the right tool for \"how did I translate this before?\"; " +
+                 "search_tm only covers the separate Supervertaler-bridged TMs.")]
+    public static Task<string> SearchStudioTm(
+        BridgeClient bridge,
+        [Description("The text to search for (a word or phrase from the segment).")]
+        string text,
+        [Description("Which side to search: \"source\", \"target\", or \"both\" (default).")]
+        string? searchIn = null,
+        [Description("Maximum number of matches to return (default 10).")]
+        int? limit = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/studio-tm-search" +
+            BuildQuery(("q", text), ("in", searchIn), ("limit", limit?.ToString())), ct));
 
     [McpServerTool(Name = "lookup_term"),
      Description("Look up a term in the user's termbases (Supervertaler termbases and attached MultiTerm " +

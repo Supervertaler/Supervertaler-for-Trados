@@ -251,6 +251,15 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    /// <summary>Parsed query for GET /v1/studio-tm-search.</summary>
+    public class BridgeStudioTmQuery
+    {
+        public string Query;
+        /// <summary>"source", "target", or "both" (default).</summary>
+        public string In = "both";
+        public int Limit = 10;
+    }
+
     [DataContract]
     public class BridgeTermLookupResponse
     {
@@ -409,6 +418,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeAddTermRequest, BridgeAddTermResponse> _addTerm;
         private readonly Func<BridgeFilesResponse> _getFiles;
         private readonly Func<int, BridgeInconsistenciesResponse> _findInconsistencies;
+        private readonly Func<BridgeStudioTmQuery, BridgeTmSearchResponse> _searchStudioTm;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -431,7 +441,8 @@ namespace Supervertaler.Trados.Core
             Func<BridgeUpdateSegmentsRequest, BridgeUpdateSegmentsResponse> updateSegments = null,
             Func<BridgeAddTermRequest, BridgeAddTermResponse> addTerm = null,
             Func<BridgeFilesResponse> getFiles = null,
-            Func<int, BridgeInconsistenciesResponse> findInconsistencies = null)
+            Func<int, BridgeInconsistenciesResponse> findInconsistencies = null,
+            Func<BridgeStudioTmQuery, BridgeTmSearchResponse> searchStudioTm = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -442,6 +453,7 @@ namespace Supervertaler.Trados.Core
             _addTerm = addTerm;
             _getFiles = getFiles;
             _findInconsistencies = findInconsistencies;
+            _searchStudioTm = searchStudioTm;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -684,6 +696,12 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/inconsistencies")
             {
                 HandleGetInconsistencies(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/studio-tm-search")
+            {
+                HandleStudioTmSearch(context);
                 return;
             }
 
@@ -1166,6 +1184,42 @@ namespace Supervertaler.Trados.Core
                 "{\"ok\":true,\"project\":" + JsonQuote(projectName) +
                 ",\"analysisStatistics\":" + (stats ?? "null") +
                 ",\"confirmationStatistics\":" + (fileStatus ?? "null") + "}");
+        }
+
+        private void HandleStudioTmSearch(HttpListenerContext context)
+        {
+            if (_searchStudioTm == null)
+            {
+                TryWriteError(context, 501, "studio-tm-search endpoint not wired");
+                return;
+            }
+
+            var query = context.Request.QueryString["q"];
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                WriteJson(context, 400, new BridgeTmSearchResponse { Ok = false, Error = "missing 'q'" });
+                return;
+            }
+
+            var q = new BridgeStudioTmQuery { Query = query };
+            var inParam = context.Request.QueryString["in"];
+            if (!string.IsNullOrEmpty(inParam)) q.In = inParam;
+            int limit;
+            if (int.TryParse(context.Request.QueryString["limit"], out limit) && limit > 0)
+                q.Limit = Math.Min(limit, 50);
+
+            BridgeTmSearchResponse response;
+            try
+            {
+                response = _searchStudioTm(q) ?? new BridgeTmSearchResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] studio-tm-search threw: {ex.Message}");
+                response = new BridgeTmSearchResponse { Ok = false, Error = "studio TM search failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
         }
 
         private void HandleGetInconsistencies(HttpListenerContext context)
