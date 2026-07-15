@@ -15,7 +15,7 @@ namespace Supervertaler.Trados.Controls
     /// Trados session via the Supervertaler MCP Server.
     ///
     /// Deliberately does NOT edit other apps' config files: the supported
-    /// path is the .mcpb extension (double-click install into Claude
+    /// path is the .mcpb extension (installed via Claude Desktop's
     /// Desktop), with a copy-paste JSON snippet for other MCP clients.
     /// </summary>
     public class McpConnectDialog : Form
@@ -131,7 +131,7 @@ namespace Supervertaler.Trados.Controls
             var stepHint = new Label
             {
                 Text = "1.  Download the extension file (Supervertaler-MCP-Server.mcpb).\r\n" +
-                       "2.  In Claude Desktop, open Settings → Extensions and drag the file onto that page.\r\n" +
+                       "2.  In Claude Desktop: Settings → Extensions → Advanced settings → Install extension…\r\n" +
                        "3.  Restart Claude Desktop and ask: \"What's the status of my Trados project?\"",
                 AutoSize = true,
                 MaximumSize = new Size(UiScale.Pixels(520), 0),
