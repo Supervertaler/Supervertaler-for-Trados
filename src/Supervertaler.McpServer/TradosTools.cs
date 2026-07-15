@@ -161,13 +161,16 @@ public static class TradosTools
         => Safe(() => bridge.GetAsync("/v1/qa-check" + BuildQuery(("type", "tags"), ("limit", limit?.ToString())), ct));
 
     [McpServerTool(Name = "check_terminology"),
-     Description("QA check: find translated segments where a termbase term appears in the source but none " +
-                 "of its expected target translations (including synonyms) appears in the target. Uses the " +
-                 "user's enabled termbases. Substring-based, so inflected target forms can be false " +
-                 "positives – present findings for review, don't auto-fix without asking.")]
+     Description("QA check: find termbase terms that appear in source segments whose targets don't use the " +
+                 "expected translation (or any synonym). Results are GROUPED PER TERM, most-affected first: " +
+                 "each group has the term, its termbase, the expected translations, how many segments are " +
+                 "affected, and sample segment ids. A term affecting many segments usually means the project " +
+                 "consistently uses a different translation than the termbase – help the user decide which " +
+                 "is right (update_segments to align the project, or add_term/edit the termbase) rather than " +
+                 "auto-fixing. Substring-based, so inflected target forms can be false positives.")]
     public static Task<string> CheckTerminology(
         BridgeClient bridge,
-        [Description("Maximum issues to return (default 50).")]
+        [Description("Maximum term groups to return (default 50).")]
         int? limit = null,
         CancellationToken ct = default)
         => Safe(() => bridge.GetAsync("/v1/qa-check" + BuildQuery(("type", "terminology"), ("limit", limit?.ToString())), ct));

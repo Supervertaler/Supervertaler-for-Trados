@@ -1726,6 +1726,12 @@ namespace Supervertaler.Trados
                     return new BridgeQaResponse { Available = false, Note = "terminology check failed: " + ex.Message };
                 }
 
+                // Aggregate violations per (term, termbase) instead of per
+                // segment: one project-wide terminology divergence otherwise
+                // floods the result with hundreds of identical findings.
+                var groups = new Dictionary<string, BridgeQaTermGroup>(StringComparer.OrdinalIgnoreCase);
+                var groupOrder = new List<string>();
+
                 foreach (var s in translated)
                 {
                     // Word n-grams (1..5) of the source, looked up in the term index.
@@ -1750,29 +1756,64 @@ namespace Supervertaler.Trados
 
                                 var expected = new List<string> { entry.TargetTerm };
                                 if (entry.TargetSynonyms != null) expected.AddRange(entry.TargetSynonyms);
+                                expected = expected.Where(t => !string.IsNullOrWhiteSpace(t))
+                                                   .Select(t => t.Trim()).ToList();
 
-                                bool found = expected.Any(t => !string.IsNullOrWhiteSpace(t)
-                                    && s.Target.IndexOf(t.Trim(), StringComparison.OrdinalIgnoreCase) >= 0);
+                                bool found = expected.Any(t =>
+                                    s.Target.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0);
                                 if (!found)
                                 {
                                     reported.Add(entry.SourceTerm);
-                                    AddIssue(s, $"term '{entry.SourceTerm}' ({entry.TermbaseName}): expected " +
-                                                $"'{string.Join("' or '", expected.Where(t => !string.IsNullOrWhiteSpace(t)))}' " +
-                                                "not found in target");
+                                    response.IssuesFound++;
+
+                                    var key = entry.SourceTerm + "" + (entry.TermbaseName ?? "");
+                                    BridgeQaTermGroup g;
+                                    if (!groups.TryGetValue(key, out g))
+                                    {
+                                        g = new BridgeQaTermGroup
+                                        {
+                                            Term = entry.SourceTerm,
+                                            Termbase = entry.TermbaseName,
+                                            Expected = expected,
+                                            SegmentsAffected = 0,
+                                            SampleSegmentIds = new List<string>(),
+                                            ExampleTarget = s.Target.Length > 120
+                                                ? s.Target.Substring(0, 120) + "…" : s.Target
+                                        };
+                                        groups[key] = g;
+                                        groupOrder.Add(key);
+                                    }
+                                    g.SegmentsAffected++;
+                                    if (g.SampleSegmentIds.Count < 5)
+                                        g.SampleSegmentIds.Add(s.Id);
                                 }
                             }
                         }
                     }
                 }
+
+                response.TermsAffected = groups.Count;
+                response.TermGroups = groupOrder
+                    .Select(k => groups[k])
+                    .OrderByDescending(g => g.SegmentsAffected)
+                    .Take(q.Limit)
+                    .ToList();
+                if (groups.Count > q.Limit) response.Truncated = true;
+
                 if (response.IssuesFound == 0)
                     response.Note = "Every termbase term found in a source segment has its expected translation in the target.";
                 else
-                    response.Note = (response.Note ?? "") +
-                        "Substring check – inflected target forms can be false positives; review each case.";
+                    response.Note = $"{response.IssuesFound} segment-level finding(s) across " +
+                        $"{groups.Count} distinct term(s), grouped per term (most-affected first). " +
+                        "A term affecting many segments usually means the project consistently uses a " +
+                        "different translation than the termbase – decide which is right before fixing " +
+                        "anything. Substring check: inflected target forms can be false positives.";
             }
 
-            response.Returned = response.Issues.Count;
-            if (response.Truncated)
+            response.Returned = q.Type == "terminology"
+                ? (response.TermGroups?.Count ?? 0)
+                : response.Issues.Count;
+            if (response.Truncated && q.Type != "terminology")
                 response.Note = $"Only {response.Returned} of {response.IssuesFound} issues returned – raise 'limit' for more. "
                     + (response.Note ?? "");
             return response;

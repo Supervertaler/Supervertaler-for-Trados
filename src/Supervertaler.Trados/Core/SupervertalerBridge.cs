@@ -348,6 +348,24 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "issues", Order = 6, EmitDefaultValue = false)]
         public List<BridgeQaIssue> Issues { get; set; }
         [DataMember(Name = "note", Order = 7, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>Terminology check only: findings grouped per term, most-affected first.</summary>
+        [DataMember(Name = "termGroups", Order = 8, EmitDefaultValue = false)]
+        public List<BridgeQaTermGroup> TermGroups { get; set; }
+        [DataMember(Name = "termsAffected", Order = 9, EmitDefaultValue = false)]
+        public int TermsAffected { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeQaTermGroup
+    {
+        [DataMember(Name = "term", Order = 0)] public string Term { get; set; }
+        [DataMember(Name = "termbase", Order = 1)] public string Termbase { get; set; }
+        [DataMember(Name = "expected", Order = 2)] public List<string> Expected { get; set; }
+        [DataMember(Name = "segmentsAffected", Order = 3)] public int SegmentsAffected { get; set; }
+        [DataMember(Name = "sampleSegmentIds", Order = 4, EmitDefaultValue = false)]
+        public List<string> SampleSegmentIds { get; set; }
+        [DataMember(Name = "exampleTarget", Order = 5, EmitDefaultValue = false)]
+        public string ExampleTarget { get; set; }
     }
 
     [DataContract]
