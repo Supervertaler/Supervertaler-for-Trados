@@ -7,6 +7,16 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.95 / 19.20.95] – 2026-07-15
+
+### Added (Supervertaler MCP Server · more tools for your AI assistant)
+
+- **Your AI assistant can now answer richer questions about your project.** Three new abilities for the [Supervertaler MCP Server](https://docs.supervertaler.com/trados/mcp-server/): it can list the **files** in a merged multi-file document (and you can ask it to work on just one of them – "only look at the contract file"); it can report **project statistics** (analysis bands and per-file confirmation counts – "how many words are left?", "how far along is each file?"); and it can **find inconsistencies** – repeated source sentences you translated differently – which pairs naturally with its ability to then align them ("find all repeated sentences I translated differently, and fix them to match"). See the [prompt cookbook](https://docs.supervertaler.com/trados/mcp-server/) for the full range of what you can ask.
+
+### Changed (Supervertaler MCP Server · supported AI apps)
+
+- **Documentation now clearly states which AI apps work.** Claude Desktop is fully supported (and recommended), and other clients that run local MCP servers on your own machine (such as Claude Code) also work. ChatGPT's desktop app is **not** supported, because it runs MCP servers in a cloud environment that can't reach the Supervertaler bridge – which stays on your computer by design, so your project never leaves your machine.
+
 ## [18.20.94 / 19.20.94] – 2026-07-15
 
 ### Added (Supervertaler MCP Server · connect Claude/ChatGPT directly to your live Trados Studio project)
