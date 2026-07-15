@@ -257,6 +257,63 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    // ─── MCP write endpoints (v1: /update-segments, /add-term) ──────────────
+
+    [DataContract]
+    public class BridgeSegmentUpdate
+    {
+        /// <summary>Segment key as returned by /v1/segments: "&lt;paragraphUnitId&gt;:&lt;segmentId&gt;".</summary>
+        [DataMember(Name = "id", IsRequired = true)] public string Id { get; set; }
+        /// <summary>New target text (may contain &lt;tN&gt;/&lt;b&gt; tag markers). Null = leave target unchanged (status-only update).</summary>
+        [DataMember(Name = "target", EmitDefaultValue = false)] public string Target { get; set; }
+        /// <summary>ConfirmationLevel name. Null with a target write defaults to Draft.</summary>
+        [DataMember(Name = "status", EmitDefaultValue = false)] public string Status { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeUpdateSegmentsRequest
+    {
+        [DataMember(Name = "updates", IsRequired = true)]
+        public List<BridgeSegmentUpdate> Updates { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeUpdateResultItem
+    {
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "ok", Order = 1)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 2, EmitDefaultValue = false)] public string Error { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeUpdateSegmentsResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "applied", Order = 2)] public int Applied { get; set; }
+        [DataMember(Name = "failed", Order = 3)] public int Failed { get; set; }
+        [DataMember(Name = "results", Order = 4, EmitDefaultValue = false)]
+        public List<BridgeUpdateResultItem> Results { get; set; }
+        [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeAddTermRequest
+    {
+        [DataMember(Name = "source", IsRequired = true)] public string Source { get; set; }
+        [DataMember(Name = "target", IsRequired = true)] public string Target { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeAddTermResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "addedTo", Order = 2, EmitDefaultValue = false)]
+        public List<string> AddedTo { get; set; }
+        [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
     /// <summary>
     /// Localhost-only HTTP bridge that exposes the active Trados project context
     /// to external Supervertaler clients (currently: Workbench's Sidekick Chat).
@@ -297,6 +354,13 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeProjectSnapshot> _getProject;
         private readonly Func<BridgeSegmentsQuery, BridgeSegmentsResponse> _getSegments;
         private readonly Func<string> _getDbPath; // resolves supervertaler.db for TM/termbase lookups
+        private readonly Func<BridgeUpdateSegmentsRequest, BridgeUpdateSegmentsResponse> _updateSegments;
+        private readonly Func<BridgeAddTermRequest, BridgeAddTermResponse> _addTerm;
+
+        /// <summary>Max segment updates per /v1/update-segments call – keeps a
+        /// single request from freezing the editor thread for minutes on huge
+        /// documents; callers page through larger jobs.</summary>
+        public const int MaxUpdatesPerRequest = 200;
 
         private HttpListener _listener;
         private Thread _listenerThread;
@@ -310,13 +374,17 @@ namespace Supervertaler.Trados.Core
             Func<string, string> insertText,
             Func<BridgeProjectSnapshot> getProject = null,
             Func<BridgeSegmentsQuery, BridgeSegmentsResponse> getSegments = null,
-            Func<string> getDbPath = null)
+            Func<string> getDbPath = null,
+            Func<BridgeUpdateSegmentsRequest, BridgeUpdateSegmentsResponse> updateSegments = null,
+            Func<BridgeAddTermRequest, BridgeAddTermResponse> addTerm = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
             _getProject = getProject;
             _getSegments = getSegments;
             _getDbPath = getDbPath;
+            _updateSegments = updateSegments;
+            _addTerm = addTerm;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -529,6 +597,18 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/term-lookup")
             {
                 HandleTermLookup(context);
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/update-segments")
+            {
+                HandleUpdateSegments(context);
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/add-term")
+            {
+                HandleAddTerm(context);
                 return;
             }
 
@@ -817,6 +897,134 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] term-lookup threw: {ex.Message}");
                 response = new BridgeTermLookupResponse { Ok = false, Error = "term lookup failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleUpdateSegments(HttpListenerContext context)
+        {
+            if (_updateSegments == null)
+            {
+                TryWriteError(context, 501, "update-segments endpoint not wired");
+                return;
+            }
+
+            BridgeUpdateSegmentsRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<BridgeUpdateSegmentsRequest>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeUpdateSegmentsResponse
+                {
+                    Ok = false,
+                    Error = "malformed body: " + ex.Message
+                });
+                return;
+            }
+
+            if (req?.Updates == null || req.Updates.Count == 0)
+            {
+                WriteJson(context, 400, new BridgeUpdateSegmentsResponse
+                {
+                    Ok = false,
+                    Error = "missing 'updates' array"
+                });
+                return;
+            }
+
+            if (req.Updates.Count > MaxUpdatesPerRequest)
+            {
+                WriteJson(context, 400, new BridgeUpdateSegmentsResponse
+                {
+                    Ok = false,
+                    Error = $"too many updates in one call ({req.Updates.Count}); the maximum is " +
+                            $"{MaxUpdatesPerRequest}. Split the job into batches of at most " +
+                            $"{MaxUpdatesPerRequest} and call this endpoint once per batch."
+                });
+                return;
+            }
+
+            BridgeUpdateSegmentsResponse response;
+            try
+            {
+                response = _updateSegments(req) ?? new BridgeUpdateSegmentsResponse
+                {
+                    Ok = false,
+                    Error = "internal error"
+                };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] update-segments threw: {ex.Message}");
+                response = new BridgeUpdateSegmentsResponse
+                {
+                    Ok = false,
+                    Error = "update failed: " + ex.Message
+                };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleAddTerm(HttpListenerContext context)
+        {
+            if (_addTerm == null)
+            {
+                TryWriteError(context, 501, "add-term endpoint not wired");
+                return;
+            }
+
+            BridgeAddTermRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<BridgeAddTermRequest>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeAddTermResponse
+                {
+                    Ok = false,
+                    Error = "malformed body: " + ex.Message
+                });
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(req?.Source) || string.IsNullOrWhiteSpace(req?.Target))
+            {
+                WriteJson(context, 400, new BridgeAddTermResponse
+                {
+                    Ok = false,
+                    Error = "both 'source' and 'target' are required"
+                });
+                return;
+            }
+
+            BridgeAddTermResponse response;
+            try
+            {
+                response = _addTerm(req) ?? new BridgeAddTermResponse
+                {
+                    Ok = false,
+                    Error = "internal error"
+                };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] add-term threw: {ex.Message}");
+                response = new BridgeAddTermResponse
+                {
+                    Ok = false,
+                    Error = "add term failed: " + ex.Message
+                };
             }
 
             WriteJson(context, 200, response);

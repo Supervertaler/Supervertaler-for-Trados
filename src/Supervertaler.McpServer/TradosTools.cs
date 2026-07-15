@@ -93,6 +93,42 @@ public static class TradosTools
         CancellationToken ct)
         => Safe(() => bridge.PostAsync("/v1/insert-translation", new { text }, ct));
 
+    [McpServerTool(Name = "update_segments"),
+     Description("Write translations and/or set confirmation statuses for segments in the document open " +
+                 "in Trados Studio, addressed by the ids returned by get_segments. Target text may reuse " +
+                 "the inline tag markers from the source (<t1>…</t1>, <b>…</b>) – preserve them. A target " +
+                 "write without an explicit status is set to Draft automatically so the user can review " +
+                 "your work in Studio. Locked segments are refused. Maximum 200 updates per call – page " +
+                 "larger jobs. Only use when the user asked you to change segments, and afterwards tell " +
+                 "them exactly what you changed. Changes land in the open document; the user still needs " +
+                 "to save it in Studio.")]
+    public static Task<string> UpdateSegments(
+        BridgeClient bridge,
+        [Description("Segments to update. Each item: id (required, from get_segments), target (optional " +
+                     "new target text), status (optional: Unspecified, Draft, Translated, " +
+                     "RejectedTranslation, ApprovedTranslation, RejectedSignOff, ApprovedSignOff). " +
+                     "Provide target, status, or both per item.")]
+        IList<SegmentUpdate> updates,
+        CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/update-segments", new
+        {
+            updates = updates.Select(u => new { id = u.Id, target = u.Target, status = u.Status })
+        }, ct));
+
+    [McpServerTool(Name = "add_term"),
+     Description("Add a source/target term pair to the user's configured Write termbases (same as " +
+                 "Supervertaler's quick-add). Reports which termbases the term was added to, or an error " +
+                 "if it already exists. Only use when the user asked for a term to be added, or explicitly " +
+                 "agreed to your suggestion to add one.")]
+    public static Task<string> AddTerm(
+        BridgeClient bridge,
+        [Description("The source-language term.")]
+        string source,
+        [Description("The target-language term.")]
+        string target,
+        CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/add-term", new { source, target }, ct));
+
     private static string BuildQuery(params (string Key, string? Value)[] parts)
     {
         var kept = parts.Where(p => !string.IsNullOrEmpty(p.Value))

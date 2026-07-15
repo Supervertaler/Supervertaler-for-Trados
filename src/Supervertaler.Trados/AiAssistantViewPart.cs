@@ -934,7 +934,9 @@ namespace Supervertaler.Trados
                     insertText: BridgeInsertTranslation,
                     getProject: BuildBridgeProjectSnapshot,
                     getSegments: BuildBridgeSegments,
-                    getDbPath: ResolveSupervertalerDbPath);
+                    getDbPath: ResolveSupervertalerDbPath,
+                    updateSegments: BridgeUpdateSegments,
+                    addTerm: BridgeAddTerm);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -1282,6 +1284,284 @@ namespace Supervertaler.Trados
             }
 
             return response;
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/update-segments (MCP update_segments).
+        /// Writes target text and/or confirmation status for segments addressed
+        /// by "puId:segId" keys, using the same tag-aware ProcessSegmentPair
+        /// write path as bilingual re-import. A target write without an explicit
+        /// status defaults to Draft so AI writes are always visible as such in
+        /// Studio. Locked segments are refused. Marshals to the UI thread.
+        /// </summary>
+        private BridgeUpdateSegmentsResponse BridgeUpdateSegments(BridgeUpdateSegmentsRequest req)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeUpdateSegmentsResponse { Ok = false, Error = "ai assistant disposed" };
+
+            if (ctrl.InvokeRequired)
+            {
+                return (BridgeUpdateSegmentsResponse)ctrl.Invoke(
+                    new Func<BridgeUpdateSegmentsRequest, BridgeUpdateSegmentsResponse>(BridgeUpdateSegments), req);
+            }
+
+            if (_activeDocument == null)
+                return new BridgeUpdateSegmentsResponse { Ok = false, Error = "no document is open in the Trados editor" };
+
+            var response = new BridgeUpdateSegmentsResponse
+            {
+                Ok = true,
+                Results = new List<BridgeUpdateResultItem>()
+            };
+
+            var pairIndex = BuildSegmentPairIndex(null);
+            int processed = 0;
+
+            foreach (var u in req.Updates)
+            {
+                var item = new BridgeUpdateResultItem { Id = u?.Id ?? "" };
+                response.Results.Add(item);
+                processed++;
+
+                // Keep Studio responsive during large batches (same cadence as re-import).
+                if (processed % 20 == 0)
+                    System.Windows.Forms.Application.DoEvents();
+
+                if (u == null || string.IsNullOrEmpty(u.Id))
+                {
+                    item.Error = "missing id";
+                    response.Failed++;
+                    continue;
+                }
+
+                // Id format "puId:segId" – split on the LAST colon (GUIDs contain none,
+                // but be safe about future id shapes).
+                var sep = u.Id.LastIndexOf(':');
+                if (sep <= 0 || sep == u.Id.Length - 1)
+                {
+                    item.Error = "malformed id – expected \"<paragraphUnitId>:<segmentId>\" as returned by get_segments";
+                    response.Failed++;
+                    continue;
+                }
+
+                ISegmentPair pair;
+                if (!pairIndex.TryGetValue(KeyOf(u.Id.Substring(0, sep), u.Id.Substring(sep + 1)), out pair) || pair == null)
+                {
+                    item.Error = "segment not found in the open document";
+                    response.Failed++;
+                    continue;
+                }
+
+                if (pair.Properties?.IsLocked == true)
+                {
+                    item.Error = "segment is locked";
+                    response.Failed++;
+                    continue;
+                }
+
+                // Resolve the requested status up front so an unknown name fails
+                // the whole item before any content is written.
+                var statusName = u.Status;
+                if (string.IsNullOrEmpty(statusName) && u.Target != null)
+                    statusName = "Draft";
+
+                Sdl.Core.Globalization.ConfirmationLevel level = default;
+                bool setStatus = false;
+                if (!string.IsNullOrEmpty(statusName))
+                {
+                    if (!Enum.TryParse(statusName, true, out level))
+                    {
+                        item.Error = $"unknown status '{statusName}' – valid: Unspecified, Draft, Translated, " +
+                                     "RejectedTranslation, ApprovedTranslation, RejectedSignOff, ApprovedSignOff";
+                        response.Failed++;
+                        continue;
+                    }
+                    setStatus = true;
+                }
+
+                if (u.Target == null && !setStatus)
+                {
+                    item.Error = "nothing to do – provide 'target' and/or 'status'";
+                    response.Failed++;
+                    continue;
+                }
+
+                try
+                {
+                    if (u.Target != null)
+                    {
+                        _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP",
+                            (sp, cancel) =>
+                            {
+                                // Same tag-aware write as bilingual re-import: try
+                                // ReconstructTarget against a combined source+target
+                                // TagMap (semantic markers resolved first), fall back
+                                // to a plain-text IText clone with markers stripped.
+                                bool reconstructed = false;
+                                var sourceSer = Core.SegmentTagHandler.Serialize(sp.Source);
+                                var targetSer = Core.SegmentTagHandler.Serialize(sp.Target);
+                                var combinedMap = BuildCombinedTagMap(sourceSer.TagMap, targetSer.TagMap);
+
+                                var resolved = Core.Export.BilingualTagNamer.ResolveSemanticNames(
+                                    u.Target, combinedMap);
+
+                                bool hasAnyMarker = combinedMap.Count > 0
+                                    || resolved.IndexOf("<t", StringComparison.Ordinal) >= 0;
+                                if (hasAnyMarker)
+                                {
+                                    reconstructed = Core.SegmentTagHandler.ReconstructTarget(
+                                        sp.Target, sp.Source, resolved, combinedMap);
+                                }
+
+                                if (!reconstructed)
+                                {
+                                    var plain = Core.SegmentTagHandler.StripTagPlaceholders(u.Target);
+                                    plain = System.Text.RegularExpressions.Regex.Replace(
+                                        plain, @"</?(?:bi|b|i|u)>", "",
+                                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                                    var textTpl = Core.SegmentTagHandler.FindFirstText(sp.Source);
+                                    if (textTpl != null)
+                                    {
+                                        sp.Target.Clear();
+                                        var clone = (IText)textTpl.Clone();
+                                        clone.Properties.Text = plain;
+                                        sp.Target.Add(clone);
+                                    }
+                                }
+                            });
+                    }
+
+                    if (setStatus)
+                    {
+                        pair.Properties.ConfirmationLevel = level;
+                        _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
+                    }
+
+                    item.Ok = true;
+                    response.Applied++;
+                }
+                catch (Exception ex)
+                {
+                    item.Error = "write failed: " + ex.Message;
+                    response.Failed++;
+                }
+            }
+
+            if (response.Applied > 0)
+                response.Note = "Changes are applied to the open document in Trados Studio; the user still " +
+                                "needs to save the document to persist them. Tell the user exactly what was changed.";
+            return response;
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/add-term (MCP add_term). Inserts a term
+        /// into the user's configured Write termbases via the same InsertTermBatch
+        /// path as the Alt+Down quick-add, then refreshes the TermLens index.
+        /// Marshals to the UI thread.
+        /// </summary>
+        private BridgeAddTermResponse BridgeAddTerm(BridgeAddTermRequest req)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeAddTermResponse { Ok = false, Error = "ai assistant disposed" };
+
+            if (ctrl.InvokeRequired)
+            {
+                return (BridgeAddTermResponse)ctrl.Invoke(
+                    new Func<BridgeAddTermRequest, BridgeAddTermResponse>(BridgeAddTerm), req);
+            }
+
+            try
+            {
+                var settings = TermLensSettings.Load();
+
+                if (settings.WriteTermbaseIds == null || settings.WriteTermbaseIds.Count == 0)
+                    return new BridgeAddTermResponse
+                    {
+                        Ok = false,
+                        Error = "No write termbase is configured. The user must tick the 'Write' column for at " +
+                                "least one termbase in the Supervertaler Termbases settings."
+                    };
+
+                if (string.IsNullOrEmpty(settings.TermbasePath) || !File.Exists(settings.TermbasePath))
+                    return new BridgeAddTermResponse
+                    {
+                        Ok = false,
+                        Error = "Supervertaler database not found – check the termbase path in settings."
+                    };
+
+                var writeTermbases = new List<Models.TermbaseInfo>();
+                using (var reader = new TermbaseReader(settings.TermbasePath))
+                {
+                    if (reader.Open())
+                    {
+                        foreach (var id in settings.WriteTermbaseIds)
+                        {
+                            var tb = reader.GetTermbaseById(id);
+                            if (tb != null) writeTermbases.Add(tb);
+                        }
+                    }
+                }
+
+                if (writeTermbases.Count == 0)
+                    return new BridgeAddTermResponse { Ok = false, Error = "no write termbases found" };
+
+                string projSrcLang = "";
+                try { projSrcLang = _activeDocument?.ActiveFile?.SourceFile?.Language?.DisplayName ?? ""; }
+                catch { /* leave empty if unavailable */ }
+
+                var source = req.Source.Trim();
+                var target = req.Target.Trim();
+
+                var batchResults = TermbaseReader.InsertTermBatch(
+                    settings.TermbasePath, source, target, "", writeTermbases,
+                    projectSourceLang: projSrcLang);
+
+                if (batchResults.Count == 0)
+                    return new BridgeAddTermResponse
+                    {
+                        Ok = false,
+                        Error = "the term already exists in the configured write termbase(s)"
+                    };
+
+                var insertedEntries = new List<Models.TermEntry>();
+                var addedTo = new List<string>();
+                foreach (var (termbaseId, newId) in batchResults)
+                {
+                    var tb = writeTermbases.Find(t => t.Id == termbaseId);
+                    if (tb == null) continue;
+                    addedTo.Add(tb.Name);
+                    insertedEntries.Add(new Models.TermEntry
+                    {
+                        Id = newId,
+                        SourceTerm = source,
+                        TargetTerm = target,
+                        SourceLang = tb.SourceLang,
+                        TargetLang = tb.TargetLang,
+                        TermbaseId = tb.Id,
+                        TermbaseName = tb.Name,
+                        IsProjectTermbase = tb.IsProjectTermbase,
+                        Ranking = tb.Ranking,
+                        Definition = "",
+                        Domain = "",
+                        Notes = "",
+                        Forbidden = false,
+                        CaseSensitive = false,
+                        TargetSynonyms = new List<string>()
+                    });
+                }
+
+                // Incremental TermLens index update – terms appear immediately.
+                TermLensEditorViewPart.NotifyTermInserted(insertedEntries);
+
+                return new BridgeAddTermResponse { Ok = true, AddedTo = addedTo };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeAddTermResponse { Ok = false, Error = "add term failed: " + ex.Message };
+            }
         }
 
         /// <summary>
