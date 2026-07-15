@@ -254,6 +254,7 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
         [DataMember(Name = "hits", Order = 2, EmitDefaultValue = false)]
         public List<BridgeTermbaseHit> Hits { get; set; }
+        [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
     /// <summary>
@@ -786,7 +787,17 @@ namespace Supervertaler.Trados.Core
                         return;
                     }
 
+                    // Exact/normalized match first; if nothing is stored under
+                    // that exact form, fall back to substring so inflected or
+                    // partial queries still surface the relevant entries.
                     var entries = reader.SearchTerm(term.Trim()) ?? new List<TermEntry>();
+                    if (entries.Count == 0)
+                    {
+                        entries = reader.SearchTermSubstring(term.Trim()) ?? new List<TermEntry>();
+                        if (entries.Count > 0)
+                            response.Note = "No exact termbase entry for the query; these are substring " +
+                                            "matches (query text appears inside the source or target term).";
+                    }
                     foreach (var entry in entries)
                     {
                         response.Hits.Add(new BridgeTermbaseHit

@@ -31,14 +31,14 @@ public static class TradosTools
         BridgeClient bridge,
         [Description("Only segments with this confirmation status: Unspecified, Draft, Translated, " +
                      "RejectedTranslation, ApprovedTranslation, RejectedSignOff or ApprovedSignOff. Omit for all.")]
-        string? status,
+        string? status = null,
         [Description("Only segments whose source or target contains this text (case-insensitive). Omit for all.")]
-        string? contains,
+        string? contains = null,
         [Description("Maximum number of segments to return (default 200).")]
-        int? limit,
+        int? limit = null,
         [Description("Number of matching segments to skip, for paging (default 0).")]
-        int? offset,
-        CancellationToken ct)
+        int? offset = null,
+        CancellationToken ct = default)
     {
         var query = BuildQuery(
             ("status", status),
@@ -65,8 +65,8 @@ public static class TradosTools
         [Description("The source-language text to find TM matches for (typically one segment or sentence).")]
         string text,
         [Description("Maximum number of matches to return (default 5).")]
-        int? limit,
-        CancellationToken ct)
+        int? limit = null,
+        CancellationToken ct = default)
         => Safe(() => bridge.GetAsync("/v1/tm-search" + BuildQuery(("q", text), ("limit", limit?.ToString())), ct));
 
     [McpServerTool(Name = "lookup_term"),
