@@ -38,6 +38,11 @@ MANIFEST_18 = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
 MANIFEST_19 = os.path.join(SRC_DIR, "pluginpackage.manifest.19.xml")
 DIST_DIR = os.path.join(BASE_DIR, "dist")
 
+# Claude Desktop extension (built by tools/build_mcpb.py). Attached to every
+# release: the plugin's "Connect AI assistant" dialog links users to
+# /releases/latest to download exactly this file.
+MCPB_NAME = "Supervertaler-MCP-Server.mcpb"
+
 # (sdlplugin filename in dist/, zip asset name, human label). The .sdlplugin names are
 # load-bearing — they must match the manifest PlugInName — so they are never renamed; the
 # zip carries them verbatim.
@@ -114,6 +119,7 @@ def build_body(version, version19, selected):
             if len(selected) > 1 else selected[0][0]) if selected else version
 
     table = "\n".join(f"| `{zip_name}` | {label} |" for _sdl, zip_name, label in PLUGINS)
+    table += f"\n| `{MCPB_NAME}` | AI assistant extension for Claude Desktop (optional, see below) |"
     changelog = "\n\n".join(content for _v, content in selected) if selected else "_See CHANGELOG.md._"
 
     return f"""Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026) — unsigned builds are attached below. Covers {span}.
@@ -132,6 +138,10 @@ The plugins attached to this release are the **unsigned** builds. The version on
 |---|---|
 {table}
 
+## 🤖 Supervertaler MCP Server (optional)
+
+`{MCPB_NAME}` connects **Claude Desktop directly to your live Trados Studio session** – ask about the open project, search your TMs and termbases, have translations drafted into the document, all from Claude's own chat window. To install: download the file and **double-click it** – Claude Desktop installs it as an extension. Requires Supervertaler for Trados (this plugin) and works entirely on your own machine. Other MCP-capable AI apps (ChatGPT desktop, Claude Code) are supported via **Settings → AI Settings → Connect AI assistant…** in the plugin. [Documentation](https://docs.supervertaler.com/trados/mcp-server/).
+
 ## What's changed
 
 {changelog}
@@ -142,6 +152,23 @@ The plugins attached to this release are the **unsigned** builds. The version on
 - Full changelog: https://github.com/Supervertaler/Supervertaler-for-Trados/blob/main/CHANGELOG.md
 - Questions & discussion: https://github.com/orgs/Supervertaler/discussions
 """
+
+
+def build_mcpb(version):
+    """(Re)build the Claude Desktop extension so every release carries a fresh
+    one. The Connect dialog in the plugin points users at /releases/latest, so
+    a release without the .mcpb would leave that button pointing at nothing.
+    The extension gets semver "1.<shared tail>" (e.g. 18.20.94 -> 1.20.94) so
+    users can correlate it with the plugin build it shipped with."""
+    tail = version.split(".", 1)[1] if "." in version else version
+    result = subprocess.run(
+        [sys.executable, os.path.join(BASE_DIR, "tools", "build_mcpb.py"),
+         "--version", f"1.{tail}"],
+        cwd=BASE_DIR)
+    mcpb_path = os.path.join(DIST_DIR, MCPB_NAME)
+    if result.returncode != 0 or not os.path.exists(mcpb_path):
+        return None
+    return mcpb_path
 
 
 def make_zips():
@@ -202,6 +229,18 @@ def main():
     zips = make_zips()
     if not zips:
         print("ERROR: no zips produced — aborting release")
+        sys.exit(1)
+
+    print("\nBuilding Claude Desktop extension (.mcpb)…")
+    mcpb = build_mcpb(version)
+    if mcpb:
+        zips.append(mcpb)
+    elif "--no-mcpb" in args:
+        print("  WARNING: .mcpb build failed — releasing without it (--no-mcpb given)")
+    else:
+        print("ERROR: .mcpb build failed — the Connect dialog points users at the latest "
+              "release, so releases must carry it. Fix the build, or pass --no-mcpb to "
+              "release without it.")
         sys.exit(1)
 
     tag = f"v{version}"

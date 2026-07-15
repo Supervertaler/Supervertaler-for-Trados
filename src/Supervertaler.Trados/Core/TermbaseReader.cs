@@ -174,6 +174,71 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Substring search across source AND target terms, for callers that
+        /// can't guarantee the exact stored form (notably the MCP bridge's
+        /// term-lookup, where an AI passes inflected or partial forms like
+        /// "sluitkracht" for a stored "sluitkracht van de grendel"). Matches
+        /// case-insensitively anywhere in either term. Shorter source terms
+        /// rank first (closest to a whole-term match), then termbase ranking.
+        /// </summary>
+        public List<TermEntry> SearchTermSubstring(string searchTerm, int maxResults = 20)
+        {
+            var results = new List<TermEntry>();
+            if (_connection == null || string.IsNullOrWhiteSpace(searchTerm))
+                return results;
+
+            // Escape LIKE wildcards in the user's text so they match literally.
+            var pattern = "%" + searchTerm.Trim()
+                .Replace("\\", "\\\\")
+                .Replace("%", "\\%")
+                .Replace("_", "\\_") + "%";
+
+            var ntCol = _hasNonTranslatableColumn ? ", t.is_nontranslatable" : "";
+            var uuidCol = _hasTermUuidColumn ? ", t.term_uuid" : "";
+            var abbrCol = _hasAbbreviationColumns ? ", t.source_abbreviation, t.target_abbreviation" : "";
+            var urlCol = _hasUrlColumn ? ", t.url" : "";
+            var sql = $@"
+                SELECT t.id, t.source_term, t.target_term, t.termbase_id,
+                       t.source_lang, t.target_lang, t.definition, t.domain,
+                       t.notes, t.forbidden, t.case_sensitive, t.client, t.project,
+                       tb.name AS termbase_name,
+                       tb.is_project_termbase,
+                       COALESCE(tb.ranking, 99) AS ranking
+                       {ntCol}
+                       {uuidCol}
+                       {abbrCol}
+                       {urlCol}
+                FROM termbase_terms t
+                LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
+                WHERE t.source_term LIKE @pattern ESCAPE '\'
+                   OR t.target_term LIKE @pattern ESCAPE '\'
+                ORDER BY LENGTH(t.source_term) ASC, ranking ASC, t.source_term ASC
+                LIMIT @limit";
+
+            using (var cmd = new SqliteCommand(sql, _connection))
+            {
+                cmd.Parameters.AddWithValue("@pattern", pattern);
+                cmd.Parameters.AddWithValue("@limit", maxResults);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var entry = ReadTermEntry(reader, _hasNonTranslatableColumn);
+                        results.Add(entry);
+                    }
+                }
+            }
+
+            foreach (var entry in results)
+            {
+                entry.TargetSynonyms = GetTargetSynonyms(entry.Id);
+            }
+
+            return results;
+        }
+
+        /// <summary>
         /// Bulk-loads all source terms for fast in-memory matching.
         /// Returns a dictionary mapping lowercased source term to list of entries.
         /// </summary>

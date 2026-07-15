@@ -698,6 +698,36 @@ namespace Supervertaler.Trados.Controls
                 "  Assistant if Workbench isn't running.");
             Pair(root, ref row, _lblQuickLauncherTarget, _cmbQuickLauncherTarget);
 
+            // ===== External AI assistants (MCP) =====
+            var lblMcpHeader = Header("External AI assistants (MCP)");
+            Span(root, ref row, lblMcpHeader);
+
+            var lblMcpHint = new Label
+            {
+                Text = "Connect Claude Desktop, ChatGPT or other MCP-capable AI apps directly to " +
+                       "this Trados session – ask about the open project, search your TMs and " +
+                       "termbases, and more, from the AI app's own chat window.",
+                AutoSize = true,
+                MaximumSize = new Size(UiScale.Pixels(520), 0),
+                ForeColor = labelColor,
+                Font = HintFont(),
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(4))
+            };
+            Span(root, ref row, lblMcpHint);
+
+            var btnMcpConnect = new Button
+            {
+                Text = "Connect AI assistant…",
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(4))
+            };
+            btnMcpConnect.Click += (s, e) =>
+            {
+                using (var dlg = new McpConnectDialog())
+                    dlg.ShowDialog(FindForm());
+            };
+            Span(root, ref row, btnMcpConnect);
+
             // ===== Info =====
             _lblInfo = new Label
             {
