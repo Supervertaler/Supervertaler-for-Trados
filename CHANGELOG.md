@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.94 / 19.20.94] – 2026-07-15
+
+### Added (Supervertaler MCP Server · connect Claude/ChatGPT directly to your live Trados Studio project)
+
+- **Your AI assistant can now talk directly to your open Trados Studio project.** The new Supervertaler MCP Server connects MCP-capable AI apps – Claude Desktop, ChatGPT's desktop app, Claude Code and others – to your live Trados session. Ask "What's the status of my project?", "How did I translate this term elsewhere?", or "Find all segments containing X" in the AI app's own chat window, and it answers from your real project data: project statistics, segments (with filters and paging), your Supervertaler translation memories, and your termbases. It can also insert a translation into the active segment, exactly like the Assistant's Apply-to-target button. Everything stays on your machine – the connection is local-only and protected by a per-session token, and nothing is exposed to the network. Setup: **Settings → AI Assistant → Connect AI assistant…** – Claude Desktop users install a double-click `.mcpb` extension; other apps get a copy-paste config snippet. This is the first MCP server that talks to a live Trados Studio editor session. Follow development in [issue #44](https://github.com/Supervertaler/Supervertaler-for-Trados/issues/44). *(Read-only tools plus single-segment insert for now; batch write actions – "draft all untranslated segments", "add this term to my termbase" – are next.)*
+
 ## [18.20.93 / 19.20.93] – 2026-07-14
 
 ### Added (an occasional one-question survey, so I can ask what you think)
