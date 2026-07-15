@@ -41,7 +41,7 @@ def manifest(version: str) -> dict:
             "token-authenticated."
         ),
         "author": {
-            "name": "Michael Beijer (Supervertaler)",
+            "name": "Supervertaler",
             "url": "https://supervertaler.com",
         },
         "homepage": "https://supervertaler.com/trados.html",
