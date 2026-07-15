@@ -73,6 +73,20 @@ namespace Supervertaler.Trados.Controls
             }
             catch { /* status is best-effort */ }
 
+            // A hand-written mcpServers entry in Claude Desktop's config file is
+            // an equally valid connection (typical for developers/power users).
+            // Detect it so the dialog doesn't claim "not connected", and so we
+            // can warn when BOTH paths are active (= duplicate tools in Claude).
+            bool manualConfigEntry = false;
+            try
+            {
+                var cfgPath = Path.Combine(claudeDir, "claude_desktop_config.json");
+                manualConfigEntry = File.Exists(cfgPath) &&
+                    File.ReadAllText(cfgPath).IndexOf(
+                        "SupervertalerMcpServer", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch { /* status is best-effort */ }
+
             bool bridgeUp = false;
             try { bridgeUp = File.Exists(UserDataPath.SupervertalerBridgeFile); } catch { }
 
@@ -84,10 +98,32 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(StatusLine(claudeInstalled,
                 claudeInstalled ? "Claude Desktop detected on this computer."
                                 : "Claude Desktop not detected (claude.ai/download)."));
-            root.Controls.Add(StatusLine(extensionInstalled,
-                extensionInstalled
-                    ? "Supervertaler MCP Server extension is installed in Claude Desktop."
-                    : "Supervertaler MCP Server extension not installed yet."));
+
+            if (extensionInstalled && manualConfigEntry)
+            {
+                var warn = StatusLine(false,
+                    "Connected twice: the extension is installed AND Claude Desktop's config file has a " +
+                    "manual Supervertaler entry. Claude will show every tool twice – remove one of the two " +
+                    "(usually the manual entry in claude_desktop_config.json).");
+                warn.ForeColor = Color.FromArgb(190, 110, 0);
+                root.Controls.Add(warn);
+            }
+            else if (extensionInstalled)
+            {
+                root.Controls.Add(StatusLine(true,
+                    "Supervertaler MCP Server extension is installed in Claude Desktop."));
+            }
+            else if (manualConfigEntry)
+            {
+                root.Controls.Add(StatusLine(true,
+                    "Connected via a manual entry in Claude Desktop's config file (no extension needed – " +
+                    "don't also install the extension, or every tool will appear twice)."));
+            }
+            else
+            {
+                root.Controls.Add(StatusLine(false,
+                    "Supervertaler MCP Server extension not installed yet."));
+            }
 
             // ── Claude Desktop (recommended) ─────────────────────────────
             root.Controls.Add(SectionHeader("Claude Desktop (recommended)"));
