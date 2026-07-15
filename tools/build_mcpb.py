@@ -101,6 +101,17 @@ def main() -> int:
     print(f"Done: {out}  ({size_mb:.1f} MB, server exe "
           f"{exe.stat().st_size / (1024 * 1024):.1f} MB uncompressed)")
     print("Install: double-click the .mcpb, or Claude Desktop > Settings > Extensions.")
+
+    # Plain exe zip for AI apps without an extension format (ChatGPT desktop
+    # etc.): users unzip it somewhere permanent and point the app's MCP
+    # config at the exe. Same server, different wrapper.
+    exe_zip = DIST / "Supervertaler-MCP-Server-exe.zip"
+    if exe_zip.exists():
+        exe_zip.unlink()
+    with zipfile.ZipFile(exe_zip, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(exe, "SupervertalerMcpServer.exe")
+    print(f"Done: {exe_zip}  ({exe_zip.stat().st_size / (1024 * 1024):.1f} MB) - "
+          "for ChatGPT desktop and other MCP apps without extension support.")
     return 0
 
 

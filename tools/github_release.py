@@ -42,6 +42,9 @@ DIST_DIR = os.path.join(BASE_DIR, "dist")
 # release: the plugin's "Connect AI assistant" dialog links users to
 # /releases/latest to download exactly this file.
 MCPB_NAME = "Supervertaler-MCP-Server.mcpb"
+# Plain exe zip (built by the same script) for MCP apps without an
+# extension format - ChatGPT desktop and friends.
+MCPB_EXE_ZIP = "Supervertaler-MCP-Server-exe.zip"
 
 # (sdlplugin filename in dist/, zip asset name, human label). The .sdlplugin names are
 # load-bearing — they must match the manifest PlugInName — so they are never renamed; the
@@ -120,6 +123,7 @@ def build_body(version, version19, selected):
 
     table = "\n".join(f"| `{zip_name}` | {label} |" for _sdl, zip_name, label in PLUGINS)
     table += f"\n| `{MCPB_NAME}` | AI assistant extension for Claude Desktop (optional, see below) |"
+    table += f"\n| `{MCPB_EXE_ZIP}` | AI assistant server for ChatGPT desktop / other MCP apps (optional, see below) |"
     changelog = "\n\n".join(content for _v, content in selected) if selected else "_See CHANGELOG.md._"
 
     return f"""Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026) — unsigned builds are attached below. Covers {span}.
@@ -140,7 +144,7 @@ The plugins attached to this release are the **unsigned** builds. The version on
 
 ## 🤖 Supervertaler MCP Server (optional)
 
-`{MCPB_NAME}` connects **Claude Desktop directly to your live Trados Studio session** – ask about the open project, search your TMs and termbases, have translations drafted into the document, all from Claude's own chat window. To install: download the file and **double-click it** – Claude Desktop installs it as an extension. Requires Supervertaler for Trados (this plugin) and works entirely on your own machine. Other MCP-capable AI apps (ChatGPT desktop, Claude Code) are supported via **Settings → AI Settings → Connect AI assistant…** in the plugin. [Documentation](https://docs.supervertaler.com/trados/mcp-server/).
+`{MCPB_NAME}` connects **Claude Desktop directly to your live Trados Studio session** – ask about the open project, search your TMs and termbases, have translations drafted into the document, all from Claude's own chat window. To install: download the file and **double-click it** – Claude Desktop installs it as an extension. Requires Supervertaler for Trados (this plugin) and works entirely on your own machine. For **ChatGPT desktop** and other MCP apps without extension support: download `{MCPB_EXE_ZIP}`, unzip it somewhere permanent, and add the exe in the app's MCP settings (ChatGPT: Settings → Plugins → MCPs → Add server) – the plugin's **Settings → AI Settings → Connect AI assistant…** dialog copies a ready-made config snippet. [Documentation](https://docs.supervertaler.com/trados/mcp-server/).
 
 ## What's changed
 
@@ -168,7 +172,11 @@ def build_mcpb(version):
     mcpb_path = os.path.join(DIST_DIR, MCPB_NAME)
     if result.returncode != 0 or not os.path.exists(mcpb_path):
         return None
-    return mcpb_path
+    paths = [mcpb_path]
+    exe_zip = os.path.join(DIST_DIR, MCPB_EXE_ZIP)
+    if os.path.exists(exe_zip):
+        paths.append(exe_zip)
+    return paths
 
 
 def make_zips():
@@ -234,7 +242,7 @@ def main():
     print("\nBuilding Claude Desktop extension (.mcpb)…")
     mcpb = build_mcpb(version)
     if mcpb:
-        zips.append(mcpb)
+        zips.extend(mcpb)
     elif "--no-mcpb" in args:
         print("  WARNING: .mcpb build failed — releasing without it (--no-mcpb given)")
     else:
