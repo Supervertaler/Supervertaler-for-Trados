@@ -931,7 +931,10 @@ namespace Supervertaler.Trados
 
                 _supervertalerBridge = new SupervertalerBridge(
                     getContext: BuildBridgeContextSnapshot,
-                    insertText: BridgeInsertTranslation);
+                    insertText: BridgeInsertTranslation,
+                    getProject: BuildBridgeProjectSnapshot,
+                    getSegments: BuildBridgeSegments,
+                    getDbPath: ResolveSupervertalerDbPath);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -1095,6 +1098,218 @@ namespace Supervertaler.Trados
             catch (Exception ex)
             {
                 return "insert failed: " + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/project (MCP get_active_project).
+        /// Project metadata plus segment counts per confirmation status,
+        /// gathered by walking the active document. Marshals to the UI thread.
+        /// </summary>
+        private BridgeProjectSnapshot BuildBridgeProjectSnapshot()
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeProjectSnapshot { Available = false };
+
+            if (ctrl.InvokeRequired)
+            {
+                return (BridgeProjectSnapshot)ctrl.Invoke(
+                    new Func<BridgeProjectSnapshot>(BuildBridgeProjectSnapshot));
+            }
+
+            var snapshot = new BridgeProjectSnapshot { Available = false };
+            if (_activeDocument == null)
+            {
+                snapshot.Note = "No document is open in the Trados editor.";
+                return snapshot;
+            }
+
+            try
+            {
+                snapshot.Available = true;
+                snapshot.Name = GetProjectName();
+                snapshot.FileName = GetFileName();
+                snapshot.SourceLang = GetDocumentSourceLanguage();
+                snapshot.TargetLang = GetDocumentTargetLanguage();
+
+                var statusCounts = new Dictionary<string, int>();
+                int total = 0, locked = 0;
+                foreach (var pair in _activeDocument.SegmentPairs)
+                {
+                    total++;
+                    if (pair.Properties?.IsLocked == true) locked++;
+                    var status = (pair.Properties?.ConfirmationLevel
+                        ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
+                    int count;
+                    statusCounts.TryGetValue(status, out count);
+                    statusCounts[status] = count + 1;
+                }
+
+                snapshot.TotalSegments = total;
+                snapshot.LockedSegments = locked;
+                snapshot.StatusCounts = statusCounts
+                    .OrderByDescending(kv => kv.Value)
+                    .Select(kv => new BridgeStatusCount { Status = kv.Key, Segments = kv.Value })
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupervertalerBridge] BuildBridgeProjectSnapshot threw: {ex.Message}");
+                return new BridgeProjectSnapshot
+                {
+                    Available = false,
+                    Note = "error reading project: " + ex.Message
+                };
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/segments (MCP get_segments). Walks the
+        /// active document with the same tag-safe serialization the bilingual
+        /// export uses, applying status/contains filters and paging. Marshals
+        /// to the UI thread.
+        /// </summary>
+        private BridgeSegmentsResponse BuildBridgeSegments(BridgeSegmentsQuery query)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeSegmentsResponse { Available = false };
+
+            if (ctrl.InvokeRequired)
+            {
+                return (BridgeSegmentsResponse)ctrl.Invoke(
+                    new Func<BridgeSegmentsQuery, BridgeSegmentsResponse>(BuildBridgeSegments), query);
+            }
+
+            var response = new BridgeSegmentsResponse
+            {
+                Available = false,
+                Segments = new List<BridgeSegmentRecord>()
+            };
+            if (_activeDocument == null)
+            {
+                response.Note = "No document is open in the Trados editor.";
+                return response;
+            }
+
+            try
+            {
+                response.Available = true;
+                int matching = 0;
+
+                foreach (var pair in _activeDocument.SegmentPairs)
+                {
+                    string source, target, status, id;
+                    bool isLocked;
+                    try
+                    {
+                        status = (pair.Properties?.ConfirmationLevel
+                            ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
+                        if (!string.IsNullOrEmpty(query.Status)
+                            && !status.Equals(query.Status, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        var sourceSer = SegmentTagHandler.Serialize(pair.Source);
+                        source = Core.Export.BilingualTagNamer.ApplySemanticNames(
+                            sourceSer.SerializedText ?? "", sourceSer.TagMap);
+                        if (string.IsNullOrWhiteSpace(SegmentTagHandler.StripTagPlaceholders(source)))
+                            continue; // structural/empty segment – same rule as the bilingual export
+
+                        if (pair.Target != null)
+                        {
+                            var targetSer = SegmentTagHandler.Serialize(pair.Target);
+                            target = Core.Export.BilingualTagNamer.ApplySemanticNames(
+                                targetSer.SerializedText ?? "", targetSer.TagMap);
+                        }
+                        else
+                        {
+                            target = "";
+                        }
+
+                        if (!string.IsNullOrEmpty(query.Contains)
+                            && source.IndexOf(query.Contains, StringComparison.OrdinalIgnoreCase) < 0
+                            && target.IndexOf(query.Contains, StringComparison.OrdinalIgnoreCase) < 0)
+                            continue;
+
+                        var puId = _activeDocument.GetParentParagraphUnit(pair)
+                            ?.Properties?.ParagraphUnitId.Id ?? "";
+                        var segId = pair.Properties?.Id.Id ?? "";
+                        id = puId + ":" + segId;
+                        isLocked = pair.Properties?.IsLocked == true;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SupervertalerBridge] segment read threw, skipping: {ex.Message}");
+                        continue;
+                    }
+
+                    matching++;
+                    if (matching <= query.Offset) continue;
+                    if (response.Segments.Count >= query.Limit)
+                    {
+                        response.Truncated = true;
+                        continue; // keep counting totalMatching, stop collecting
+                    }
+
+                    response.Segments.Add(new BridgeSegmentRecord
+                    {
+                        Id = id,
+                        Source = source,
+                        Target = string.IsNullOrEmpty(target) ? null : target,
+                        Status = status,
+                        IsLocked = isLocked
+                    });
+                }
+
+                response.TotalMatching = matching;
+                response.Returned = response.Segments.Count;
+                if (response.Truncated)
+                    response.Note = $"Only {response.Returned} of {matching} matching segments returned – " +
+                                    "use offset/limit to page through the rest, or narrow the filters.";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SupervertalerBridge] BuildBridgeSegments threw: {ex.Message}");
+                return new BridgeSegmentsResponse
+                {
+                    Available = false,
+                    Note = "error reading segments: " + ex.Message
+                };
+            }
+
+            return response;
+        }
+
+        /// <summary>
+        /// Resolves the supervertaler.db path for the bridge's TM/termbase
+        /// endpoints, using the same priority as TermLens: the user-set
+        /// termbase path first, then the shared user-data root, then the
+        /// legacy default locations. Returns null if nothing exists.
+        /// </summary>
+        private string ResolveSupervertalerDbPath()
+        {
+            try
+            {
+                var candidates = new List<string>();
+                if (!string.IsNullOrEmpty(_settings?.TermbasePath))
+                    candidates.Add(_settings.TermbasePath);
+                candidates.Add(Path.Combine(UserDataPath.ResourcesDir, "supervertaler.db"));
+                candidates.Add(Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Supervertaler_Data", "resources", "supervertaler.db"));
+                candidates.Add(Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Supervertaler", "resources", "supervertaler.db"));
+
+                return candidates.FirstOrDefault(File.Exists);
+            }
+            catch
+            {
+                return null;
             }
         }
 

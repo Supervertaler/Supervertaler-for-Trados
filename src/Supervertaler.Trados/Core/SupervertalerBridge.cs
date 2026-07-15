@@ -7,6 +7,7 @@ using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading;
+using Supervertaler.Trados.Models;
 using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Core
@@ -154,6 +155,7 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "definition", Order = 3, EmitDefaultValue = false)] public string Definition { get; set; }
         [DataMember(Name = "domain", Order = 4, EmitDefaultValue = false)] public string Domain { get; set; }
         [DataMember(Name = "notes", Order = 5, EmitDefaultValue = false)] public string Notes { get; set; }
+        [DataMember(Name = "nonTranslatable", Order = 6, EmitDefaultValue = false)] public bool NonTranslatable { get; set; }
     }
 
     [DataContract]
@@ -177,6 +179,81 @@ namespace Supervertaler.Trados.Core
     {
         [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
         [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+    }
+
+    // ─── MCP endpoint types (v1: /project, /segments, /tm-search, /term-lookup) ──
+
+    [DataContract]
+    public class BridgeProjectSnapshot
+    {
+        [DataMember(Name = "available", Order = 0)] public bool Available { get; set; }
+        [DataMember(Name = "name", Order = 1, EmitDefaultValue = false)] public string Name { get; set; }
+        [DataMember(Name = "fileName", Order = 2, EmitDefaultValue = false)] public string FileName { get; set; }
+        [DataMember(Name = "sourceLang", Order = 3, EmitDefaultValue = false)] public string SourceLang { get; set; }
+        [DataMember(Name = "targetLang", Order = 4, EmitDefaultValue = false)] public string TargetLang { get; set; }
+        [DataMember(Name = "totalSegments", Order = 5)] public int TotalSegments { get; set; }
+        [DataMember(Name = "lockedSegments", Order = 6)] public int LockedSegments { get; set; }
+        [DataMember(Name = "statusCounts", Order = 7, EmitDefaultValue = false)]
+        public List<BridgeStatusCount> StatusCounts { get; set; }
+        [DataMember(Name = "note", Order = 8, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeStatusCount
+    {
+        [DataMember(Name = "status", Order = 0)] public string Status { get; set; }
+        [DataMember(Name = "segments", Order = 1)] public int Segments { get; set; }
+    }
+
+    /// <summary>Parsed query-string filters for GET /v1/segments.</summary>
+    public class BridgeSegmentsQuery
+    {
+        public string Status;
+        public string Contains;
+        public int Limit = 200;
+        public int Offset;
+    }
+
+    [DataContract]
+    public class BridgeSegmentRecord
+    {
+        /// <summary>Stable Trados key: "&lt;paragraphUnitId&gt;:&lt;segmentId&gt;".</summary>
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "source", Order = 1)] public string Source { get; set; }
+        [DataMember(Name = "target", Order = 2, EmitDefaultValue = false)] public string Target { get; set; }
+        [DataMember(Name = "status", Order = 3)] public string Status { get; set; }
+        [DataMember(Name = "isLocked", Order = 4, EmitDefaultValue = false)] public bool IsLocked { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeSegmentsResponse
+    {
+        [DataMember(Name = "available", Order = 0)] public bool Available { get; set; }
+        [DataMember(Name = "totalMatching", Order = 1)] public int TotalMatching { get; set; }
+        [DataMember(Name = "returned", Order = 2)] public int Returned { get; set; }
+        [DataMember(Name = "truncated", Order = 3)] public bool Truncated { get; set; }
+        [DataMember(Name = "segments", Order = 4, EmitDefaultValue = false)]
+        public List<BridgeSegmentRecord> Segments { get; set; }
+        [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeTmSearchResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "matches", Order = 2, EmitDefaultValue = false)]
+        public List<BridgeTmMatch> Matches { get; set; }
+        [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeTermLookupResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "hits", Order = 2, EmitDefaultValue = false)]
+        public List<BridgeTermbaseHit> Hits { get; set; }
     }
 
     /// <summary>
@@ -216,6 +293,9 @@ namespace Supervertaler.Trados.Core
 
         private readonly Func<BridgeContextSnapshot> _getContext;
         private readonly Func<string, string> _insertText; // returns null on success, error message otherwise
+        private readonly Func<BridgeProjectSnapshot> _getProject;
+        private readonly Func<BridgeSegmentsQuery, BridgeSegmentsResponse> _getSegments;
+        private readonly Func<string> _getDbPath; // resolves supervertaler.db for TM/termbase lookups
 
         private HttpListener _listener;
         private Thread _listenerThread;
@@ -226,10 +306,16 @@ namespace Supervertaler.Trados.Core
 
         public SupervertalerBridge(
             Func<BridgeContextSnapshot> getContext,
-            Func<string, string> insertText)
+            Func<string, string> insertText,
+            Func<BridgeProjectSnapshot> getProject = null,
+            Func<BridgeSegmentsQuery, BridgeSegmentsResponse> getSegments = null,
+            Func<string> getDbPath = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
+            _getProject = getProject;
+            _getSegments = getSegments;
+            _getDbPath = getDbPath;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -421,6 +507,30 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            if (method == "GET" && path == "/v1/project")
+            {
+                HandleGetProject(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/segments")
+            {
+                HandleGetSegments(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/tm-search")
+            {
+                HandleTmSearch(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/term-lookup")
+            {
+                HandleTermLookup(context);
+                return;
+            }
+
             TryWriteError(context, 404, "not found");
         }
 
@@ -482,6 +592,236 @@ namespace Supervertaler.Trados.Core
                 WriteJson(context, 200, new BridgeResultResponse { Ok = true });
             else
                 WriteJson(context, 409, new BridgeResultResponse { Ok = false, Error = err });
+        }
+
+        // ── MCP endpoints (v1) ───────────────────────────────────────────
+        //
+        // Consumed by the Supervertaler MCP Server (src/Supervertaler.McpServer),
+        // which fronts this bridge for AI apps speaking the Model Context
+        // Protocol. Same rules as the original endpoints: loopback + bearer
+        // token, one request at a time, delegates marshal to the UI thread.
+
+        private void HandleGetProject(HttpListenerContext context)
+        {
+            if (_getProject == null)
+            {
+                TryWriteError(context, 501, "project endpoint not wired");
+                return;
+            }
+
+            BridgeProjectSnapshot snapshot;
+            try
+            {
+                snapshot = _getProject() ?? new BridgeProjectSnapshot { Available = false };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] project provider threw: {ex.Message}");
+                snapshot = new BridgeProjectSnapshot { Available = false };
+            }
+
+            WriteJson(context, 200, snapshot);
+        }
+
+        private void HandleGetSegments(HttpListenerContext context)
+        {
+            if (_getSegments == null)
+            {
+                TryWriteError(context, 501, "segments endpoint not wired");
+                return;
+            }
+
+            var qs = context.Request.QueryString;
+            var query = new BridgeSegmentsQuery
+            {
+                Status = qs["status"],
+                Contains = qs["contains"]
+            };
+            int limit, offset;
+            if (int.TryParse(qs["limit"], out limit) && limit > 0)
+                query.Limit = Math.Min(limit, 2000);
+            if (int.TryParse(qs["offset"], out offset) && offset > 0)
+                query.Offset = offset;
+
+            BridgeSegmentsResponse response;
+            try
+            {
+                response = _getSegments(query) ?? new BridgeSegmentsResponse { Available = false };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] segments provider threw: {ex.Message}");
+                response = new BridgeSegmentsResponse
+                {
+                    Available = false,
+                    Note = "internal error reading segments: " + ex.Message
+                };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleTmSearch(HttpListenerContext context)
+        {
+            var query = context.Request.QueryString["q"];
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                WriteJson(context, 400, new BridgeTmSearchResponse { Ok = false, Error = "missing 'q'" });
+                return;
+            }
+
+            int limit;
+            if (!int.TryParse(context.Request.QueryString["limit"], out limit) || limit <= 0)
+                limit = 5;
+            limit = Math.Min(limit, 50);
+
+            var dbPath = ResolveDbPathSafe();
+            if (dbPath == null)
+            {
+                WriteJson(context, 200, new BridgeTmSearchResponse
+                {
+                    Ok = false,
+                    Error = "Supervertaler database (supervertaler.db) not found. Set the termbase/database " +
+                            "path in the Supervertaler for Trados settings."
+                });
+                return;
+            }
+
+            var response = new BridgeTmSearchResponse { Ok = true, Matches = new List<BridgeTmMatch>() };
+            try
+            {
+                using (var reader = new TmReader(dbPath))
+                {
+                    if (!reader.Open())
+                    {
+                        WriteJson(context, 200, new BridgeTmSearchResponse
+                        {
+                            Ok = false,
+                            Error = "could not open Supervertaler database: " + (reader.LastError ?? "unknown error")
+                        });
+                        return;
+                    }
+
+                    var tms = reader.GetBridgedTms();
+                    if (tms == null || tms.Count == 0)
+                    {
+                        response.Note = "No Supervertaler TMs are bridged to Trados. Enable 'Bridge to Trados' " +
+                                        "on the relevant TMs in the Supervertaler Workbench to make them searchable.";
+                        WriteJson(context, 200, response);
+                        return;
+                    }
+
+                    // Exact hits first, then phrase-concordance hits; dedupe on
+                    // (source, target) across both passes and all TMs.
+                    var seen = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var tm in tms)
+                    {
+                        var hits = new List<BridgedTu>();
+                        hits.AddRange(reader.SearchExact(tm.TmId, query, limit));
+                        hits.AddRange(reader.SearchConcordance(tm.TmId, query, limit));
+
+                        foreach (var tu in hits)
+                        {
+                            if (response.Matches.Count >= limit) break;
+                            var key = (tu.SourceText ?? "") + "" + (tu.TargetText ?? "");
+                            if (!seen.Add(key)) continue;
+                            response.Matches.Add(new BridgeTmMatch
+                            {
+                                Score = tu.Score,
+                                Source = tu.SourceText ?? "",
+                                Target = tu.TargetText ?? "",
+                                TmName = tm.Name
+                            });
+                        }
+                        if (response.Matches.Count >= limit) break;
+                    }
+
+                    if (response.Matches.Count == 0)
+                        response.Note = "No exact or phrase-concordance matches. Try a shorter, more " +
+                                        "distinctive phrase from the segment.";
+                }
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] tm-search threw: {ex.Message}");
+                response = new BridgeTmSearchResponse { Ok = false, Error = "tm search failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleTermLookup(HttpListenerContext context)
+        {
+            var term = context.Request.QueryString["q"];
+            if (string.IsNullOrWhiteSpace(term))
+            {
+                WriteJson(context, 400, new BridgeTermLookupResponse { Ok = false, Error = "missing 'q'" });
+                return;
+            }
+
+            var dbPath = ResolveDbPathSafe();
+            if (dbPath == null)
+            {
+                WriteJson(context, 200, new BridgeTermLookupResponse
+                {
+                    Ok = false,
+                    Error = "Supervertaler database (supervertaler.db) not found. Set the termbase/database " +
+                            "path in the Supervertaler for Trados settings."
+                });
+                return;
+            }
+
+            var response = new BridgeTermLookupResponse { Ok = true, Hits = new List<BridgeTermbaseHit>() };
+            try
+            {
+                using (var reader = new TermbaseReader(dbPath))
+                {
+                    if (!reader.Open())
+                    {
+                        WriteJson(context, 200, new BridgeTermLookupResponse
+                        {
+                            Ok = false,
+                            Error = "could not open Supervertaler database"
+                        });
+                        return;
+                    }
+
+                    var entries = reader.SearchTerm(term.Trim()) ?? new List<TermEntry>();
+                    foreach (var entry in entries)
+                    {
+                        response.Hits.Add(new BridgeTermbaseHit
+                        {
+                            Source = entry.SourceTerm ?? "",
+                            Target = entry.TargetTerm ?? "",
+                            TermbaseName = entry.TermbaseName,
+                            Definition = entry.Definition,
+                            Domain = entry.Domain,
+                            Notes = entry.Notes,
+                            NonTranslatable = entry.IsNonTranslatable
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] term-lookup threw: {ex.Message}");
+                response = new BridgeTermLookupResponse { Ok = false, Error = "term lookup failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private string ResolveDbPathSafe()
+        {
+            try
+            {
+                var path = _getDbPath?.Invoke();
+                return !string.IsNullOrEmpty(path) && File.Exists(path) ? path : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // ── Handshake file ───────────────────────────────────────────────
