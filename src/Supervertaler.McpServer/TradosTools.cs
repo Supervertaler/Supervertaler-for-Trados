@@ -125,10 +125,11 @@ public static class TradosTools
             BuildQuery(("q", text), ("in", searchIn), ("limit", limit?.ToString())), ct));
 
     [McpServerTool(Name = "lookup_term"),
-     Description("Look up a term in the user's termbases (Supervertaler termbases and attached MultiTerm " +
-                 "termbases). Returns source term, target term, and flags such as non-translatable or " +
-                 "project-specific. The user's termbase is authoritative for terminology – always follow " +
-                 "it over your own preference.")]
+     Description("Look up a term across ALL the user's termbases: Supervertaler termbases plus the " +
+                 "Trados termbases attached to the open project (.ttb in Studio 2026, MultiTerm .sdltb " +
+                 "in Studio 2024 – hits from those are marked [Trados project termbase]). Exact match " +
+                 "first, substring fallback. The user's termbase is authoritative for terminology – " +
+                 "always follow it over your own preference.")]
     public static Task<string> LookupTerm(
         BridgeClient bridge,
         [Description("The term to look up (source or target language).")]
@@ -162,7 +163,8 @@ public static class TradosTools
 
     [McpServerTool(Name = "check_terminology"),
      Description("QA check: find termbase terms that appear in source segments whose targets don't use the " +
-                 "expected translation (or any synonym). Results are GROUPED PER TERM, most-affected first: " +
+                 "expected translation (or any synonym). Covers Supervertaler termbases AND the Trados project's " +
+                 "own termbases (.ttb/MultiTerm). Results are GROUPED PER TERM, most-affected first: " +
                  "each group has the term, its termbase, the expected translations, how many segments are " +
                  "affected, and sample segment ids. A term affecting many segments usually means the project " +
                  "consistently uses a different translation than the termbase – help the user decide which " +
@@ -177,9 +179,10 @@ public static class TradosTools
 
     [McpServerTool(Name = "list_resources"),
      Description("List the translation resources available: the Trados TMs attached to the open project " +
-                 "(file-based and GroupShare server TMs), the Supervertaler bridged TMs, and the " +
-                 "Supervertaler termbases (with language pair, term count, and read/write flags). Useful " +
-                 "for orientation before searching, and to answer 'what TMs/termbases am I using?'.")]
+                 "(file-based and GroupShare server TMs), the Supervertaler bridged TMs, and ALL termbases " +
+                 "- Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's " +
+                 "own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before " +
+                 "searching, and to answer 'what TMs/termbases am I using?'.")]
     public static Task<string> ListResources(BridgeClient bridge, CancellationToken ct = default)
         => Safe(() => bridge.GetAsync("/v1/resources", ct));
 
@@ -218,10 +221,12 @@ public static class TradosTools
         }, ct));
 
     [McpServerTool(Name = "add_term"),
-     Description("Add a source/target term pair to the user's configured Write termbases (same as " +
-                 "Supervertaler's quick-add). Reports which termbases the term was added to, or an error " +
-                 "if it already exists. Only use when the user asked for a term to be added, or explicitly " +
-                 "agreed to your suggestion to add one.")]
+     Description("Add a source/target term pair to the user's configured Supervertaler Write termbases " +
+                 "(same as Supervertaler's quick-add). Reports which termbases received the term, or an " +
+                 "error if it already exists. NOTE: Trados's own project termbases (.ttb / MultiTerm) are " +
+                 "READ-ONLY for you – if the user wants a term added there, tell them to add it in Trados " +
+                 "itself. Only use when the user asked for a term to be added, or explicitly agreed to " +
+                 "your suggestion to add one.")]
     public static Task<string> AddTerm(
         BridgeClient bridge,
         [Description("The source-language term.")]

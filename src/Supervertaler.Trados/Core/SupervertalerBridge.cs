@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
@@ -387,6 +388,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "isProjectTermbase", Order = 3, EmitDefaultValue = false)] public bool IsProjectTermbase { get; set; }
         [DataMember(Name = "readEnabled", Order = 4)] public bool ReadEnabled { get; set; }
         [DataMember(Name = "writeEnabled", Order = 5)] public bool WriteEnabled { get; set; }
+        /// <summary>"supervertaler", "trados-ttb" (Studio 2026), or "multiterm" (.sdltb).</summary>
+        [DataMember(Name = "kind", Order = 6, EmitDefaultValue = false)] public string Kind { get; set; }
     }
 
     [DataContract]
@@ -1062,17 +1065,47 @@ namespace Supervertaler.Trados.Core
                         return;
                     }
 
-                    // Exact/normalized match first; if nothing is stored under
-                    // that exact form, fall back to substring so inflected or
-                    // partial queries still surface the relevant entries.
-                    var entries = reader.SearchTerm(term.Trim()) ?? new List<TermEntry>();
-                    if (entries.Count == 0)
+                    // Studio project termbases (.ttb for Studio 2026, MultiTerm
+                    // .sdltb for 2024): TermLens merges them into its in-memory
+                    // index (entries carry IsMultiTerm=true + TermbaseName), so
+                    // query that index rather than re-reading the files. Only
+                    // available once TermLens has loaded for the open document.
+                    var q = term.Trim();
+                    var studioExact = new List<TermEntry>();
+                    var studioSub = new List<TermEntry>();
+                    bool studioIndexLoaded = false;
+                    try
                     {
-                        entries = reader.SearchTermSubstring(term.Trim()) ?? new List<TermEntry>();
-                        if (entries.Count > 0)
+                        var merged = TermLensEditorViewPart.GetCurrentTermbaseTerms();
+                        studioIndexLoaded = merged != null && merged.Count > 0;
+                        foreach (var e in merged ?? new List<TermEntry>())
+                        {
+                            // Non-MultiTerm entries come from supervertaler.db,
+                            // which the DB search below already covers.
+                            if (e == null || !e.IsMultiTerm) continue;
+                            if (TermMatchesQuery(e, q, exact: true)) studioExact.Add(e);
+                            else if (TermMatchesQuery(e, q, exact: false)) studioSub.Add(e);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        BridgeLog.Write($"[SupervertalerBridge] studio-termbase lookup threw: {ex.Message}");
+                    }
+
+                    // Exact/normalized match first; if nothing is stored under
+                    // that exact form ANYWHERE, fall back to substring so
+                    // inflected or partial queries still surface entries.
+                    var entries = reader.SearchTerm(q) ?? new List<TermEntry>();
+                    var studioHits = studioExact;
+                    if (entries.Count == 0 && studioExact.Count == 0)
+                    {
+                        entries = reader.SearchTermSubstring(q) ?? new List<TermEntry>();
+                        studioHits = studioSub.Take(20).ToList();
+                        if (entries.Count > 0 || studioHits.Count > 0)
                             response.Note = "No exact termbase entry for the query; these are substring " +
                                             "matches (query text appears inside the source or target term).";
                     }
+
                     foreach (var entry in entries)
                     {
                         response.Hits.Add(new BridgeTermbaseHit
@@ -1086,6 +1119,30 @@ namespace Supervertaler.Trados.Core
                             NonTranslatable = entry.IsNonTranslatable
                         });
                     }
+                    foreach (var entry in studioHits)
+                    {
+                        var notes = entry.Notes;
+                        if (entry.TargetSynonyms != null && entry.TargetSynonyms.Count > 0)
+                        {
+                            var syn = "Other translations: " + string.Join(", ", entry.TargetSynonyms);
+                            notes = string.IsNullOrEmpty(notes) ? syn : notes + " | " + syn;
+                        }
+                        response.Hits.Add(new BridgeTermbaseHit
+                        {
+                            Source = entry.SourceTerm ?? "",
+                            Target = entry.TargetTerm ?? "",
+                            TermbaseName = (entry.TermbaseName ?? "Trados termbase") + " [Trados project termbase]",
+                            Definition = entry.Definition,
+                            Domain = entry.Domain,
+                            Notes = notes,
+                            NonTranslatable = entry.IsNonTranslatable
+                        });
+                    }
+
+                    if (!studioIndexLoaded)
+                        response.Note = ((response.Note ?? "") + " Note: the Trados project's own termbases " +
+                            "were not searched – they load when a document is open in the editor with " +
+                            "TermLens initialised.").Trim();
                 }
             }
             catch (Exception ex)
@@ -1095,6 +1152,28 @@ namespace Supervertaler.Trados.Core
             }
 
             WriteJson(context, 200, response);
+        }
+
+        /// <summary>Case-insensitive match of a query against a term entry's
+        /// source term, target term, and target synonyms. Exact = equality,
+        /// otherwise substring containment in either direction is enough
+        /// (so "koelgas" finds "koelgassysteem" and vice versa).</summary>
+        private static bool TermMatchesQuery(TermEntry e, string q, bool exact)
+        {
+            bool One(string t)
+            {
+                if (string.IsNullOrWhiteSpace(t)) return false;
+                t = t.Trim();
+                if (exact) return string.Equals(t, q, StringComparison.OrdinalIgnoreCase);
+                return t.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
+                    || q.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+
+            if (One(e.SourceTerm) || One(e.TargetTerm)) return true;
+            if (e.TargetSynonyms != null)
+                foreach (var s in e.TargetSynonyms)
+                    if (One(s)) return true;
+            return false;
         }
 
         private void HandleUpdateSegments(HttpListenerContext context)

@@ -1720,6 +1720,25 @@ namespace Supervertaler.Trados
                         catch { }
                         index = reader.LoadAllTerms(disabled, settings.CaseSensitiveMatching, projSrcLang);
                     }
+
+                    // Also include the Trados project's own termbases (.ttb /
+                    // MultiTerm .sdltb) from TermLens's merged in-memory index,
+                    // so the check verifies against ALL the terminology the
+                    // translator actually sees while working.
+                    foreach (var e in TermLensEditorViewPart.GetCurrentTermbaseTerms()
+                             ?? new List<Models.TermEntry>())
+                    {
+                        if (e == null || !e.IsMultiTerm || string.IsNullOrWhiteSpace(e.SourceTerm))
+                            continue;
+                        var key = e.SourceTerm.Trim();
+                        List<Models.TermEntry> list;
+                        if (!index.TryGetValue(key, out list))
+                        {
+                            list = new List<Models.TermEntry>();
+                            index[key] = list;
+                        }
+                        list.Add(e);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1923,7 +1942,8 @@ namespace Supervertaler.Trados
                                     Terms = tb.TermCount,
                                     IsProjectTermbase = tb.IsProjectTermbase,
                                     ReadEnabled = !disabled.Contains(tb.Id),
-                                    WriteEnabled = write.Contains(tb.Id)
+                                    WriteEnabled = write.Contains(tb.Id),
+                                    Kind = "supervertaler"
                                 });
                             }
                         }
@@ -1933,6 +1953,35 @@ namespace Supervertaler.Trados
                 {
                     response.Note = ((response.Note ?? "") + " Supervertaler resources error: " + ex.Message).Trim();
                 }
+            }
+
+            // Trados project termbases (.ttb for Studio 2026, MultiTerm .sdltb
+            // for 2024), as detected and loaded by TermLens for the open
+            // document. Read-only for the AI (add_term can't write them).
+            try
+            {
+                foreach (var info in TermLensEditorViewPart.GetMultiTermInfos()
+                         ?? new List<Models.MultiTermTermbaseInfo>())
+                {
+                    var ext = "";
+                    try { ext = Path.GetExtension(info.FilePath ?? "").ToLowerInvariant(); } catch { }
+                    response.Termbases.Add(new BridgeTermbaseResource
+                    {
+                        Name = info.Name,
+                        Languages = $"{info.SourceIndexName} → {info.TargetIndexName}",
+                        Terms = info.TermCount,
+                        IsProjectTermbase = true,
+                        ReadEnabled = info.IsEnabled
+                            && info.LoadMode != Models.MultiTermLoadMode.Failed,
+                        WriteEnabled = false,
+                        Kind = ext == ".ttb" ? "trados-ttb" : "multiterm"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SupervertalerBridge] studio termbase listing threw: {ex.Message}");
             }
 
             return response;
