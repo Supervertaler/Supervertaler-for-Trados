@@ -941,7 +941,11 @@ namespace Supervertaler.Trados
                     findInconsistencies: BuildBridgeInconsistencies,
                     searchStudioTm: BridgeSearchStudioTm,
                     runQaCheck: BridgeRunQaCheck,
-                    listResources: BridgeListResources);
+                    listResources: BridgeListResources,
+                    goToSegment: BridgeGoToSegment,
+                    getComments: BridgeGetComments,
+                    addComment: BridgeAddComment,
+                    updateComment: BridgeUpdateComment);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -1306,6 +1310,7 @@ namespace Supervertaler.Trados
                         continue; // keep counting totalMatching, stop collecting
                     }
 
+                    var segNumber = id.Substring(id.LastIndexOf(':') + 1);
                     response.Segments.Add(new BridgeSegmentRecord
                     {
                         Id = id,
@@ -1313,7 +1318,8 @@ namespace Supervertaler.Trados
                         Target = string.IsNullOrEmpty(target) ? null : target,
                         Status = status,
                         IsLocked = isLocked,
-                        FileName = string.IsNullOrEmpty(segFileName) ? null : segFileName
+                        FileName = string.IsNullOrEmpty(segFileName) ? null : segFileName,
+                        Number = segNumber
                     });
                 }
 
@@ -2411,6 +2417,315 @@ namespace Supervertaler.Trados
             catch (Exception ex)
             {
                 return new BridgeAddTermResponse { Ok = false, Error = "add term failed: " + ex.Message };
+            }
+        }
+
+        /// <summary>Resolve a bridge segment reference to a live ISegmentPair:
+        /// either a full "puId:segId" id, or a per-file display number plus an
+        /// optional file (required when a merged document has several files).
+        /// Returns null with an error message when unresolvable. UI thread.</summary>
+        private ISegmentPair ResolveBridgeSegment(string id, string file, string number, out string error)
+        {
+            error = null;
+            if (!string.IsNullOrEmpty(id))
+            {
+                var sep = id.LastIndexOf(':');
+                if (sep <= 0 || sep == id.Length - 1)
+                {
+                    error = "malformed id – expected \"<paragraphUnitId>:<segmentId>\"";
+                    return null;
+                }
+                var index = BuildSegmentPairIndex(null);
+                ISegmentPair pair;
+                if (!index.TryGetValue(KeyOf(id.Substring(0, sep), id.Substring(sep + 1)), out pair) || pair == null)
+                {
+                    error = "segment not found in the open document";
+                    return null;
+                }
+                return pair;
+            }
+
+            if (string.IsNullOrEmpty(number))
+            {
+                error = "provide either 'id' or 'number' (+ 'file' in merged documents)";
+                return null;
+            }
+
+            string filterFileId = null;
+            if (!string.IsNullOrEmpty(file))
+            {
+                EnsureBridgeFileMapFresh();
+                filterFileId = ResolveBridgeFileId(file);
+                if (filterFileId == null)
+                {
+                    error = $"no file matching '{file}' – call get_files for the list";
+                    return null;
+                }
+            }
+
+            ISegmentPair found = null;
+            int matches = 0;
+            foreach (var pair in _activeDocument.SegmentPairs)
+            {
+                try
+                {
+                    var segId = pair.Properties?.Id.Id ?? "";
+                    if (!segId.Equals(number, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (filterFileId != null)
+                    {
+                        var puId = _activeDocument.GetParentParagraphUnit(pair)
+                            ?.Properties?.ParagraphUnitId.Id ?? "";
+                        string fid;
+                        if (!_puIdToFileId.TryGetValue(puId, out fid) || fid != filterFileId) continue;
+                    }
+                    matches++;
+                    if (found == null) found = pair;
+                }
+                catch { }
+            }
+
+            if (found == null)
+            {
+                error = $"no segment number {number}" + (file != null ? $" in file '{file}'" : "");
+                return null;
+            }
+            if (matches > 1 && filterFileId == null)
+            {
+                error = $"segment number {number} exists in more than one file of this merged document – " +
+                        "specify 'file' to disambiguate";
+                return null;
+            }
+            return found;
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/go-to-segment (MCP go_to_segment).
+        /// Moves Studio's editor to the given segment so the user sees what
+        /// the AI is talking about. Marshals to the UI thread.
+        /// </summary>
+        private BridgeResultResponse BridgeGoToSegment(BridgeGoToRequest req)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeResultResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeResultResponse)ctrl.Invoke(
+                    new Func<BridgeGoToRequest, BridgeResultResponse>(BridgeGoToSegment), req);
+
+            if (_activeDocument == null)
+                return new BridgeResultResponse { Ok = false, Error = "no document is open in the Trados editor" };
+
+            try
+            {
+                string error;
+                var pair = ResolveBridgeSegment(req?.Id, req?.File, req?.Number, out error);
+                if (pair == null)
+                    return new BridgeResultResponse { Ok = false, Error = error };
+
+                var puId = _activeDocument.GetParentParagraphUnit(pair)
+                    ?.Properties?.ParagraphUnitId.Id ?? "";
+                var segId = pair.Properties?.Id.Id ?? "";
+                _activeDocument.SetActiveSegmentPair(puId, segId, true);
+                return new BridgeResultResponse
+                {
+                    Ok = true,
+                    Note = $"Studio's editor is now on segment {segId}."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeResultResponse { Ok = false, Error = "navigation failed: " + ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Bridge delegate for GET /v1/comments (MCP get_comments). Returns the
+        /// Trados comments on a segment in stable index order (source-side
+        /// markers first, then target-side), so update_comment can address one.
+        /// Marshals to the UI thread.
+        /// </summary>
+        private BridgeCommentsResponse BridgeGetComments(string id)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeCommentsResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeCommentsResponse)ctrl.Invoke(
+                    new Func<string, BridgeCommentsResponse>(BridgeGetComments), id);
+
+            if (_activeDocument == null)
+                return new BridgeCommentsResponse { Ok = false, Error = "no document is open in the Trados editor" };
+
+            try
+            {
+                string error;
+                var pair = ResolveBridgeSegment(id, null, null, out error);
+                if (pair == null)
+                    return new BridgeCommentsResponse { Ok = false, Error = error };
+
+                var response = new BridgeCommentsResponse { Ok = true, Comments = new List<BridgeCommentInfo>() };
+                int index = 0;
+                foreach (var c in EnumerateSegmentComments(pair))
+                {
+                    response.Comments.Add(new BridgeCommentInfo
+                    {
+                        Index = index++,
+                        Author = c.Author,
+                        Date = c.Date != DateTime.MinValue ? c.Date.ToString("yyyy-MM-dd HH:mm") : null,
+                        Severity = c.Severity.ToString(),
+                        Text = c.Text ?? ""
+                    });
+                }
+                if (response.Comments.Count == 0)
+                    response.Note = "This segment has no comments.";
+                return response;
+            }
+            catch (Exception ex)
+            {
+                return new BridgeCommentsResponse { Ok = false, Error = "get comments failed: " + ex.Message };
+            }
+        }
+
+        /// <summary>Comments on a segment pair in stable order: source-side
+        /// markers first, then target-side, walking nested markup depth-first.
+        /// The same order every time, so an index addresses one comment.</summary>
+        private static List<Sdl.FileTypeSupport.Framework.NativeApi.IComment> EnumerateSegmentComments(ISegmentPair pair)
+        {
+            var list = new List<Sdl.FileTypeSupport.Framework.NativeApi.IComment>();
+            CollectCommentObjects(pair?.Source, list);
+            CollectCommentObjects(pair?.Target, list);
+            return list;
+        }
+
+        private static void CollectCommentObjects(IAbstractMarkupDataContainer container,
+            List<Sdl.FileTypeSupport.Framework.NativeApi.IComment> list)
+        {
+            if (container == null) return;
+            foreach (var item in container)
+            {
+                if (item is ICommentMarker marker)
+                {
+                    try
+                    {
+                        var props = marker.Comments;
+                        for (int i = 0; i < (props?.Count ?? 0); i++)
+                        {
+                            var c = props.GetItem(i);
+                            if (c != null) list.Add(c);
+                        }
+                    }
+                    catch { }
+                    CollectCommentObjects(marker, list);
+                }
+                else if (item is IAbstractMarkupDataContainer nested)
+                {
+                    CollectCommentObjects(nested, list);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/add-comment (MCP add_comment). Adds a
+        /// Studio comment on the whole segment via the same API as the editor's
+        /// Add Comment command. Marshals to the UI thread.
+        /// </summary>
+        private BridgeResultResponse BridgeAddComment(BridgeAddCommentRequest req)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeResultResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeResultResponse)ctrl.Invoke(
+                    new Func<BridgeAddCommentRequest, BridgeResultResponse>(BridgeAddComment), req);
+
+            if (_activeDocument == null)
+                return new BridgeResultResponse { Ok = false, Error = "no document is open in the Trados editor" };
+            if (string.IsNullOrWhiteSpace(req?.Text))
+                return new BridgeResultResponse { Ok = false, Error = "missing 'text'" };
+
+            try
+            {
+                string error;
+                var pair = ResolveBridgeSegment(req.Id, null, null, out error);
+                if (pair == null)
+                    return new BridgeResultResponse { Ok = false, Error = error };
+
+                var severity = Sdl.FileTypeSupport.Framework.NativeApi.Severity.Low;
+                if (!string.IsNullOrEmpty(req.Severity)
+                    && !Enum.TryParse(req.Severity, true, out severity))
+                    return new BridgeResultResponse
+                    {
+                        Ok = false,
+                        Error = $"unknown severity '{req.Severity}' – use Low, Medium, or High"
+                    };
+
+                _activeDocument.AddCommentOnSegment(pair, req.Text, severity);
+                return new BridgeResultResponse
+                {
+                    Ok = true,
+                    Note = "Comment added. It is part of the document's unsaved changes until the user saves in Studio."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeResultResponse { Ok = false, Error = "add comment failed: " + ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/update-comment (MCP update_comment).
+        /// Rewrites the text of an existing comment, addressed by the index
+        /// get_comments returned. The edit runs inside ProcessSegmentPair so
+        /// Studio registers the document as modified. Marshals to the UI thread.
+        /// </summary>
+        private BridgeResultResponse BridgeUpdateComment(BridgeUpdateCommentRequest req)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeResultResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeResultResponse)ctrl.Invoke(
+                    new Func<BridgeUpdateCommentRequest, BridgeResultResponse>(BridgeUpdateComment), req);
+
+            if (_activeDocument == null)
+                return new BridgeResultResponse { Ok = false, Error = "no document is open in the Trados editor" };
+            if (string.IsNullOrWhiteSpace(req?.Text))
+                return new BridgeResultResponse { Ok = false, Error = "missing 'text'" };
+
+            try
+            {
+                string error;
+                var pair = ResolveBridgeSegment(req.Id, null, null, out error);
+                if (pair == null)
+                    return new BridgeResultResponse { Ok = false, Error = error };
+
+                string failure = null;
+                bool updated = false;
+                _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP",
+                    (sp, cancel) =>
+                    {
+                        var comments = EnumerateSegmentComments(sp);
+                        if (req.CommentIndex < 0 || req.CommentIndex >= comments.Count)
+                        {
+                            failure = $"comment index {req.CommentIndex} out of range – this segment has " +
+                                      $"{comments.Count} comment(s); call get_comments first";
+                            return;
+                        }
+                        comments[req.CommentIndex].Text = req.Text;
+                        updated = true;
+                    });
+
+                if (!updated)
+                    return new BridgeResultResponse { Ok = false, Error = failure ?? "comment not updated" };
+                return new BridgeResultResponse
+                {
+                    Ok = true,
+                    Note = "Comment text replaced. Part of the document's unsaved changes until the user saves."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeResultResponse { Ok = false, Error = "update comment failed: " + ex.Message };
             }
         }
 

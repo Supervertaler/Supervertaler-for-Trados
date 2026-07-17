@@ -176,10 +176,11 @@ namespace Supervertaler.Trados.Core
     }
 
     [DataContract]
-    internal class BridgeResultResponse
+    public class BridgeResultResponse
     {
         [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
         [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "note", Order = 2, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
     // ─── MCP endpoint types (v1: /project, /segments, /tm-search, /term-lookup) ──
@@ -228,6 +229,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "isLocked", Order = 4, EmitDefaultValue = false)] public bool IsLocked { get; set; }
         /// <summary>Only set on merged multi-file documents where file attribution worked.</summary>
         [DataMember(Name = "fileName", Order = 5, EmitDefaultValue = false)] public string FileName { get; set; }
+        /// <summary>The segment number shown in Studio's grid – restarts per file in merged documents.</summary>
+        [DataMember(Name = "number", Order = 6, EmitDefaultValue = false)] public string Number { get; set; }
     }
 
     [DataContract]
@@ -403,6 +406,55 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    [DataContract]
+    public class BridgeGoToRequest
+    {
+        /// <summary>Full id "puId:segId" – or leave null and use File+Number.</summary>
+        [DataMember(Name = "id", EmitDefaultValue = false)] public string Id { get; set; }
+        /// <summary>File id or (partial) name, for Number-based addressing in merged documents.</summary>
+        [DataMember(Name = "file", EmitDefaultValue = false)] public string File { get; set; }
+        /// <summary>The segment number as displayed in Studio's grid (per file).</summary>
+        [DataMember(Name = "number", EmitDefaultValue = false)] public string Number { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeCommentInfo
+    {
+        [DataMember(Name = "index", Order = 0)] public int Index { get; set; }
+        [DataMember(Name = "author", Order = 1, EmitDefaultValue = false)] public string Author { get; set; }
+        [DataMember(Name = "date", Order = 2, EmitDefaultValue = false)] public string Date { get; set; }
+        [DataMember(Name = "severity", Order = 3, EmitDefaultValue = false)] public string Severity { get; set; }
+        [DataMember(Name = "text", Order = 4)] public string Text { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeCommentsResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "comments", Order = 2, EmitDefaultValue = false)]
+        public List<BridgeCommentInfo> Comments { get; set; }
+        [DataMember(Name = "note", Order = 3, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeAddCommentRequest
+    {
+        [DataMember(Name = "id", IsRequired = true)] public string Id { get; set; }
+        [DataMember(Name = "text", IsRequired = true)] public string Text { get; set; }
+        /// <summary>"Low" (informational, default), "Medium" (warning), or "High" (error).</summary>
+        [DataMember(Name = "severity", EmitDefaultValue = false)] public string Severity { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeUpdateCommentRequest
+    {
+        [DataMember(Name = "id", IsRequired = true)] public string Id { get; set; }
+        /// <summary>Comment index as returned by /v1/comments for this segment.</summary>
+        [DataMember(Name = "commentIndex", IsRequired = true)] public int CommentIndex { get; set; }
+        [DataMember(Name = "text", IsRequired = true)] public string Text { get; set; }
+    }
+
     // ─── MCP write endpoints (v1: /update-segments, /add-term) ──────────────
 
     [DataContract]
@@ -507,6 +559,10 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeStudioTmQuery, BridgeTmSearchResponse> _searchStudioTm;
         private readonly Func<BridgeQaQuery, BridgeQaResponse> _runQaCheck;
         private readonly Func<BridgeResourcesResponse> _listResources;
+        private readonly Func<BridgeGoToRequest, BridgeResultResponse> _goToSegment;
+        private readonly Func<string, BridgeCommentsResponse> _getComments;
+        private readonly Func<BridgeAddCommentRequest, BridgeResultResponse> _addComment;
+        private readonly Func<BridgeUpdateCommentRequest, BridgeResultResponse> _updateComment;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -532,7 +588,11 @@ namespace Supervertaler.Trados.Core
             Func<int, BridgeInconsistenciesResponse> findInconsistencies = null,
             Func<BridgeStudioTmQuery, BridgeTmSearchResponse> searchStudioTm = null,
             Func<BridgeQaQuery, BridgeQaResponse> runQaCheck = null,
-            Func<BridgeResourcesResponse> listResources = null)
+            Func<BridgeResourcesResponse> listResources = null,
+            Func<BridgeGoToRequest, BridgeResultResponse> goToSegment = null,
+            Func<string, BridgeCommentsResponse> getComments = null,
+            Func<BridgeAddCommentRequest, BridgeResultResponse> addComment = null,
+            Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -546,6 +606,10 @@ namespace Supervertaler.Trados.Core
             _searchStudioTm = searchStudioTm;
             _runQaCheck = runQaCheck;
             _listResources = listResources;
+            _goToSegment = goToSegment;
+            _getComments = getComments;
+            _addComment = addComment;
+            _updateComment = updateComment;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -806,6 +870,30 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/resources")
             {
                 HandleListResources(context);
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/go-to-segment")
+            {
+                HandleDelegatePost<BridgeGoToRequest>(context, _goToSegment, "go-to-segment");
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/comments")
+            {
+                HandleGetComments(context);
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/add-comment")
+            {
+                HandleDelegatePost<BridgeAddCommentRequest>(context, _addComment, "add-comment");
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/update-comment")
+            {
+                HandleDelegatePost<BridgeUpdateCommentRequest>(context, _updateComment, "update-comment");
                 return;
             }
 
@@ -1533,6 +1621,74 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] WriteRawJson failed: {ex.Message}");
             }
+        }
+
+        /// <summary>Shared plumbing for small POST endpoints: read body,
+        /// deserialize to T, invoke the delegate, write its BridgeResultResponse.</summary>
+        private void HandleDelegatePost<T>(HttpListenerContext context,
+            Func<T, BridgeResultResponse> handler, string name) where T : class
+        {
+            if (handler == null)
+            {
+                TryWriteError(context, 501, name + " endpoint not wired");
+                return;
+            }
+
+            T req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<T>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeResultResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            BridgeResultResponse response;
+            try
+            {
+                response = handler(req) ?? new BridgeResultResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] {name} threw: {ex.Message}");
+                response = new BridgeResultResponse { Ok = false, Error = name + " failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleGetComments(HttpListenerContext context)
+        {
+            if (_getComments == null)
+            {
+                TryWriteError(context, 501, "comments endpoint not wired");
+                return;
+            }
+
+            var id = context.Request.QueryString["id"];
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                WriteJson(context, 400, new BridgeCommentsResponse { Ok = false, Error = "missing 'id'" });
+                return;
+            }
+
+            BridgeCommentsResponse response;
+            try
+            {
+                response = _getComments(id) ?? new BridgeCommentsResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] comments threw: {ex.Message}");
+                response = new BridgeCommentsResponse { Ok = false, Error = "get comments failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
         }
 
         private string ResolveDbPathSafe()

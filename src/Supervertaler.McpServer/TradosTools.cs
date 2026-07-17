@@ -23,7 +23,10 @@ public static class TradosTools
 
     [McpServerTool(Name = "get_segments"),
      Description("List segments of the document open in the Trados editor. Returns segment id, source text, " +
-                 "target text, confirmation status (e.g. Unspecified/Draft/Translated) and locked flag. " +
+                 "target text, confirmation status (e.g. Unspecified/Draft/Translated), locked flag, and " +
+                 "'number' – the segment number the user sees in Studio's grid. ALWAYS cite that number " +
+                 "(plus the file name in merged documents, where numbers restart per file) when referring " +
+                 "to segments in conversation – never invent numbers. " +
                  "Inline formatting appears as tags like <t1>…</t1> or <b>…</b> – preserve them in any " +
                  "translation you propose. Use the filters to fetch only what you need instead of the whole " +
                  "document. Results are paged via limit/offset; the response says whether it was truncated.")]
@@ -185,6 +188,62 @@ public static class TradosTools
                  "searching, and to answer 'what TMs/termbases am I using?'.")]
     public static Task<string> ListResources(BridgeClient bridge, CancellationToken ct = default)
         => Safe(() => bridge.GetAsync("/v1/resources", ct));
+
+    [McpServerTool(Name = "go_to_segment"),
+     Description("Move Trados Studio's editor to a specific segment, so the user sees the segment you are " +
+                 "talking about. Address it by the full id from get_segments, OR by the segment number the " +
+                 "user sees in Studio's grid (plus the file name in merged multi-file documents, since " +
+                 "numbers restart per file). Use this after flagging or editing a segment.")]
+    public static Task<string> GoToSegment(
+        BridgeClient bridge,
+        [Description("Full segment id (\"<paragraphUnitId>:<segmentId>\") from get_segments. Alternative to number.")]
+        string? id = null,
+        [Description("Segment number as displayed in Studio's grid. Alternative to id.")]
+        string? number = null,
+        [Description("File name or id (from get_files) – required with 'number' in merged documents.")]
+        string? file = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/go-to-segment", new { id, number, file }, ct));
+
+    [McpServerTool(Name = "get_comments"),
+     Description("Read the Trados comments on a segment (author, date, severity, text), in a stable order " +
+                 "whose index update_comment uses. Call before updating a comment.")]
+    public static Task<string> GetComments(
+        BridgeClient bridge,
+        [Description("Segment id (\"<paragraphUnitId>:<segmentId>\") from get_segments.")]
+        string id,
+        CancellationToken ct = default)
+        => Safe(() => bridge.GetAsync("/v1/comments" + BuildQuery(("id", id)), ct));
+
+    [McpServerTool(Name = "add_comment"),
+     Description("Add a Trados Studio comment to a segment (same as the editor's Add Comment command) – " +
+                 "e.g. to flag a source issue for the client or leave a review note. Becomes part of the " +
+                 "document's unsaved changes. Only add comments the user asked for or agreed to.")]
+    public static Task<string> AddComment(
+        BridgeClient bridge,
+        [Description("Segment id (\"<paragraphUnitId>:<segmentId>\") from get_segments.")]
+        string id,
+        [Description("The comment text.")]
+        string text,
+        [Description("Severity: Low (informational, default), Medium (warning), or High (error).")]
+        string? severity = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/add-comment", new { id, text, severity }, ct));
+
+    [McpServerTool(Name = "update_comment"),
+     Description("Replace the text of an existing Trados comment on a segment – e.g. when a fix you applied " +
+                 "makes the old comment text outdated. Address the comment by the index from get_comments " +
+                 "(call it first). Only update comments the user asked you to change.")]
+    public static Task<string> UpdateComment(
+        BridgeClient bridge,
+        [Description("Segment id (\"<paragraphUnitId>:<segmentId>\") from get_segments.")]
+        string id,
+        [Description("The comment's index from get_comments.")]
+        int commentIndex,
+        [Description("The replacement comment text.")]
+        string text,
+        CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/update-comment", new { id, commentIndex, text }, ct));
 
     [McpServerTool(Name = "insert_into_active_segment"),
      Description("Insert text into the target side of the segment the translator is currently editing in " +
