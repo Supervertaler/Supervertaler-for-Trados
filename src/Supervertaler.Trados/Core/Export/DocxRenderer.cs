@@ -166,6 +166,12 @@ namespace Supervertaler.Trados.Core.Export
             // a glance where one source file ends and the next starts.
             bool multiFile = HasMultipleSourceFiles(segments);
 
+            // Trados segment comments get their own read-only column, but
+            // only when at least one segment actually has any — otherwise
+            // the table keeps its classic layout and the extra column
+            // doesn't eat Source/Target width for nothing.
+            bool hasComments = HasAnyComments(segments);
+
             // Column widths as percentages of the table width × 50 (the
             // OpenXML Pct unit is fiftieths-of-a-percent, so 5000 = 100%).
             // The table itself is set to Pct 5000 = 100% of section width,
@@ -177,11 +183,19 @@ namespace Supervertaler.Trados.Core.Export
             // names, long source paragraphs) would otherwise force a
             // column to grow. No more overflow past the page edge AND
             // no more shrunken-half-the-page tables on wider pages.
-            int[] colPct = multiFile
-                // #, Src, Tgt, File, Status, Notes — sums to 5000.
-                ? new[] { 250, 1500, 1500, 800, 500, 450 }
-                // #, Src, Tgt, Status, Notes — sums to 5000.
-                : new[] { 250, 1900, 1900, 500, 450 };
+            int[] colPct;
+            if (multiFile)
+                colPct = hasComments
+                    // #, Src, Tgt, File, Status, Comments, Notes — sums to 5000.
+                    ? new[] { 250, 1250, 1250, 650, 400, 800, 400 }
+                    // #, Src, Tgt, File, Status, Notes — sums to 5000.
+                    : new[] { 250, 1500, 1500, 800, 500, 450 };
+            else
+                colPct = hasComments
+                    // #, Src, Tgt, Status, Comments, Notes — sums to 5000.
+                    ? new[] { 250, 1550, 1550, 450, 750, 450 }
+                    // #, Src, Tgt, Status, Notes — sums to 5000.
+                    : new[] { 250, 1900, 1900, 500, 450 };
 
             var table = new Table();
 
@@ -217,6 +231,8 @@ namespace Supervertaler.Trados.Core.Export
             if (multiFile)
                 header.AppendChild(MakeHeaderCellPct("File", colPct[hi++]));
             header.AppendChild(MakeHeaderCellPct("Status", colPct[hi++]));
+            if (hasComments)
+                header.AppendChild(MakeHeaderCellPct("Comments", colPct[hi++]));
             header.AppendChild(MakeHeaderCellPct("Notes", colPct[hi++]));
             table.AppendChild(header);
 
@@ -230,7 +246,7 @@ namespace Supervertaler.Trados.Core.Export
             // the first segment of each new file — proofreader-visible
             // section divider that spans the whole table width.
             string previousFile = null;
-            int columnCount = multiFile ? 6 : 5;
+            int columnCount = (multiFile ? 6 : 5) + (hasComments ? 1 : 0);
             foreach (var seg in segments)
             {
                 if (multiFile)
@@ -261,6 +277,8 @@ namespace Supervertaler.Trados.Core.Export
                 if (multiFile)
                     row.AppendChild(MakeBodyCell(seg.SourceFileName ?? "", alignment: "left"));
                 row.AppendChild(MakeBodyCell(seg.DisplayStatus));
+                if (hasComments)
+                    row.AppendChild(MakeBodyCell(seg.Comments ?? ""));
                 row.AppendChild(MakeBodyCell(seg.Notes ?? ""));
                 table.AppendChild(row);
             }
@@ -411,6 +429,16 @@ namespace Supervertaler.Trados.Core.Export
                 if (seen == null) { seen = name; continue; }
                 if (!string.Equals(seen, name, StringComparison.Ordinal)) return true;
             }
+            return false;
+        }
+
+        /// <summary>Does any segment carry Trados comments? Decides whether
+        /// the table gets the extra read-only Comments column.</summary>
+        private static bool HasAnyComments(List<ExportSegment> segments)
+        {
+            if (segments == null) return false;
+            foreach (var seg in segments)
+                if (!string.IsNullOrEmpty(seg.Comments)) return true;
             return false;
         }
 

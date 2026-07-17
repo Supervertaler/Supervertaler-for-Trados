@@ -33,13 +33,28 @@ namespace Supervertaler.Trados.Core.Export
                 var tableRows = table.Elements<TableRow>().ToList();
                 if (tableRows.Count < 2) return rows; // header + at least one data row
 
-                // Detect column layout. Single-file mode = 5 cells
-                // (#, Source, Target, Status, Notes). Multi-file mode = 6
-                // cells (#, Source, Target, File, Status, Notes). We
-                // sniff the header row; failing that, fall back to the
-                // 5-column layout.
+                // Detect column layout. Cells 0-2 are always #, Source,
+                // Target; the trailing columns vary: [File] (multi-file
+                // exports), Status, [Comments] (exports where segments
+                // carry Trados comments), Notes. We locate the fixed-name
+                // columns in the header row by their literal text — the
+                // Source/Target headers are language display names and
+                // never collide with them. Falls back to the legacy
+                // count-based sniff (>= 6 cells = multi-file) for files
+                // whose header doesn't parse.
                 var headerRow = tableRows[0];
                 var headerCells = headerRow.Elements<TableCell>().ToList();
+                int statusIdx = -1, notesIdx = -1;
+                for (int c = 3; c < headerCells.Count; c++)
+                {
+                    var h = ExtractCellText(headerCells[c]).Trim();
+                    if (h.Equals("Status", System.StringComparison.OrdinalIgnoreCase)) statusIdx = c;
+                    else if (h.Equals("Notes", System.StringComparison.OrdinalIgnoreCase)) notesIdx = c;
+                    // "File" and "Comments" columns are recognised implicitly:
+                    // they shift Status/Notes right and carry no re-importable
+                    // data themselves.
+                }
+                bool headerMapped = statusIdx >= 0;
                 bool sixColumn = headerCells.Count >= 6;
 
                 // Skip the header row (row 0); data starts at row 1.
@@ -64,7 +79,12 @@ namespace Supervertaler.Trados.Core.Export
                         SourceText = ExtractCellText(cells[1]),
                         TargetText = ExtractCellText(cells[2])
                     };
-                    if (sixColumn && cells.Count >= 6)
+                    if (headerMapped)
+                    {
+                        seg.Status = statusIdx < cells.Count ? ExtractCellText(cells[statusIdx]) : "";
+                        seg.Notes = notesIdx >= 0 && notesIdx < cells.Count ? ExtractCellText(cells[notesIdx]) : "";
+                    }
+                    else if (sixColumn && cells.Count >= 6)
                     {
                         // cells: 0=#, 1=Src, 2=Tgt, 3=File, 4=Status, 5=Notes
                         seg.Status = ExtractCellText(cells[4]);

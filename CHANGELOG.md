@@ -7,6 +7,16 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.98 / 19.20.98] – 2026-07-17
+
+### Added (Import/Export · Trados segment comments now appear in every export format)
+
+- **Bilingual exports now include your Trados segment comments** – previously they were silently dropped in every format. Comments (from both the source and target side, including comments on a selection) are exported as `Author (yyyy-MM-dd): text`, with multiple comments on one segment stacked per line. Where they appear: a **Comments column** in the DOCX table and the HTML report (only added when at least one exported segment actually has a comment, so comment-free exports keep their familiar layout), and a **`Comment:` line** in the Bilingual Text format – the same line label the Supervertaler Workbench uses, so files remain readable by both tools. Comments are reference material for the proofreader: they are **not** written back into Trados on re-import, and the Notes column stays a free writing space.
+
+### Fixed (Import/Export · comment lines from Workbench-made text files can no longer corrupt a re-imported target)
+
+- **The Bilingual Text re-import parser now understands `Comment:` lines, including multi-line comments.** Before, a text file containing comment lines (e.g. one exported by the Supervertaler Workbench, whose format always includes them) could leak comment text into the re-imported target when a segment had no `Status:` line, and a comment continuation line that happened to look like a language line (`NB: check this`) could even be mistaken for the translation itself. Comment lines and their continuations are now cleanly skipped, matching the Workbench parser's rules.
+
 ## [18.20.97 / 19.20.97] – 2026-07-17
 
 ### Changed (Import/Export · DOCX exports no longer contain Word bookmarks)

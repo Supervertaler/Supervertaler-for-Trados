@@ -9639,10 +9639,72 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     IsUnderline = pUnderline,
                     SourceFileId = segFileId ?? "",
                     SourceFileName = segFileName ?? "",
-                    IsLocked = isLocked
+                    IsLocked = isLocked,
+                    Comments = CollectSegmentComments(pair)
                 });
             }
             return result;
+        }
+
+        /// <summary>Gather the Trados comments attached to a segment pair,
+        /// one per line, formatted "Author (yyyy-MM-dd): text". Comments
+        /// live as ICommentMarker containers in the segment's markup tree
+        /// (Studio wraps the commented selection — or the whole segment
+        /// content for segment-scope comments — on whichever side the
+        /// comment was made). Both source and target are walked; file-scope
+        /// comments are not per-segment and are not included. Best-effort:
+        /// any SDK quirk yields an empty string, never an exception.</summary>
+        private static string CollectSegmentComments(ISegmentPair pair)
+        {
+            var lines = new List<string>();
+            try
+            {
+                AppendCommentsFrom(pair?.Source, lines);
+                AppendCommentsFrom(pair?.Target, lines);
+            }
+            catch { }
+            return string.Join("\n", lines);
+        }
+
+        private static void AppendCommentsFrom(IAbstractMarkupDataContainer container, List<string> lines)
+        {
+            if (container == null) return;
+            foreach (var item in container)
+            {
+                if (item is ICommentMarker marker)
+                {
+                    try
+                    {
+                        var props = marker.Comments;
+                        for (int i = 0; i < (props?.Count ?? 0); i++)
+                        {
+                            var c = props.GetItem(i);
+                            if (c == null) continue;
+                            var text = (c.Text ?? "").Trim();
+                            if (text.Length == 0) continue;
+                            lines.Add(FormatComment(c.Author, c.Date, text));
+                        }
+                    }
+                    catch { }
+                    AppendCommentsFrom(marker, lines); // nested markers
+                }
+                else if (item is IAbstractMarkupDataContainer nested)
+                {
+                    AppendCommentsFrom(nested, lines);
+                }
+            }
+        }
+
+        private static string FormatComment(string author, DateTime date, string text)
+        {
+            author = (author ?? "").Trim();
+            // Trados leaves Date at default when unset — treat anything
+            // before 1900 as "no date".
+            var dateStr = date.Year > 1900 ? date.ToString("yyyy-MM-dd") : "";
+            if (author.Length > 0 && dateStr.Length > 0) return $"{author} ({dateStr}): {text}";
+            if (author.Length > 0) return $"{author}: {text}";
+            if (dateStr.Length > 0) return $"{dateStr}: {text}";
+            return text;
         }
 
         /// <summary>Build a synthetic manifest from the current document — used

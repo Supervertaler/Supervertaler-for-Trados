@@ -65,6 +65,7 @@ namespace Supervertaler.Trados.Core.Export
             sb.Append("  table.biltable th { background: #F5F8FA; text-align: left; }\n");
             sb.Append("  table.biltable td.num { font-weight: 600; color: #0066CC; width: 3em; ");
             sb.Append("text-align: right; }\n");
+            sb.Append("  table.biltable td.comments { color: #8A6D1D; font-size: 0.9em; }\n");
             sb.Append("  footer { color: #888; font-size: 0.85em; margin-top: 40px; ");
             sb.Append("padding-top: 16px; border-top: 1px solid #E2E8EA; }\n");
             sb.Append("  footer a { color: #0066CC; }\n");
@@ -81,11 +82,19 @@ namespace Supervertaler.Trados.Core.Export
 
         private static void AppendTable(StringBuilder sb, List<ExportSegment> segments, ExportOptions opts)
         {
+            // Trados segment comments get their own column, but only when
+            // at least one segment actually has any.
+            bool hasComments = false;
+            foreach (var seg in segments)
+                if (!string.IsNullOrEmpty(seg.Comments)) { hasComments = true; break; }
+
             sb.Append("<table class=\"biltable\">\n<thead><tr>");
             sb.Append("<th>#</th>");
             sb.Append("<th>").Append(HtmlEscape(opts.SourceLanguageDisplay)).Append("</th>");
             sb.Append("<th>").Append(HtmlEscape(opts.TargetLanguageDisplay)).Append("</th>");
-            sb.Append("<th>Status</th><th>Notes</th>");
+            sb.Append("<th>Status</th>");
+            if (hasComments) sb.Append("<th>Comments</th>");
+            sb.Append("<th>Notes</th>");
             sb.Append("</tr></thead>\n<tbody>\n");
             foreach (var seg in segments)
             {
@@ -94,10 +103,19 @@ namespace Supervertaler.Trados.Core.Export
                 sb.Append("<td>").Append(HtmlEscape(seg.SourceText)).Append("</td>");
                 sb.Append("<td>").Append(HtmlEscape(seg.TargetText ?? "")).Append("</td>");
                 sb.Append("<td>").Append(HtmlEscape(seg.DisplayStatus)).Append("</td>");
+                if (hasComments)
+                    sb.Append("<td class=\"comments\">").Append(HtmlEscapeMultiline(seg.Comments)).Append("</td>");
                 sb.Append("<td>").Append(HtmlEscape(seg.Notes ?? "")).Append("</td>");
                 sb.Append("</tr>\n");
             }
             sb.Append("</tbody></table>\n");
+        }
+
+        /// <summary>Escape + render each comment line on its own line
+        /// (comments are joined with "\n" by the collector).</summary>
+        private static string HtmlEscapeMultiline(string text)
+        {
+            return HtmlEscape(text ?? "").Replace("\n", "<br>");
         }
 
         private static void AppendFooter(StringBuilder sb)

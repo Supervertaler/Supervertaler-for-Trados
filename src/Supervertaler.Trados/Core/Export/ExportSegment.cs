@@ -44,6 +44,14 @@ namespace Supervertaler.Trados.Core.Export
         /// <summary>Optional free-form notes column, blank on initial export.</summary>
         public string Notes { get; set; }
 
+        /// <summary>Trados segment comments at export time, one per line,
+        /// formatted "Author (yyyy-MM-dd): text". Read-only context for the
+        /// proofreader – rendered in a dedicated Comments column (DOCX/HTML)
+        /// or a "Comment:" line (text format), and ignored on re-import.
+        /// Empty when the segment has no comments; renderers omit the
+        /// column/line entirely when no segment in the export has any.</summary>
+        public string Comments { get; set; }
+
         /// <summary>SHA-256 prefix of the source text at export time. Used by the
         /// importer to detect source tampering before applying changes.</summary>
         public string SourceHash { get; set; }

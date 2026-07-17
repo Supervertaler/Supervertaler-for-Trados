@@ -69,6 +69,8 @@ namespace Supervertaler.Trados.Core.Export
             sb.Append("    read-only source — e.g. a two-line subtitle.)\n");
             sb.Append("  - Edit the ").Append(tgtCode).Append(": target text freely, but keep it on ONE line;\n");
             sb.Append("    write the literal token [newline] where a line break is needed.\n");
+            sb.Append("  - Comment: lines show Trados segment comments for reference only;\n");
+            sb.Append("    they are not written back into Trados on re-import.\n");
             sb.Append("  - Then re-import into Trados to update the project.\n");
             sb.Append(rule).Append('\n');
             sb.Append('\n');
@@ -111,6 +113,12 @@ namespace Supervertaler.Trados.Core.Export
                 sb.Append(tgtCode).Append(": ").Append(EncodeBreaks(seg.TargetText ?? "")).Append('\n');
                 if (!string.IsNullOrEmpty(seg.DisplayStatus))
                     sb.Append("Status: ").Append(seg.DisplayStatus).Append('\n');
+                // Trados segment comments, on one physical line like every
+                // other field ([newline] between comments). "Comment:" is
+                // the Workbench's line label for this same slot, so files
+                // stay parseable by both tools. Omitted when there are none.
+                if (!string.IsNullOrEmpty(seg.Comments))
+                    sb.Append("Comment: ").Append(EncodeBreaks(seg.Comments)).Append('\n');
                 sb.Append('\n');
             }
         }

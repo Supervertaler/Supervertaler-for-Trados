@@ -125,8 +125,31 @@ namespace Supervertaler.Trados.Core.Export
                 // must reassemble them.
                 var langBodies = new List<string>(4);
                 string curBody = null;        // body being accumulated (null = no open field)
+                bool inComment = false;       // swallowing a Comment: field's continuation lines
                 foreach (var line in blockText.Split('\n'))
                 {
+                    if (inComment)
+                    {
+                        // A comment body may span several physical lines (the
+                        // Workbench writes real line breaks in comments).
+                        // Swallow them here so a continuation line that
+                        // happens to look like a lang-line ("NB: check X")
+                        // can't be mistaken for the target. Same terminator
+                        // rules as the Workbench parser: blank line, Status:
+                        // or a file marker ends the comment (the line then
+                        // falls through to the normal handling below).
+                        if (line.Trim().Length == 0
+                            || Regex.IsMatch(line, @"^Status:", RegexOptions.IgnoreCase)
+                            || line.StartsWith("📄"))
+                        {
+                            inComment = false;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+
                     var lm = BracketedLangLineRe.Match(line);
                     if (lm.Success)
                     {
@@ -143,6 +166,16 @@ namespace Supervertaler.Trados.Core.Export
                         // continuation of the target body. The status value itself
                         // is captured separately below.
                         if (curBody != null) { langBodies.Add(curBody.Trim()); curBody = null; }
+                    }
+                    else if (Regex.IsMatch(line, @"^Comment:", RegexOptions.IgnoreCase))
+                    {
+                        // "Comment:" line — Trados segment comments (this tool)
+                        // or the Workbench's editable comment field. Terminates
+                        // the current field like Status:, and any continuation
+                        // lines are swallowed via inComment above. The comment
+                        // text itself is not re-imported.
+                        if (curBody != null) { langBodies.Add(curBody.Trim()); curBody = null; }
+                        inComment = true;
                     }
                     else if (line.StartsWith("📄"))
                     {
