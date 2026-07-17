@@ -307,8 +307,10 @@ public static class TradosTools
     [McpServerTool(Name = "run_verification"),
      Description("Run Trados Studio's OWN QA verification (Verify Files / F8 – QA Checker 3.0, tag and term " +
                  "verifiers: punctuation, brackets, repeated words, spelling, regex rules, length checks, etc.) " +
-                 "and return the findings, each with file, segment number, severity, and message. This catches " +
-                 "things the check_* tools don't (punctuation, spelling, regex) and complements them. IMPORTANT: " +
+                 "and return the findings, each with file, segment number, the full segment 'id' (usable with " +
+                 "go_to_segment / add_comment / update_segments), severity, origin (the QA rule), and message. " +
+                 "This catches things the check_* tools don't (punctuation, spelling, regex) and complements them. " +
+                 "Already-ignored messages are excluded. IMPORTANT: " +
                  "it reads the LAST SAVED state of the files – if the user made edits (including ones you applied " +
                  "with update_segments), tell them to save in Studio first, then run again. Triage each finding " +
                  "against the source before proposing fixes; some are false positives.")]

@@ -460,8 +460,12 @@ namespace Supervertaler.Trados.Core
     {
         [DataMember(Name = "file", Order = 0, EmitDefaultValue = false)] public string File { get; set; }
         [DataMember(Name = "number", Order = 1, EmitDefaultValue = false)] public string Number { get; set; }
-        [DataMember(Name = "severity", Order = 2, EmitDefaultValue = false)] public string Severity { get; set; }
-        [DataMember(Name = "message", Order = 3)] public string Message { get; set; }
+        /// <summary>Full segment id "puId:segId" – pass to go_to_segment / add_comment / update_segments.</summary>
+        [DataMember(Name = "id", Order = 2, EmitDefaultValue = false)] public string Id { get; set; }
+        [DataMember(Name = "severity", Order = 3, EmitDefaultValue = false)] public string Severity { get; set; }
+        /// <summary>The QA rule/category, e.g. "QA Checker 3.0", "Tag Verifier".</summary>
+        [DataMember(Name = "origin", Order = 4, EmitDefaultValue = false)] public string Origin { get; set; }
+        [DataMember(Name = "message", Order = 5)] public string Message { get; set; }
     }
 
     [DataContract]

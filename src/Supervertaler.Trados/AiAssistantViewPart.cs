@@ -3182,17 +3182,6 @@ namespace Supervertaler.Trados
                 project.SaveTaskReportAs(reportId.Value, path, Sdl.ProjectAutomation.Core.ReportFormat.Xml);
                 reportXml = File.ReadAllText(path);
                 try { File.Delete(path); } catch { }
-
-                // Diagnostic: keep the last raw report so the message-schema can
-                // be inspected (severity field name varies). Overwritten each run.
-                try
-                {
-                    Directory.CreateDirectory(UserDataPath.TradosRuntimeDir);
-                    File.WriteAllText(
-                        Path.Combine(UserDataPath.TradosRuntimeDir, "last-verify-report.xml"),
-                        reportXml);
-                }
-                catch { }
             }
             finally
             {
@@ -3254,26 +3243,38 @@ namespace Supervertaler.Trados
 
                 foreach (System.Xml.XmlNode msg in fileNode.SelectNodes(".//*[local-name()='Message']"))
                 {
+                    // Skip messages the user has already ignored/dismissed.
+                    var ignored = FirstDescendantText(msg, "Ignored");
+                    if (!string.IsNullOrEmpty(ignored)
+                        && ignored.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Exact schema (Studio Verify report): SegmentId is the grid
+                    // number, ParagraphUnitId + SegmentId form the addressable id,
+                    // Origin is the QA rule, Text is the message, ErrorLevel the
+                    // severity. Generic fallbacks retained for version drift.
                     var number = FirstDescendantText(msg, "SegmentId");
-
-                    // Severity: try known names, then scan any attribute/child
-                    // whose name looks like a severity/level/type (schema varies).
-                    var severity = FirstMatchingValue(msg, n =>
-                        n.Contains("sever") || n.Contains("level")
-                        || n == "type" || n.EndsWith("type"));
-
-                    var text = FirstDescendantText(msg, "Description")
-                        ?? FirstDescendantText(msg, "MessageText")
-                        ?? FirstDescendantText(msg, "Text")
-                        ?? msg.Attributes?["Description"]?.Value;
+                    var puId = FirstDescendantText(msg, "ParagraphUnitId");
+                    var origin = FirstDescendantText(msg, "Origin");
+                    var severity = FirstDescendantText(msg, "ErrorLevel")
+                        ?? FirstMatchingValue(msg, n => n.Contains("sever") || n.Contains("level"));
+                    var text = FirstDescendantText(msg, "Text")
+                        ?? FirstDescendantText(msg, "Description")
+                        ?? FirstDescendantText(msg, "MessageText");
                     if (string.IsNullOrWhiteSpace(text))
                         text = (msg.InnerText ?? "").Trim();
+
+                    string id = null;
+                    if (!string.IsNullOrWhiteSpace(puId) && !string.IsNullOrWhiteSpace(number))
+                        id = puId.Trim() + ":" + number.Trim();
 
                     findings.Add(new BridgeVerifyFinding
                     {
                         File = fname,
                         Number = string.IsNullOrWhiteSpace(number) ? null : number.Trim(),
+                        Id = id,
                         Severity = NormalizeSeverity(severity),
+                        Origin = string.IsNullOrWhiteSpace(origin) ? null : origin.Trim(),
                         Message = (text ?? "").Trim()
                     });
                 }

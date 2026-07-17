@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
+using Sdl.TranslationStudioAutomation.IntegrationApi;
 using Supervertaler.Trados.Controls;
 using Supervertaler.Trados.Core;
 using Supervertaler.Trados.Licensing;
@@ -61,6 +62,15 @@ namespace Supervertaler.Trados
             // pane. The pane's own handler only updates the Reports-tab UI now, so
             // usage logging works even if the pane is never opened this session.
             try { UsageLogger.EnsureSubscribed(); } catch { }
+
+            // Start the Supervertaler bridge (MCP / Workbench) independent of the
+            // Assistant pane. The bridge lives in AiAssistantViewPart, which Trados
+            // instantiates lazily only when its pane is first activated – so a user
+            // who works only in TermLens (or never opens the pane) would have no
+            // bridge, and the MCP connection would silently fail. Here we force the
+            // pane's controller to load once a document is open in the editor, which
+            // runs its Initialize() and starts the bridge regardless of layout.
+            try { EnsureBridgeViewPartLoads(); } catch { }
 
             // Order matters:
             // 1. AssemblyResolve first - so managed SQLitePCLRaw DLLs can be found
@@ -148,6 +158,53 @@ namespace Supervertaler.Trados
         // ── Global crash handlers ────────────────────────────────────
 
         private static bool _crashHandlersInstalled;
+        private static bool _bridgeLoaderArmed;
+
+        /// <summary>
+        /// Ensures AiAssistantViewPart (which hosts the Supervertaler bridge) is
+        /// instantiated once a document is open, independent of whether the user
+        /// ever activates the Assistant pane.
+        ///
+        /// The EditorController isn't available yet at ApplicationInitializer time
+        /// (it's created when the Editor view first loads), so we wait on
+        /// Application.Idle until it appears, then force the pane's controller via
+        /// GetController on each document-open. Both GetController and the pane's
+        /// own Initialize/StartSupervertalerBridge are idempotent, so repeated
+        /// calls are cheap no-ops after the first. All best-effort: any failure
+        /// leaves the pre-existing behaviour (bridge starts when the pane opens).
+        /// </summary>
+        private static void EnsureBridgeViewPartLoads()
+        {
+            if (_bridgeLoaderArmed) return;
+            _bridgeLoaderArmed = true;
+
+            EventHandler idle = null;
+            idle = (s, e) =>
+            {
+                EditorController editor;
+                try { editor = SdlTradosStudio.Application.GetController<EditorController>(); }
+                catch { editor = null; }
+                if (editor == null) return; // editor view not up yet – wait for next idle
+
+                Application.Idle -= idle; // controller ready – stop polling
+
+                void ForcePane()
+                {
+                    try { SdlTradosStudio.Application.GetController<AiAssistantViewPart>(); }
+                    catch { }
+                }
+
+                try { editor.ActiveDocumentChanged += (s2, e2) => ForcePane(); }
+                catch { }
+
+                // A document may already be open by the time the controller appears.
+                try { if (editor.ActiveDocument != null) ForcePane(); }
+                catch { }
+            };
+
+            try { Application.Idle += idle; }
+            catch { }
+        }
 
         /// <summary>
         /// Subscribe to the process-wide unhandled-exception events and write any
