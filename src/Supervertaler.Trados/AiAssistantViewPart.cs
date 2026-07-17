@@ -946,7 +946,8 @@ namespace Supervertaler.Trados
                     getComments: BridgeGetComments,
                     addComment: BridgeAddComment,
                     updateComment: BridgeUpdateComment,
-                    runVerification: BridgeRunVerification);
+                    runVerification: BridgeRunVerification,
+                    findReplace: BridgeFindReplace);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -2728,6 +2729,236 @@ namespace Supervertaler.Trados
             {
                 return new BridgeResultResponse { Ok = false, Error = "update comment failed: " + ex.Message };
             }
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/find-replace (MCP find_and_replace).
+        /// Replaces text in segment TARGETS across the open document, using the
+        /// same tag-safe per-IText replacement as SuperSearch's Replace All: a
+        /// match that straddles an inline tag boundary is skipped (reported)
+        /// rather than corrupting the segment. Supports dry-run (preview),
+        /// case/whole-word/regex options, and file/status filters. Marshals to
+        /// the UI thread.
+        /// </summary>
+        private BridgeFindReplaceResponse BridgeFindReplace(BridgeFindReplaceRequest req)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeFindReplaceResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeFindReplaceResponse)ctrl.Invoke(
+                    new Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse>(BridgeFindReplace), req);
+
+            if (_activeDocument == null)
+                return new BridgeFindReplaceResponse { Ok = false, Error = "no document is open in the Trados editor" };
+            if (string.IsNullOrEmpty(req?.Find))
+                return new BridgeFindReplaceResponse { Ok = false, Error = "missing 'find'" };
+
+            // Validate a regex up front so a bad pattern fails clearly.
+            if (req.Regex)
+            {
+                try { var _ = new System.Text.RegularExpressions.Regex(req.Find); }
+                catch (Exception ex)
+                {
+                    return new BridgeFindReplaceResponse { Ok = false, Error = "invalid regex: " + ex.Message };
+                }
+            }
+
+            var response = new BridgeFindReplaceResponse
+            {
+                Ok = true,
+                DryRun = req.DryRun,
+                Changes = new List<BridgeFindReplaceChange>(),
+                SkippedTagSpanning = new List<string>()
+            };
+
+            // File filter (merged documents).
+            string filterFileId = null;
+            bool attributeFiles = false;
+            if (!string.IsNullOrEmpty(req.File))
+            {
+                EnsureBridgeFileMapFresh();
+                filterFileId = ResolveBridgeFileId(req.File);
+                if (filterFileId == null)
+                    return new BridgeFindReplaceResponse
+                    {
+                        Ok = false,
+                        Error = $"no file matching '{req.File}' – call get_files for the list"
+                    };
+                attributeFiles = true;
+            }
+            else if (_fileIdToName.Count > 1)
+            {
+                EnsureBridgeFileMapFresh();
+                attributeFiles = _perFileMappingWorked && _fileIdToName.Count > 1;
+            }
+
+            var replace = req.Replace ?? "";
+            int processed = 0;
+
+            foreach (var pair in _activeDocument.SegmentPairs)
+            {
+                processed++;
+                if (processed % 100 == 0)
+                    System.Windows.Forms.Application.DoEvents();
+
+                try
+                {
+                    if (pair.Target == null) continue;
+
+                    if (!string.IsNullOrEmpty(req.Status))
+                    {
+                        var st = (pair.Properties?.ConfirmationLevel
+                            ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
+                        if (!st.Equals(req.Status, StringComparison.OrdinalIgnoreCase)) continue;
+                    }
+
+                    var puId = _activeDocument.GetParentParagraphUnit(pair)
+                        ?.Properties?.ParagraphUnitId.Id ?? "";
+                    if (filterFileId != null)
+                    {
+                        string fid;
+                        if (!_puIdToFileId.TryGetValue(puId, out fid) || fid != filterFileId) continue;
+                    }
+
+                    var currentTarget = pair.Target.ToString() ?? "";
+                    var expected = FindReplacePerform(currentTarget, req.Find, replace,
+                        req.CaseSensitive, req.Regex, req.WholeWord);
+                    if (expected == currentTarget) continue; // no match here
+
+                    var segId = pair.Properties?.Id.Id ?? "";
+                    var id = puId + ":" + segId;
+                    string fileName = null;
+                    if (attributeFiles)
+                    {
+                        string fid;
+                        if (_puIdToFileId.TryGetValue(puId, out fid) && fid != null)
+                            _fileIdToName.TryGetValue(fid, out fileName);
+                    }
+
+                    if (pair.Properties?.IsLocked == true)
+                    {
+                        response.SkippedLocked++;
+                        continue;
+                    }
+
+                    // Tag-boundary safety: the match must be reproducible by
+                    // per-IText replacement, or it straddles a tag and we skip.
+                    var iTexts = new List<IText>();
+                    FindReplaceCollectTexts(pair.Target, iTexts);
+                    var simulated = string.Concat(iTexts.Select(t =>
+                        FindReplacePerform(t.Properties.Text ?? "", req.Find, replace,
+                            req.CaseSensitive, req.Regex, req.WholeWord)));
+                    if (iTexts.Count == 0 || simulated != expected)
+                    {
+                        response.SkippedTagSpanning.Add(fileName != null ? $"{fileName}:{segId}" : segId);
+                        continue;
+                    }
+
+                    response.SegmentsChanged++;
+                    if (response.Changes.Count < 100)
+                    {
+                        response.Changes.Add(new BridgeFindReplaceChange
+                        {
+                            Id = id,
+                            Number = segId,
+                            FileName = fileName,
+                            Before = currentTarget.Length > 200 ? currentTarget.Substring(0, 200) + "…" : currentTarget,
+                            After = expected.Length > 200 ? expected.Substring(0, 200) + "…" : expected
+                        });
+                    }
+
+                    if (!req.DryRun)
+                    {
+                        _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP",
+                            (sp, cancel) =>
+                            {
+                                var liveTexts = new List<IText>();
+                                FindReplaceCollectTexts(sp.Target, liveTexts);
+                                foreach (var t in liveTexts)
+                                {
+                                    var oldVal = t.Properties.Text ?? "";
+                                    var newVal = FindReplacePerform(oldVal, req.Find, replace,
+                                        req.CaseSensitive, req.Regex, req.WholeWord);
+                                    if (!string.Equals(oldVal, newVal, StringComparison.Ordinal))
+                                        t.Properties.Text = newVal;
+                                }
+                            });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SupervertalerBridge] find-replace segment threw: {ex.Message}");
+                }
+            }
+
+            response.Returned = response.Changes.Count;
+            response.Truncated = response.SegmentsChanged > response.Returned;
+
+            var verb = req.DryRun ? "would change" : "changed";
+            response.Note = $"{(req.DryRun ? "Preview: " : "")}{verb} {response.SegmentsChanged} segment(s).";
+            if (response.SkippedTagSpanning.Count > 0)
+                response.Note += $" {response.SkippedTagSpanning.Count} segment(s) skipped because the match " +
+                    "straddles inline formatting/tags – those need a manual edit in Studio.";
+            if (response.SkippedLocked > 0)
+                response.Note += $" {response.SkippedLocked} locked segment(s) skipped.";
+            if (!req.DryRun && response.SegmentsChanged > 0)
+                response.Note += " Changes are in the open document; the user still needs to save in Studio.";
+            if (req.DryRun && response.SegmentsChanged > 0)
+                response.Note += " Nothing was written – call again with dryRun=false to apply.";
+            return response;
+        }
+
+        private static void FindReplaceCollectTexts(IAbstractMarkupDataContainer container, List<IText> sink)
+        {
+            if (container == null) return;
+            foreach (var item in container)
+            {
+                if (item is IText t) sink.Add(t);
+                else if (item is IAbstractMarkupDataContainer inner) FindReplaceCollectTexts(inner, sink);
+            }
+        }
+
+        /// <summary>Text replacement matching SuperSearch's PerformReplace:
+        /// regex, whole-word (\b-bounded literal), or plain substring, all with
+        /// optional case sensitivity. Bad regex/pattern yields the input
+        /// unchanged (validated up front by the caller).</summary>
+        private static string FindReplacePerform(string text, string search, string replace,
+            bool caseSensitive, bool useRegex, bool wholeWord)
+        {
+            var opts = caseSensitive
+                ? System.Text.RegularExpressions.RegexOptions.None
+                : System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+
+            if (useRegex)
+            {
+                try { return System.Text.RegularExpressions.Regex.Replace(text, search, replace, opts); }
+                catch { return text; }
+            }
+            if (wholeWord)
+            {
+                try
+                {
+                    return System.Text.RegularExpressions.Regex.Replace(text,
+                        @"\b" + System.Text.RegularExpressions.Regex.Escape(search) + @"\b",
+                        (replace ?? "").Replace("$", "$$"), opts);
+                }
+                catch { return text; }
+            }
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(search)) return text;
+
+            var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+            var sb = new System.Text.StringBuilder();
+            int pos = 0;
+            while (pos < text.Length)
+            {
+                int idx = text.IndexOf(search, pos, comparison);
+                if (idx < 0) { sb.Append(text, pos, text.Length - pos); break; }
+                sb.Append(text, pos, idx - pos);
+                sb.Append(replace);
+                pos = idx + search.Length;
+            }
+            return sb.ToString();
         }
 
         /// <summary>

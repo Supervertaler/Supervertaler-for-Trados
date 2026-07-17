@@ -245,6 +245,38 @@ public static class TradosTools
         CancellationToken ct = default)
         => Safe(() => bridge.PostAsync("/v1/update-comment", new { id, commentIndex, text }, ct));
 
+    [McpServerTool(Name = "find_and_replace"),
+     Description("Find and replace text in the TARGET (translation) side of segments across the open Trados " +
+                 "document. Options: caseSensitive, wholeWord, regex, and filters by file (merged documents) " +
+                 "or confirmation status. STRONGLY RECOMMENDED workflow: first call with dryRun=true to " +
+                 "preview which segments would change (returns before/after), show the user, then call again " +
+                 "with dryRun=false to apply. Matches that straddle inline tags are skipped for safety and " +
+                 "reported. Locked segments are skipped. Changes land in the open document; the user saves in " +
+                 "Studio. Only replace when the user asked for it.")]
+    public static Task<string> FindAndReplace(
+        BridgeClient bridge,
+        [Description("The text (or regex pattern) to find in target segments.")]
+        string find,
+        [Description("The replacement text (empty string deletes the found text).")]
+        string replace,
+        [Description("Preview only – report what would change without writing. Do this first for anything non-trivial.")]
+        bool dryRun = false,
+        [Description("Match case. Default false.")]
+        bool caseSensitive = false,
+        [Description("Match whole words only. Default false.")]
+        bool wholeWord = false,
+        [Description("Treat 'find' as a .NET regular expression (and 'replace' may use $1 etc.). Default false.")]
+        bool regex = false,
+        [Description("Restrict to one file of a merged document (id or partial name from get_files). Omit for all.")]
+        string? file = null,
+        [Description("Restrict to segments with this confirmation status (e.g. Draft, Translated). Omit for all.")]
+        string? status = null,
+        CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/find-replace", new
+        {
+            find, replace, dryRun, caseSensitive, wholeWord, regex, file, status
+        }, ct));
+
     [McpServerTool(Name = "run_verification"),
      Description("Run Trados Studio's OWN QA verification (Verify Files / F8 – QA Checker 3.0, tag and term " +
                  "verifiers: punctuation, brackets, repeated words, spelling, regex rules, length checks, etc.) " +

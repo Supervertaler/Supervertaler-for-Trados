@@ -465,6 +465,50 @@ namespace Supervertaler.Trados.Core
     }
 
     [DataContract]
+    public class BridgeFindReplaceRequest
+    {
+        [DataMember(Name = "find", IsRequired = true)] public string Find { get; set; }
+        [DataMember(Name = "replace")] public string Replace { get; set; }
+        [DataMember(Name = "caseSensitive", EmitDefaultValue = false)] public bool CaseSensitive { get; set; }
+        [DataMember(Name = "wholeWord", EmitDefaultValue = false)] public bool WholeWord { get; set; }
+        [DataMember(Name = "regex", EmitDefaultValue = false)] public bool Regex { get; set; }
+        /// <summary>When true, count and list what would change without writing anything.</summary>
+        [DataMember(Name = "dryRun", EmitDefaultValue = false)] public bool DryRun { get; set; }
+        /// <summary>Restrict to one file of a merged document (id or partial name).</summary>
+        [DataMember(Name = "file", EmitDefaultValue = false)] public string File { get; set; }
+        /// <summary>Restrict to segments with this confirmation status.</summary>
+        [DataMember(Name = "status", EmitDefaultValue = false)] public string Status { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeFindReplaceChange
+    {
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "number", Order = 1, EmitDefaultValue = false)] public string Number { get; set; }
+        [DataMember(Name = "fileName", Order = 2, EmitDefaultValue = false)] public string FileName { get; set; }
+        [DataMember(Name = "before", Order = 3)] public string Before { get; set; }
+        [DataMember(Name = "after", Order = 4)] public string After { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeFindReplaceResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "dryRun", Order = 2)] public bool DryRun { get; set; }
+        [DataMember(Name = "segmentsChanged", Order = 3)] public int SegmentsChanged { get; set; }
+        [DataMember(Name = "returned", Order = 4)] public int Returned { get; set; }
+        [DataMember(Name = "truncated", Order = 5)] public bool Truncated { get; set; }
+        [DataMember(Name = "changes", Order = 6, EmitDefaultValue = false)]
+        public List<BridgeFindReplaceChange> Changes { get; set; }
+        /// <summary>Segments where the match straddles inline tags and was skipped for safety.</summary>
+        [DataMember(Name = "skippedTagSpanning", Order = 7, EmitDefaultValue = false)]
+        public List<string> SkippedTagSpanning { get; set; }
+        [DataMember(Name = "skippedLocked", Order = 8)] public int SkippedLocked { get; set; }
+        [DataMember(Name = "note", Order = 9, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
     public class BridgeVerifyResponse
     {
         [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
@@ -586,6 +630,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeAddCommentRequest, BridgeResultResponse> _addComment;
         private readonly Func<BridgeUpdateCommentRequest, BridgeResultResponse> _updateComment;
         private readonly Func<BridgeVerifyResponse> _runVerification;
+        private readonly Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> _findReplace;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -616,7 +661,8 @@ namespace Supervertaler.Trados.Core
             Func<string, BridgeCommentsResponse> getComments = null,
             Func<BridgeAddCommentRequest, BridgeResultResponse> addComment = null,
             Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null,
-            Func<BridgeVerifyResponse> runVerification = null)
+            Func<BridgeVerifyResponse> runVerification = null,
+            Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> findReplace = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -635,6 +681,7 @@ namespace Supervertaler.Trados.Core
             _addComment = addComment;
             _updateComment = updateComment;
             _runVerification = runVerification;
+            _findReplace = findReplace;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -925,6 +972,12 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/verify")
             {
                 HandleRunVerification(context);
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/find-replace")
+            {
+                HandleFindReplace(context);
                 return;
             }
 
@@ -1688,6 +1741,48 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] {name} threw: {ex.Message}");
                 response = new BridgeResultResponse { Ok = false, Error = name + " failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleFindReplace(HttpListenerContext context)
+        {
+            if (_findReplace == null)
+            {
+                TryWriteError(context, 501, "find-replace endpoint not wired");
+                return;
+            }
+
+            BridgeFindReplaceRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<BridgeFindReplaceRequest>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeFindReplaceResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            if (req == null || string.IsNullOrEmpty(req.Find))
+            {
+                WriteJson(context, 400, new BridgeFindReplaceResponse { Ok = false, Error = "missing 'find'" });
+                return;
+            }
+
+            BridgeFindReplaceResponse response;
+            try
+            {
+                response = _findReplace(req) ?? new BridgeFindReplaceResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] find-replace threw: {ex.Message}");
+                response = new BridgeFindReplaceResponse { Ok = false, Error = "find/replace failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);
