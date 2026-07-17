@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.97 / 19.20.97] – 2026-07-17
+
+### Changed (Import/Export · DOCX exports no longer contain Word bookmarks)
+
+- **Bilingual DOCX exports no longer wrap each source cell in a hidden Word bookmark** (`SV_seg_1`, `SV_seg_2`, …). For anyone with Word's "Show bookmarks" display option enabled – common on translators' machines, where CAT-related add-ins often switch it on – every source segment appeared surrounded by light grey square brackets, which looked like stray characters in the file. The bookmarks were a leftover from a retired export layout: re-import identifies each row by the number in the `#` column and the sidecar manifest, and never read the bookmarks, so nothing about the round-trip changes. Existing exports with bookmarks re-import exactly as before.
+
 ## [18.20.96 / 19.20.96] – 2026-07-17
 
 ### Changed (Import/Export · single-file exports are now named after the file, not the project)

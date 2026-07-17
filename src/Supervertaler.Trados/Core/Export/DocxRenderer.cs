@@ -254,7 +254,7 @@ namespace Supervertaler.Trados.Core.Export
                 // etc.) from the segment so the bilingual file visually
                 // matches what Trados shows in its editor. # / Status /
                 // Notes columns deliberately stay plain.
-                row.AppendChild(MakeBodyCellWithBookmark(seg.SourceText, seg.Number,
+                row.AppendChild(MakeBodyCell(seg.SourceText ?? "", tagAware: true,
                     bold: seg.IsBold, italic: seg.IsItalic, underline: seg.IsUnderline));
                 row.AppendChild(MakeBodyCell(seg.TargetText ?? "", tagAware: true,
                     bold: seg.IsBold, italic: seg.IsItalic, underline: seg.IsUnderline));
@@ -455,27 +455,6 @@ namespace Supervertaler.Trados.Core.Export
                 AppendTagAwareRuns(p, text ?? "", bold: bold, italic: italic, underline: underline);
             else
                 p.AppendChild(MakeRun(text ?? "", bold: bold, italic: italic, underline: underline));
-            var cell = new TableCell();
-            cell.AppendChild(p);
-            return cell;
-        }
-
-        /// <summary>Source-text cell variant that anchors a bookmark so the
-        /// DOCX importer can locate the segment row even if cells are
-        /// reordered. The bookmark name follows the same SV_seg_N
-        /// convention as the stacked layout. Always tag-aware — the source
-        /// column is where <c>&lt;tN&gt;</c> placeholders are most likely
-        /// to be visible. The bold / italic / underline parameters carry
-        /// any paragraph-level styling so the source cell renders in the
-        /// same visual style as the live Trados editor view.</summary>
-        private static TableCell MakeBodyCellWithBookmark(string text, int number,
-            bool bold = false, bool italic = false, bool underline = false)
-        {
-            var bookmarkName = "SV_seg_" + number.ToString(CultureInfo.InvariantCulture);
-            var p = new Paragraph();
-            p.AppendChild(new BookmarkStart() { Id = number.ToString(CultureInfo.InvariantCulture), Name = bookmarkName });
-            AppendTagAwareRuns(p, text ?? "", bold: bold, italic: italic, underline: underline);
-            p.AppendChild(new BookmarkEnd() { Id = number.ToString(CultureInfo.InvariantCulture) });
             var cell = new TableCell();
             cell.AppendChild(p);
             return cell;
