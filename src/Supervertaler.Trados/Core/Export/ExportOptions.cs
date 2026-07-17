@@ -52,8 +52,15 @@ namespace Supervertaler.Trados.Core.Export
         /// <summary>Used in the document title + filename.</summary>
         public string ProjectName { get; set; } = "Untitled";
 
-        /// <summary>Used in the manifest only — identifies which file these segments belong to.</summary>
+        /// <summary>Identifies which file these segments belong to. Written to
+        /// the manifest, and (when the export is a single source file) used as
+        /// the stem of the suggested export file name.</summary>
         public string SourceFileName { get; set; } = "";
+
+        /// <summary>True when the export combines segments from more than one
+        /// source file into one output file. Combined exports are named after
+        /// the project; single-file exports are named after their source file.</summary>
+        public bool IsMultiFileCombined { get; set; }
 
         /// <summary>Plugin version that produced the export, written into the manifest.</summary>
         public string ToolVersion { get; set; } = "";

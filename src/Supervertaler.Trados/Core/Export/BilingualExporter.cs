@@ -93,14 +93,32 @@ namespace Supervertaler.Trados.Core.Export
         }
 
         /// <summary>Suggest a default filename + extension for the chosen format
-        /// + layout. Caller can override.</summary>
+        /// + layout. Caller can override.
+        ///
+        /// A single-file export is named after its source file (whether the
+        /// document was opened alone, opened merged with one file selected, or
+        /// emitted by the separate-file-per-file output mode) – the project
+        /// name is only used when segments from several source files are
+        /// combined into one output, or when no file name is available.</summary>
         public static string DefaultFileName(ExportOptions opts)
         {
-            var safe = SanitiseForFileName(opts.ProjectName);
+            string stem = null;
+            if (!opts.IsMultiFileCombined && !string.IsNullOrEmpty(opts.SourceFileName))
+            {
+                // "report.docx.sdlxliff" → "report.docx". Only the .sdlxliff
+                // wrapper is stripped – stripping any last extension would
+                // collide "report.docx" with "report.pdf" (both → "report").
+                stem = SanitiseForFileName(opts.SourceFileName);
+                if (stem.EndsWith(".sdlxliff", StringComparison.OrdinalIgnoreCase))
+                    stem = stem.Substring(0, stem.Length - ".sdlxliff".Length);
+            }
+            if (string.IsNullOrEmpty(stem))
+                stem = SanitiseForFileName(opts.ProjectName);
+
             var layoutSuffix = opts.Format == ExportFormat.Text ? "_bilingual_text" : "_bilingual";
             var ext = opts.Format == ExportFormat.Docx ? ".docx" :
                       opts.Format == ExportFormat.Text ? ".txt" : ".html";
-            return safe + layoutSuffix + ext;
+            return stem + layoutSuffix + ext;
         }
 
         private static string SanitiseForFileName(string input)

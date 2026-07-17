@@ -8729,12 +8729,17 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     return;
                 }
 
-                // ── Output mode: one combined DOCX. Source file name on
-                // the manifest reflects the active file; per-segment file
-                // attribution lives on each ExportSegment.SourceFileName.
+                // ── Output mode: one combined DOCX. When exactly one source
+                // file is involved (single-file document, or a merged doc
+                // with one file ticked), the manifest – and the suggested
+                // file name – carry that file's name, which may differ from
+                // the ACTIVE file if the user ticked a non-active one.
+                // Per-segment file attribution lives on each
+                // ExportSegment.SourceFileName either way.
+                opts.IsMultiFileCombined = multiFile;
                 opts.SourceFileName = multiFile
                     ? $"(multi-file: {groups.Count} files)"
-                    : SafeGetActiveFileName();
+                    : groups[0].Key;
 
                 var defaultName = Core.Export.BilingualExporter.DefaultFileName(opts);
                 string targetPath;
@@ -9119,8 +9124,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 Layout = src.Layout,
                 SourceLanguageDisplay = src.SourceLanguageDisplay,
                 TargetLanguageDisplay = src.TargetLanguageDisplay,
-                ProjectName = (src.ProjectName ?? "") +
-                              (string.IsNullOrEmpty(sourceFileName) ? "" : " — " + Path.GetFileNameWithoutExtension(sourceFileName)),
+                ProjectName = src.ProjectName,
                 SourceFileName = sourceFileName ?? "",
                 ToolVersion = src.ToolVersion,
                 IncludeLocked = src.IncludeLocked,

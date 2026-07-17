@@ -7,6 +7,17 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.96 / 19.20.96] – 2026-07-17
+
+### Changed (Import/Export · single-file exports are now named after the file, not the project)
+
+- **A bilingual export that contains one source file is now named after that file** – e.g. `Application as filed.docx_bilingual_text.txt` instead of `<project name>_bilingual_text.txt`. This applies everywhere a single file is exported: a document opened on its own, a merged multi-file document with just one file ticked, and each file emitted by the "Separate file per file" output mode. Previously, opening a project's files in separate editor tabs and exporting each one suggested the **same project-based name for every file** – so the second export would silently overwrite the first (including its re-import sidecar manifest). Only a genuine combined export (several files ticked, "Combine into one file") still uses the project name.
+- **"Separate file per file" outputs drop the project-name prefix** – files are now `<source file>_bilingual.docx` rather than `<project> — <source file>_bilingual.docx`. The project name is still recorded inside the file's header block and in the sidecar manifest.
+
+### Fixed (Import/Export · manifest recorded the wrong file when exporting a non-active file)
+
+- **Exporting a single non-active file from a merged document now records that file's name** in the export header and sidecar manifest. Previously the manifest always claimed the segments came from the file whose tab was active, even when you had ticked only a different file in the file list.
+
 ## [18.20.95 / 19.20.95] – 2026-07-15
 
 ### Added (Supervertaler MCP Server · more tools for your AI assistant)
