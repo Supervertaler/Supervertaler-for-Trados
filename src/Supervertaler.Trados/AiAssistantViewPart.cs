@@ -3182,6 +3182,17 @@ namespace Supervertaler.Trados
                 project.SaveTaskReportAs(reportId.Value, path, Sdl.ProjectAutomation.Core.ReportFormat.Xml);
                 reportXml = File.ReadAllText(path);
                 try { File.Delete(path); } catch { }
+
+                // Diagnostic: keep the last raw report so the message-schema can
+                // be inspected (severity field name varies). Overwritten each run.
+                try
+                {
+                    Directory.CreateDirectory(UserDataPath.TradosRuntimeDir);
+                    File.WriteAllText(
+                        Path.Combine(UserDataPath.TradosRuntimeDir, "last-verify-report.xml"),
+                        reportXml);
+                }
+                catch { }
             }
             finally
             {
@@ -3244,25 +3255,25 @@ namespace Supervertaler.Trados
                 foreach (System.Xml.XmlNode msg in fileNode.SelectNodes(".//*[local-name()='Message']"))
                 {
                     var number = FirstDescendantText(msg, "SegmentId");
-                    var severity = msg.Attributes?["Severity"]?.Value
-                        ?? msg.Attributes?["severity"]?.Value
-                        ?? msg.Attributes?["Level"]?.Value
-                        ?? FirstDescendantText(msg, "Severity")
-                        ?? FirstDescendantText(msg, "Level");
+
+                    // Severity: try known names, then scan any attribute/child
+                    // whose name looks like a severity/level/type (schema varies).
+                    var severity = FirstMatchingValue(msg, n =>
+                        n.Contains("sever") || n.Contains("level")
+                        || n == "type" || n.EndsWith("type"));
+
                     var text = FirstDescendantText(msg, "Description")
                         ?? FirstDescendantText(msg, "MessageText")
-                        ?? FirstDescendantText(msg, "Text");
+                        ?? FirstDescendantText(msg, "Text")
+                        ?? msg.Attributes?["Description"]?.Value;
                     if (string.IsNullOrWhiteSpace(text))
-                    {
-                        // Fall back to the node's own text minus child element noise.
                         text = (msg.InnerText ?? "").Trim();
-                    }
 
                     findings.Add(new BridgeVerifyFinding
                     {
                         File = fname,
                         Number = string.IsNullOrWhiteSpace(number) ? null : number.Trim(),
-                        Severity = string.IsNullOrWhiteSpace(severity) ? null : severity.Trim(),
+                        Severity = NormalizeSeverity(severity),
                         Message = (text ?? "").Trim()
                     });
                 }
@@ -3275,6 +3286,40 @@ namespace Supervertaler.Trados
             var hit = node.SelectSingleNode($".//*[local-name()='{localName}']");
             var t = hit?.InnerText?.Trim();
             return string.IsNullOrEmpty(t) ? null : t;
+        }
+
+        /// <summary>First attribute value, then first child-element text, whose
+        /// (lower-cased) name satisfies <paramref name="nameMatches"/>. Used to
+        /// pull a field like severity out of a schema-variable report node.</summary>
+        private static string FirstMatchingValue(System.Xml.XmlNode node, Func<string, bool> nameMatches)
+        {
+            if (node.Attributes != null)
+                foreach (System.Xml.XmlAttribute a in node.Attributes)
+                    if (nameMatches(a.Name.ToLowerInvariant()) && !string.IsNullOrWhiteSpace(a.Value))
+                        return a.Value.Trim();
+            foreach (System.Xml.XmlNode child in node.ChildNodes)
+                if (child.NodeType == System.Xml.XmlNodeType.Element
+                    && nameMatches(child.LocalName.ToLowerInvariant())
+                    && !string.IsNullOrWhiteSpace(child.InnerText))
+                    return child.InnerText.Trim();
+            return null;
+        }
+
+        /// <summary>Maps whatever the report used (name or numeric code) to
+        /// Error / Warning / Note, best-effort. Trados severities are commonly
+        /// 0/1/2 or Error/Warning/Note/Information.</summary>
+        private static string NormalizeSeverity(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var v = raw.Trim();
+            var low = v.ToLowerInvariant();
+            if (low.Contains("err")) return "Error";
+            if (low.Contains("warn")) return "Warning";
+            if (low.Contains("note") || low.Contains("info")) return "Note";
+            if (v == "2") return "Error";
+            if (v == "1") return "Warning";
+            if (v == "0") return "Note";
+            return v; // unknown – pass through verbatim
         }
 
         /// <summary>
