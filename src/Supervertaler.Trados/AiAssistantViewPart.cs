@@ -947,7 +947,8 @@ namespace Supervertaler.Trados
                     addComment: BridgeAddComment,
                     updateComment: BridgeUpdateComment,
                     runVerification: BridgeRunVerification,
-                    findReplace: BridgeFindReplace);
+                    findReplace: BridgeFindReplace,
+                    runTask: BridgeRunTask);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -2729,6 +2730,144 @@ namespace Supervertaler.Trados
             {
                 return new BridgeResultResponse { Ok = false, Error = "update comment failed: " + ex.Message };
             }
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/run-task (MCP pretranslate / update_tm /
+        /// export_target). Runs one of Studio's own batch tasks on the project's
+        /// target files via RunAutomaticTask, mirroring the run_verification
+        /// pattern. Project reference is grabbed on the UI thread; the task runs
+        /// on the calling (bridge) background thread.
+        ///
+        /// Safety: update-tm and export-target only READ the sdlxliff (results
+        /// reflect the last save). pretranslate WRITES into the sdlxliff, so it
+        /// can conflict with the document open in the editor – the caller is
+        /// told to save and, if it errors, to close the document and retry.
+        /// </summary>
+        private BridgeRunTaskResponse BridgeRunTask(BridgeRunTaskRequest req)
+        {
+            var task = (req?.Task ?? "").Trim().ToLowerInvariant();
+
+            string templateId;
+            string friendly;
+            string safetyNote;
+            switch (task)
+            {
+                case "pretranslate":
+                    templateId = Sdl.ProjectAutomation.Core.AutomaticTaskTemplateIds.PreTranslateFiles;
+                    friendly = "Pre-translate";
+                    safetyNote = "Pre-translation wrote TM matches INTO the document on disk. If the document " +
+                        "is open in the editor you may need to close and reopen it to see the results. It ran " +
+                        "against the last-saved state, so unsaved edits weren't considered.";
+                    break;
+                case "update-tm":
+                case "update_tm":
+                    templateId = Sdl.ProjectAutomation.Core.AutomaticTaskTemplateIds.UpdateMainTranslationMemories;
+                    friendly = "Update main translation memories";
+                    safetyNote = "Confirmed segments from the last-saved state were written to the project's " +
+                        "main TM(s). If you just confirmed segments in the editor, save first and run again to " +
+                        "include them.";
+                    break;
+                case "export-target":
+                case "export_target":
+                    templateId = Sdl.ProjectAutomation.Core.AutomaticTaskTemplateIds.GenerateTargetTranslations;
+                    friendly = "Generate target translations";
+                    safetyNote = "The translated target files were generated from the last-saved state into the " +
+                        "project's target-language folder. In Studio, right-click a file and choose Open Target, " +
+                        "or open the project folder to find them.";
+                    break;
+                default:
+                    return new BridgeRunTaskResponse
+                    {
+                        Ok = false,
+                        Error = $"unknown task '{req?.Task}' – use pretranslate, update-tm, or export-target"
+                    };
+            }
+
+            Sdl.ProjectAutomation.FileBased.FileBasedProject project = null;
+            Guid[] fileIds = null;
+            string grabError = null;
+            var ctrl = _control?.Value;
+            Action grab = () =>
+            {
+                try
+                {
+                    project = _activeDocument?.Project as Sdl.ProjectAutomation.FileBased.FileBasedProject;
+                    if (project == null) { grabError = "no file-based project is open in the editor"; return; }
+                    fileIds = project.GetTargetLanguageFiles()
+                        .Where(f => f.Role != Sdl.ProjectAutomation.Core.FileRole.Reference)
+                        .Select(f => f.Id).ToArray();
+                }
+                catch (Exception ex) { grabError = ex.Message; }
+            };
+            try
+            {
+                if (ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired) ctrl.Invoke(grab);
+                else grab();
+            }
+            catch (Exception ex) { grabError = ex.Message; }
+
+            if (grabError != null)
+                return new BridgeRunTaskResponse { Ok = false, Error = grabError, Task = task };
+            if (project == null || fileIds == null || fileIds.Length == 0)
+                return new BridgeRunTaskResponse { Ok = false, Error = "no target files to process", Task = task };
+
+            var messages = new List<string>();
+            try
+            {
+                EventHandler<Sdl.ProjectAutomation.Core.TaskStatusEventArgs> onStatus = (s, e) => { };
+                EventHandler<Sdl.ProjectAutomation.Core.TaskMessageEventArgs> onMsg = (s, e) =>
+                {
+                    try
+                    {
+                        var m = e?.Message?.ToString();
+                        if (!string.IsNullOrWhiteSpace(m) && messages.Count < 50) messages.Add(m.Trim());
+                    }
+                    catch { }
+                };
+
+                var result = project.RunAutomaticTask(fileIds, templateId, onStatus, onMsg);
+
+                // Treat anything other than a clean Completed as a failure.
+                bool failed = false;
+                try
+                {
+                    var status = result?.Status.ToString() ?? "";
+                    failed = status.IndexOf("Fail", StringComparison.OrdinalIgnoreCase) >= 0
+                          || status.IndexOf("Cancel", StringComparison.OrdinalIgnoreCase) >= 0
+                          || status.IndexOf("Reject", StringComparison.OrdinalIgnoreCase) >= 0
+                          || status.IndexOf("Invalid", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+                catch { }
+                if (failed)
+                    return new BridgeRunTaskResponse
+                    {
+                        Ok = false,
+                        Task = task,
+                        Messages = messages.Count > 0 ? messages : null,
+                        Error = $"{friendly} did not complete successfully" +
+                            (task == "pretranslate" ? " – if the document is open in the editor, close it and try again." : "")
+                    };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeRunTaskResponse
+                {
+                    Ok = false,
+                    Task = task,
+                    Error = $"{friendly} failed: {ex.Message}" +
+                        (task == "pretranslate" ? " (if the document is open in the editor, close it and retry)" : "")
+                };
+            }
+
+            return new BridgeRunTaskResponse
+            {
+                Ok = true,
+                Task = task,
+                FilesProcessed = fileIds.Length,
+                Messages = messages.Count > 0 ? messages : null,
+                Note = $"{friendly} completed on {fileIds.Length} file(s). {safetyNote}"
+            };
         }
 
         /// <summary>

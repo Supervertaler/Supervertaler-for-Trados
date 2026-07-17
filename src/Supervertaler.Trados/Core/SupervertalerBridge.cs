@@ -465,6 +465,25 @@ namespace Supervertaler.Trados.Core
     }
 
     [DataContract]
+    public class BridgeRunTaskRequest
+    {
+        /// <summary>"pretranslate", "update-tm", or "export-target".</summary>
+        [DataMember(Name = "task", IsRequired = true)] public string Task { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeRunTaskResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "task", Order = 2, EmitDefaultValue = false)] public string Task { get; set; }
+        [DataMember(Name = "filesProcessed", Order = 3)] public int FilesProcessed { get; set; }
+        [DataMember(Name = "messages", Order = 4, EmitDefaultValue = false)]
+        public List<string> Messages { get; set; }
+        [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
     public class BridgeFindReplaceRequest
     {
         [DataMember(Name = "find", IsRequired = true)] public string Find { get; set; }
@@ -631,6 +650,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeUpdateCommentRequest, BridgeResultResponse> _updateComment;
         private readonly Func<BridgeVerifyResponse> _runVerification;
         private readonly Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> _findReplace;
+        private readonly Func<BridgeRunTaskRequest, BridgeRunTaskResponse> _runTask;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -662,7 +682,8 @@ namespace Supervertaler.Trados.Core
             Func<BridgeAddCommentRequest, BridgeResultResponse> addComment = null,
             Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null,
             Func<BridgeVerifyResponse> runVerification = null,
-            Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> findReplace = null)
+            Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> findReplace = null,
+            Func<BridgeRunTaskRequest, BridgeRunTaskResponse> runTask = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -682,6 +703,7 @@ namespace Supervertaler.Trados.Core
             _updateComment = updateComment;
             _runVerification = runVerification;
             _findReplace = findReplace;
+            _runTask = runTask;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -978,6 +1000,12 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/find-replace")
             {
                 HandleFindReplace(context);
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/run-task")
+            {
+                HandleRunTask(context);
                 return;
             }
 
@@ -1741,6 +1769,48 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] {name} threw: {ex.Message}");
                 response = new BridgeResultResponse { Ok = false, Error = name + " failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleRunTask(HttpListenerContext context)
+        {
+            if (_runTask == null)
+            {
+                TryWriteError(context, 501, "run-task endpoint not wired");
+                return;
+            }
+
+            BridgeRunTaskRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<BridgeRunTaskRequest>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeRunTaskResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            if (req == null || string.IsNullOrWhiteSpace(req.Task))
+            {
+                WriteJson(context, 400, new BridgeRunTaskResponse { Ok = false, Error = "missing 'task'" });
+                return;
+            }
+
+            BridgeRunTaskResponse response;
+            try
+            {
+                response = _runTask(req) ?? new BridgeRunTaskResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] run-task threw: {ex.Message}");
+                response = new BridgeRunTaskResponse { Ok = false, Error = "task failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);

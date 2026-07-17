@@ -245,6 +245,33 @@ public static class TradosTools
         CancellationToken ct = default)
         => Safe(() => bridge.PostAsync("/v1/update-comment", new { id, commentIndex, text }, ct));
 
+    [McpServerTool(Name = "pretranslate"),
+     Description("Run Trados Studio's Pre-translate Files batch task: fills untranslated segments with their " +
+                 "TM matches (typically exact/context matches). WRITES into the document on disk from the " +
+                 "LAST SAVED state, so ask the user to save first; if the document is open in the editor they " +
+                 "may need to close and reopen it to see the results (and if the task errors because the file " +
+                 "is open, tell them to close the document and retry). Use when the user wants to leverage " +
+                 "their TMs before translating the rest.")]
+    public static Task<string> Pretranslate(BridgeClient bridge, CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/run-task", new { task = "pretranslate" }, ct));
+
+    [McpServerTool(Name = "update_tm"),
+     Description("Run Trados Studio's Update Main Translation Memories batch task: writes the confirmed " +
+                 "(Translated/Approved) segments into the project's main TM(s), so future projects leverage " +
+                 "them. Reads the LAST SAVED state – if the user just confirmed segments, have them save " +
+                 "first. Read-only to the document (doesn't modify it). Use for 'save my translations to the TM'.")]
+    public static Task<string> UpdateTm(BridgeClient bridge, CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/run-task", new { task = "update-tm" }, ct));
+
+    [McpServerTool(Name = "export_target"),
+     Description("Run Trados Studio's Generate Target Translations batch task: produces the finished target " +
+                 "files (e.g. the translated Word/PDF) in the project's target-language folder, from the LAST " +
+                 "SAVED state. Read-only to the sdlxliff. Use for 'export/give me the translated document'. " +
+                 "Tell the user where to find the files (project target folder, or right-click a file in " +
+                 "Studio and choose Open Target).")]
+    public static Task<string> ExportTarget(BridgeClient bridge, CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/run-task", new { task = "export-target" }, ct));
+
     [McpServerTool(Name = "find_and_replace"),
      Description("Find and replace text in the TARGET (translation) side of segments across the open Trados " +
                  "document. Options: caseSensitive, wholeWord, regex, and filters by file (merged documents) " +
