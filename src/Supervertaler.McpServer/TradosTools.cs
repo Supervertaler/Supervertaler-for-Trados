@@ -245,6 +245,17 @@ public static class TradosTools
         CancellationToken ct = default)
         => Safe(() => bridge.PostAsync("/v1/update-comment", new { id, commentIndex, text }, ct));
 
+    [McpServerTool(Name = "run_verification"),
+     Description("Run Trados Studio's OWN QA verification (Verify Files / F8 – QA Checker 3.0, tag and term " +
+                 "verifiers: punctuation, brackets, repeated words, spelling, regex rules, length checks, etc.) " +
+                 "and return the findings, each with file, segment number, severity, and message. This catches " +
+                 "things the check_* tools don't (punctuation, spelling, regex) and complements them. IMPORTANT: " +
+                 "it reads the LAST SAVED state of the files – if the user made edits (including ones you applied " +
+                 "with update_segments), tell them to save in Studio first, then run again. Triage each finding " +
+                 "against the source before proposing fixes; some are false positives.")]
+    public static Task<string> RunVerification(BridgeClient bridge, CancellationToken ct = default)
+        => Safe(() => bridge.PostAsync("/v1/verify", new { }, ct));
+
     [McpServerTool(Name = "insert_into_active_segment"),
      Description("Insert text into the target side of the segment the translator is currently editing in " +
                  "Trados Studio (same as Supervertaler's Apply-to-target button). Replaces the current " +

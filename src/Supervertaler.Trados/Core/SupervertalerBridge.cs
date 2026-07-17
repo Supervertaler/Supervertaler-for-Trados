@@ -455,6 +455,28 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "text", IsRequired = true)] public string Text { get; set; }
     }
 
+    [DataContract]
+    public class BridgeVerifyFinding
+    {
+        [DataMember(Name = "file", Order = 0, EmitDefaultValue = false)] public string File { get; set; }
+        [DataMember(Name = "number", Order = 1, EmitDefaultValue = false)] public string Number { get; set; }
+        [DataMember(Name = "severity", Order = 2, EmitDefaultValue = false)] public string Severity { get; set; }
+        [DataMember(Name = "message", Order = 3)] public string Message { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeVerifyResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "findingsCount", Order = 2)] public int FindingsCount { get; set; }
+        [DataMember(Name = "returned", Order = 3)] public int Returned { get; set; }
+        [DataMember(Name = "truncated", Order = 4)] public bool Truncated { get; set; }
+        [DataMember(Name = "findings", Order = 5, EmitDefaultValue = false)]
+        public List<BridgeVerifyFinding> Findings { get; set; }
+        [DataMember(Name = "note", Order = 6, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
     // ─── MCP write endpoints (v1: /update-segments, /add-term) ──────────────
 
     [DataContract]
@@ -563,6 +585,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<string, BridgeCommentsResponse> _getComments;
         private readonly Func<BridgeAddCommentRequest, BridgeResultResponse> _addComment;
         private readonly Func<BridgeUpdateCommentRequest, BridgeResultResponse> _updateComment;
+        private readonly Func<BridgeVerifyResponse> _runVerification;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -592,7 +615,8 @@ namespace Supervertaler.Trados.Core
             Func<BridgeGoToRequest, BridgeResultResponse> goToSegment = null,
             Func<string, BridgeCommentsResponse> getComments = null,
             Func<BridgeAddCommentRequest, BridgeResultResponse> addComment = null,
-            Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null)
+            Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null,
+            Func<BridgeVerifyResponse> runVerification = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -610,6 +634,7 @@ namespace Supervertaler.Trados.Core
             _getComments = getComments;
             _addComment = addComment;
             _updateComment = updateComment;
+            _runVerification = runVerification;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -894,6 +919,12 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/update-comment")
             {
                 HandleDelegatePost<BridgeUpdateCommentRequest>(context, _updateComment, "update-comment");
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/verify")
+            {
+                HandleRunVerification(context);
                 return;
             }
 
@@ -1657,6 +1688,28 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] {name} threw: {ex.Message}");
                 response = new BridgeResultResponse { Ok = false, Error = name + " failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleRunVerification(HttpListenerContext context)
+        {
+            if (_runVerification == null)
+            {
+                TryWriteError(context, 501, "verify endpoint not wired");
+                return;
+            }
+
+            BridgeVerifyResponse response;
+            try
+            {
+                response = _runVerification() ?? new BridgeVerifyResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] verify threw: {ex.Message}");
+                response = new BridgeVerifyResponse { Ok = false, Error = "verification failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);

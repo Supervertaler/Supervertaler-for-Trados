@@ -945,7 +945,8 @@ namespace Supervertaler.Trados
                     goToSegment: BridgeGoToSegment,
                     getComments: BridgeGetComments,
                     addComment: BridgeAddComment,
-                    updateComment: BridgeUpdateComment);
+                    updateComment: BridgeUpdateComment,
+                    runVerification: BridgeRunVerification);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -2727,6 +2728,183 @@ namespace Supervertaler.Trados
             {
                 return new BridgeResultResponse { Ok = false, Error = "update comment failed: " + ex.Message };
             }
+        }
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/verify (MCP run_verification). Runs
+        /// Studio's own "Verify Files" batch task (QA Checker 3.0, tag and term
+        /// verifiers, etc.) and returns its findings mapped to file + segment
+        /// number. This is the ONLY way to get Studio's native QA results –
+        /// the editor's F8 Messages pane has no read API; running the batch
+        /// task and parsing its XML report is RWS's own blessed pattern.
+        ///
+        /// The project reference is grabbed on the UI thread; the task itself
+        /// runs on the calling (bridge) thread, which is a background thread –
+        /// correct, since batch tasks must not run on the UI thread. Findings
+        /// reflect the LAST SAVED state of the files (batch tasks read the
+        /// sdlxliff on disk), so unsaved editor edits aren't included.
+        /// </summary>
+        private BridgeVerifyResponse BridgeRunVerification()
+        {
+            Sdl.ProjectAutomation.FileBased.FileBasedProject project = null;
+            Guid[] fileIds = null;
+            var fileNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string grabError = null;
+
+            var ctrl = _control?.Value;
+            Action grab = () =>
+            {
+                try
+                {
+                    project = _activeDocument?.Project as Sdl.ProjectAutomation.FileBased.FileBasedProject;
+                    if (project == null) { grabError = "no file-based project is open in the editor"; return; }
+                    var targets = project.GetTargetLanguageFiles()
+                        .Where(f => f.Role != Sdl.ProjectAutomation.Core.FileRole.Reference)
+                        .ToList();
+                    fileIds = targets.Select(f => f.Id).ToArray();
+                    foreach (var f in targets) fileNames[f.Id.ToString()] = f.Name;
+                }
+                catch (Exception ex) { grabError = ex.Message; }
+            };
+            try
+            {
+                if (ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired) ctrl.Invoke(grab);
+                else grab();
+            }
+            catch (Exception ex) { grabError = ex.Message; }
+
+            if (grabError != null)
+                return new BridgeVerifyResponse { Ok = false, Error = grabError };
+            if (project == null || fileIds == null || fileIds.Length == 0)
+                return new BridgeVerifyResponse { Ok = false, Error = "no target files to verify" };
+
+            string reportXml = null;
+            Guid? reportId = null;
+            try
+            {
+                Sdl.ProjectAutomation.Core.AutomaticTask result;
+                try
+                {
+                    EventHandler<Sdl.ProjectAutomation.Core.TaskStatusEventArgs> onStatus = (s, e) => { };
+                    EventHandler<Sdl.ProjectAutomation.Core.TaskMessageEventArgs> onMsg = (s, e) => { };
+                    result = project.RunAutomaticTask(
+                        fileIds,
+                        Sdl.ProjectAutomation.Core.AutomaticTaskTemplateIds.VerifyFiles,
+                        onStatus, onMsg);
+                }
+                catch (Exception ex)
+                {
+                    return new BridgeVerifyResponse { Ok = false, Error = "verify task failed to run: " + ex.Message };
+                }
+
+                var report = result?.Reports?.FirstOrDefault();
+                if (report == null)
+                    return new BridgeVerifyResponse
+                    {
+                        Ok = true,
+                        FindingsCount = 0,
+                        Findings = new List<BridgeVerifyFinding>(),
+                        Note = "Verification ran but produced no report."
+                    };
+
+                reportId = report.Id;
+                var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".xml");
+                project.SaveTaskReportAs(reportId.Value, path, Sdl.ProjectAutomation.Core.ReportFormat.Xml);
+                reportXml = File.ReadAllText(path);
+                try { File.Delete(path); } catch { }
+            }
+            finally
+            {
+                // Best-effort: remove the report we just generated so repeated
+                // MCP verify calls don't clutter the project's Reports view.
+                if (reportId != null)
+                {
+                    try
+                    {
+                        new Sdl.ProjectAutomation.FileBased.Reports.Operations.ProjectReportsOperations(project)
+                            .RemoveReports(new List<Guid> { reportId.Value });
+                    }
+                    catch { }
+                }
+            }
+
+            var response = new BridgeVerifyResponse { Ok = true, Findings = new List<BridgeVerifyFinding>() };
+            try
+            {
+                var findings = ParseVerifyReport(reportXml, fileNames);
+                response.FindingsCount = findings.Count;
+                response.Findings = findings.Take(200).ToList();
+                response.Returned = response.Findings.Count;
+                response.Truncated = findings.Count > response.Returned;
+                if (findings.Count == 0)
+                    response.Note = "Studio's verification found no issues in the last-saved state of the files.";
+                else
+                    response.Note = "These are Trados Studio's own QA Checker findings, from the LAST SAVED " +
+                        "state of the document – if you have unsaved edits, ask the user to save (Ctrl+S) and " +
+                        "run again. Triage each against the source before fixing; some are false positives.";
+                if (response.Truncated)
+                    response.Note = $"Showing {response.Returned} of {findings.Count} findings. " + response.Note;
+            }
+            catch (Exception ex)
+            {
+                response.Note = "Verification ran but its report could not be parsed: " + ex.Message;
+            }
+            return response;
+        }
+
+        /// <summary>Defensive parse of a Trados Verify Files XML report into
+        /// findings. Schema-tolerant (element names vary across versions): pulls
+        /// the segment number, severity, and message text from whatever the
+        /// report provides, mapping each file's guid to its name.</summary>
+        private static List<BridgeVerifyFinding> ParseVerifyReport(string xml, Dictionary<string, string> fileNames)
+        {
+            var findings = new List<BridgeVerifyFinding>();
+            if (string.IsNullOrWhiteSpace(xml)) return findings;
+
+            var doc = new System.Xml.XmlDocument();
+            doc.LoadXml(xml);
+
+            foreach (System.Xml.XmlNode fileNode in doc.SelectNodes("//*[local-name()='file']"))
+            {
+                var guid = fileNode.Attributes?["guid"]?.Value;
+                var fname = fileNode.Attributes?["name"]?.Value;
+                if (string.IsNullOrEmpty(fname) && !string.IsNullOrEmpty(guid))
+                    fileNames.TryGetValue(guid, out fname);
+
+                foreach (System.Xml.XmlNode msg in fileNode.SelectNodes(".//*[local-name()='Message']"))
+                {
+                    var number = FirstDescendantText(msg, "SegmentId");
+                    var severity = msg.Attributes?["Severity"]?.Value
+                        ?? msg.Attributes?["severity"]?.Value
+                        ?? msg.Attributes?["Level"]?.Value
+                        ?? FirstDescendantText(msg, "Severity")
+                        ?? FirstDescendantText(msg, "Level");
+                    var text = FirstDescendantText(msg, "Description")
+                        ?? FirstDescendantText(msg, "MessageText")
+                        ?? FirstDescendantText(msg, "Text");
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        // Fall back to the node's own text minus child element noise.
+                        text = (msg.InnerText ?? "").Trim();
+                    }
+
+                    findings.Add(new BridgeVerifyFinding
+                    {
+                        File = fname,
+                        Number = string.IsNullOrWhiteSpace(number) ? null : number.Trim(),
+                        Severity = string.IsNullOrWhiteSpace(severity) ? null : severity.Trim(),
+                        Message = (text ?? "").Trim()
+                    });
+                }
+            }
+            return findings;
+        }
+
+        private static string FirstDescendantText(System.Xml.XmlNode node, string localName)
+        {
+            var hit = node.SelectSingleNode($".//*[local-name()='{localName}']");
+            var t = hit?.InnerText?.Trim();
+            return string.IsNullOrEmpty(t) ? null : t;
         }
 
         /// <summary>
