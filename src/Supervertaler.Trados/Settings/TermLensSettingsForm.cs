@@ -1424,13 +1424,19 @@ namespace Supervertaler.Trados.Settings
                         ? $"{info.SourceIndexName} \u2192 {info.TargetIndexName}"
                         : info.LoadMode == MultiTermLoadMode.Failed ? "Failed to load" : "";
 
+                    // Label by actual file format – .sdltb (MultiTerm, Studio 2024)
+                    // or .ttb (SQLite, Studio 2026). The subsystem is named
+                    // "MultiTerm" for historical reasons but handles both.
+                    var ext = System.IO.Path.GetExtension(info.FilePath ?? "").ToLowerInvariant();
+                    var fmtLabel = string.IsNullOrEmpty(ext) ? "[Trados]" : $"[{ext}]";
+
                     int rowIdx = _dgvTermbases.Rows.Add(
                         isRead,     // Read
-                        false,      // Write (always disabled for MultiTerm)
-                        false,      // Project (always disabled for MultiTerm)
-                        false,      // CS (always disabled for MultiTerm)
-                        isAiMt,     // AI (MultiTerm CAN be sent to the AI)
-                        $"{info.Name} [MultiTerm]",
+                        false,      // Write (always disabled for Trados termbases)
+                        false,      // Project (always disabled for Trados termbases)
+                        false,      // CS (always disabled for Trados termbases)
+                        isAiMt,     // AI (Trados termbases CAN be sent to the AI)
+                        $"{info.Name} {fmtLabel}",
                         info.TermCount.ToString("N0"),
                         langText);
 

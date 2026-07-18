@@ -1144,7 +1144,9 @@ namespace Supervertaler.Trados
                 // Check if the project has changed – if so, save outgoing and load incoming settings
                 ApplyProjectSettingsFromDocument(_activeDocument);
 
-                // Reload MultiTerm termbases – may have switched projects
+                // Reload MultiTerm termbases – may have switched projects. Give the
+                // new document a fresh .ttb retry budget.
+                _multiTermLoadRetries = 0;
                 LoadMultiTermTermbases();
                 UpdateFromActiveSegment();
             }
@@ -1537,15 +1539,50 @@ namespace Supervertaler.Trados
             _multiTermConfigTimer = null;
         }
 
+        private int _multiTermLoadRetries;
+        private const int MaxMultiTermLoadRetries = 5;
+
         private void OnMultiTermConfigTimerTick(object sender, EventArgs e)
         {
             if (_activeDocument == null) return;
 
             if (HasMultiTermConfigChanged())
             {
+                // A termbase was attached / removed / toggled – reload, and give
+                // any fresh load its full retry budget again.
+                _multiTermLoadRetries = 0;
                 LoadMultiTermTermbases();
                 UpdateFromActiveSegment();
             }
+            else if (_multiTermLoadRetries < MaxMultiTermLoadRetries && HasFailedTtbLoad())
+            {
+                // A just-attached .ttb (SQLite, no API fallback) can fail its first
+                // direct read while Trados is still wiring it up. Retry a few times
+                // so it self-heals within seconds instead of needing a manual
+                // Enabled toggle. Bounded so a genuinely broken file doesn't loop.
+                _multiTermLoadRetries++;
+                DiagnosticLog.Log("MultiTerm",
+                    $"OnMultiTermConfigTimerTick: retrying failed .ttb load " +
+                    $"(attempt {_multiTermLoadRetries}/{MaxMultiTermLoadRetries}).");
+                LoadMultiTermTermbases();
+                UpdateFromActiveSegment();
+            }
+        }
+
+        /// <summary>True if a .ttb termbase failed its direct load. .ttb has no
+        /// API fallback (unlike .sdltb), so a failed one produces no hits until
+        /// it's reloaded – worth a bounded retry.</summary>
+        private bool HasFailedTtbLoad()
+        {
+            var infos = _multiTermInfos;
+            if (infos == null) return false;
+            foreach (var i in infos)
+            {
+                if (i.LoadMode == MultiTermLoadMode.Failed
+                    && (i.FilePath ?? "").EndsWith(".ttb", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private void OnActiveSegmentChanged(object sender, EventArgs e)

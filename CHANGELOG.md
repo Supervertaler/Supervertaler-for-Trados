@@ -7,6 +7,13 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.107 / 19.20.107] – 2026-07-18
+
+### Fixed (TermLens · Trados Studio 2026 .ttb termbases)
+
+- **Project termbases are now labelled by their real format** in Supervertaler Settings → Termbases – `[.ttb]` (Studio 2026's SQLite format) and `[.sdltb]` (MultiTerm) – instead of everything showing as `[MultiTerm]`.
+- **A `.ttb` termbase you attach mid-session now appears on its own.** A just-attached `.ttb` can fail its first read while Studio is still wiring it up, and unlike `.sdltb` it has no fallback, so it produced no TermLens hits until you toggled it off and on. TermLens now retries a failed `.ttb` load automatically for a few seconds, so matches show up without the manual toggle.
+
 ## [18.20.106 / 19.20.106] – 2026-07-18
 
 ### Added (Supervertaler MCP Server · ask "what can I do?")
