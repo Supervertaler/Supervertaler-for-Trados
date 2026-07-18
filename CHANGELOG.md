@@ -7,6 +7,19 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.99 / 19.20.99] – 2026-07-18
+
+### Added (Supervertaler MCP Server · your AI assistant can now run your whole Trados workflow)
+
+- **The connection now starts automatically** – no more clicking the Supervertaler Assistant panel to wake it up. As soon as you have a document open in the Trados editor, your AI app can reach the project. (Previously the connection only started once you activated the Assistant panel; it now starts on its own regardless of which panel is in front.)
+- **Find and replace across your translations** – *"replace every 'shall' with 'must' in my targets."* The AI can preview exactly which segments would change before applying anything, respects your inline tags (matches that would break formatting are skipped and reported), and can restrict to one file or one confirmation status.
+- **Run Studio's own QA and act on it** – *"run verification and show me the findings."* The AI runs Trados' built-in Verify Files (QA Checker 3.0, tag and terminology checks: punctuation, brackets, repeated words, spelling, length, etc.) and gets the findings back per segment, with the QA rule and severity. It catches things the AI's own checks don't, and each finding links straight to the segment so it can jump there or comment on it.
+- **Trados batch tasks by conversation** – *"pre-translate everything with my TM matches," "save my confirmed translations to the TM," "export the translated Word document."* Pre-translate, Update Main Translation Memories, and Generate Target Translations can all be triggered from your AI app.
+- **Jump to any segment** – *"take me to segment 47"* – the AI moves the Studio editor to the segment it's discussing, by the number you see in the grid or its id.
+- **Read, add, and update Trados comments** – flag a source issue for the client, leave a review note, or rewrite an existing comment after fixing the segment it describes.
+- **Your Trados project termbases are now included** – terminology lookups, the terminology QA check, and the resource listing now search the termbases attached to your Trados project (the new **.ttb** format in Studio 2026 and **MultiTerm .sdltb** in Studio 2024), not just your Supervertaler termbases. Definitions come through too.
+- Segment listings now include the **segment number you see in Studio's grid**, so the AI cites the right number when it talks to you (and never invents one).
+
 ## [18.20.98 / 19.20.98] – 2026-07-17
 
 ### Added (Import/Export · Trados segment comments now appear in every export format)
