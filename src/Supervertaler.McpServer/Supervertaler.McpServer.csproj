@@ -17,4 +17,13 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
   </ItemGroup>
 
+  <!-- Bundled fallback tool registry: the SAME file the plugin embeds and
+       serves at /v1/tools. Only used on a first-ever run with no disk cache
+       and Trados closed; the bridge's live copy overrides it when reachable. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Supervertaler.Trados\Resources\mcp-tools.json">
+      <LogicalName>mcp-tools.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

@@ -33,8 +33,8 @@
        the token still resolves for IDE builds (which do not pass /p:...). Only
        the shared 20.87 tail is hand-bumped, via bump_version.py. -->
   <PropertyGroup>
-    <Version>$(TradosStudioVersion).20.99</Version>
-    <InformationalVersion>$(TradosStudioVersion).20.99</InformationalVersion>
+    <Version>$(TradosStudioVersion).20.101</Version>
+    <InformationalVersion>$(TradosStudioVersion).20.101</InformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TradosStudioVersion)' == '18'">
@@ -188,6 +188,16 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\memory-bank-templates\*.md">
       <LogicalName>MemoryBankTemplate.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- MCP tool registry: the single source of truth for the tools the
+       Supervertaler MCP Server exposes. The bridge serves it at /v1/tools;
+       the external exe fetches it and registers tools dynamically, so adding
+       a tool is a plugin-only change (no extension reinstall). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\mcp-tools.json">
+      <LogicalName>McpTools.mcp-tools.json</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

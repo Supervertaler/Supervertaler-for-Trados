@@ -7,6 +7,22 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.101 / 19.20.101] – 2026-07-18
+
+### Added (Supervertaler MCP Server · your AI assistant can now work with your prompt library)
+
+- **Three new MCP tools give your AI app access to your Supervertaler prompt library** – the same Markdown prompts you use in the QuickLauncher and Batch Translate, shared with the Supervertaler Workbench:
+  - **`list_prompts`** – browse your prompts (name, description, folder, and flags), optionally filtered by folder or a search term.
+  - **`get_prompt`** – read the full text of any prompt.
+  - **`save_prompt`** – create a new prompt, or update one of your own, straight from the conversation. Built-in default prompts are protected (save your version under a new name instead).
+  - This turns your AI app into a prompt engineer: *"look at my Default Translation Prompt and suggest improvements,"* then *"save that as a new prompt."* Because the tool list is now discovered from the plugin (see 20.100), these appear after a normal restart – no extension reinstall.
+
+## [18.20.100 / 19.20.100] – 2026-07-18
+
+### Changed (Supervertaler MCP Server · future tool updates no longer need an extension reinstall)
+
+- **The MCP server now discovers its tools from the plugin at connect time**, instead of carrying a hard-coded list baked into the extension exe. The plugin publishes the tool registry over the bridge (new `GET /v1/tools`), and the server advertises whatever it finds there. The practical effect: when a plugin update adds new AI tools, they show up in your AI app on its next restart – you no longer have to download and reinstall the Claude Desktop extension to get them. The server keeps a local copy of the last known tool list, so your tools are still listed when Trados is closed, and ships with a built-in copy for the very first run.
+
 ## [18.20.99 / 19.20.99] – 2026-07-18
 
 ### Added (Supervertaler MCP Server · your AI assistant can now run your whole Trados workflow)

@@ -183,6 +183,66 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 2, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    // ─── Prompt-library endpoint types (v1: /prompts, /prompt, /save-prompt) ──
+
+    [DataContract]
+    public class BridgePromptInfo
+    {
+        [DataMember(Name = "name", Order = 0)] public string Name { get; set; }
+        [DataMember(Name = "description", Order = 1, EmitDefaultValue = false)] public string Description { get; set; }
+        [DataMember(Name = "category", Order = 2, EmitDefaultValue = false)] public string Category { get; set; }
+        [DataMember(Name = "relativePath", Order = 3)] public string RelativePath { get; set; }
+        [DataMember(Name = "type", Order = 4, EmitDefaultValue = false)] public string Type { get; set; }
+        [DataMember(Name = "isDefault", Order = 5)] public bool IsDefault { get; set; }
+        [DataMember(Name = "isQuickLauncher", Order = 6)] public bool IsQuickLauncher { get; set; }
+        [DataMember(Name = "isReadOnly", Order = 7)] public bool IsReadOnly { get; set; }
+    }
+
+    [DataContract]
+    public class BridgePromptListResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "count", Order = 1)] public int Count { get; set; }
+        [DataMember(Name = "promptsFolder", Order = 2, EmitDefaultValue = false)] public string PromptsFolder { get; set; }
+        [DataMember(Name = "prompts", Order = 3, EmitDefaultValue = false)] public List<BridgePromptInfo> Prompts { get; set; }
+    }
+
+    [DataContract]
+    public class BridgePromptResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "name", Order = 2, EmitDefaultValue = false)] public string Name { get; set; }
+        [DataMember(Name = "description", Order = 3, EmitDefaultValue = false)] public string Description { get; set; }
+        [DataMember(Name = "category", Order = 4, EmitDefaultValue = false)] public string Category { get; set; }
+        [DataMember(Name = "relativePath", Order = 5, EmitDefaultValue = false)] public string RelativePath { get; set; }
+        [DataMember(Name = "type", Order = 6, EmitDefaultValue = false)] public string Type { get; set; }
+        [DataMember(Name = "isDefault", Order = 7)] public bool IsDefault { get; set; }
+        [DataMember(Name = "isReadOnly", Order = 8)] public bool IsReadOnly { get; set; }
+        [DataMember(Name = "content", Order = 9, EmitDefaultValue = false)] public string Content { get; set; }
+    }
+
+    [DataContract]
+    internal class BridgeSavePromptRequest
+    {
+        [DataMember(Name = "name")] public string Name { get; set; }
+        [DataMember(Name = "content")] public string Content { get; set; }
+        [DataMember(Name = "description")] public string Description { get; set; }
+        [DataMember(Name = "category")] public string Category { get; set; }
+        [DataMember(Name = "path")] public string Path { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeSavePromptResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "created", Order = 2)] public bool Created { get; set; }
+        [DataMember(Name = "name", Order = 3, EmitDefaultValue = false)] public string Name { get; set; }
+        [DataMember(Name = "relativePath", Order = 4, EmitDefaultValue = false)] public string RelativePath { get; set; }
+        [DataMember(Name = "promptsFolder", Order = 5, EmitDefaultValue = false)] public string PromptsFolder { get; set; }
+    }
+
     // ─── MCP endpoint types (v1: /project, /segments, /tm-search, /term-lookup) ──
 
     [DataContract]
@@ -899,6 +959,12 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            if (method == "GET" && path == "/v1/tools")
+            {
+                HandleGetTools(context);
+                return;
+            }
+
             if (method == "GET" && path == "/v1/project")
             {
                 HandleGetProject(context);
@@ -1012,6 +1078,21 @@ namespace Supervertaler.Trados.Core
                 HandleRunTask(context);
                 return;
             }
+            if (method == "GET" && path == "/v1/prompts")
+            {
+                HandleListPrompts(context);
+                return;
+            }
+            if (method == "GET" && path == "/v1/prompt")
+            {
+                HandleGetPrompt(context);
+                return;
+            }
+            if (method == "POST" && path == "/v1/save-prompt")
+            {
+                HandleSavePrompt(context);
+                return;
+            }
 
             TryWriteError(context, 404, "not found");
         }
@@ -1082,6 +1163,39 @@ namespace Supervertaler.Trados.Core
         // which fronts this bridge for AI apps speaking the Model Context
         // Protocol. Same rules as the original endpoints: loopback + bearer
         // token, one request at a time, delegates marshal to the UI thread.
+
+        private static string _cachedToolRegistry;
+
+        /// <summary>GET /v1/tools – the MCP tool registry (embedded resource
+        /// Resources/mcp-tools.json). The external server exe fetches this and
+        /// registers tools dynamically, so adding a tool is a plugin-only
+        /// change with no extension reinstall. Cached after first read.</summary>
+        private void HandleGetTools(HttpListenerContext context)
+        {
+            try
+            {
+                if (_cachedToolRegistry == null)
+                {
+                    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                    using (var stream = asm.GetManifestResourceStream("McpTools.mcp-tools.json"))
+                    {
+                        if (stream == null)
+                        {
+                            TryWriteError(context, 500, "tool registry resource missing");
+                            return;
+                        }
+                        using (var reader = new StreamReader(stream, Encoding.UTF8))
+                            _cachedToolRegistry = reader.ReadToEnd();
+                    }
+                }
+                WriteRawJson(context, 200, _cachedToolRegistry);
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] tools registry read failed: {ex.Message}");
+                TryWriteError(context, 500, "tool registry error: " + ex.Message);
+            }
+        }
 
         private void HandleGetProject(HttpListenerContext context)
         {
@@ -1568,6 +1682,239 @@ namespace Supervertaler.Trados.Core
                 "{\"ok\":true,\"project\":" + JsonQuote(projectName) +
                 ",\"analysisStatistics\":" + (stats ?? "null") +
                 ",\"confirmationStatistics\":" + (fileStatus ?? "null") + "}");
+        }
+
+        // ── Prompt library (v1: /prompts, /prompt, /save-prompt) ─────────────
+        //
+        // The prompt library is a folder of .md files (UserDataPath.PromptLibraryDir)
+        // shared with the Supervertaler Workbench. Pure disk operations – no editor
+        // state, so no UI-thread hop. Lets an AI app browse the user's prompts, read
+        // one, and save an improved version back ("Claude as your prompt engineer").
+
+        private void HandleListPrompts(HttpListenerContext context)
+        {
+            try
+            {
+                var category = context.Request.QueryString["category"];
+                var query = context.Request.QueryString["query"];
+
+                var lib = new PromptLibrary();
+                var items = new List<BridgePromptInfo>();
+                foreach (var p in lib.GetAllPrompts())
+                {
+                    if (!string.IsNullOrEmpty(category) &&
+                        (p.Category ?? "").IndexOf(category, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+                    if (!string.IsNullOrEmpty(query) &&
+                        (p.Name ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0 &&
+                        (p.Description ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    items.Add(new BridgePromptInfo
+                    {
+                        Name = p.Name,
+                        Description = p.Description,
+                        Category = p.Category,
+                        RelativePath = p.RelativePath,
+                        Type = p.Type,
+                        IsDefault = p.IsDefault,
+                        IsQuickLauncher = p.IsQuickLauncher,
+                        IsReadOnly = p.IsReadOnly
+                    });
+                }
+
+                items.Sort((a, b) => string.Compare(a.RelativePath, b.RelativePath, StringComparison.OrdinalIgnoreCase));
+
+                WriteJson(context, 200, new BridgePromptListResponse
+                {
+                    Ok = true,
+                    Count = items.Count,
+                    PromptsFolder = PromptLibrary.PromptsFolderPath,
+                    Prompts = items
+                });
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] list prompts failed: {ex.Message}");
+                TryWriteError(context, 500, "list prompts failed: " + ex.Message);
+            }
+        }
+
+        private void HandleGetPrompt(HttpListenerContext context)
+        {
+            try
+            {
+                var relPath = context.Request.QueryString["path"];
+                var name = context.Request.QueryString["name"];
+                if (string.IsNullOrWhiteSpace(relPath) && string.IsNullOrWhiteSpace(name))
+                {
+                    WriteJson(context, 400, new BridgePromptResponse { Ok = false, Error = "pass 'path' (relativePath from list_prompts) or 'name'" });
+                    return;
+                }
+
+                var lib = new PromptLibrary();
+                PromptTemplate p = null;
+                if (!string.IsNullOrWhiteSpace(relPath))
+                    p = lib.GetPromptByRelativePath(relPath);
+                if (p == null && !string.IsNullOrWhiteSpace(name))
+                    p = lib.GetAllPrompts().FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+
+                if (p == null)
+                {
+                    WriteJson(context, 404, new BridgePromptResponse { Ok = false, Error = "prompt not found – call list_prompts and use a relativePath from it, or an exact name" });
+                    return;
+                }
+
+                WriteJson(context, 200, new BridgePromptResponse
+                {
+                    Ok = true,
+                    Name = p.Name,
+                    Description = p.Description,
+                    Category = p.Category,
+                    RelativePath = p.RelativePath,
+                    Type = p.Type,
+                    IsDefault = p.IsDefault,
+                    IsReadOnly = p.IsReadOnly,
+                    Content = p.Content
+                });
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] get prompt failed: {ex.Message}");
+                TryWriteError(context, 500, "get prompt failed: " + ex.Message);
+            }
+        }
+
+        private void HandleSavePrompt(HttpListenerContext context)
+        {
+            BridgeSavePromptRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    var body = reader.ReadToEnd();
+                    if (string.IsNullOrWhiteSpace(body))
+                    {
+                        WriteJson(context, 400, new BridgeSavePromptResponse { Ok = false, Error = "empty body" });
+                        return;
+                    }
+                    req = DeserializeJson<BridgeSavePromptRequest>(body);
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeSavePromptResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            if (req == null || string.IsNullOrEmpty(req.Content))
+            {
+                WriteJson(context, 400, new BridgeSavePromptResponse { Ok = false, Error = "missing 'content'" });
+                return;
+            }
+
+            try
+            {
+                var lib = new PromptLibrary();
+                PromptTemplate target;
+                bool created;
+
+                if (!string.IsNullOrWhiteSpace(req.Path))
+                {
+                    // Update an existing prompt identified by its relativePath.
+                    target = lib.GetPromptByRelativePath(req.Path);
+                    if (target == null)
+                    {
+                        WriteJson(context, 404, new BridgeSavePromptResponse { Ok = false, Error = "no prompt at that path – omit 'path' and pass a 'name' to create a new prompt" });
+                        return;
+                    }
+                    if (target.IsDefault)
+                    {
+                        WriteJson(context, 409, new BridgeSavePromptResponse { Ok = false, Error = "that is a built-in default prompt and would be reset on restart – save your version under a new name instead (omit 'path', pass a 'name')" });
+                        return;
+                    }
+                    if (target.IsReadOnly)
+                    {
+                        WriteJson(context, 409, new BridgeSavePromptResponse { Ok = false, Error = "that prompt is read-only" });
+                        return;
+                    }
+                    target.Content = req.Content;
+                    if (req.Description != null) target.Description = req.Description;
+                    created = false;
+                }
+                else
+                {
+                    // Create a new prompt.
+                    if (string.IsNullOrWhiteSpace(req.Name))
+                    {
+                        WriteJson(context, 400, new BridgeSavePromptResponse { Ok = false, Error = "missing 'name' (required to create a new prompt)" });
+                        return;
+                    }
+                    if (!IsSafePromptName(req.Name) || !IsSafeCategory(req.Category))
+                    {
+                        WriteJson(context, 400, new BridgeSavePromptResponse { Ok = false, Error = "invalid 'name' or 'category' (no path separators, '..', or rooted paths)" });
+                        return;
+                    }
+                    target = new PromptTemplate
+                    {
+                        Name = req.Name.Trim(),
+                        Content = req.Content,
+                        Description = req.Description,
+                        Category = string.IsNullOrWhiteSpace(req.Category) ? "" : req.Category.Trim(),
+                        IsDefault = false
+                    };
+                    created = true;
+                }
+
+                lib.SavePrompt(target);
+
+                // Defence in depth: never let a write escape the prompt library folder.
+                var root = System.IO.Path.GetFullPath(PromptLibrary.PromptsFolderPath)
+                    .TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+                var written = string.IsNullOrEmpty(target.FilePath) ? root : System.IO.Path.GetFullPath(target.FilePath);
+                if (!written.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    BridgeLog.Write($"[SupervertalerBridge] save prompt escaped library folder: {written}");
+                    WriteJson(context, 400, new BridgeSavePromptResponse { Ok = false, Error = "refused: resolved path is outside the prompt library" });
+                    return;
+                }
+
+                WriteJson(context, 200, new BridgeSavePromptResponse
+                {
+                    Ok = true,
+                    Created = created,
+                    Name = target.Name,
+                    RelativePath = target.RelativePath,
+                    PromptsFolder = PromptLibrary.PromptsFolderPath
+                });
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] save prompt failed: {ex.Message}");
+                WriteJson(context, 500, new BridgeSavePromptResponse { Ok = false, Error = "save prompt failed: " + ex.Message });
+            }
+        }
+
+        private static bool IsSafePromptName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            if (name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0) return false;
+            var t = name.Trim();
+            if (t == ".." || t == ".") return false;
+            if (System.IO.Path.IsPathRooted(name)) return false;
+            return true;
+        }
+
+        private static bool IsSafeCategory(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category)) return true; // empty = library root
+            if (System.IO.Path.IsPathRooted(category)) return false;
+            foreach (var part in category.Split('/', '\\'))
+            {
+                var t = part.Trim();
+                if (t == ".." || t == ".") return false;
+            }
+            return true;
         }
 
         private void HandleStudioTmSearch(HttpListenerContext context)
