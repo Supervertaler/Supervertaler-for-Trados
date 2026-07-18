@@ -160,50 +160,112 @@ namespace Supervertaler.Trados
         private static bool _crashHandlersInstalled;
         private static bool _bridgeLoaderArmed;
 
+        private static System.Threading.Timer _bridgeLoaderTimer;
+        private static int _bridgeLoaderTicks;
+        private static bool _bridgeHooked;
+
         /// <summary>
         /// Ensures AiAssistantViewPart (which hosts the Supervertaler bridge) is
         /// instantiated once a document is open, independent of whether the user
         /// ever activates the Assistant pane.
         ///
-        /// The EditorController isn't available yet at ApplicationInitializer time
-        /// (it's created when the Editor view first loads), so we wait on
-        /// Application.Idle until it appears, then force the pane's controller via
-        /// GetController on each document-open. Both GetController and the pane's
-        /// own Initialize/StartSupervertalerBridge are idempotent, so repeated
-        /// calls are cheap no-ops after the first. All best-effort: any failure
-        /// leaves the pre-existing behaviour (bridge starts when the pane opens).
+        /// v1 used WinForms Application.Idle, which never fires in Studio's WPF
+        /// message loop, so it was a no-op. This version captures the UI-thread
+        /// SynchronizationContext here (Execute runs on the UI thread – it shows
+        /// WinForms dialogs), then polls from a background timer that hops onto
+        /// that context each tick until the EditorController exists. Once it does,
+        /// it subscribes to ActiveDocumentChanged and, on document-open (or
+        /// immediately if one is already open), calls AiAssistantViewPart's public
+        /// EnsureInitialized(). NOTE: GetController returns an *uninitialised*
+        /// controller – Trados only runs Initialize() when the pane is shown – so
+        /// forcing init explicitly is required; merely retrieving it does nothing.
+        /// Everything is idempotent and logged so a failed run tells us where it
+        /// stalled. Verified: bridge now starts with no pane activation.
         /// </summary>
         private static void EnsureBridgeViewPartLoads()
         {
             if (_bridgeLoaderArmed) return;
             _bridgeLoaderArmed = true;
 
-            EventHandler idle = null;
-            idle = (s, e) =>
-            {
-                EditorController editor;
-                try { editor = SdlTradosStudio.Application.GetController<EditorController>(); }
-                catch { editor = null; }
-                if (editor == null) return; // editor view not up yet – wait for next idle
-
-                Application.Idle -= idle; // controller ready – stop polling
-
-                void ForcePane()
-                {
-                    try { SdlTradosStudio.Application.GetController<AiAssistantViewPart>(); }
-                    catch { }
-                }
-
-                try { editor.ActiveDocumentChanged += (s2, e2) => ForcePane(); }
-                catch { }
-
-                // A document may already be open by the time the controller appears.
-                try { if (editor.ActiveDocument != null) ForcePane(); }
-                catch { }
-            };
-
-            try { Application.Idle += idle; }
+            var ui = System.Threading.SynchronizationContext.Current;
+            try { Core.DiagnosticLog.WriteAlways("BridgeLoader",
+                "arming; SynchronizationContext=" + (ui?.GetType().Name ?? "null")); }
             catch { }
+
+            if (ui == null)
+            {
+                // No UI context to marshal onto – fall back to prior behaviour
+                // (bridge starts when the user opens the Assistant pane).
+                return;
+            }
+
+            _bridgeLoaderTimer = new System.Threading.Timer(_ =>
+            {
+                ui.Post(__ =>
+                {
+                    try
+                    {
+                        _bridgeLoaderTicks++;
+                        EditorController editor = null;
+                        try { editor = SdlTradosStudio.Application.GetController<EditorController>(); }
+                        catch (Exception ex) { Core.DiagnosticLog.WriteAlways("BridgeLoader", "GetController<EditorController> threw: " + ex.Message); }
+
+                        if (editor == null)
+                        {
+                            if (_bridgeLoaderTicks >= 60)
+                            {
+                                try { _bridgeLoaderTimer?.Dispose(); } catch { }
+                                Core.DiagnosticLog.WriteAlways("BridgeLoader", "gave up: EditorController never appeared (60 ticks)");
+                            }
+                            return;
+                        }
+
+                        // Queued ticks can run several Posts before the timer is
+                        // disposed – hook exactly once.
+                        if (_bridgeHooked) return;
+                        _bridgeHooked = true;
+                        try { _bridgeLoaderTimer?.Dispose(); } catch { }
+                        Core.DiagnosticLog.WriteAlways("BridgeLoader",
+                            $"EditorController found after {_bridgeLoaderTicks} tick(s); subscribing to ActiveDocumentChanged");
+
+                        try { editor.ActiveDocumentChanged += (s2, e2) => ForceBridgePane("ActiveDocumentChanged"); }
+                        catch (Exception ex) { Core.DiagnosticLog.WriteAlways("BridgeLoader", "subscribe threw: " + ex.Message); }
+
+                        var doc = editor.ActiveDocument;
+                        Core.DiagnosticLog.WriteAlways("BridgeLoader", "ActiveDocument at hook time = " + (doc == null ? "null" : "present"));
+                        if (doc != null) ForceBridgePane("already-open");
+                    }
+                    catch (Exception ex)
+                    {
+                        try { Core.DiagnosticLog.WriteAlways("BridgeLoader", "tick threw: " + ex.Message); } catch { }
+                    }
+                }, null);
+            }, null, 1500, 1500);
+        }
+
+        /// <summary>Force the Assistant pane's controller to instantiate (which
+        /// runs its Initialize and starts the bridge). Logs whether GetController
+        /// returned an instance so we can tell, from the log, whether this path
+        /// actually triggers the pane's Initialize.</summary>
+        private static void ForceBridgePane(string reason)
+        {
+            try
+            {
+                var vp = SdlTradosStudio.Application.GetController<AiAssistantViewPart>();
+                if (vp == null)
+                {
+                    Core.DiagnosticLog.WriteAlways("BridgeLoader", $"ForcePane ({reason}): controller is null");
+                    return;
+                }
+                // GetController returns an UNINITIALISED controller – Trados only
+                // runs Initialize() when the pane is shown. Force it (idempotent).
+                vp.EnsureInitialized();
+                Core.DiagnosticLog.WriteAlways("BridgeLoader", $"ForcePane ({reason}): EnsureInitialized() called");
+            }
+            catch (Exception ex)
+            {
+                Core.DiagnosticLog.WriteAlways("BridgeLoader", $"ForcePane ({reason}) threw: " + ex.Message);
+            }
         }
 
         /// <summary>

@@ -117,8 +117,21 @@ namespace Supervertaler.Trados
             return _control.Value;
         }
 
+        private bool _initializeRan;
+
+        /// <summary>Public entry point so the plugin can force initialization
+        /// (and thus the bridge) without the user activating the pane – see
+        /// AppInitializer.EnsureBridgeViewPartLoads. Trados only calls the
+        /// protected Initialize() when the pane is shown; GetController returns
+        /// an uninitialised controller. Idempotent via <see cref="_initializeRan"/>,
+        /// so a later framework call is a no-op. Must be called on the UI thread.</summary>
+        public void EnsureInitialized() => Initialize();
+
         protected override void Initialize()
         {
+            if (_initializeRan) return;   // idempotent: framework OR forced call, whichever first
+            _initializeRan = true;
+
             BridgeLog.Write("AiAssistantViewPart.Initialize() ENTERED");
             _currentInstance = this;
 
