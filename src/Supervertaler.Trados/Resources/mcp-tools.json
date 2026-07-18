@@ -2,6 +2,19 @@
   "schemaVersion": 1,
   "tools": [
     {
+      "name": "help",
+      "description": "Show the user a curated menu of what they can ask this Trados assistant to do. ALWAYS call this when the user asks what they can do, what you can do, what commands or tools are available, how to use this, or asks for help or a list of options - then present the returned card to the user verbatim (it is Markdown). Prefer this over improvising a capability list from memory, so the user sees the authoritative, consistent list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "method": "GET",
+      "path": "/v1/help",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
       "name": "add_comment",
       "description": "Add a Trados Studio comment to a segment (same as the editor's Add Comment command) – e.g. to flag a source issue for the client or leave a review note. Becomes part of the document's unsaved changes. Only add comments the user asked for or agreed to.",
       "inputSchema": {
@@ -146,7 +159,7 @@
       }
     },
     {
-      "name": "analyze",
+      "name": "analyze_files",
       "description": "Start Trados Studio's Analyse Files batch task on the open project. Computes the leverage breakdown (perfect/in-context-exact/exact/fuzzy/new/repetition words and segments) and writes it into the project, which is what get_project_statistics reads back. Runs in the BACKGROUND and returns a jobId immediately – analysis can take several minutes on a large project. Poll get_task_status with that jobId until it reports 'done', then call get_project_statistics to read the bands. Runs against the LAST SAVED state, so ask the user to save first.",
       "inputSchema": {
         "type": "object",
@@ -162,7 +175,7 @@
     },
     {
       "name": "get_task_status",
-      "description": "Check a background batch task started by analyze, pretranslate, update_tm, or export_target. Pass the jobId that tool returned. Returns status ('running', 'done', or 'failed'), elapsed seconds, any task messages (e.g. pre-translate match counts), and a note. Poll this every 20-30 seconds until status is no longer 'running'. For analyze, once it's 'done', call get_project_statistics to read the leverage bands.",
+      "description": "Check a background batch task started by analyze_files, pretranslate, update_tm, or export_target. Pass the jobId that tool returned. Returns status ('running', 'done', or 'failed'), elapsed seconds, any task messages (e.g. pre-translate match counts), and a note. Poll this every 20-30 seconds until status is no longer 'running'. For analyze, once it's 'done', call get_project_statistics to read the leverage bands.",
       "inputSchema": {
         "type": "object",
         "properties": {

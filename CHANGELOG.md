@@ -7,6 +7,16 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.106 / 19.20.106] – 2026-07-18
+
+### Added (Supervertaler MCP Server · ask "what can I do?")
+
+- **New `help` tool.** Ask your AI app *"what can I do?"* / *"what can you do?"* / *"help"* and it shows a curated, grouped menu of the things you can ask this Trados assistant – project status, finding segments, TM and terminology, quality checks, editing, batch tasks, and the prompt library – with example phrasings. It's an authoritative, consistent list (not the AI improvising from memory), and the card text is a plugin resource, so it stays in sync as features are added.
+
+### Changed
+
+- **The Analyse Files tool is now named `analyze_files`** (was `analyze`). "Analyse my project" is a natural request for a *review*, which made the AI reach for the read tools instead of the batch task; the clearer name maps "run analyse files" straight to Studio's Analyse Files task. No change to how you phrase it in chat.
+
 ## [18.20.105 / 19.20.105] – 2026-07-18
 
 ### Fixed (Supervertaler MCP Server · analysis leverage bands now show up)

@@ -243,6 +243,13 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "promptsFolder", Order = 5, EmitDefaultValue = false)] public string PromptsFolder { get; set; }
     }
 
+    [DataContract]
+    public class BridgeHelpResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "help", Order = 1, EmitDefaultValue = false)] public string Help { get; set; }
+    }
+
     // ─── MCP endpoint types (v1: /project, /segments, /tm-search, /term-lookup) ──
 
     [DataContract]
@@ -1127,6 +1134,11 @@ namespace Supervertaler.Trados.Core
                 HandleSavePrompt(context);
                 return;
             }
+            if (method == "GET" && path == "/v1/help")
+            {
+                HandleGetHelp(context);
+                return;
+            }
 
             TryWriteError(context, 404, "not found");
         }
@@ -1228,6 +1240,38 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] tools registry read failed: {ex.Message}");
                 TryWriteError(context, 500, "tool registry error: " + ex.Message);
+            }
+        }
+
+        private static string _cachedHelpCard;
+
+        /// <summary>GET /v1/help – a curated capability card (embedded resource
+        /// Resources/help-card.md) the AI shows when the user asks what they can
+        /// do. Editable as a plugin-only change.</summary>
+        private void HandleGetHelp(HttpListenerContext context)
+        {
+            try
+            {
+                if (_cachedHelpCard == null)
+                {
+                    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                    using (var stream = asm.GetManifestResourceStream("Help.help-card.md"))
+                    {
+                        if (stream == null)
+                        {
+                            WriteJson(context, 500, new BridgeHelpResponse { Ok = false });
+                            return;
+                        }
+                        using (var reader = new StreamReader(stream, Encoding.UTF8))
+                            _cachedHelpCard = reader.ReadToEnd();
+                    }
+                }
+                WriteJson(context, 200, new BridgeHelpResponse { Ok = true, Help = _cachedHelpCard });
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] help card read failed: {ex.Message}");
+                TryWriteError(context, 500, "help card error: " + ex.Message);
             }
         }
 
