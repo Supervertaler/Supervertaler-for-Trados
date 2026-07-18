@@ -7,6 +7,25 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.105 / 19.20.105] – 2026-07-18
+
+### Fixed (Supervertaler MCP Server · analysis leverage bands now show up)
+
+- **`get_project_statistics` now reads the leverage breakdown from the analysis report** (`Reports\Analyze Files*.xml`), not the copy cached inside the `.sdlproj`. After running Analyse Files from your AI app, the perfect/in-context-exact/exact/fuzzy/new/repetition figures were coming back as zeros because the SDK writes them to the report file while leaving the project's inline copy empty. It now reads the most recent report, so the real match-leverage numbers (including your TM hits) come through. Confirmation statistics (draft/translated) are unchanged.
+
+## [18.20.104 / 19.20.104] – 2026-07-18
+
+### Changed (Supervertaler MCP Server · batch tasks no longer time out, and new tools appear without an app restart)
+
+- **Batch tasks now run in the background instead of blocking.** Analyse Files, Pre-translate, Update Main TMs and Generate Target Translations can take minutes on a real project – longer than an AI app will wait for a single tool call, which is why *"analyse the project"* previously timed out. Now the tool returns immediately with a job id, and the AI checks progress with the new **`get_task_status`** tool (status, elapsed time, and the task's own messages such as pre-translate match counts). Only one batch task runs at a time. For Analyse Files, once it reports done, `get_project_statistics` shows the leverage bands.
+- **The MCP server now tells your AI app when the tool list changes** (`tools/list_changed`). Previously, if Trados wasn't fully up when the AI app connected, the app could show a stale tool list until you restarted it. The server now watches the connection and refreshes the list on its own – so a newly-added tool (or Trados starting after the app) shows up without a restart.
+
+## [18.20.103 / 19.20.103] – 2026-07-18
+
+### Added (Supervertaler MCP Server · the AI can now run Analyse Files)
+
+- **New `analyze` tool** runs Trados Studio's **Analyse Files** batch task on the open project. It computes the leverage breakdown (perfect / in-context-exact / exact / fuzzy bands / new / repetitions) and writes it into the project – which is exactly what `get_project_statistics` reads back. So if the analysis bands came back empty (because Analyse Files had never been run), you can now just ask the AI to *"analyse the project"* and then *"show me the statistics"* – no need to leave the conversation. Like the other batch tasks it runs against the last-saved state.
+
 ## [18.20.102 / 19.20.102] – 2026-07-18
 
 ### Fixed (Supervertaler MCP Server · project statistics now work for the project you have open)

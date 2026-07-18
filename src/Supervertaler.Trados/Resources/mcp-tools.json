@@ -132,7 +132,7 @@
     },
     {
       "name": "export_target",
-      "description": "Run Trados Studio's Generate Target Translations batch task: produces the finished target files (e.g. the translated Word/PDF) in the project's target-language folder, from the LAST SAVED state. Read-only to the sdlxliff. Use for 'export/give me the translated document'. Tell the user where to find the files (project target folder, or right-click a file in Studio and choose Open Target).",
+      "description": "Start Trados Studio's Generate Target Translations batch task: writes the translated target files from the last-saved state into the project's target-language folder. Runs in the BACKGROUND and returns a jobId immediately; poll get_task_status with that jobId for completion. In Studio, right-click a file and choose Open Target, or open the project folder, to find the generated files.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -144,6 +144,44 @@
       "fixedBody": {
         "task": "export-target"
       }
+    },
+    {
+      "name": "analyze",
+      "description": "Start Trados Studio's Analyse Files batch task on the open project. Computes the leverage breakdown (perfect/in-context-exact/exact/fuzzy/new/repetition words and segments) and writes it into the project, which is what get_project_statistics reads back. Runs in the BACKGROUND and returns a jobId immediately – analysis can take several minutes on a large project. Poll get_task_status with that jobId until it reports 'done', then call get_project_statistics to read the bands. Runs against the LAST SAVED state, so ask the user to save first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "method": "POST",
+      "path": "/v1/run-task",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {
+        "task": "analyze"
+      }
+    },
+    {
+      "name": "get_task_status",
+      "description": "Check a background batch task started by analyze, pretranslate, update_tm, or export_target. Pass the jobId that tool returned. Returns status ('running', 'done', or 'failed'), elapsed seconds, any task messages (e.g. pre-translate match counts), and a note. Poll this every 20-30 seconds until status is no longer 'running'. For analyze, once it's 'done', call get_project_statistics to read the leverage bands.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "description": "The jobId returned by the batch-task tool (analyze/pretranslate/update_tm/export_target).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      },
+      "method": "GET",
+      "path": "/v1/task-status",
+      "paramMap": {
+        "jobId": "id"
+      },
+      "fixedQuery": {},
+      "fixedBody": {}
     },
     {
       "name": "find_and_replace",
@@ -437,7 +475,7 @@
     },
     {
       "name": "pretranslate",
-      "description": "Run Trados Studio's Pre-translate Files batch task: fills untranslated segments with their TM matches (typically exact/context matches). WRITES into the document on disk from the LAST SAVED state, so ask the user to save first; if the document is open in the editor they may need to close and reopen it to see the results (and if the task errors because the file is open, tell them to close the document and retry). Use when the user wants to leverage their TMs before translating the rest.",
+      "description": "Start Trados Studio's Pre-translate Files batch task: fills untranslated segments with their TM matches (typically exact/context matches). Runs in the BACKGROUND and returns a jobId immediately (it can take a while); poll get_task_status with that jobId to see when it finishes and to read its match-count messages. WRITES into the document from the LAST SAVED state, so ask the user to save first; if the document is open in the editor they may need to close and reopen it to see the results (and if the task fails because the file is open, tell them to close the document and retry).",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -608,7 +646,7 @@
     },
     {
       "name": "update_tm",
-      "description": "Run Trados Studio's Update Main Translation Memories batch task: writes the confirmed (Translated/Approved) segments into the project's main TM(s), so future projects leverage them. Reads the LAST SAVED state – if the user just confirmed segments, have them save first. Read-only to the document (doesn't modify it). Use for 'save my translations to the TM'.",
+      "description": "Start Trados Studio's Update Main Translation Memories batch task: writes confirmed segments from the last-saved state into the project's main TM(s). Runs in the BACKGROUND and returns a jobId immediately; poll get_task_status with that jobId for completion. If the user just confirmed segments in the editor, tell them to save first and run this again to include them.",
       "inputSchema": {
         "type": "object",
         "properties": {}

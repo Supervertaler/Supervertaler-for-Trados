@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Supervertaler.McpServer;
@@ -81,7 +82,50 @@ builder.Services
         }
     });
 
-await builder.Build().RunAsync();
+// Advertise that our tool list can change at runtime, so clients honour the
+// tools/list_changed notification the poller below sends.
+builder.Services.Configure<McpServerOptions>(o =>
+{
+    o.Capabilities ??= new ServerCapabilities();
+    o.Capabilities.Tools ??= new ToolsCapability();
+    o.Capabilities.Tools.ListChanged = true;
+});
+
+var host = builder.Build();
+
+// Background watcher: the client asks for the tool list once per connection, so
+// if Trados's bridge wasn't up yet at connect time (or a plugin update changes
+// the tools mid-session) the client would be stuck on a stale list. Poll the
+// bridge and push tools/list_changed whenever the set differs from what we last
+// advertised, so the client re-lists on its own – no restart, no reinstall.
+_ = Task.Run(async () =>
+{
+    string lastSig;
+    try { lastSig = ToolSignature(await GetToolsAsync(CancellationToken.None)); }
+    catch { lastSig = ""; }
+
+    while (true)
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(20)); } catch { break; }
+        try
+        {
+            var sig = ToolSignature(await GetToolsAsync(CancellationToken.None, forceRefresh: true));
+            if (sig != lastSig)
+            {
+                lastSig = sig;
+                var server = host.Services.GetService<IMcpServer>();
+                if (server != null)
+                {
+                    try { await server.SendNotificationAsync("notifications/tools/list_changed", CancellationToken.None); }
+                    catch { /* client not connected yet – it'll get the fresh list on connect */ }
+                }
+            }
+        }
+        catch { /* keep polling */ }
+    }
+});
+
+await host.RunAsync();
 return;
 
 // ── helpers ─────────────────────────────────────────────────────────────
@@ -91,6 +135,13 @@ static CallToolResult TextResult(string text, bool isError = false) => new()
     IsError = isError,
     Content = new List<ContentBlock> { new TextContentBlock { Text = text } }
 };
+
+// Stable fingerprint of the advertised tool set (names + descriptions), so the
+// watcher only fires tools/list_changed on a real change.
+static string ToolSignature(List<ToolDef> defs) =>
+    string.Join("|", defs
+        .Select(d => d.Name + "::" + d.Description)
+        .OrderBy(s => s, StringComparer.Ordinal));
 
 static string BuildQuery(ToolDef def, IReadOnlyDictionary<string, JsonElement> args)
 {

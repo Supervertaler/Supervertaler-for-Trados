@@ -573,6 +573,14 @@ namespace Supervertaler.Trados.Core
             XDocument doc;
             try { doc = XDocument.Load(sdlprojPath); }
             catch (Exception ex) { return JsonError("Could not read project file: " + ex.Message); }
+
+            // Prefer the analysis REPORT (Reports\Analyze Files*.xml) – it holds the
+            // real leverage bands and is written by any Analyse run. The inline
+            // AnalysisStatistics in the .sdlproj is frequently empty ("None") after
+            // an SDK-run analysis, which is why bands came back as zero.
+            var fromReport = TryBuildStatsFromAnalyzeReport(sdlprojPath, displayName, doc);
+            if (fromReport != null) return fromReport;
+
             return BuildProjectStatisticsJson(doc, displayName);
         }
 
@@ -581,7 +589,92 @@ namespace Supervertaler.Trados.Core
             var projPath = FindProjectFile(projectName);
             if (projPath == null) return JsonError($"No project found matching '{projectName}'.");
 
-            return BuildProjectStatisticsJson(XDocument.Load(projPath), projectName);
+            return GetProjectStatisticsByFile(projPath, projectName);
+        }
+
+        /// <summary>
+        /// Builds the analysis-band JSON from the newest "Analyze Files*.xml" report
+        /// in the project's Reports folder (the authoritative source of leverage
+        /// figures). Returns null when there is no report to read.
+        /// </summary>
+        private static string TryBuildStatsFromAnalyzeReport(string sdlprojPath, string displayName, XDocument projDoc)
+        {
+            try
+            {
+                var projDir = Path.GetDirectoryName(sdlprojPath);
+                if (projDir == null) return null;
+                var reportsDir = Path.Combine(projDir, "Reports");
+                if (!Directory.Exists(reportsDir)) return null;
+
+                var report = Directory.GetFiles(reportsDir, "Analyze Files*.xml")
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault();
+                if (report == null) return null;
+
+                XDocument rep;
+                try { rep = XDocument.Load(report); }
+                catch { return null; }
+
+                // batchTotal aggregates all files; fall back to the first <analyse>.
+                var analyse = rep.Descendants().FirstOrDefault(e => e.Name.LocalName == "batchTotal")
+                        ?.Elements().FirstOrDefault(e => e.Name.LocalName == "analyse")
+                    ?? rep.Descendants().FirstOrDefault(e => e.Name.LocalName == "analyse");
+                if (analyse == null) return null;
+
+                var ld = projDoc.Descendants().FirstOrDefault(e =>
+                    e.Name.LocalName == "LanguageDirection" && e.Attribute("TargetLanguageCode") != null);
+
+                var sb = new StringBuilder();
+                sb.Append("{\"project\":").Append(JsonStr(displayName));
+                sb.Append(",\"analysisReport\":").Append(JsonStr(Path.GetFileName(report)));
+                sb.Append(",\"languageDirections\":[{");
+                sb.Append("\"source\":").Append(JsonStr(ld?.Attribute("SourceLanguageCode")?.Value));
+                sb.Append(",\"target\":").Append(JsonStr(ld?.Attribute("TargetLanguageCode")?.Value));
+
+                AppendReportCategory(sb, analyse, "total", "total");
+                AppendReportCategory(sb, analyse, "perfect", "perfect");
+                AppendReportCategory(sb, analyse, "inContextExact", "inContextExact");
+                AppendReportCategory(sb, analyse, "exact", "exact");
+
+                // Sum every fuzzy band into one figure.
+                SumReportCategories(sb, analyse, "fuzzy", e => e.Name.LocalName == "fuzzy");
+                AppendReportCategory(sb, analyse, "new", "new");
+                // Repetitions = in-file + cross-file repeated.
+                SumReportCategories(sb, analyse, "repetitions",
+                    e => e.Name.LocalName == "repeated" || e.Name.LocalName == "crossFileRepeated");
+                AppendReportCategory(sb, analyse, "locked", "locked");
+
+                sb.Append("}]}");
+                return sb.ToString();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // Report attributes are lowercase (words/segments), unlike the .sdlproj inline stats.
+        private static void AppendReportCategory(StringBuilder sb, XElement analyse, string jsonKey, string xmlName)
+        {
+            var elem = analyse.Elements().FirstOrDefault(e => e.Name.LocalName == xmlName);
+            if (elem == null) return;
+            int.TryParse(elem.Attribute("words")?.Value, out var words);
+            int.TryParse(elem.Attribute("segments")?.Value, out var segments);
+            sb.Append(",\"").Append(jsonKey).Append("\":{\"words\":").Append(words)
+              .Append(",\"segments\":").Append(segments).Append("}");
+        }
+
+        private static void SumReportCategories(StringBuilder sb, XElement analyse, string jsonKey,
+            Func<XElement, bool> match)
+        {
+            int words = 0, segments = 0;
+            foreach (var e in analyse.Elements().Where(match))
+            {
+                int.TryParse(e.Attribute("words")?.Value, out var w); words += w;
+                int.TryParse(e.Attribute("segments")?.Value, out var s); segments += s;
+            }
+            sb.Append(",\"").Append(jsonKey).Append("\":{\"words\":").Append(words)
+              .Append(",\"segments\":").Append(segments).Append("}");
         }
 
         private static string BuildProjectStatisticsJson(XDocument projDoc, string displayName)

@@ -961,7 +961,8 @@ namespace Supervertaler.Trados
                     updateComment: BridgeUpdateComment,
                     runVerification: BridgeRunVerification,
                     findReplace: BridgeFindReplace,
-                    runTask: BridgeRunTask);
+                    runTask: BridgeRunTask,
+                    getTaskStatus: BridgeGetTaskStatus);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -2800,11 +2801,21 @@ namespace Supervertaler.Trados
                         "project's target-language folder. In Studio, right-click a file and choose Open Target, " +
                         "or open the project folder to find them.";
                     break;
+                case "analyze":
+                case "analyse":
+                case "analyze-files":
+                    templateId = Sdl.ProjectAutomation.Core.AutomaticTaskTemplateIds.AnalyzeFiles;
+                    friendly = "Analyse Files";
+                    safetyNote = "Analyse Files ran on the last-saved state and wrote the leverage breakdown " +
+                        "(perfect/exact/fuzzy/new/repetitions) into the project. get_project_statistics will now " +
+                        "return those bands. If you translated or confirmed segments since the last save, save the " +
+                        "document first and run this again for up-to-date numbers.";
+                    break;
                 default:
                     return new BridgeRunTaskResponse
                     {
                         Ok = false,
-                        Error = $"unknown task '{req?.Task}' – use pretranslate, update-tm, or export-target"
+                        Error = $"unknown task '{req?.Task}' – use analyze, pretranslate, update-tm, or export-target"
                     };
             }
 
@@ -2836,7 +2847,108 @@ namespace Supervertaler.Trados
             if (project == null || fileIds == null || fileIds.Length == 0)
                 return new BridgeRunTaskResponse { Ok = false, Error = "no target files to process", Task = task };
 
-            var messages = new List<string>();
+            // Only one batch task at a time – they mutate the project on disk and
+            // running two concurrently would clobber each other.
+            var busy = GetRunningJob();
+            if (busy != null)
+                return new BridgeRunTaskResponse
+                {
+                    Ok = false,
+                    Task = task,
+                    Error = $"a batch task ({busy.Friendly}, jobId \"{busy.Id}\") is still running – " +
+                            "wait for it to finish (poll get_task_status) before starting another."
+                };
+
+            // Batch tasks can run for minutes on a real project – longer than an
+            // MCP tool call is allowed to block – so run in the background and
+            // return immediately. The AI polls get_task_status for completion.
+            var job = new RunTaskJob
+            {
+                Id = Guid.NewGuid().ToString("N").Substring(0, 8),
+                Task = task,
+                Friendly = friendly,
+                Status = "running",
+                StartedUtc = DateTime.UtcNow,
+                FileCount = fileIds.Length,
+                SafetyNote = safetyNote
+            };
+            RegisterJob(job);
+
+            var projectForJob = project;
+            var fileIdsForJob = fileIds;
+            var templateForJob = templateId;
+            System.Threading.ThreadPool.QueueUserWorkItem(
+                _ => RunTaskJobBody(job, projectForJob, fileIdsForJob, templateForJob));
+
+            return new BridgeRunTaskResponse
+            {
+                Ok = true,
+                Started = true,
+                JobId = job.Id,
+                Task = task,
+                FilesProcessed = fileIds.Length,
+                Note = $"Started {friendly} on {fileIds.Length} file(s) in the background – it can take a while on " +
+                       $"large projects. Poll get_task_status with jobId \"{job.Id}\" to see when it finishes" +
+                       (task == "analyze"
+                           ? "; once it reports done, get_project_statistics will show the leverage bands."
+                           : ".")
+            };
+        }
+
+        // ── Async batch-task jobs (run-task) ────────────────────────────────
+        //
+        // Batch tasks (analyse, pre-translate, update-TM, generate-target) run on
+        // a background thread and report progress via a small in-memory job
+        // registry that get_task_status reads. Same behaviour as the old
+        // synchronous path (RunAutomaticTask off the UI thread), just non-blocking.
+
+        private sealed class RunTaskJob
+        {
+            public readonly object Sync = new object();
+            public string Id;
+            public string Task;
+            public string Friendly;
+            public string Status;          // running | done | failed
+            public DateTime StartedUtc;
+            public DateTime? FinishedUtc;
+            public int FileCount;
+            public List<string> Messages = new List<string>();
+            public string Error;
+            public string Note;
+            public string SafetyNote;
+        }
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunTaskJob> _runTaskJobs
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, RunTaskJob>();
+
+        private void RegisterJob(RunTaskJob job)
+        {
+            _runTaskJobs[job.Id] = job;
+            // Bound memory: keep only the 20 most recent finished jobs.
+            if (_runTaskJobs.Count > 20)
+            {
+                foreach (var old in _runTaskJobs.Values
+                    .Where(j => j.FinishedUtc != null)
+                    .OrderBy(j => j.FinishedUtc.Value)
+                    .Take(_runTaskJobs.Count - 20))
+                {
+                    _runTaskJobs.TryRemove(old.Id, out _);
+                }
+            }
+        }
+
+        private RunTaskJob GetRunningJob()
+        {
+            foreach (var j in _runTaskJobs.Values)
+                lock (j.Sync) { if (j.Status == "running") return j; }
+            return null;
+        }
+
+        private void RunTaskJobBody(RunTaskJob job, Sdl.ProjectAutomation.FileBased.FileBasedProject project,
+            Guid[] fileIds, string templateId)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            BridgeLog.Write($"[run-task] {job.Friendly} (job {job.Id}) started on {fileIds.Length} file(s)");
             try
             {
                 EventHandler<Sdl.ProjectAutomation.Core.TaskStatusEventArgs> onStatus = (s, e) => { };
@@ -2845,14 +2957,14 @@ namespace Supervertaler.Trados
                     try
                     {
                         var m = e?.Message?.ToString();
-                        if (!string.IsNullOrWhiteSpace(m) && messages.Count < 50) messages.Add(m.Trim());
+                        if (!string.IsNullOrWhiteSpace(m))
+                            lock (job.Sync) { if (job.Messages.Count < 50) job.Messages.Add(m.Trim()); }
                     }
                     catch { }
                 };
 
                 var result = project.RunAutomaticTask(fileIds, templateId, onStatus, onMsg);
 
-                // Treat anything other than a clean Completed as a failure.
                 bool failed = false;
                 try
                 {
@@ -2863,35 +2975,71 @@ namespace Supervertaler.Trados
                           || status.IndexOf("Invalid", StringComparison.OrdinalIgnoreCase) >= 0;
                 }
                 catch { }
-                if (failed)
-                    return new BridgeRunTaskResponse
+
+                sw.Stop();
+                lock (job.Sync)
+                {
+                    job.FinishedUtc = DateTime.UtcNow;
+                    if (failed)
                     {
-                        Ok = false,
-                        Task = task,
-                        Messages = messages.Count > 0 ? messages : null,
-                        Error = $"{friendly} did not complete successfully" +
-                            (task == "pretranslate" ? " – if the document is open in the editor, close it and try again." : "")
-                    };
+                        job.Status = "failed";
+                        job.Error = $"{job.Friendly} did not complete successfully" +
+                            (job.Task == "pretranslate" ? " – if the document is open in the editor, close it and try again." : "");
+                    }
+                    else
+                    {
+                        job.Status = "done";
+                        job.Note = $"{job.Friendly} completed on {job.FileCount} file(s). {job.SafetyNote}";
+                    }
+                }
+                BridgeLog.Write($"[run-task] {job.Friendly} (job {job.Id}) {job.Status} in {sw.Elapsed.TotalSeconds:F1}s");
             }
             catch (Exception ex)
             {
-                return new BridgeRunTaskResponse
+                sw.Stop();
+                lock (job.Sync)
                 {
-                    Ok = false,
-                    Task = task,
-                    Error = $"{friendly} failed: {ex.Message}" +
-                        (task == "pretranslate" ? " (if the document is open in the editor, close it and retry)" : "")
+                    job.FinishedUtc = DateTime.UtcNow;
+                    job.Status = "failed";
+                    job.Error = $"{job.Friendly} failed: {ex.Message}" +
+                        (job.Task == "pretranslate" ? " (if the document is open in the editor, close it and retry)" : "");
+                }
+                BridgeLog.Write($"[run-task] {job.Friendly} (job {job.Id}) threw after {sw.Elapsed.TotalSeconds:F1}s: {ex.Message}");
+            }
+        }
+
+        /// <summary>Bridge delegate for GET /v1/task-status (MCP get_task_status).</summary>
+        private BridgeTaskStatusResponse BridgeGetTaskStatus(string jobId)
+        {
+            if (string.IsNullOrWhiteSpace(jobId))
+                return new BridgeTaskStatusResponse { Ok = true, Found = false, Error = "no jobId given" };
+
+            if (!_runTaskJobs.TryGetValue(jobId.Trim(), out var job))
+                return new BridgeTaskStatusResponse
+                {
+                    Ok = true,
+                    Found = false,
+                    JobId = jobId,
+                    Error = "no batch task with that jobId (it may have expired – only the most recent jobs are kept)"
+                };
+
+            lock (job.Sync)
+            {
+                var end = job.FinishedUtc ?? DateTime.UtcNow;
+                return new BridgeTaskStatusResponse
+                {
+                    Ok = true,
+                    Found = true,
+                    JobId = job.Id,
+                    Task = job.Task,
+                    Status = job.Status,
+                    Running = job.Status == "running",
+                    FilesProcessed = job.FileCount,
+                    ElapsedSeconds = (int)Math.Round((end - job.StartedUtc).TotalSeconds),
+                    Messages = job.Messages.Count > 0 ? new List<string>(job.Messages) : null,
+                    Note = job.Status == "failed" ? job.Error : job.Note
                 };
             }
-
-            return new BridgeRunTaskResponse
-            {
-                Ok = true,
-                Task = task,
-                FilesProcessed = fileIds.Length,
-                Messages = messages.Count > 0 ? messages : null,
-                Note = $"{friendly} completed on {fileIds.Length} file(s). {safetyNote}"
-            };
         }
 
         /// <summary>

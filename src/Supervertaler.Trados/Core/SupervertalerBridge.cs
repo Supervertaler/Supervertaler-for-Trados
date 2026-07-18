@@ -551,6 +551,26 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "messages", Order = 4, EmitDefaultValue = false)]
         public List<string> Messages { get; set; }
         [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+        // Async: batch tasks now start in the background and return immediately.
+        [DataMember(Name = "started", Order = 6, EmitDefaultValue = false)] public bool Started { get; set; }
+        [DataMember(Name = "jobId", Order = 7, EmitDefaultValue = false)] public string JobId { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeTaskStatusResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "found", Order = 1)] public bool Found { get; set; }
+        [DataMember(Name = "error", Order = 2, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "jobId", Order = 3, EmitDefaultValue = false)] public string JobId { get; set; }
+        [DataMember(Name = "task", Order = 4, EmitDefaultValue = false)] public string Task { get; set; }
+        /// <summary>"running" | "done" | "failed".</summary>
+        [DataMember(Name = "status", Order = 5, EmitDefaultValue = false)] public string Status { get; set; }
+        [DataMember(Name = "running", Order = 6)] public bool Running { get; set; }
+        [DataMember(Name = "filesProcessed", Order = 7, EmitDefaultValue = false)] public int FilesProcessed { get; set; }
+        [DataMember(Name = "elapsedSeconds", Order = 8)] public int ElapsedSeconds { get; set; }
+        [DataMember(Name = "messages", Order = 9, EmitDefaultValue = false)] public List<string> Messages { get; set; }
+        [DataMember(Name = "note", Order = 10, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
     [DataContract]
@@ -721,6 +741,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeVerifyResponse> _runVerification;
         private readonly Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> _findReplace;
         private readonly Func<BridgeRunTaskRequest, BridgeRunTaskResponse> _runTask;
+        private readonly Func<string, BridgeTaskStatusResponse> _getTaskStatus;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -753,7 +774,8 @@ namespace Supervertaler.Trados.Core
             Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null,
             Func<BridgeVerifyResponse> runVerification = null,
             Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> findReplace = null,
-            Func<BridgeRunTaskRequest, BridgeRunTaskResponse> runTask = null)
+            Func<BridgeRunTaskRequest, BridgeRunTaskResponse> runTask = null,
+            Func<string, BridgeTaskStatusResponse> getTaskStatus = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -774,6 +796,7 @@ namespace Supervertaler.Trados.Core
             _runVerification = runVerification;
             _findReplace = findReplace;
             _runTask = runTask;
+            _getTaskStatus = getTaskStatus;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -1082,6 +1105,11 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/run-task")
             {
                 HandleRunTask(context);
+                return;
+            }
+            if (method == "GET" && path == "/v1/task-status")
+            {
+                HandleGetTaskStatus(context);
                 return;
             }
             if (method == "GET" && path == "/v1/prompts")
@@ -2196,6 +2224,35 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] run-task threw: {ex.Message}");
                 response = new BridgeRunTaskResponse { Ok = false, Error = "task failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleGetTaskStatus(HttpListenerContext context)
+        {
+            if (_getTaskStatus == null)
+            {
+                TryWriteError(context, 501, "task-status endpoint not wired");
+                return;
+            }
+
+            var id = context.Request.QueryString["id"];
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                WriteJson(context, 400, new BridgeTaskStatusResponse { Ok = false, Error = "missing 'id' (the jobId returned by a batch task)" });
+                return;
+            }
+
+            BridgeTaskStatusResponse response;
+            try
+            {
+                response = _getTaskStatus(id) ?? new BridgeTaskStatusResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] task-status threw: {ex.Message}");
+                response = new BridgeTaskStatusResponse { Ok = false, Error = "task-status failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);
