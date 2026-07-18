@@ -1160,6 +1160,17 @@ namespace Supervertaler.Trados
                 snapshot.SourceLang = GetDocumentSourceLanguage();
                 snapshot.TargetLang = GetDocumentTargetLanguage();
 
+                // Full path to the live project's .sdlproj – lets /v1/statistics
+                // read the analysis report from the open project directly, instead
+                // of a name->projects.xml lookup (which misses recently-created
+                // projects and projects registered under another Studio version).
+                try
+                {
+                    var fbp = _activeDocument.Project as Sdl.ProjectAutomation.FileBased.FileBasedProject;
+                    snapshot.SdlprojPath = fbp?.FilePath;
+                }
+                catch { /* non-fatal – statistics falls back to the name lookup */ }
+
                 var statusCounts = new Dictionary<string, int>();
                 int total = 0, locked = 0;
                 foreach (var pair in _activeDocument.SegmentPairs)

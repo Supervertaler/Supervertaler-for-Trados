@@ -560,15 +560,34 @@ namespace Supervertaler.Trados.Core
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Reads analysis statistics directly from a specific .sdlproj file,
+        /// bypassing the projects.xml name lookup. The bridge uses this for the
+        /// project open in the editor, so recently-created or otherwise
+        /// unregistered projects work (and it can't resolve the wrong copy).
+        /// </summary>
+        public static string GetProjectStatisticsByFile(string sdlprojPath, string displayName)
+        {
+            if (string.IsNullOrEmpty(sdlprojPath) || !File.Exists(sdlprojPath))
+                return JsonError("Project file not found on disk: " + (sdlprojPath ?? "(null)"));
+            XDocument doc;
+            try { doc = XDocument.Load(sdlprojPath); }
+            catch (Exception ex) { return JsonError("Could not read project file: " + ex.Message); }
+            return BuildProjectStatisticsJson(doc, displayName);
+        }
+
         private static string GetProjectStatistics(string projectName)
         {
             var projPath = FindProjectFile(projectName);
             if (projPath == null) return JsonError($"No project found matching '{projectName}'.");
 
-            var projDoc = XDocument.Load(projPath);
+            return BuildProjectStatisticsJson(XDocument.Load(projPath), projectName);
+        }
 
+        private static string BuildProjectStatisticsJson(XDocument projDoc, string displayName)
+        {
             var sb = new StringBuilder();
-            sb.Append("{\"project\":").Append(JsonStr(projectName));
+            sb.Append("{\"project\":").Append(JsonStr(displayName));
 
             // Get per-language-direction statistics
             var langDirs = projDoc.Descendants()
@@ -629,15 +648,33 @@ namespace Supervertaler.Trados.Core
               .Append(",\"segments\":").Append(segments).Append("}");
         }
 
+        /// <summary>
+        /// Reads per-file confirmation statistics directly from a specific
+        /// .sdlproj file, bypassing the projects.xml name lookup. Used by the
+        /// bridge for the project open in the editor.
+        /// </summary>
+        public static string GetFileStatusByFile(string sdlprojPath, string displayName)
+        {
+            if (string.IsNullOrEmpty(sdlprojPath) || !File.Exists(sdlprojPath))
+                return JsonError("Project file not found on disk: " + (sdlprojPath ?? "(null)"));
+            XDocument doc;
+            try { doc = XDocument.Load(sdlprojPath); }
+            catch (Exception ex) { return JsonError("Could not read project file: " + ex.Message); }
+            return BuildFileStatusJson(doc, displayName);
+        }
+
         private static string GetFileStatus(string projectName)
         {
             var projPath = FindProjectFile(projectName);
             if (projPath == null) return JsonError($"No project found matching '{projectName}'.");
 
-            var projDoc = XDocument.Load(projPath);
+            return BuildFileStatusJson(XDocument.Load(projPath), projectName);
+        }
 
+        private static string BuildFileStatusJson(XDocument projDoc, string displayName)
+        {
             var sb = new StringBuilder();
-            sb.Append("{\"project\":").Append(JsonStr(projectName));
+            sb.Append("{\"project\":").Append(JsonStr(displayName));
             sb.Append(",\"files\":[");
 
             var projectFiles = projDoc.Descendants()
@@ -1096,6 +1133,7 @@ namespace Supervertaler.Trados.Core
             var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             var paths = new[]
             {
+                Path.Combine(docsFolder, "Studio 2026", "Projects", "projects.xml"),
                 Path.Combine(docsFolder, "Studio 2024", "Projects", "projects.xml"),
                 Path.Combine(docsFolder, "Studio 2022", "Projects", "projects.xml")
             };

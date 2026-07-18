@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.102 / 19.20.102] – 2026-07-18
+
+### Fixed (Supervertaler MCP Server · project statistics now work for the project you have open)
+
+- **`get_project_statistics` now reads from the project open in the editor** instead of looking it up by name in Trados' `projects.xml` on disk. The old lookup silently failed for recently-created projects and for projects registered under a different Studio version (Studio 2024 and 2026 keep *separate* `projects.xml` files, and the lookup only checked 2024/2022) – so asking for statistics on a fresh project returned "no project found". It now resolves the analysis report from the open project's own `.sdlproj`, so it works regardless of when or where the project was created. Looking up a *different* project by name still works and now also finds Studio 2026 projects. The response carries a `source` field (`open-project` or `projects.xml`) so it's clear which was used.
+
 ## [18.20.101 / 19.20.101] – 2026-07-18
 
 ### Added (Supervertaler MCP Server · your AI assistant can now work with your prompt library)

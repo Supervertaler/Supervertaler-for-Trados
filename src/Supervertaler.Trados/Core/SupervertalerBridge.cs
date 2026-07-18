@@ -258,6 +258,12 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "statusCounts", Order = 7, EmitDefaultValue = false)]
         public List<BridgeStatusCount> StatusCounts { get; set; }
         [DataMember(Name = "note", Order = 8, EmitDefaultValue = false)] public string Note { get; set; }
+
+        // In-process only (no [DataMember] – never serialised to the wire): the
+        // full path to the open project's .sdlproj, so /v1/statistics can read
+        // the analysis report from the live project instead of resolving the
+        // name through projects.xml.
+        public string SdlprojPath { get; set; }
     }
 
     [DataContract]
@@ -1646,15 +1652,28 @@ namespace Supervertaler.Trados.Core
 
         private void HandleGetStatistics(HttpListenerContext context)
         {
-            // Statistics come from the .sdlproj / projects.xml on disk via
-            // TradosTools – no editor state needed, so no UI-thread hop for
-            // the numbers themselves. The project name defaults to the one
-            // open in the editor (via the project delegate).
+            // Analysis + confirmation statistics are cached in the .sdlproj on
+            // disk. Prefer reading them from the LIVE open project's .sdlproj
+            // path (from the project snapshot) rather than resolving the name
+            // through projects.xml – the name lookup misses recently-created
+            // projects and projects registered under a different Studio version
+            // (Studio 2024 vs 2026 keep separate projects.xml files).
             var projectName = context.Request.QueryString["project"];
-            if (string.IsNullOrWhiteSpace(projectName))
+
+            string liveName = null, livePath = null;
+            try
             {
-                try { projectName = _getProject?.Invoke()?.Name; } catch { }
+                var snap = _getProject?.Invoke();
+                if (snap != null && snap.Available)
+                {
+                    liveName = snap.Name;
+                    livePath = snap.SdlprojPath;
+                }
             }
+            catch { }
+
+            if (string.IsNullOrWhiteSpace(projectName))
+                projectName = liveName;
 
             if (string.IsNullOrWhiteSpace(projectName))
             {
@@ -1663,12 +1682,25 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            // Use the live .sdlproj when the request targets the open project;
+            // otherwise fall back to the projects.xml name lookup.
+            bool useLive = !string.IsNullOrEmpty(livePath) &&
+                string.Equals(projectName, liveName, StringComparison.OrdinalIgnoreCase);
+
             string stats, fileStatus;
             try
             {
-                var input = SerializeProjectNameJson(projectName);
-                stats = TradosTools.ExecuteTool("studio_get_project_statistics", input);
-                fileStatus = TradosTools.ExecuteTool("studio_get_file_status", input);
+                if (useLive)
+                {
+                    stats = TradosTools.GetProjectStatisticsByFile(livePath, projectName);
+                    fileStatus = TradosTools.GetFileStatusByFile(livePath, projectName);
+                }
+                else
+                {
+                    var input = SerializeProjectNameJson(projectName);
+                    stats = TradosTools.ExecuteTool("studio_get_project_statistics", input);
+                    fileStatus = TradosTools.ExecuteTool("studio_get_file_status", input);
+                }
             }
             catch (Exception ex)
             {
@@ -1677,9 +1709,11 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
-            // TradosTools returns ready-made JSON – embed it verbatim.
+            // TradosTools returns ready-made JSON – embed it verbatim. 'source'
+            // tells the caller which path produced the numbers.
             WriteRawJson(context, 200,
                 "{\"ok\":true,\"project\":" + JsonQuote(projectName) +
+                ",\"source\":" + JsonQuote(useLive ? "open-project" : "projects.xml") +
                 ",\"analysisStatistics\":" + (stats ?? "null") +
                 ",\"confirmationStatistics\":" + (fileStatus ?? "null") + "}");
         }
