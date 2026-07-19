@@ -224,6 +224,117 @@ namespace Supervertaler.Trados.Core
             };
         }
 
+        /// <summary>
+        /// Loads all languages, concepts (terms grouped by language index) and
+        /// concept-level descriptive fields for the import feature. Read-only.
+        /// </summary>
+        public ImportedTermbase LoadForImport()
+        {
+            var tb = new ImportedTermbase
+            {
+                FilePath = _filePath,
+                Format = "ttb",
+                Name = TermbaseName
+            };
+            if (_connection == null) return tb;
+
+            try
+            {
+                // Languages (numeric Id keys the per-concept term lists)
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT Id, Name, Locale FROM mtIndexes ORDER BY Id";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var id = reader.GetInt32(0);
+                            var name = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                            var locale = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                            tb.Languages.Add(new ImportLanguage
+                            {
+                                Id = id,
+                                Name = name,
+                                Locale = locale,
+                                IndexName = name
+                            });
+                        }
+                    }
+                }
+
+                // Terms grouped by concept and language index, in entry order
+                var concepts = new Dictionary<int, ImportConcept>();
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText =
+                        "SELECT ConceptId, IndexId, TermText FROM mtTerms " +
+                        "ORDER BY ConceptId, IndexId, TermId";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var conceptId = reader.GetInt32(0);
+                            var indexId = reader.GetInt32(1);
+                            var text = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                            if (string.IsNullOrWhiteSpace(text)) continue;
+
+                            if (!concepts.TryGetValue(conceptId, out var concept))
+                            {
+                                concept = new ImportConcept { ConceptId = conceptId };
+                                concepts[conceptId] = concept;
+                            }
+                            if (!concept.TermsByLanguageId.TryGetValue(indexId, out var list))
+                            {
+                                list = new List<string>();
+                                concept.TermsByLanguageId[indexId] = list;
+                            }
+                            list.Add(text);
+                        }
+                    }
+                }
+
+                tb.Concepts.AddRange(concepts.Values);
+                LoadConceptFields(tb, concepts);
+                tb.DiscoveredFields = MultiTermConceptXml.CollectFieldNames(tb.Concepts);
+            }
+            catch (Exception ex)
+            {
+                LastError = $"Error loading .ttb for import: {ex.Message}";
+            }
+
+            return tb;
+        }
+
+        // Reads mtConcepts.Text (MultiTerm compact XML) and attributes its descriptive
+        // fields to each concept — concept-level fields plus per-language (and that
+        // language's term-level) fields such as Definition, Note and Status. Studio
+        // 2026 .ttb stores the same field XML MultiTerm has always used, so this shares
+        // MultiTermConceptXml with the .sdltb reader. Concept fields are optional —
+        // any failure is ignored.
+        private void LoadConceptFields(ImportedTermbase tb, Dictionary<int, ImportConcept> concepts)
+        {
+            if (concepts.Count == 0) return;
+            try
+            {
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT ConceptId, Text FROM mtConcepts";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var conceptId = reader.GetInt32(0);
+                            if (reader.IsDBNull(1)) continue;
+                            if (!concepts.TryGetValue(conceptId, out var concept)) continue;
+
+                            MultiTermConceptXml.ApplyToConcept(concept, reader.GetString(1), tb.Languages);
+                        }
+                    }
+                }
+            }
+            catch { /* concept-level fields are optional */ }
+        }
+
         // Resolve a caller-supplied index identifier (Name or Locale, any case)
         // to the mtIndexes.Id. Returns null if no match.
         private int? ResolveIndexId(string nameOrLocale)

@@ -21,6 +21,15 @@ namespace Supervertaler.Trados.Core
             long termbaseId, string termbaseName);
         MultiTermTermbaseInfo GetTermbaseInfo(
             string sourceIndexName, string targetIndexName, long syntheticId);
+
+        /// <summary>
+        /// Loads the full concept-oriented content of the termbase (all languages,
+        /// all concepts with their terms grouped by language, and concept-level
+        /// descriptive fields) as a reader-agnostic <see cref="ImportedTermbase"/>.
+        /// Used by the "import external termbase" feature; kept separate from the
+        /// lightweight <see cref="LoadAllTerms"/> path used by live TermLens matching.
+        /// </summary>
+        ImportedTermbase LoadForImport();
     }
 
     /// <summary>
