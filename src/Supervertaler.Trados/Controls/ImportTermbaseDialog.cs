@@ -21,12 +21,12 @@ namespace Supervertaler.Trados.Controls
         private readonly ImportedTermbase _tb;
         private readonly string _dbPath;
         private readonly List<TermbaseInfo> _existing;
-        private readonly string _projectSourceLanguage;
 
         private ComboBox _cboSource;
         private ComboBox _cboTarget;
         private Label _lblSourceCode;
         private Label _lblTargetCode;
+        private Label _lblExample;
         private RadioButton _rdoNew;
         private RadioButton _rdoExisting;
         private TextBox _txtNewName;
@@ -57,11 +57,10 @@ namespace Supervertaler.Trados.Controls
             (ImportFieldTarget.AppendToNotes, "Append to notes"),
         };
 
-        public ImportTermbaseDialog(ImportedTermbase tb, string dbPath, string projectSourceLanguage = null)
+        public ImportTermbaseDialog(ImportedTermbase tb, string dbPath)
         {
             _tb = tb ?? throw new ArgumentNullException(nameof(tb));
             _dbPath = dbPath;
-            _projectSourceLanguage = projectSourceLanguage;
             _existing = LoadExistingTermbases(dbPath);
 
             BuildUi();
@@ -93,7 +92,7 @@ namespace Supervertaler.Trados.Controls
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(640, 540);
+            ClientSize = new Size(640, 580);
             BackColor = Color.White;
 
             Color labelColor = Color.FromArgb(80, 80, 80);
@@ -115,16 +114,16 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(lblHeader);
             y += 30;
 
-            // ---- Language mapping ----
+            // ---- Languages (auto-detected from the file) ----
             int half = (width - 8) / 2;
-            Controls.Add(new Label { Text = "Source language:", Location = new Point(margin, y), AutoSize = true, ForeColor = labelColor });
-            Controls.Add(new Label { Text = "Target language:", Location = new Point(margin + half + 8, y), AutoSize = true, ForeColor = labelColor });
+            Controls.Add(new Label { Text = "Store as source:", Location = new Point(margin, y), AutoSize = true, ForeColor = labelColor });
+            Controls.Add(new Label { Text = "Store as target:", Location = new Point(margin + half + 8, y), AutoSize = true, ForeColor = labelColor });
             y += 20;
 
             _cboSource = new ComboBox { Location = new Point(margin, y), Width = half, DropDownStyle = ComboBoxStyle.DropDownList };
             _cboTarget = new ComboBox { Location = new Point(margin + half + 8, y), Width = half, DropDownStyle = ComboBoxStyle.DropDownList };
-            _cboSource.SelectedIndexChanged += (s, e) => { UpdateCodeLabels(); UpdatePreview(); };
-            _cboTarget.SelectedIndexChanged += (s, e) => { UpdateCodeLabels(); UpdatePreview(); };
+            _cboSource.SelectedIndexChanged += (s, e) => { UpdateCodeLabels(); UpdateExample(); UpdatePreview(); };
+            _cboTarget.SelectedIndexChanged += (s, e) => { UpdateCodeLabels(); UpdateExample(); UpdatePreview(); };
             Controls.Add(_cboSource);
             Controls.Add(_cboTarget);
             y += 26;
@@ -133,7 +132,33 @@ namespace Supervertaler.Trados.Controls
             _lblTargetCode = new Label { Location = new Point(margin + half + 8, y), Width = half, AutoSize = false, Height = 16, ForeColor = Color.Gray, Font = new Font("Segoe UI", 8f) };
             Controls.Add(_lblSourceCode);
             Controls.Add(_lblTargetCode);
-            y += 26;
+            y += 22;
+
+            // Example row so the user can confirm which side is which language.
+            _lblExample = new Label
+            {
+                Location = new Point(margin, y),
+                Width = width,
+                AutoSize = false,
+                Height = 18,
+                ForeColor = Color.FromArgb(50, 90, 50),
+                Font = new Font("Segoe UI", 8.5f)
+            };
+            Controls.Add(_lblExample);
+            y += 20;
+
+            Controls.Add(new Label
+            {
+                Text = "Languages are detected from the file. Matching works in both directions "
+                     + "automatically — this only sets how entries are stored.",
+                Location = new Point(margin, y),
+                Width = width,
+                AutoSize = false,
+                Height = 30,
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 8f)
+            });
+            y += 34;
 
             // ---- Destination ----
             Controls.Add(new Label { Text = "Destination termbase:", Location = new Point(margin, y), AutoSize = true, ForeColor = labelColor });
@@ -216,19 +241,13 @@ namespace Supervertaler.Trados.Controls
                 _cboTarget.Items.Add(lang.ToString());
             }
 
-            // Default the source to the active project's source language so the imported
-            // termbase's direction matches how it will be used (TermLens matches the
-            // project's source language against the termbase's source terms).
-            int srcIdx = _tb.Languages.Count > 0 ? 0 : -1;
-            var matched = FindLanguageIndexMatching(_projectSourceLanguage);
-            if (matched.HasValue) srcIdx = matched.Value;
-            int tgtIdx = -1;
-            for (int i = 0; i < _tb.Languages.Count; i++)
-                if (i != srcIdx) { tgtIdx = i; break; }
-
-            if (srcIdx >= 0) _cboSource.SelectedIndex = srcIdx;
-            if (tgtIdx >= 0) _cboTarget.SelectedIndex = tgtIdx;
-            else if (_tb.Languages.Count > 0) _cboTarget.SelectedIndex = srcIdx;
+            // Default to the file's own order (first language = source, second = target).
+            // Direction is a storage/display choice only; matching is language-code driven
+            // and handles inverted termbases automatically, so we do NOT bias toward the
+            // active project's direction here.
+            if (_tb.Languages.Count > 0) _cboSource.SelectedIndex = 0;
+            if (_tb.Languages.Count > 1) _cboTarget.SelectedIndex = 1;
+            else if (_tb.Languages.Count > 0) _cboTarget.SelectedIndex = 0;
 
             if (_tb.Languages.Count < 2)
             {
@@ -236,30 +255,29 @@ namespace Supervertaler.Trados.Controls
                 _lblPreview.Text = "This termbase has fewer than two languages — nothing to import.";
             }
             UpdateCodeLabels();
+            UpdateExample();
         }
 
-        // Finds the language index whose locale/name matches the given project language
-        // (e.g. "nl-NL" or "Dutch (Netherlands)"), comparing on base code and name.
-        private int? FindLanguageIndexMatching(string projectLang)
+        // Shows a real example entry for the chosen pair so the user can confirm the
+        // language identification ("that side is English, that side is Dutch").
+        private void UpdateExample()
         {
-            if (string.IsNullOrWhiteSpace(projectLang)) return null;
-            var projBase = BaseToken(projectLang);
-            for (int i = 0; i < _tb.Languages.Count; i++)
+            if (_lblExample == null) return;
+            var src = SelectedSourceLanguage();
+            var tgt = SelectedTargetLanguage();
+            if (src == null || tgt == null || src.Id == tgt.Id) { _lblExample.Text = ""; return; }
+
+            foreach (var c in _tb.Concepts)
             {
-                var lang = _tb.Languages[i];
-                if (!string.IsNullOrEmpty(projBase) && projBase == BaseToken(lang.Locale)) return i;
-                if (!string.IsNullOrWhiteSpace(lang.Name)
-                    && projectLang.IndexOf(lang.Name, StringComparison.OrdinalIgnoreCase) >= 0) return i;
+                var st = c.TermsFor(src.Id);
+                var tt = c.TermsFor(tgt.Id);
+                if (st.Count > 0 && tt.Count > 0)
+                {
+                    _lblExample.Text = $"Example:  {src.Name}: “{st[0]}”   →   {tgt.Name}: “{tt[0]}”";
+                    return;
+                }
             }
-            return null;
-        }
-
-        // The leading token of a language string, lowered (before any -, _, space or "(").
-        private static string BaseToken(string s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return "";
-            int i = s.IndexOfAny(new[] { '-', '_', ' ', '(' });
-            return (i > 0 ? s.Substring(0, i) : s).Trim().ToLowerInvariant();
+            _lblExample.Text = "Example: (no entry has a term in both selected languages)";
         }
 
         private void UpdateCodeLabels()

@@ -1803,7 +1803,7 @@ namespace Supervertaler.Trados.Settings
                 return;
             }
 
-            using (var dlg = new Controls.ImportTermbaseDialog(imported, dbPath, _projectSourceLanguage))
+            using (var dlg = new Controls.ImportTermbaseDialog(imported, dbPath))
             {
                 dlg.ShowDialog(this);
                 if (dlg.DidImport)
