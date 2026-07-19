@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.108 / 19.20.108] – 2026-07-19
+
+### Added (TermLens · import MultiTerm termbases into Supervertaler)
+
+- **Import a Trados MultiTerm termbase into your Supervertaler termbase.** A new **Import .sdltb/.ttb…** button in Supervertaler Settings → Termbases reads a Trados termbase – `.ttb` (Studio 2026) or `.sdltb` (MultiTerm) – and imports its terms into a Supervertaler termbase, so they show up in TermLens (and in the Supervertaler Workbench, which shares the same database). A mapping dialogue detects the languages from the file and shows an example entry so you can confirm which side is which; you choose which descriptive fields (definition, note, subject/domain, status, part of speech …) map onto which Supervertaler fields, with sensible defaults filled in. Extra terms for a language are imported as synonyms, and a term's "forbidden/deprecated" status maps to the forbidden flag. Which language is stored as source or target is just an organisational choice – TermLens matches terminology in either direction automatically. `.ttb` import works in both the Studio 2024 and 2026 builds; `.sdltb` import needs the 32-bit Access engine and so runs in the Studio 2024 build (in Studio 2026, convert the termbase to `.ttb` first).
+
 ## [18.20.107 / 19.20.107] – 2026-07-18
 
 ### Fixed (TermLens · Trados Studio 2026 .ttb termbases)
