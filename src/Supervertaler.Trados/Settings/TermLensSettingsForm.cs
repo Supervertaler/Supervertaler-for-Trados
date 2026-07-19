@@ -554,6 +554,8 @@ namespace Supervertaler.Trados.Settings
             _btnExport.Click += OnExportClick;
             _btnImport = MakeFlatButton("Import");
             _btnImport.Click += OnImportClick;
+            var btnImportExternal = MakeFlatButton("Import .sdltb/.ttb\u2026");
+            btnImportExternal.Click += OnImportExternalTermbaseClick;
             _btnRemoveTermbase = MakeFlatButton("\u2212 Remove");
             _btnRemoveTermbase.Click += OnRemoveTermbaseClick;
             _btnAddTermbase = MakeFlatButton("+ Add");
@@ -570,7 +572,7 @@ namespace Supervertaler.Trados.Settings
             };
             tbButtonFlow.Controls.AddRange(new Control[]
             {
-                _btnOpenTermbase, _btnExport, _btnImport, _btnRemoveTermbase, _btnAddTermbase
+                _btnOpenTermbase, _btnExport, _btnImport, btnImportExternal, _btnRemoveTermbase, _btnAddTermbase
             });
             _lblTermbasesHeader = new Label
             {
@@ -1734,6 +1736,74 @@ namespace Supervertaler.Trados.Settings
 
                 UpdateTermbaseInfo(dbPath);
                 PopulateTermbaseList(dbPath);
+            }
+        }
+
+        private void OnImportExternalTermbaseClick(object sender, EventArgs e)
+        {
+            var dbPath = _txtTermbasePath.Text.Trim();
+            if (string.IsNullOrEmpty(dbPath) || !File.Exists(dbPath))
+            {
+                MessageBox.Show("Please select or create a Supervertaler termbase database first.",
+                    "Import termbase", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string sourcePath;
+            using (var dlg = new OpenFileDialog())
+            {
+                dlg.Title = "Import external Trados termbase";
+                dlg.Filter = "Trados termbases (*.sdltb;*.ttb)|*.sdltb;*.ttb|" +
+                             "MultiTerm termbase (*.sdltb)|*.sdltb|" +
+                             "Studio 2026 termbase (*.ttb)|*.ttb|All files (*.*)|*.*";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                sourcePath = dlg.FileName;
+            }
+
+            ImportedTermbase imported = null;
+            string readError = null;
+            try
+            {
+                using (var reader = Core.TermbaseReaderFactory.Create(sourcePath))
+                {
+                    if (!reader.Open())
+                    {
+                        readError = reader.LastError
+                            ?? "Could not open the termbase file.";
+                    }
+                    else
+                    {
+                        imported = reader.LoadForImport();
+                        if (string.IsNullOrEmpty(readError) && !string.IsNullOrEmpty(reader.LastError))
+                            readError = reader.LastError;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                readError = ex.Message;
+            }
+
+            if (imported == null || imported.Languages.Count == 0)
+            {
+                var extra = sourcePath.EndsWith(".sdltb", StringComparison.OrdinalIgnoreCase)
+                    ? "\n\n.sdltb files need the 32-bit MultiTerm/Access engine, which is only available in the " +
+                      "Studio 2024 build. In Studio 2026, convert the termbase to .ttb first (Termbases view), then import the .ttb."
+                    : "";
+                MessageBox.Show(
+                    $"Could not read \"{Path.GetFileName(sourcePath)}\".{(string.IsNullOrEmpty(readError) ? "" : "\n\n" + readError)}{extra}",
+                    "Import termbase", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using (var dlg = new Controls.ImportTermbaseDialog(imported, dbPath))
+            {
+                dlg.ShowDialog(this);
+                if (dlg.DidImport)
+                {
+                    UpdateTermbaseInfo(dbPath);
+                    PopulateTermbaseList(dbPath);
+                }
             }
         }
 
