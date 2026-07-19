@@ -313,6 +313,108 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Loads all languages, concepts (terms grouped by language index) and
+        /// concept-level descriptive fields for the import feature. Read-only.
+        /// .sdltb keys per-language terms by the <c>I_{name}</c> table, so language ids
+        /// are 0-based ordinals assigned in mtIndexes order.
+        /// </summary>
+        public ImportedTermbase LoadForImport()
+        {
+            var tb = new ImportedTermbase
+            {
+                FilePath = _filePath,
+                Format = "sdltb",
+                Name = TermbaseName
+            };
+            if (_connection == null) return tb;
+
+            try
+            {
+                int ordinal = 0;
+                foreach (var (name, locale) in GetLanguageIndexes())
+                {
+                    tb.Languages.Add(new ImportLanguage
+                    {
+                        Id = ordinal++,
+                        Name = name,
+                        Locale = locale,
+                        IndexName = name
+                    });
+                }
+
+                var concepts = new Dictionary<int, ImportConcept>();
+                foreach (var lang in tb.Languages)
+                {
+                    var tableName = $"I_{lang.IndexName}";
+                    if (!TableExists(tableName)) continue;
+
+                    using (var cmd = new OleDbCommand(
+                        $"SELECT conceptid, origterm, termid FROM [{tableName}] ORDER BY conceptid, termid",
+                        _connection))
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var conceptId = reader.GetInt32(0);
+                            var term = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                            if (string.IsNullOrWhiteSpace(term)) continue;
+
+                            if (!concepts.TryGetValue(conceptId, out var concept))
+                            {
+                                concept = new ImportConcept { ConceptId = conceptId };
+                                concepts[conceptId] = concept;
+                            }
+                            if (!concept.TermsByLanguageId.TryGetValue(lang.Id, out var list))
+                            {
+                                list = new List<string>();
+                                concept.TermsByLanguageId[lang.Id] = list;
+                            }
+                            list.Add(term);
+                        }
+                    }
+                }
+
+                tb.Concepts.AddRange(concepts.Values);
+                LoadConceptFieldsForImport(tb, concepts);
+                tb.DiscoveredFields = MultiTermConceptXml.CollectFieldNames(tb.Concepts);
+            }
+            catch (Exception ex)
+            {
+                LastError = $"Error loading .sdltb for import: {ex.Message}";
+            }
+
+            return tb;
+        }
+
+        // Parses descriptive fields from the concept XML (mtConcepts) into each
+        // ImportConcept — concept-level plus per-language (Definition, Note, Status …),
+        // via the shared MultiTermConceptXml (same compact XML shape as .ttb). This
+        // generalises LoadDefinitions, which extracts only concept "Definition".
+        // Concept fields are optional — any failure is ignored.
+        private void LoadConceptFieldsForImport(ImportedTermbase tb, Dictionary<int, ImportConcept> concepts)
+        {
+            if (concepts.Count == 0) return;
+            try
+            {
+                if (!TableExists("mtConcepts")) return;
+
+                using (var cmd = new OleDbCommand("SELECT conceptid, [text] FROM mtConcepts", _connection))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var conceptId = reader.GetInt32(0);
+                        if (reader.IsDBNull(1)) continue;
+                        if (!concepts.TryGetValue(conceptId, out var concept)) continue;
+
+                        MultiTermConceptXml.ApplyToConcept(concept, reader.GetString(1), tb.Languages);
+                    }
+                }
+            }
+            catch { /* concept-level fields are optional */ }
+        }
+
+        /// <summary>
         /// Loads definitions from concept XML for the given concept IDs.
         /// Only parses XML for concepts that have descriptive fields.
         /// Returns conceptId → definition text, or null if mtConcepts is inaccessible.

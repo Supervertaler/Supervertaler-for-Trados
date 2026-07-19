@@ -902,7 +902,7 @@ namespace Supervertaler.Trados.Core
             bool isNonTranslatable = false,
             string sourceAbbreviation = null, string targetAbbreviation = null,
             string url = null, string client = null, bool forbidden = false,
-            string project = null)
+            string project = null, string partOfSpeech = null, string context = null)
         {
             // Strip trailing sentence punctuation from translatable terms so
             // "circumference." is stored as "circumference". Non-translatables are
@@ -956,11 +956,13 @@ namespace Supervertaler.Trados.Core
                     INSERT INTO termbase_terms
                         (source_term, target_term, termbase_id, source_lang, target_lang,
                          definition, domain, notes, forbidden, case_sensitive, is_nontranslatable,
-                         term_uuid, source_abbreviation, target_abbreviation, url, client, project)
+                         term_uuid, source_abbreviation, target_abbreviation, url, client, project,
+                         part_of_speech, context)
                     VALUES
                         (@source, @target, @tbId, @srcLang, @tgtLang,
                          @def, @domain, @notes, @forbidden, 0, @nt,
-                         @uuid, @srcAbbr, @tgtAbbr, @url, @client, @project);
+                         @uuid, @srcAbbr, @tgtAbbr, @url, @client, @project,
+                         @pos, @context);
                     SELECT last_insert_rowid();";
 
                 using (var cmd = new SqliteCommand(sql, conn))
@@ -981,11 +983,177 @@ namespace Supervertaler.Trados.Core
                     cmd.Parameters.AddWithValue("@url", url ?? "");
                     cmd.Parameters.AddWithValue("@client", client ?? "");
                     cmd.Parameters.AddWithValue("@project", project ?? "");
+                    cmd.Parameters.AddWithValue("@pos", partOfSpeech ?? "");
+                    cmd.Parameters.AddWithValue("@context", context ?? "");
 
                     var result = cmd.ExecuteScalar();
                     return result != null ? Convert.ToInt64(result) : -1;
                 }
             }
+        }
+
+        /// <summary>
+        /// One flattened bilingual row to import into a Supervertaler termbase, produced
+        /// by <see cref="TermbaseImporter"/> from a concept-oriented MultiTerm entry.
+        /// </summary>
+        public sealed class ImportTermRow
+        {
+            public string SourceTerm { get; set; }
+            public string TargetTerm { get; set; }
+            public string SourceLang { get; set; }
+            public string TargetLang { get; set; }
+            public string Definition { get; set; }
+            public string Domain { get; set; }
+            public string Notes { get; set; }
+            public string Context { get; set; }
+            public string PartOfSpeech { get; set; }
+            public string Url { get; set; }
+            public string Client { get; set; }
+            public string Project { get; set; }
+            public bool Forbidden { get; set; }
+            public bool IsNonTranslatable { get; set; }
+            public List<string> SourceSynonyms { get; set; } = new List<string>();
+            public List<string> TargetSynonyms { get; set; } = new List<string>();
+        }
+
+        /// <summary>Outcome counts from <see cref="ImportRows"/>.</summary>
+        public sealed class ImportWriteResult
+        {
+            public int Added { get; set; }
+            public int Duplicates { get; set; }
+            public int SynonymsAdded { get; set; }
+        }
+
+        /// <summary>
+        /// Writes many flattened import rows into one termbase in a single transaction.
+        /// Applies the same bidirectional duplicate check as <see cref="InsertTerm"/>
+        /// (existing pair, either direction, is skipped) and appends each row's synonyms.
+        /// The INSERT/dedup SQL mirrors <see cref="InsertTerm"/> — keep the two in sync.
+        /// </summary>
+        public static ImportWriteResult ImportRows(
+            string dbPath, long termbaseId, IReadOnlyList<ImportTermRow> rows)
+        {
+            var result = new ImportWriteResult();
+            if (rows == null || rows.Count == 0) return result;
+
+            var connStr = new SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Mode = SqliteOpenMode.ReadWrite
+            }.ToString();
+
+            using (var conn = new SqliteConnection(connStr))
+            {
+                conn.Open();
+                MigrateSchema(conn);
+
+                using (var tx = conn.BeginTransaction())
+                {
+                    foreach (var row in rows)
+                    {
+                        if (row == null) continue;
+                        var source = (row.SourceTerm ?? "").Trim();
+                        var target = (row.TargetTerm ?? "").Trim();
+                        if (source.Length == 0 || target.Length == 0) continue;
+
+                        // Non-translatables keep their exact text; others are normalised.
+                        if (!row.IsNonTranslatable)
+                        {
+                            source = NormalizeTermForSave(source);
+                            target = NormalizeTermForSave(target);
+                        }
+
+                        // Bidirectional duplicate check (mirrors InsertTerm).
+                        using (var check = new SqliteCommand(@"
+                            SELECT id FROM termbase_terms
+                            WHERE CAST(termbase_id AS INTEGER) = @tbId
+                              AND (
+                                (LOWER(TRIM(source_term)) = LOWER(@source)
+                                 AND LOWER(TRIM(target_term)) = LOWER(@target))
+                                OR
+                                (LOWER(TRIM(source_term)) = LOWER(@target)
+                                 AND LOWER(TRIM(target_term)) = LOWER(@source))
+                              )
+                            LIMIT 1", conn, tx))
+                        {
+                            check.Parameters.AddWithValue("@tbId", termbaseId);
+                            check.Parameters.AddWithValue("@source", source);
+                            check.Parameters.AddWithValue("@target", target);
+                            if (check.ExecuteScalar() != null) { result.Duplicates++; continue; }
+                        }
+
+                        long termId;
+                        using (var cmd = new SqliteCommand(@"
+                            INSERT INTO termbase_terms
+                                (source_term, target_term, termbase_id, source_lang, target_lang,
+                                 definition, domain, notes, forbidden, case_sensitive, is_nontranslatable,
+                                 term_uuid, url, client, project, part_of_speech, context)
+                            VALUES
+                                (@source, @target, @tbId, @srcLang, @tgtLang,
+                                 @def, @domain, @notes, @forbidden, 0, @nt,
+                                 @uuid, @url, @client, @project, @pos, @context);
+                            SELECT last_insert_rowid();", conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@source", source);
+                            cmd.Parameters.AddWithValue("@target", target);
+                            cmd.Parameters.AddWithValue("@tbId", termbaseId);
+                            cmd.Parameters.AddWithValue("@srcLang", row.SourceLang ?? "");
+                            cmd.Parameters.AddWithValue("@tgtLang", row.TargetLang ?? "");
+                            cmd.Parameters.AddWithValue("@def", row.Definition ?? "");
+                            cmd.Parameters.AddWithValue("@domain", row.Domain ?? "");
+                            cmd.Parameters.AddWithValue("@notes", row.Notes ?? "");
+                            cmd.Parameters.AddWithValue("@forbidden", row.Forbidden ? 1 : 0);
+                            cmd.Parameters.AddWithValue("@nt", row.IsNonTranslatable ? 1 : 0);
+                            cmd.Parameters.AddWithValue("@uuid", System.Guid.NewGuid().ToString());
+                            cmd.Parameters.AddWithValue("@url", row.Url ?? "");
+                            cmd.Parameters.AddWithValue("@client", row.Client ?? "");
+                            cmd.Parameters.AddWithValue("@project", row.Project ?? "");
+                            cmd.Parameters.AddWithValue("@pos", row.PartOfSpeech ?? "");
+                            cmd.Parameters.AddWithValue("@context", row.Context ?? "");
+                            termId = Convert.ToInt64(cmd.ExecuteScalar());
+                        }
+                        result.Added++;
+
+                        result.SynonymsAdded += InsertSynonyms(conn, tx, termId, row.SourceSynonyms, "source");
+                        result.SynonymsAdded += InsertSynonyms(conn, tx, termId, row.TargetSynonyms, "target");
+                    }
+
+                    tx.Commit();
+                }
+            }
+
+            return result;
+        }
+
+        // Inserts distinct, non-empty synonyms for a term within an open transaction.
+        private static int InsertSynonyms(
+            SqliteConnection conn, SqliteTransaction tx,
+            long termId, List<string> synonyms, string language)
+        {
+            if (synonyms == null || synonyms.Count == 0) return 0;
+            int added = 0;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int order = 0;
+            foreach (var raw in synonyms)
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                var text = NormalizeTermForSave(raw.Trim());
+                if (text.Length == 0 || !seen.Add(text.ToLowerInvariant())) continue;
+
+                using (var cmd = new SqliteCommand(@"
+                    INSERT INTO termbase_synonyms
+                        (term_id, synonym_text, language, display_order, forbidden)
+                    VALUES (@termId, @text, @lang, @order, 0)", conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("@termId", termId);
+                    cmd.Parameters.AddWithValue("@text", text);
+                    cmd.Parameters.AddWithValue("@lang", language);
+                    cmd.Parameters.AddWithValue("@order", order++);
+                    cmd.ExecuteNonQuery();
+                }
+                added++;
+            }
+            return added;
         }
 
         /// <summary>

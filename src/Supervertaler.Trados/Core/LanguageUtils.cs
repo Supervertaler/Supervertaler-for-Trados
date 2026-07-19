@@ -110,6 +110,33 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Normalises a locale code to Supervertaler's storage convention:
+        /// base language lower-cased, region upper-cased, joined with '-'
+        /// (region preserved — "keep region, match on base"). MultiTerm stores
+        /// locales upper-case ("EN", "EN-GB", "NL-BE"); Supervertaler stores
+        /// "en", "en-GB", "nl-BE". Mirrors the Python Workbench's
+        /// <c>language_codes.canonical()</c> so both products store the same codes
+        /// against the shared termbase.
+        /// <para>Examples: "EN" → "en"; "EN-GB" → "en-GB"; "nl_be" → "nl-BE".</para>
+        /// </summary>
+        public static string CanonicalLocale(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+
+            var parts = value.Trim().Split(
+                new[] { '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return value.Trim();
+
+            var baseCode = parts[0].ToLowerInvariant();
+            if (parts.Length == 1) return baseCode;
+
+            // Region subtag upper-cased; any further subtags preserved as-is.
+            var region = parts[1].ToUpperInvariant();
+            var rest = parts.Length > 2 ? "-" + string.Join("-", parts, 2, parts.Length - 2) : "";
+            return baseCode + "-" + region + rest;
+        }
+
+        /// <summary>
         /// Classifies how a termbase's declared language pair relates to the
         /// active project's source language.
         /// </summary>
