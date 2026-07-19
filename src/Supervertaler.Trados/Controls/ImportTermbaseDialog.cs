@@ -92,7 +92,7 @@ namespace Supervertaler.Trados.Controls
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(640, 580);
+            ClientSize = new Size(640, 600);
             BackColor = Color.White;
 
             Color labelColor = Color.FromArgb(80, 80, 80);
@@ -102,7 +102,7 @@ namespace Supervertaler.Trados.Controls
 
             var lblHeader = new Label
             {
-                Text = $"Source: {_tb.Name}  ({_tb.Format.ToUpperInvariant()}) — "
+                Text = $"Source: {_tb.Name}  ({_tb.Format.ToUpperInvariant()}) – "
                      + $"{_tb.ConceptCount} entries, {_tb.Languages.Count} languages",
                 Location = new Point(margin, y),
                 Width = width,
@@ -135,30 +135,31 @@ namespace Supervertaler.Trados.Controls
             y += 22;
 
             // Example row so the user can confirm which side is which language.
+            // AutoSize (single line) so descenders aren't clipped at higher DPI scaling.
             _lblExample = new Label
             {
                 Location = new Point(margin, y),
-                Width = width,
-                AutoSize = false,
-                Height = 18,
+                AutoSize = true,
                 ForeColor = Color.FromArgb(50, 90, 50),
                 Font = new Font("Segoe UI", 8.5f)
             };
             Controls.Add(_lblExample);
-            y += 20;
+            y += 26;
 
-            Controls.Add(new Label
+            // AutoSize + MaximumSize wraps at the dialog width and grows to fit, so the
+            // note is never clipped regardless of display scaling.
+            var lblMatchNote = new Label
             {
-                Text = "Languages are detected from the file. Matching works in both directions "
-                     + "automatically — this only sets how entries are stored.",
+                Text = "Matching works in both directions automatically – this only sets how "
+                     + "entries are stored and displayed.",
                 Location = new Point(margin, y),
-                Width = width,
-                AutoSize = false,
-                Height = 30,
+                AutoSize = true,
+                MaximumSize = new Size(width, 0),
                 ForeColor = Color.Gray,
                 Font = new Font("Segoe UI", 8f)
-            });
-            y += 34;
+            };
+            Controls.Add(lblMatchNote);
+            y += lblMatchNote.Height + 10;
 
             // ---- Destination ----
             Controls.Add(new Label { Text = "Destination termbase:", Location = new Point(margin, y), AutoSize = true, ForeColor = labelColor });
@@ -252,7 +253,7 @@ namespace Supervertaler.Trados.Controls
             if (_tb.Languages.Count < 2)
             {
                 _btnImport.Enabled = false;
-                _lblPreview.Text = "This termbase has fewer than two languages — nothing to import.";
+                _lblPreview.Text = "This termbase has fewer than two languages – nothing to import.";
             }
             UpdateCodeLabels();
             UpdateExample();
