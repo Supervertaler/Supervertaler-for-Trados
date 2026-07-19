@@ -1764,7 +1764,10 @@ namespace Supervertaler.Trados.Settings
             string readError = null;
             try
             {
-                using (var reader = Core.TermbaseReaderFactory.Create(sourcePath))
+                // Read a WAL-safe copy so a live/edited .ttb's uncheckpointed changes
+                // are seen and the original is never modified.
+                using (var snapshot = Core.TtbImportSnapshot.Prepare(sourcePath))
+                using (var reader = Core.TermbaseReaderFactory.Create(snapshot.ReadPath))
                 {
                     if (!reader.Open())
                     {
@@ -1783,6 +1786,10 @@ namespace Supervertaler.Trados.Settings
             {
                 readError = ex.Message;
             }
+
+            // Show the original file's name, not the temp snapshot's.
+            if (imported != null)
+                imported.Name = Path.GetFileNameWithoutExtension(sourcePath);
 
             if (imported == null || imported.Languages.Count == 0)
             {
