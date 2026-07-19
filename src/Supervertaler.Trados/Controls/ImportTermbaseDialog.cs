@@ -69,6 +69,20 @@ namespace Supervertaler.Trados.Controls
             UpdatePreview();
         }
 
+        // A name not already used by an existing termbase (appends " (2)", " (3)"…).
+        private string UniqueName(string baseName)
+        {
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = "Imported termbase";
+            bool Taken(string n) => _existing.Any(t => string.Equals(t.Name, n, StringComparison.OrdinalIgnoreCase));
+            if (!Taken(baseName)) return baseName;
+            for (int i = 2; i < 1000; i++)
+            {
+                var candidate = $"{baseName} ({i})";
+                if (!Taken(candidate)) return candidate;
+            }
+            return baseName;
+        }
+
         private static List<TermbaseInfo> LoadExistingTermbases(string dbPath)
         {
             try
@@ -105,9 +119,8 @@ namespace Supervertaler.Trados.Controls
                 Text = $"Source: {_tb.Name}  ({_tb.Format.ToUpperInvariant()}) – "
                      + $"{_tb.ConceptCount} entries, {_tb.Languages.Count} languages",
                 Location = new Point(margin, y),
-                Width = width,
-                AutoSize = false,
-                Height = 20,
+                AutoSize = true,
+                MaximumSize = new Size(width, 0),
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(40, 40, 40)
             };
@@ -128,8 +141,8 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_cboTarget);
             y += 26;
 
-            _lblSourceCode = new Label { Location = new Point(margin, y), Width = half, AutoSize = false, Height = 16, ForeColor = Color.Gray, Font = new Font("Segoe UI", 8f) };
-            _lblTargetCode = new Label { Location = new Point(margin + half + 8, y), Width = half, AutoSize = false, Height = 16, ForeColor = Color.Gray, Font = new Font("Segoe UI", 8f) };
+            _lblSourceCode = new Label { Location = new Point(margin, y), AutoSize = true, ForeColor = Color.Gray, Font = new Font("Segoe UI", 8f) };
+            _lblTargetCode = new Label { Location = new Point(margin + half + 8, y), AutoSize = true, ForeColor = Color.Gray, Font = new Font("Segoe UI", 8f) };
             Controls.Add(_lblSourceCode);
             Controls.Add(_lblTargetCode);
             y += 22;
@@ -166,7 +179,7 @@ namespace Supervertaler.Trados.Controls
             y += 22;
 
             _rdoNew = new RadioButton { Text = "Create new:", Location = new Point(margin, y), AutoSize = true, Checked = true };
-            _txtNewName = new TextBox { Location = new Point(margin + 110, y - 2), Width = width - 110, Text = _tb.Name, BackColor = Color.FromArgb(250, 250, 250) };
+            _txtNewName = new TextBox { Location = new Point(margin + 110, y - 2), Width = width - 110, Text = UniqueName(_tb.Name), BackColor = Color.FromArgb(250, 250, 250) };
             _rdoNew.CheckedChanged += (s, e) => UpdateDestinationEnabled();
             Controls.Add(_rdoNew);
             Controls.Add(_txtNewName);
@@ -193,13 +206,20 @@ namespace Supervertaler.Trados.Controls
                 Height = 190,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
+                AllowUserToResizeRows = false,
                 RowHeadersVisible = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
                 SelectionMode = DataGridViewSelectionMode.CellSelect,
                 BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle,
                 EditMode = DataGridViewEditMode.EditOnEnter
             };
+            // Give header and cell text vertical breathing room so ascenders/descenders
+            // aren't clipped at higher DPI scaling.
+            _grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(3, 4, 3, 4);
+            _grid.DefaultCellStyle.Padding = new Padding(3, 2, 3, 2);
+            _grid.RowTemplate.Height = 26;
             var colField = new DataGridViewTextBoxColumn { HeaderText = "MultiTerm field", ReadOnly = true, FillWeight = 30, MinimumWidth = 120 };
             var colSample = new DataGridViewTextBoxColumn { HeaderText = "Example", ReadOnly = true, FillWeight = 38, MinimumWidth = 120 };
             var colTarget = new DataGridViewComboBoxColumn { HeaderText = "Import as", FillWeight = 32, MinimumWidth = 150, FlatStyle = FlatStyle.Flat };
@@ -208,7 +228,7 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_grid);
             y += 200;
 
-            _lblPreview = new Label { Location = new Point(margin, y), Width = width, AutoSize = false, Height = 18, ForeColor = Color.FromArgb(60, 60, 60) };
+            _lblPreview = new Label { Location = new Point(margin, y), AutoSize = true, MaximumSize = new Size(width, 0), ForeColor = Color.FromArgb(60, 60, 60) };
             Controls.Add(_lblPreview);
 
             // ---- Buttons ----
@@ -389,6 +409,19 @@ namespace Supervertaler.Trados.Controls
                     {
                         MessageBox.Show("Enter a name for the new termbase.",
                             "Import termbase", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    // Termbase names must be unique; catch the collision here with a clear
+                    // message instead of letting the UNIQUE constraint surface as a raw error.
+                    if (_existing.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        MessageBox.Show(
+                            $"A termbase named \"{name}\" already exists.\n\n"
+                            + "Choose a different name, or select \"Import into\" to add these terms "
+                            + "to the existing termbase.",
+                            "Import termbase", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        _txtNewName.Focus();
+                        _txtNewName.SelectAll();
                         return;
                     }
                     destId = TermbaseReader.CreateTermbase(_dbPath, name,
