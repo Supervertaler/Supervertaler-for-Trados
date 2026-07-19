@@ -21,6 +21,7 @@ namespace Supervertaler.Trados.Controls
         private readonly ImportedTermbase _tb;
         private readonly string _dbPath;
         private readonly List<TermbaseInfo> _existing;
+        private readonly string _projectSourceLanguage;
 
         private ComboBox _cboSource;
         private ComboBox _cboTarget;
@@ -56,10 +57,11 @@ namespace Supervertaler.Trados.Controls
             (ImportFieldTarget.AppendToNotes, "Append to notes"),
         };
 
-        public ImportTermbaseDialog(ImportedTermbase tb, string dbPath)
+        public ImportTermbaseDialog(ImportedTermbase tb, string dbPath, string projectSourceLanguage = null)
         {
             _tb = tb ?? throw new ArgumentNullException(nameof(tb));
             _dbPath = dbPath;
+            _projectSourceLanguage = projectSourceLanguage;
             _existing = LoadExistingTermbases(dbPath);
 
             BuildUi();
@@ -91,7 +93,7 @@ namespace Supervertaler.Trados.Controls
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(560, 520);
+            ClientSize = new Size(640, 540);
             BackColor = Color.White;
 
             Color labelColor = Color.FromArgb(80, 80, 80);
@@ -172,9 +174,9 @@ namespace Supervertaler.Trados.Controls
                 BorderStyle = BorderStyle.FixedSingle,
                 EditMode = DataGridViewEditMode.EditOnEnter
             };
-            var colField = new DataGridViewTextBoxColumn { HeaderText = "MultiTerm field", ReadOnly = true, FillWeight = 30 };
-            var colSample = new DataGridViewTextBoxColumn { HeaderText = "Example", ReadOnly = true, FillWeight = 40 };
-            var colTarget = new DataGridViewComboBoxColumn { HeaderText = "Import as", FillWeight = 30, FlatStyle = FlatStyle.Flat };
+            var colField = new DataGridViewTextBoxColumn { HeaderText = "MultiTerm field", ReadOnly = true, FillWeight = 30, MinimumWidth = 120 };
+            var colSample = new DataGridViewTextBoxColumn { HeaderText = "Example", ReadOnly = true, FillWeight = 38, MinimumWidth = 120 };
+            var colTarget = new DataGridViewComboBoxColumn { HeaderText = "Import as", FillWeight = 32, MinimumWidth = 150, FlatStyle = FlatStyle.Flat };
             foreach (var choice in TargetChoices) colTarget.Items.Add(choice.Label);
             _grid.Columns.AddRange(colField, colSample, colTarget);
             Controls.Add(_grid);
@@ -213,9 +215,20 @@ namespace Supervertaler.Trados.Controls
                 _cboSource.Items.Add(lang.ToString());
                 _cboTarget.Items.Add(lang.ToString());
             }
-            if (_tb.Languages.Count > 0) _cboSource.SelectedIndex = 0;
-            if (_tb.Languages.Count > 1) _cboTarget.SelectedIndex = 1;
-            else if (_tb.Languages.Count > 0) _cboTarget.SelectedIndex = 0;
+
+            // Default the source to the active project's source language so the imported
+            // termbase's direction matches how it will be used (TermLens matches the
+            // project's source language against the termbase's source terms).
+            int srcIdx = _tb.Languages.Count > 0 ? 0 : -1;
+            var matched = FindLanguageIndexMatching(_projectSourceLanguage);
+            if (matched.HasValue) srcIdx = matched.Value;
+            int tgtIdx = -1;
+            for (int i = 0; i < _tb.Languages.Count; i++)
+                if (i != srcIdx) { tgtIdx = i; break; }
+
+            if (srcIdx >= 0) _cboSource.SelectedIndex = srcIdx;
+            if (tgtIdx >= 0) _cboTarget.SelectedIndex = tgtIdx;
+            else if (_tb.Languages.Count > 0) _cboTarget.SelectedIndex = srcIdx;
 
             if (_tb.Languages.Count < 2)
             {
@@ -223,6 +236,30 @@ namespace Supervertaler.Trados.Controls
                 _lblPreview.Text = "This termbase has fewer than two languages — nothing to import.";
             }
             UpdateCodeLabels();
+        }
+
+        // Finds the language index whose locale/name matches the given project language
+        // (e.g. "nl-NL" or "Dutch (Netherlands)"), comparing on base code and name.
+        private int? FindLanguageIndexMatching(string projectLang)
+        {
+            if (string.IsNullOrWhiteSpace(projectLang)) return null;
+            var projBase = BaseToken(projectLang);
+            for (int i = 0; i < _tb.Languages.Count; i++)
+            {
+                var lang = _tb.Languages[i];
+                if (!string.IsNullOrEmpty(projBase) && projBase == BaseToken(lang.Locale)) return i;
+                if (!string.IsNullOrWhiteSpace(lang.Name)
+                    && projectLang.IndexOf(lang.Name, StringComparison.OrdinalIgnoreCase) >= 0) return i;
+            }
+            return null;
+        }
+
+        // The leading token of a language string, lowered (before any -, _, space or "(").
+        private static string BaseToken(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            int i = s.IndexOfAny(new[] { '-', '_', ' ', '(' });
+            return (i > 0 ? s.Substring(0, i) : s).Trim().ToLowerInvariant();
         }
 
         private void UpdateCodeLabels()
