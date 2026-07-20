@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.110 / 19.20.110] – 2026-07-21
+
+### Added (Supervertaler MCP Server · the plugin can now tell you when your extension needs updating)
+
+- **Version handshake between the plugin and the MCP extension.** The extension exe now reports its protocol level to the plugin on every request, so the plugin knows whether the installed extension supports everything it needs. If a future plugin version ever requires a newer extension, you'll hear about it in three places without any new machinery: your AI assistant tells you directly in chat (via the `help` tool and project-status responses), and the **Connect AI assistant** dialog shows the status. Nothing nags today – every current extension remains fully supported; this just puts the plumbing in place so "your extension is outdated" can never again go unnoticed. Older extensions that predate the handshake are detected automatically (they simply don't report a version).
+
 ## [18.20.109 / 19.20.109] – 2026-07-20
 
 ### Added (Supervertaler MCP Server · your AI assistant as prompt engineer)

@@ -782,6 +782,39 @@ namespace Supervertaler.Trados.Core
         /// documents; callers page through larger jobs.</summary>
         public const int MaxUpdatesPerRequest = 200;
 
+        // ── MCP exe version handshake ────────────────────────────────────────
+        //
+        // The MCP server exe reports its protocol level in an
+        // X-Supervertaler-Mcp-Exe-Version header (from level 2 on); exes older
+        // than the handshake send no header and count as level 1. When a plugin
+        // feature someday genuinely needs a newer exe, bump RequiredExeVersion:
+        // outdated installs then get an upgrade note via the help tool, the
+        // get_active_project note, and the Connect dialog - the AI relays it to
+        // the user in chat, so no extra UI is needed.
+
+        /// <summary>Minimum exe protocol level this plugin needs. 1 = any exe,
+        /// including pre-handshake ones, works fully (keep it at 1 until a
+        /// feature actually requires more - avoid nagging).</summary>
+        public const int RequiredExeVersion = 1;
+
+        /// <summary>Exe protocol level last seen on a bridge request this
+        /// session. 0 = no MCP request yet; 1 = pre-handshake exe.</summary>
+        public static int LastSeenExeVersion { get; private set; }
+
+        /// <summary>True when an exe has connected and it is older than what
+        /// this plugin requires.</summary>
+        public static bool ExeOutdated =>
+            LastSeenExeVersion > 0 && LastSeenExeVersion < RequiredExeVersion;
+
+        /// <summary>Note the AI is asked to relay to the user when their
+        /// extension exe is outdated.</summary>
+        public const string ExeUpgradeNote =
+            "NOTE FOR THE ASSISTANT - relay this to the user: your Supervertaler MCP " +
+            "extension is outdated and some features may not work until you update it. " +
+            "In Trados, open Supervertaler Settings > AI Settings > Connect AI assistant... " +
+            "and download the latest extension (also on the latest GitHub release of " +
+            "Supervertaler for Trados), then reinstall it in your AI app.";
+
         private HttpListener _listener;
         private Thread _listenerThread;
         private CancellationTokenSource _cts;
@@ -1007,6 +1040,21 @@ namespace Supervertaler.Trados.Core
             {
                 TryWriteError(context, 401, "unauthorized");
                 return;
+            }
+
+            // Version handshake: the MCP server exe reports its protocol level on
+            // every request (from exe protocol v2 on). Absence of the header means
+            // a pre-handshake exe -> level 1. Lets the plugin detect an outdated
+            // extension and tell the AI to tell the user to update it.
+            var exeVerHeader = request.Headers["X-Supervertaler-Mcp-Exe-Version"];
+            int seenVer = 1;
+            if (!string.IsNullOrEmpty(exeVerHeader) && int.TryParse(exeVerHeader, out var v) && v > 1)
+                seenVer = v;
+            if (seenVer != LastSeenExeVersion)
+            {
+                LastSeenExeVersion = seenVer;
+                BridgeLog.Write($"[SupervertalerBridge] MCP exe protocol level: {seenVer}" +
+                    (ExeOutdated ? $" (OUTDATED - plugin requires {RequiredExeVersion})" : ""));
             }
 
             var path = request.Url.AbsolutePath;
@@ -1300,7 +1348,10 @@ namespace Supervertaler.Trados.Core
                             _cachedHelpCard = reader.ReadToEnd();
                     }
                 }
-                WriteJson(context, 200, new BridgeHelpResponse { Ok = true, Help = _cachedHelpCard });
+                var help = _cachedHelpCard;
+                if (ExeOutdated)
+                    help = ExeUpgradeNote + "\n\n---\n\n" + help;
+                WriteJson(context, 200, new BridgeHelpResponse { Ok = true, Help = help });
             }
             catch (Exception ex)
             {
@@ -1327,6 +1378,13 @@ namespace Supervertaler.Trados.Core
                 BridgeLog.Write($"[SupervertalerBridge] project provider threw: {ex.Message}");
                 snapshot = new BridgeProjectSnapshot { Available = false };
             }
+
+            // Outdated-extension nudge on the highest-traffic informational tool,
+            // so the AI relays it to the user in chat.
+            if (ExeOutdated)
+                snapshot.Note = string.IsNullOrEmpty(snapshot.Note)
+                    ? ExeUpgradeNote
+                    : snapshot.Note + " | " + ExeUpgradeNote;
 
             WriteJson(context, 200, snapshot);
         }

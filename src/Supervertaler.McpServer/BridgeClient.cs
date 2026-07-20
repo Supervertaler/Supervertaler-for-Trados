@@ -21,6 +21,18 @@ namespace Supervertaler.McpServer;
 /// </summary>
 public sealed class BridgeClient
 {
+    /// <summary>
+    /// Exe protocol level, sent to the bridge on every request so the plugin can
+    /// tell whether this exe supports the features it needs. NOT the marketing
+    /// version: bump only when the exe's own machinery changes (forwarding
+    /// semantics, MCP capabilities, discovery/auth). History:
+    ///   (no header) = pre-handshake exes (dynamic tools + list_changed or older)
+    ///   2 = adds this version header
+    /// The plugin compares against its RequiredExeVersion and, when this exe is
+    /// too old, tells the AI to tell the user to update the extension.
+    /// </summary>
+    public const int ExeProtocolVersion = 2;
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     /// <summary>Set by BridgeLocator when a custom handshake path is passed via SUPERVERTALER_BRIDGE_FILE (tests).</summary>
@@ -38,6 +50,7 @@ public sealed class BridgeClient
         var (baseUrl, token) = Discover();
         using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + path);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Headers.Add("X-Supervertaler-Mcp-Exe-Version", ExeProtocolVersion.ToString());
         return await SendAsync(req, ct);
     }
 
@@ -49,6 +62,7 @@ public sealed class BridgeClient
             Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Headers.Add("X-Supervertaler-Mcp-Exe-Version", ExeProtocolVersion.ToString());
         return await SendAsync(req, ct);
     }
 

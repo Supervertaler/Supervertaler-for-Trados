@@ -125,6 +125,26 @@ namespace Supervertaler.Trados.Controls
                     "Supervertaler MCP Server extension not installed yet."));
             }
 
+            // Version handshake: only shown once an AI app has actually connected
+            // this session (LastSeenExeVersion > 0). Outdated = the exe predates a
+            // feature this plugin needs; the AI also relays the same nudge in chat.
+            if (Core.SupervertalerBridge.LastSeenExeVersion > 0)
+            {
+                if (Core.SupervertalerBridge.ExeOutdated)
+                {
+                    var old = StatusLine(false,
+                        "Your MCP extension is outdated for this plugin version – download the latest " +
+                        "below and reinstall it in your AI app.");
+                    old.ForeColor = Color.FromArgb(190, 110, 0);
+                    root.Controls.Add(old);
+                }
+                else
+                {
+                    root.Controls.Add(StatusLine(true,
+                        "An AI app has connected this session – extension version is up to date."));
+                }
+            }
+
             // ── Claude Desktop (recommended) ─────────────────────────────
             root.Controls.Add(SectionHeader("Claude Desktop (recommended)"));
 
