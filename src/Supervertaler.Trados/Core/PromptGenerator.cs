@@ -45,7 +45,7 @@ namespace Supervertaler.Trados.Core
                         "TRANSLATION MANDATE (NON-NEGOTIABLE) – pure translation only, explicitly forbid improvement, simplification, harmonization, correction, streamlining",
                         "HARD CONSTRAINT: NO HALLUCINATED TRUNCATION – never omit repetitive phrases, collapse clauses, shorten lists, simplify enumerations, or \"fix\" grammar",
                         "CORE EXECUTION PRINCIPLES – with ABSOLUTE REQUIREMENTS (checkmarks) and ABSOLUTE PROHIBITIONS (crosses)",
-                        "SUPERVERTALER INPUT HANDLING – translate only provided segment, preserve exact order, do not rely on unseen context",
+                        "SUPERVERTALER INPUT HANDLING – batched segment delivery: translate every delivered segment, keep count/order/boundaries aligned, use only in-batch context",
                         "TRANSLATION STYLE (LOCKED) – mandatory term mappings",
                         "CLAIM TRANSLATION STYLE – preserve dependency structure, maintain phrasing, avoid stylistic smoothing",
                         "GERUND STYLE RULE – prefer natural English gerund over \"the [verb]ing of\" construction",
@@ -322,8 +322,10 @@ namespace Supervertaler.Trados.Core
             sb.AppendLine("You are a prompt engineering specialist for professional translation. Your task is to generate");
             sb.AppendLine("a comprehensive, expert-level translation prompt.");
             sb.AppendLine();
-            sb.AppendLine("This prompt will be used in Supervertaler, a CAT (Computer-Assisted Translation) tool that sends text");
-            sb.AppendLine("segment by segment. The prompt must account for this segment-by-segment delivery.");
+            sb.AppendLine("This prompt will be used in Supervertaler, a CAT (Computer-Assisted Translation) tool. Supervertaler");
+            sb.AppendLine("delivers the source text as NUMBERED BATCHES of segments (typically dozens of segments per request;");
+            sb.AppendLine("in some contexts a single segment). The prompt must account for this batched, segment-numbered");
+            sb.AppendLine("delivery - do NOT describe delivery as \"one segment at a time\" or \"in isolation\".");
             sb.AppendLine();
             sb.AppendLine("=== ANALYSIS RESULTS ===");
             sb.AppendLine($"DETECTED DOMAIN: {domain.ToUpperInvariant()}");
@@ -391,14 +393,22 @@ namespace Supervertaler.Trados.Core
             sb.AppendLine("   structure rather than interpretation.\"");
             sb.AppendLine();
             sb.AppendLine("3. SUPERVERTALER INPUT HANDLING:");
-            sb.AppendLine("   \"Text is supplied in controlled segments by Supervertaler. You must: translate only the provided");
-            sb.AppendLine("   segment, preserve exact order, not rely on unseen context, not reconstruct missing structure.");
-            sb.AppendLine("   If a segment appears incomplete, translate exactly what is provided without comment.\"");
+            sb.AppendLine("   \"Supervertaler delivers the source text as a numbered batch of segments (in some contexts a");
+            sb.AppendLine("   single segment). You must: translate EVERY delivered segment, keep segment count and order");
+            sb.AppendLine("   exactly aligned with the input, and preserve segment boundaries. You MAY use context visible");
+            sb.AppendLine("   within the delivered batch (e.g. resolving an antecedent that appears a few segments earlier),");
+            sb.AppendLine("   but batch boundaries are arbitrary: never assume the batch is the whole document, and leave");
+            sb.AppendLine("   document-wide checks (e.g. reference-numeral consistency across the full text) to a separate");
+            sb.AppendLine("   QA pass. There is no memory between requests, so terminology must come from the glossary and");
+            sb.AppendLine("   reference translations below - never from choices made in an earlier batch. If a segment");
+            sb.AppendLine("   appears incomplete, translate exactly what is provided without comment.\"");
             sb.AppendLine();
             sb.AppendLine("4. TERMINOLOGY CONSISTENCY HIERARCHY:");
             sb.AppendLine("   \"(1) Previous correct translations from TM (highest priority), (2) Project-specific glossary");
             sb.AppendLine("   terms (required), (3) Domain-specific conventions, (4) General language knowledge. Never mix");
-            sb.AppendLine("   competing variants once established.\"");
+            sb.AppendLine("   competing variants once established. Because there is no memory between batches, the prompt");
+            sb.AppendLine("   itself must LOCK every recurring term to a single translation - never leave an open choice");
+            sb.AppendLine("   (‘X or Y’) for the translator AI to resolve, as consistency cannot carry across batches.\"");
             sb.AppendLine();
             sb.AppendLine("5. PREFLIGHT SELF-CHECK:");
             sb.AppendLine("   \"Before producing output, internally verify: every word and clause translated, no compression or");
@@ -488,6 +498,8 @@ namespace Supervertaler.Trados.Core
             sb.AppendLine("- The marker is the FINAL content of the segment, separated from the running");
             sb.AppendLine("  text by exactly one regular space, with no line break, no full stop, and no");
             sb.AppendLine("  other punctuation between.");
+            sb.AppendLine("- Markers attach to THEIR OWN segment's end. Never pool markers at the end of");
+            sb.AppendLine("  the batch or response - each fix stays with the segment it describes.");
             sb.AppendLine();
             sb.AppendLine("**What the methodology MUST NOT silently correct** (the generated prompt MUST");
             sb.AppendLine("state these as hard exclusions, regardless of domain):");
