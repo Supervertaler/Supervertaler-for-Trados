@@ -962,7 +962,8 @@ namespace Supervertaler.Trados
                     runVerification: BridgeRunVerification,
                     findReplace: BridgeFindReplace,
                     runTask: BridgeRunTask,
-                    getTaskStatus: BridgeGetTaskStatus);
+                    getTaskStatus: BridgeGetTaskStatus,
+                    getPromptContext: BuildPromptContext);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -3756,6 +3757,101 @@ namespace Supervertaler.Trados
 
         /// <summary>
         /// Collects source/target pairs from human-confirmed segments to use as
+        /// <summary>
+        /// Bridge delegate for GET /v1/prompt-context (MCP get_prompt_context).
+        /// Hands an external AI the document context AutoPrompt reasons over –
+        /// source text, relevant termbase terms, TM pairs, the keyword domain, and
+        /// the current Default Translation Prompt – so it can act as the user's
+        /// prompt engineer, with no LLM calls made by the plugin. Marshals to the
+        /// UI thread. maxSegmentsOverride: -1 = use the AI Settings default,
+        /// 0 = whole document, &gt;0 = cap.
+        /// </summary>
+        private BridgePromptContextResponse BuildPromptContext(int maxSegmentsOverride)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgePromptContextResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgePromptContextResponse)ctrl.Invoke(
+                    new Func<int, BridgePromptContextResponse>(BuildPromptContext), maxSegmentsOverride);
+
+            if (_activeDocument == null)
+                return new BridgePromptContextResponse { Ok = false, Error = "no document is open in the Trados editor" };
+
+            try
+            {
+                var aiSettings = _settings?.AiSettings ?? new AiSettings();
+
+                // Full source (CollectDocumentContext does not cap).
+                var allSource = CollectDocumentContext().Item1 ?? new List<string>();
+                var total = allSource.Count;
+
+                // Cap: override (-1 = use setting), 0 = whole document, >0 = cap.
+                int cap = maxSegmentsOverride >= 0 ? maxSegmentsOverride : aiSettings.PromptContextMaxSegments;
+                bool truncated = cap > 0 && total > cap;
+                var included = truncated ? allSource.Take(cap).ToList() : allSource;
+
+                var analysis = DocumentAnalyzer.Analyze(allSource);
+
+                // Relevant termbase terms (AI-enabled, filtered to the document).
+                var terms = new List<BridgeTextPair>();
+                try
+                {
+                    var all = TermLensEditorViewPart.GetCurrentTermbaseTerms() ?? new List<TermEntry>();
+                    var enabled = all.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
+                    foreach (var t in PromptGenerator.FilterRelevantTerms(enabled, allSource))
+                        if (!string.IsNullOrWhiteSpace(t.SourceTerm))
+                            terms.Add(new BridgeTextPair { Source = t.SourceTerm, Target = t.TargetTerm });
+                }
+                catch { }
+
+                // A few representative confirmed TM pairs (respects the setting).
+                var tmPairs = new List<BridgeTextPair>();
+                try
+                {
+                    if (aiSettings.IncludeTmMatches)
+                        foreach (var m in CollectTmReferencePairs().Take(20))
+                            tmPairs.Add(new BridgeTextPair { Source = m.SourceText, Target = m.TargetText });
+                }
+                catch { }
+
+                // The current Default Translation Prompt as a baseline to refine.
+                string defaultPrompt = null;
+                try
+                {
+                    var def = new PromptLibrary().GetAllPrompts().FirstOrDefault(p =>
+                        string.Equals(p.Name, "Default Translation Prompt", StringComparison.OrdinalIgnoreCase));
+                    defaultPrompt = def?.Content;
+                }
+                catch { }
+
+                return new BridgePromptContextResponse
+                {
+                    Ok = true,
+                    SourceLang = GetDocumentSourceLanguage(),
+                    TargetLang = GetDocumentTargetLanguage(),
+                    SegmentCount = total,
+                    ReturnedSegments = included.Count,
+                    WordCount = analysis?.WordCount ?? 0,
+                    Domain = analysis?.PrimaryDomain,
+                    Truncated = truncated,
+                    SourceText = string.Join("\n", included),
+                    Terms = terms.Count > 0 ? terms : null,
+                    TmPairs = tmPairs.Count > 0 ? tmPairs : null,
+                    CurrentDefaultPrompt = defaultPrompt,
+                    Note = truncated
+                        ? $"Showing the first {included.Count} of {total} segments (capped by the AI Settings prompt-context limit). Pass maxSegments=0 for the whole document."
+                        : null
+                };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] BuildPromptContext threw: {ex.Message}");
+                return new BridgePromptContextResponse { Ok = false, Error = "prompt-context error: " + ex.Message };
+            }
+        }
+
+        /// <summary>
         /// TM reference pairs for the prompt generator. Only includes segments that
         /// are Translated, ApprovedTranslation, or ApprovedSignOff – i.e., segments
         /// a translator has explicitly confirmed. Unconfirmed AI-generated translations

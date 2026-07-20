@@ -13,6 +13,13 @@
 
 - **Import a Trados MultiTerm termbase into your Supervertaler termbase.** A new **Import .sdltb/.ttb…** button in Supervertaler Settings → Termbases reads a Trados termbase – `.ttb` (Studio 2026) or `.sdltb` (MultiTerm) – and imports its terms into a Supervertaler termbase, so they show up in TermLens (and in the Supervertaler Workbench, which shares the same database). A mapping dialogue detects the languages from the file and shows an example entry so you can confirm which side is which; you choose which descriptive fields (definition, note, subject/domain, status, part of speech …) map onto which Supervertaler fields, with sensible defaults filled in. Extra terms for a language are imported as synonyms, and a term's "forbidden/deprecated" status maps to the forbidden flag. Which language is stored as source or target is just an organisational choice – TermLens matches terminology in either direction automatically. `.ttb` import works in both the Studio 2024 and 2026 builds; `.sdltb` import needs the 32-bit Access engine and so runs in the Studio 2024 build (in Studio 2026, convert the termbase to `.ttb` first).
 
+## [18.20.108 / 19.20.108] – 2026-07-20
+
+### Added (Supervertaler MCP Server · your AI assistant as prompt engineer)
+
+- **New `get_prompt_context` tool** hands your AI assistant everything it needs to write a translation prompt tailored to the project open in Trados: source/target languages, the detected domain, the source text, the relevant termbase terms, a few confirmed TM example pairs, and your current Default Translation Prompt as a starting point. Ask *"look at my project and write me a tailored prompt,"* refine it together, then *"save it"* (via `save_prompt`). The plugin makes **no** prompt-engineering API calls of its own – the AI you're already chatting with does the work, which is what it's best at.
+- **New AI Setting – "Prompt context – source segments"** (Settings → AI Settings, under External AI assistants): controls how much of the source document `get_prompt_context` sends. **0 = the whole document** (the default – ideal for large-context models like Claude and for high-value projects where you want the AI to see everything); a positive number caps it. The AI can also override it per request with `maxSegments`.
+
 ## [18.20.107 / 19.20.107] – 2026-07-18
 
 ### Fixed (TermLens · Trados Studio 2026 .ttb termbases)

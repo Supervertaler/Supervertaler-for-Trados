@@ -209,6 +209,15 @@ namespace Supervertaler.Trados.Settings
         public int DocumentContextMaxSegments { get; set; } = 500;
 
         /// <summary>
+        /// Maximum number of source segments included in the get_prompt_context MCP
+        /// tool (the document context an external AI reads when acting as your prompt
+        /// engineer). 0 = the whole document — sensible for large-context models like
+        /// Claude, and preferred for high-value projects. A positive value caps it.
+        /// </summary>
+        [DataMember(Name = "promptContextMaxSegments")]
+        public int PromptContextMaxSegments { get; set; } = 0;
+
+        /// <summary>
         /// Number of segments before and after the active segment to include as context
         /// in QuickLauncher prompts ({{SURROUNDING_SEGMENTS}} variable) and in the
         /// AI Assistant chat system prompt.

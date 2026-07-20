@@ -64,6 +64,8 @@ namespace Supervertaler.Trados.Controls
         private CheckBox _chkIncludeDocumentContext;
         private Label _lblMaxSegments;
         private NumericUpDown _nudMaxSegments;
+        private Label _lblPromptContext;
+        private NumericUpDown _nudPromptContext;
         private CheckBox _chkIncludeTermMetadata;
         private CheckBox _chkIncludeSuperMemory;
         private CheckBox _chkIncludeSuperMemoryAutoPrompt;
@@ -728,6 +730,16 @@ namespace Supervertaler.Trados.Controls
             };
             Span(root, ref row, btnMcpConnect);
 
+            _lblPromptContext = FieldLabel("Prompt context – source segments:", indentSteps: 0);
+            _nudPromptContext = SmallNud(0, 50000, 0, 100);
+            var promptCtxTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+            promptCtxTip.SetToolTip(_nudPromptContext,
+                "How many source segments the AI's get_prompt_context tool includes when it helps you\r\n" +
+                "craft a translation prompt for the open project.\r\n" +
+                "0 = the whole document (best for large-context models like Claude, and for high-value\r\n" +
+                "projects where you want the AI to see everything). A positive number caps it.");
+            Pair(root, ref row, _lblPromptContext, _nudPromptContext);
+
             // ===== Info =====
             _lblInfo = new Label
             {
@@ -809,6 +821,8 @@ namespace Supervertaler.Trados.Controls
                 Math.Min(_nudMaxSegments.Maximum, settings.DocumentContextMaxSegments));
             _nudMaxSegments.Enabled = settings.IncludeDocumentContext;
             _lblMaxSegments.Enabled = settings.IncludeDocumentContext;
+            _nudPromptContext.Value = Math.Max(_nudPromptContext.Minimum,
+                Math.Min(_nudPromptContext.Maximum, settings.PromptContextMaxSegments));
             _nudSurroundingSegments.Value = Math.Max(_nudSurroundingSegments.Minimum,
                 Math.Min(_nudSurroundingSegments.Maximum, settings.QuickLauncherSurroundingSegments));
             _cmbQuickLauncherTarget.SelectedIndex =
@@ -895,6 +909,7 @@ namespace Supervertaler.Trados.Controls
             settings.DemoMode = _chkDemoMode.Checked;
             settings.IncludeDocumentContext = _chkIncludeDocumentContext.Checked;
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;
+            settings.PromptContextMaxSegments = (int)_nudPromptContext.Value;
             settings.QuickLauncherSurroundingSegments = (int)_nudSurroundingSegments.Value;
             settings.QuickLauncherTarget = _cmbQuickLauncherTarget.SelectedIndex == 1
                 ? "WorkbenchSidekick" : "TradosAssistant";

@@ -250,6 +250,32 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "help", Order = 1, EmitDefaultValue = false)] public string Help { get; set; }
     }
 
+    [DataContract]
+    public class BridgeTextPair
+    {
+        [DataMember(Name = "source", Order = 0)] public string Source { get; set; }
+        [DataMember(Name = "target", Order = 1, EmitDefaultValue = false)] public string Target { get; set; }
+    }
+
+    [DataContract]
+    public class BridgePromptContextResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "sourceLang", Order = 2, EmitDefaultValue = false)] public string SourceLang { get; set; }
+        [DataMember(Name = "targetLang", Order = 3, EmitDefaultValue = false)] public string TargetLang { get; set; }
+        [DataMember(Name = "segmentCount", Order = 4)] public int SegmentCount { get; set; }
+        [DataMember(Name = "returnedSegments", Order = 5)] public int ReturnedSegments { get; set; }
+        [DataMember(Name = "wordCount", Order = 6)] public int WordCount { get; set; }
+        [DataMember(Name = "domain", Order = 7, EmitDefaultValue = false)] public string Domain { get; set; }
+        [DataMember(Name = "truncated", Order = 8)] public bool Truncated { get; set; }
+        [DataMember(Name = "sourceText", Order = 9, EmitDefaultValue = false)] public string SourceText { get; set; }
+        [DataMember(Name = "terms", Order = 10, EmitDefaultValue = false)] public List<BridgeTextPair> Terms { get; set; }
+        [DataMember(Name = "tmPairs", Order = 11, EmitDefaultValue = false)] public List<BridgeTextPair> TmPairs { get; set; }
+        [DataMember(Name = "currentDefaultPrompt", Order = 12, EmitDefaultValue = false)] public string CurrentDefaultPrompt { get; set; }
+        [DataMember(Name = "note", Order = 13, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
     // ─── MCP endpoint types (v1: /project, /segments, /tm-search, /term-lookup) ──
 
     [DataContract]
@@ -749,6 +775,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> _findReplace;
         private readonly Func<BridgeRunTaskRequest, BridgeRunTaskResponse> _runTask;
         private readonly Func<string, BridgeTaskStatusResponse> _getTaskStatus;
+        private readonly Func<int, BridgePromptContextResponse> _getPromptContext;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -782,7 +809,8 @@ namespace Supervertaler.Trados.Core
             Func<BridgeVerifyResponse> runVerification = null,
             Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> findReplace = null,
             Func<BridgeRunTaskRequest, BridgeRunTaskResponse> runTask = null,
-            Func<string, BridgeTaskStatusResponse> getTaskStatus = null)
+            Func<string, BridgeTaskStatusResponse> getTaskStatus = null,
+            Func<int, BridgePromptContextResponse> getPromptContext = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -804,6 +832,7 @@ namespace Supervertaler.Trados.Core
             _findReplace = findReplace;
             _runTask = runTask;
             _getTaskStatus = getTaskStatus;
+            _getPromptContext = getPromptContext;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -1117,6 +1146,11 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/task-status")
             {
                 HandleGetTaskStatus(context);
+                return;
+            }
+            if (method == "GET" && path == "/v1/prompt-context")
+            {
+                HandleGetPromptContext(context);
                 return;
             }
             if (method == "GET" && path == "/v1/prompts")
@@ -2297,6 +2331,36 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] task-status threw: {ex.Message}");
                 response = new BridgeTaskStatusResponse { Ok = false, Error = "task-status failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleGetPromptContext(HttpListenerContext context)
+        {
+            if (_getPromptContext == null)
+            {
+                TryWriteError(context, 501, "prompt-context endpoint not wired");
+                return;
+            }
+
+            // maxSegments override: absent -> -1 (use the AI Settings default);
+            // 0 -> whole document; >0 -> cap.
+            int maxSegments = -1;
+            var q = context.Request.QueryString["maxSegments"];
+            if (!string.IsNullOrWhiteSpace(q) && int.TryParse(q, out var m))
+                maxSegments = m < 0 ? -1 : m;
+
+            BridgePromptContextResponse response;
+            try
+            {
+                response = _getPromptContext(maxSegments)
+                    ?? new BridgePromptContextResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] prompt-context threw: {ex.Message}");
+                response = new BridgePromptContextResponse { Ok = false, Error = "prompt-context failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);

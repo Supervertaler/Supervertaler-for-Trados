@@ -760,6 +760,24 @@
       "paramMap": {},
       "fixedQuery": {},
       "fixedBody": {}
+    },
+    {
+      "name": "get_prompt_context",
+      "description": "Get the document context needed to write a tailored translation prompt for the project open in Trados – so you can act as the user's prompt engineer. Returns source/target languages, the detected domain, the source text (whole document by default, or capped by the user's AI-settings limit), the relevant termbase terms, a few confirmed TM example pairs, and the user's current Default Translation Prompt as a baseline to improve on. After refining a prompt together with the user, save it with save_prompt. Pass maxSegments to control how much source is included: 0 = whole document (best for large-context models), or a positive number to cap it; omit to use the user's setting.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxSegments": {
+            "description": "Override how many source segments to include: 0 = the whole document; a positive number caps it. Omit to use the user's AI-settings default.",
+            "type": "integer"
+          }
+        }
+      },
+      "method": "GET",
+      "path": "/v1/prompt-context",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
     }
   ]
 }
