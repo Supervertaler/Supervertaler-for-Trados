@@ -7,6 +7,16 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.112 / 19.20.112] – 2026-07-21
+
+### Changed (Supervertaler MCP Server · the connection now starts with Studio, not with the first document)
+
+- **The AI bridge starts as soon as Trados Studio is up** – previously it waited for a document to be opened in the editor, so with Studio sitting on the Projects view your AI app saw a dead connection (and a stale tool list). The machine-wide tools (`list_projects`, `list_tms`, `list_project_templates`, the prompt library, `help`) don't need a document at all, and now work the moment Studio is running. Tools that do need one keep answering gracefully ("no document is open in the editor") until you open it.
+
+### Fixed (Supervertaler MCP Server · Studio 2026's project registry is actually found now)
+
+- **`list_projects` (and the by-name project lookups) missed every Studio 2026 project**, because Studio 2026 keeps its Documents folder under a *different name* than expected – `Studio 2026 Release`, not `Studio 2026`. The Studio folders are now discovered by enumerating `Documents\Studio *` instead of hardcoding names, so all versions' registries, Translation Memories folders and Project Templates folders are found regardless of how the edition names its folder – current and future.
+
 ## [18.20.111 / 19.20.111] – 2026-07-21
 
 ### Added (Supervertaler MCP Server · your AI assistant can now see all your projects, TMs and templates)

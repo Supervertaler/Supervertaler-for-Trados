@@ -231,9 +231,17 @@ namespace Supervertaler.Trados
                         try { editor.ActiveDocumentChanged += (s2, e2) => ForceBridgePane("ActiveDocumentChanged"); }
                         catch (Exception ex) { Core.DiagnosticLog.WriteAlways("BridgeLoader", "subscribe threw: " + ex.Message); }
 
+                        // Start the bridge as soon as Studio is up - do NOT wait for a
+                        // document. The machine-wide MCP tools (list projects/TMs/
+                        // templates, prompt library, help) are pure disk reads and must
+                        // work with Studio open on the Projects view and nothing in the
+                        // editor; document-dependent tools already answer gracefully
+                        // ("no document is open") until one is. The ActiveDocumentChanged
+                        // subscription above stays as a belt-and-braces re-trigger
+                        // (EnsureInitialized is idempotent).
                         var doc = editor.ActiveDocument;
                         Core.DiagnosticLog.WriteAlways("BridgeLoader", "ActiveDocument at hook time = " + (doc == null ? "null" : "present"));
-                        if (doc != null) ForceBridgePane("already-open");
+                        ForceBridgePane(doc != null ? "already-open" : "studio-startup");
                     }
                     catch (Exception ex)
                     {

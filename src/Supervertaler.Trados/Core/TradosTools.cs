@@ -455,14 +455,10 @@ namespace Supervertaler.Trados.Core
 
         private static string ListTranslationMemories()
         {
-            // Primary location: Documents\Studio 20xx\Translation Memories\
-            var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            var tmFolders = new[]
-            {
-                Path.Combine(docsFolder, "Studio 2026", "Translation Memories"),
-                Path.Combine(docsFolder, "Studio 2024", "Translation Memories"),
-                Path.Combine(docsFolder, "Studio 2022", "Translation Memories")
-            };
+            // Primary location: Documents\<Studio folder>\Translation Memories\
+            var tmFolders = GetStudioDocumentFolders()
+                .Select(f => Path.Combine(f, "Translation Memories"))
+                .ToArray();
 
             var tmFiles = new List<string>();
             foreach (var folder in tmFolders)
@@ -548,13 +544,9 @@ namespace Supervertaler.Trados.Core
 
         private static string ListProjectTemplates()
         {
-            var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            var templateFolders = new[]
-            {
-                Path.Combine(docsFolder, "Studio 2026", "Project Templates"),
-                Path.Combine(docsFolder, "Studio 2024", "Project Templates"),
-                Path.Combine(docsFolder, "Studio 2022", "Project Templates")
-            };
+            var templateFolders = GetStudioDocumentFolders()
+                .Select(f => Path.Combine(f, "Project Templates"))
+                .ToArray();
 
             var templates = new List<string>();
             foreach (var folder in templateFolders)
@@ -1250,6 +1242,32 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// All "Studio *" folders under Documents, newest Studio first. Trados
+        /// names this folder after the product edition and the name VARIES –
+        /// "Studio 2026 Release" (not "Studio 2026"), "Studio 2024", "Studio 2022"
+        /// – so hardcoding names silently misses whole versions. Enumerate instead.
+        /// </summary>
+        private static List<string> GetStudioDocumentFolders()
+        {
+            var result = new List<string>();
+            try
+            {
+                var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                if (Directory.Exists(docsFolder))
+                    result.AddRange(Directory.GetDirectories(docsFolder, "Studio *"));
+            }
+            catch { }
+            result.Sort((a, b) => StudioYearOf(b).CompareTo(StudioYearOf(a)));
+            return result;
+        }
+
+        private static int StudioYearOf(string dir)
+        {
+            var m = Regex.Match(Path.GetFileName(dir) ?? "", @"\d{4}");
+            return m.Success ? int.Parse(m.Value) : 0;
+        }
+
+        /// <summary>
         /// ALL existing Trados project registries on this machine, newest Studio
         /// first. Each Studio major keeps its own projects.xml, so anything that
         /// answers "what projects are there" must read every one of them – reading
@@ -1257,11 +1275,10 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         private static List<string> GetProjectsXmlPaths()
         {
-            var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             var result = new List<string>();
-            foreach (var studio in new[] { "Studio 2026", "Studio 2024", "Studio 2022" })
+            foreach (var folder in GetStudioDocumentFolders())
             {
-                var p = Path.Combine(docsFolder, studio, "Projects", "projects.xml");
+                var p = Path.Combine(folder, "Projects", "projects.xml");
                 if (File.Exists(p)) result.Add(p);
             }
             return result;
