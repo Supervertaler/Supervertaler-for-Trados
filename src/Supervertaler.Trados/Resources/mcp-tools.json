@@ -464,6 +464,71 @@
       "fixedBody": {}
     },
     {
+      "name": "list_projects",
+      "description": "List ALL projects registered in Trados Studio on this machine - across every Studio version's registry (2026/2024/2022), deduplicated - with name, status, created date, project folder path, and which Studio version registered it. Use for questions about the user's projects overall ('what projects do I have?', 'find my project X'). For the project OPEN in the editor, use get_active_project instead. Optionally filter by status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "Optional status filter: 'InProgress', 'Completed', or 'Archived'. Omit to list all.",
+            "type": "string"
+          }
+        }
+      },
+      "method": "GET",
+      "path": "/v1/projects",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "get_project",
+      "description": "Details of a specific registered Trados project by name (case-insensitive partial match, searched across every Studio version's registry): status, created date, source/target languages, files, and folder path. For the project OPEN in the editor prefer get_active_project (live state); this one reads the registry and .sdlproj on disk, so it also works for projects that are not open.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Project name or a distinctive part of it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "method": "GET",
+      "path": "/v1/project-info",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "list_tms",
+      "description": "List the file-based Trados translation memories (.sdltm) on this machine: everything in the Studio Translation Memories folders (2026/2024/2022) plus TMs referenced by registered projects, deduplicated, with name and path. Use for 'which TMs do I have?'. For the TMs attached to the OPEN project use list_resources; to search TM content use search_studio_tm or search_tm.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "method": "GET",
+      "path": "/v1/tms",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "list_project_templates",
+      "description": "List the Trados Studio project templates (.sdltpl) on this machine, from every Studio version's Project Templates folder, with name and path. Useful when discussing how the user sets up new projects.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "method": "GET",
+      "path": "/v1/project-templates",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
       "name": "lookup_term",
       "description": "Look up a term across ALL the user's termbases: Supervertaler termbases plus the Trados termbases attached to the open project (.ttb in Studio 2026, MultiTerm .sdltb in Studio 2024 – hits from those are marked [Trados project termbase]). Exact match first, substring fallback. The user's termbase is authoritative for terminology – always follow it over your own preference.",
       "inputSchema": {

@@ -269,50 +269,58 @@ namespace Supervertaler.Trados.Core
 
         private static string ListProjects(string statusFilter)
         {
-            var xmlPath = GetProjectsXmlPath();
-            if (xmlPath == null || !File.Exists(xmlPath))
-                return JsonError("Could not find Trados Studio projects.xml. Is Trados Studio installed?");
-
-            var doc = XDocument.Load(xmlPath);
-            var items = doc.Descendants("ProjectListItem").ToList();
+            var xmlPaths = GetProjectsXmlPaths();
+            if (xmlPaths.Count == 0)
+                return JsonError("Could not find any Trados Studio projects.xml. Is Trados Studio installed?");
 
             var sb = new StringBuilder();
             sb.Append("{\"projects\":[");
             int count = 0;
+            // The same project can be registered under more than one Studio
+            // version – dedupe on the resolved .sdlproj path, newest Studio wins.
+            var seenProjPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var item in items)
+            foreach (var xmlPath in xmlPaths)
             {
-                var info = item.Element("ProjectInfo");
-                if (info == null) continue;
+                XDocument doc;
+                try { doc = XDocument.Load(xmlPath); }
+                catch { continue; }
+                var studio = StudioLabelFromXmlPath(xmlPath);
 
-                var name = info.Attribute("Name")?.Value ?? "";
-                var status = info.Attribute("Status")?.Value ?? "";
-                var createdAt = info.Attribute("CreatedAt")?.Value ?? "";
-                var projectFilePath = item.Attribute("ProjectFilePath")?.Value ?? "";
-
-                // Apply status filter if specified
-                if (!string.IsNullOrEmpty(statusFilter) &&
-                    !status.Equals(statusFilter, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                // Map status to friendly name
-                var friendlyStatus = MapStatus(status);
-
-                // Format creation date
-                var dateStr = FormatDate(createdAt);
-
-                if (count > 0) sb.Append(",");
-                sb.Append("{");
-                sb.Append("\"name\":").Append(JsonStr(name));
-                sb.Append(",\"status\":").Append(JsonStr(friendlyStatus));
-                sb.Append(",\"created\":").Append(JsonStr(dateStr));
-                if (!string.IsNullOrEmpty(projectFilePath))
+                foreach (var item in doc.Descendants("ProjectListItem"))
                 {
-                    var folder = Path.GetDirectoryName(ResolveProjectPath(projectFilePath, xmlPath));
-                    sb.Append(",\"path\":").Append(JsonStr(folder ?? ""));
+                    var info = item.Element("ProjectInfo");
+                    if (info == null) continue;
+
+                    var name = info.Attribute("Name")?.Value ?? "";
+                    var status = info.Attribute("Status")?.Value ?? "";
+                    var createdAt = info.Attribute("CreatedAt")?.Value ?? "";
+                    var projectFilePath = item.Attribute("ProjectFilePath")?.Value ?? "";
+
+                    // Apply status filter if specified
+                    if (!string.IsNullOrEmpty(statusFilter) &&
+                        !status.Equals(statusFilter, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var projPath = ResolveProjectPath(projectFilePath, xmlPath);
+                    if (!string.IsNullOrEmpty(projPath) && !seenProjPaths.Add(projPath))
+                        continue; // already listed from a newer Studio's registry
+
+                    var friendlyStatus = MapStatus(status);
+                    var dateStr = FormatDate(createdAt);
+
+                    if (count > 0) sb.Append(",");
+                    sb.Append("{");
+                    sb.Append("\"name\":").Append(JsonStr(name));
+                    sb.Append(",\"status\":").Append(JsonStr(friendlyStatus));
+                    sb.Append(",\"created\":").Append(JsonStr(dateStr));
+                    if (!string.IsNullOrEmpty(studio))
+                        sb.Append(",\"studio\":").Append(JsonStr(studio));
+                    if (!string.IsNullOrEmpty(projPath))
+                        sb.Append(",\"path\":").Append(JsonStr(Path.GetDirectoryName(projPath) ?? ""));
+                    sb.Append("}");
+                    count++;
                 }
-                sb.Append("}");
-                count++;
             }
 
             sb.Append("],\"total\":").Append(count).Append("}");
@@ -324,20 +332,27 @@ namespace Supervertaler.Trados.Core
             if (string.IsNullOrWhiteSpace(projectName))
                 return JsonError("Project name is required.");
 
-            var xmlPath = GetProjectsXmlPath();
-            if (xmlPath == null || !File.Exists(xmlPath))
-                return JsonError("Could not find Trados Studio projects.xml.");
+            var xmlPaths = GetProjectsXmlPaths();
+            if (xmlPaths.Count == 0)
+                return JsonError("Could not find any Trados Studio projects.xml.");
 
-            var doc = XDocument.Load(xmlPath);
-            var items = doc.Descendants("ProjectListItem").ToList();
-
-            // Find project by name (case-insensitive, partial match)
+            // Search every Studio version's registry (newest first) – projects
+            // live in per-version projects.xml files.
             var searchLower = projectName.ToLowerInvariant();
-            var match = items.FirstOrDefault(i =>
+            XElement match = null;
+            string xmlPath = null;
+            foreach (var candidate in xmlPaths)
             {
-                var name = i.Element("ProjectInfo")?.Attribute("Name")?.Value;
-                return name != null && name.ToLowerInvariant().Contains(searchLower);
-            });
+                XDocument doc;
+                try { doc = XDocument.Load(candidate); }
+                catch { continue; }
+                match = doc.Descendants("ProjectListItem").FirstOrDefault(i =>
+                {
+                    var name = i.Element("ProjectInfo")?.Attribute("Name")?.Value;
+                    return name != null && name.ToLowerInvariant().Contains(searchLower);
+                });
+                if (match != null) { xmlPath = candidate; break; }
+            }
 
             if (match == null)
                 return JsonError($"No project found matching '{projectName}'.");
@@ -440,10 +455,11 @@ namespace Supervertaler.Trados.Core
 
         private static string ListTranslationMemories()
         {
-            // Primary location: Documents\Studio 2024\Translation Memories\
+            // Primary location: Documents\Studio 20xx\Translation Memories\
             var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             var tmFolders = new[]
             {
+                Path.Combine(docsFolder, "Studio 2026", "Translation Memories"),
                 Path.Combine(docsFolder, "Studio 2024", "Translation Memories"),
                 Path.Combine(docsFolder, "Studio 2022", "Translation Memories")
             };
@@ -458,12 +474,14 @@ namespace Supervertaler.Trados.Core
                 }
             }
 
-            // Scan all .sdlproj files for TM references and project TM folders
-            var xmlPath = GetProjectsXmlPath();
-            if (xmlPath != null && File.Exists(xmlPath))
+            // Scan all .sdlproj files for TM references and project TM folders –
+            // across every Studio version's registry.
+            var projectDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var xmlPath in GetProjectsXmlPaths())
             {
-                var doc = XDocument.Load(xmlPath);
-                var projectDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                XDocument doc;
+                try { doc = XDocument.Load(xmlPath); }
+                catch { continue; }
 
                 foreach (var item in doc.Descendants("ProjectListItem"))
                 {
@@ -533,6 +551,7 @@ namespace Supervertaler.Trados.Core
             var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             var templateFolders = new[]
             {
+                Path.Combine(docsFolder, "Studio 2026", "Project Templates"),
                 Path.Combine(docsFolder, "Studio 2024", "Project Templates"),
                 Path.Combine(docsFolder, "Studio 2022", "Project Templates")
             };
@@ -1087,22 +1106,24 @@ namespace Supervertaler.Trados.Core
         {
             if (string.IsNullOrWhiteSpace(projectName)) return null;
 
-            var xmlPath = GetProjectsXmlPath();
-            if (xmlPath == null || !File.Exists(xmlPath)) return null;
-
-            var doc = XDocument.Load(xmlPath);
             var searchLower = projectName.ToLowerInvariant();
-            var match = doc.Descendants("ProjectListItem").FirstOrDefault(i =>
+            foreach (var xmlPath in GetProjectsXmlPaths())
             {
-                var name = i.Element("ProjectInfo")?.Attribute("Name")?.Value;
-                return name != null && name.ToLowerInvariant().Contains(searchLower);
-            });
+                XDocument doc;
+                try { doc = XDocument.Load(xmlPath); }
+                catch { continue; }
+                var match = doc.Descendants("ProjectListItem").FirstOrDefault(i =>
+                {
+                    var name = i.Element("ProjectInfo")?.Attribute("Name")?.Value;
+                    return name != null && name.ToLowerInvariant().Contains(searchLower);
+                });
+                if (match == null) continue;
 
-            if (match == null) return null;
-
-            var projectFilePath = match.Attribute("ProjectFilePath")?.Value;
-            var projPath = ResolveProjectPath(projectFilePath, xmlPath);
-            return projPath != null && File.Exists(projPath) ? projPath : null;
+                var projectFilePath = match.Attribute("ProjectFilePath")?.Value;
+                var projPath = ResolveProjectPath(projectFilePath, xmlPath);
+                if (projPath != null && File.Exists(projPath)) return projPath;
+            }
+            return null;
         }
 
         /// <summary>
@@ -1223,18 +1244,34 @@ namespace Supervertaler.Trados.Core
 
         private static string GetProjectsXmlPath()
         {
-            var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            var paths = new[]
-            {
-                Path.Combine(docsFolder, "Studio 2026", "Projects", "projects.xml"),
-                Path.Combine(docsFolder, "Studio 2024", "Projects", "projects.xml"),
-                Path.Combine(docsFolder, "Studio 2022", "Projects", "projects.xml")
-            };
-
-            foreach (var p in paths)
-                if (File.Exists(p)) return p;
-
+            foreach (var p in GetProjectsXmlPaths())
+                return p;
             return null;
+        }
+
+        /// <summary>
+        /// ALL existing Trados project registries on this machine, newest Studio
+        /// first. Each Studio major keeps its own projects.xml, so anything that
+        /// answers "what projects are there" must read every one of them – reading
+        /// only the first misses projects registered under another version.
+        /// </summary>
+        private static List<string> GetProjectsXmlPaths()
+        {
+            var docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            var result = new List<string>();
+            foreach (var studio in new[] { "Studio 2026", "Studio 2024", "Studio 2022" })
+            {
+                var p = Path.Combine(docsFolder, studio, "Projects", "projects.xml");
+                if (File.Exists(p)) result.Add(p);
+            }
+            return result;
+        }
+
+        /// <summary>"Studio 2026" from ...\Documents\Studio 2026\Projects\projects.xml.</summary>
+        private static string StudioLabelFromXmlPath(string xmlPath)
+        {
+            try { return Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(xmlPath))); }
+            catch { return null; }
         }
 
         private static string ResolveProjectPath(string projectFilePath, string xmlPath)

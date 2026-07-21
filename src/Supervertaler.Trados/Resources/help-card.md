@@ -6,6 +6,7 @@ You talk to me in plain language – there are no commands to memorise. Here's t
 - "What's the status of my Trados project?"
 - "Show me the project statistics" – word counts, TM leverage, progress
 - "How many segments are left to translate?"
+- "What projects do I have?" / "Which TMs are on this machine?"
 
 **Find & read segments**
 - "Show me the draft / unconfirmed segments"

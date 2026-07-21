@@ -7,6 +7,13 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.111 / 19.20.111] – 2026-07-21
+
+### Added (Supervertaler MCP Server · your AI assistant can now see all your projects, TMs and templates)
+
+- **Four new machine-wide tools**: **`list_projects`** (every project registered in Trados Studio, with status, dates, paths and which Studio version registered it), **`get_project`** (details of any registered project by name – languages, files, status – without opening it), **`list_tms`** (the file TMs in your Studio folders plus those referenced by your projects), and **`list_project_templates`**. Ask *"what projects do I have?"*, *"when did I create the ACME job?"*, *"which TMs are on this machine?"*
+- **All of these read every Studio version's registry** – Studio 2026, 2024 and 2022 each keep a separate project list, and previously only one was consulted (which is why a Studio 2026 project could come back as "not found"). Projects registered under more than one version are deduplicated. The same multi-registry search now also backs `get_project_statistics`'s by-name lookup, and the TM/template folders of all three versions are scanned.
+
 ## [18.20.110 / 19.20.110] – 2026-07-21
 
 ### Added (Supervertaler MCP Server · the plugin can now tell you when your extension needs updating)

@@ -1221,6 +1221,28 @@ namespace Supervertaler.Trados.Core
                 HandleGetHelp(context);
                 return;
             }
+            if (method == "GET" && path == "/v1/projects")
+            {
+                HandleDiskTool(context, "studio_list_projects",
+                    "{\"status_filter\":" + JsonQuote(context.Request.QueryString["status"] ?? "") + "}");
+                return;
+            }
+            if (method == "GET" && path == "/v1/project-info")
+            {
+                HandleDiskTool(context, "studio_get_project",
+                    "{\"project_name\":" + JsonQuote(context.Request.QueryString["name"] ?? "") + "}");
+                return;
+            }
+            if (method == "GET" && path == "/v1/tms")
+            {
+                HandleDiskTool(context, "studio_list_tms", "{}");
+                return;
+            }
+            if (method == "GET" && path == "/v1/project-templates")
+            {
+                HandleDiskTool(context, "studio_list_project_templates", "{}");
+                return;
+            }
 
             TryWriteError(context, 404, "not found");
         }
@@ -1357,6 +1379,27 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] help card read failed: {ex.Message}");
                 TryWriteError(context, 500, "help card error: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Shared handler for the pure disk-read TradosTools tools (list projects /
+        /// project details / TMs / templates). No editor state, no UI-thread hop:
+        /// ExecuteTool reads the projects.xml registries and files on disk and
+        /// returns ready-made JSON, which is passed through verbatim (errors come
+        /// back as {"error":"..."} inside the payload).
+        /// </summary>
+        private void HandleDiskTool(HttpListenerContext context, string toolName, string inputJson)
+        {
+            try
+            {
+                var result = TradosTools.ExecuteTool(toolName, inputJson);
+                WriteRawJson(context, 200, result ?? "{\"error\":\"no result\"}");
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] {toolName} threw: {ex.Message}");
+                TryWriteError(context, 500, toolName + " failed: " + ex.Message);
             }
         }
 
