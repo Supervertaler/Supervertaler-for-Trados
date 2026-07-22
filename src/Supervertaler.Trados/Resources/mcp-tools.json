@@ -72,6 +72,74 @@
       "fixedBody": {}
     },
     {
+      "name": "update_term",
+      "description": "Change an existing entry in the user's SUPERVERTALER termbases (the termbase must be Write-enabled - same gate as add_term). Identify the entry by its EXACT current source and target terms (use lookup_term first to see the stored form); optionally restrict to one termbase by name. Provide newSource and/or newTarget. All exact matches in Write-enabled termbases are updated together (identical duplicates); every other field of the entry (definition, notes, domain, flags) is preserved, and the response lists exactly what changed. Trados project termbases (.ttb/.sdltb) are read-only by design - edits to those must be done in Studio.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "description": "The entry's exact CURRENT source term.",
+            "type": "string"
+          },
+          "target": {
+            "description": "The entry's exact CURRENT target term.",
+            "type": "string"
+          },
+          "termbase": {
+            "description": "Optional: restrict to one termbase by (partial) name.",
+            "type": "string"
+          },
+          "newSource": {
+            "description": "New source term. Omit to keep the current one.",
+            "type": "string"
+          },
+          "newTarget": {
+            "description": "New target term. Omit to keep the current one.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/update-term",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "delete_term",
+      "description": "Delete an entry from the user's SUPERVERTALER termbases (the termbase must be Write-enabled - same gate as add_term). Identify the entry by its EXACT current source and target terms (use lookup_term first); optionally restrict to one termbase by name. All exact matches in Write-enabled termbases are deleted together (identical duplicates), and the response lists exactly what was removed - repeat it to the user so the chat is the audit trail. This is DESTRUCTIVE: only call it when the user has clearly asked for the removal (or confirmed your suggestion). Trados project termbases (.ttb/.sdltb) are read-only by design.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "description": "The entry's exact source term.",
+            "type": "string"
+          },
+          "target": {
+            "description": "The entry's exact target term.",
+            "type": "string"
+          },
+          "termbase": {
+            "description": "Optional: restrict to one termbase by (partial) name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/delete-term",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
       "name": "check_numbers",
       "description": "QA check: find translated segments where the numbers in source and target don't match (digits compared with thousand/decimal separators normalised, so 1.234,56 matches 1,234.56). Returns each mismatch with the segment's numbers listed. Only translated segments are checked. Chain with update_segments after the user approves fixes.",
       "inputSchema": {
@@ -530,13 +598,17 @@
     },
     {
       "name": "lookup_term",
-      "description": "Look up a term across ALL the user's termbases: Supervertaler termbases plus the Trados termbases attached to the open project (.ttb in Studio 2026, MultiTerm .sdltb in Studio 2024 – hits from those are marked [Trados project termbase]). Exact match first, substring fallback. The user's termbase is authoritative for terminology – always follow it over your own preference.",
+      "description": "Look up a term in the user's termbases: exact match first, then substring fallback. Searches EVERY Supervertaler termbase in the database - hits from termbases whose Read tick is OFF are flagged \"inactive\": true (mention that to the user when it matters, e.g. a hit only exists in an inactive termbase). Pass activeOnly=true to search only the active (Read-enabled) termbases - useful when the user has many termbases and wants results limited to what's in use. Also searches the Trados project's own termbases (.ttb/.sdltb) when a document is open (those are always active ones).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "term": {
             "description": "The term to look up (source or target language).",
             "type": "string"
+          },
+          "activeOnly": {
+            "description": "When true, only search termbases whose Read tick is ON (the active set). Default false = search everything, with inactive hits flagged.",
+            "type": "boolean"
           }
         },
         "required": [

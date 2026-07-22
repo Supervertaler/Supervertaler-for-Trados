@@ -157,6 +157,10 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "domain", Order = 4, EmitDefaultValue = false)] public string Domain { get; set; }
         [DataMember(Name = "notes", Order = 5, EmitDefaultValue = false)] public string Notes { get; set; }
         [DataMember(Name = "nonTranslatable", Order = 6, EmitDefaultValue = false)] public bool NonTranslatable { get; set; }
+        /// <summary>True when the hit comes from a termbase whose Read tick is
+        /// OFF in the Supervertaler Termbases settings – the lookup searches the
+        /// whole database, so inactive termbases still answer, but flagged.</summary>
+        [DataMember(Name = "inactive", Order = 7, EmitDefaultValue = false)] public bool Inactive { get; set; }
     }
 
     [DataContract]
@@ -181,6 +185,28 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
         [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
         [DataMember(Name = "note", Order = 2, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeEditTermRequest
+    {
+        [DataMember(Name = "source")] public string Source { get; set; }
+        [DataMember(Name = "target")] public string Target { get; set; }
+        /// <summary>Optional termbase name to restrict the edit to.</summary>
+        [DataMember(Name = "termbase")] public string Termbase { get; set; }
+        // update_term only:
+        [DataMember(Name = "newSource")] public string NewSource { get; set; }
+        [DataMember(Name = "newTarget")] public string NewTarget { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeEditTermResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "changed", Order = 2)] public int Changed { get; set; }
+        [DataMember(Name = "details", Order = 3, EmitDefaultValue = false)] public List<string> Details { get; set; }
+        [DataMember(Name = "note", Order = 4, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
     // ─── Prompt-library endpoint types (v1: /prompts, /prompt, /save-prompt) ──
@@ -776,6 +802,8 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeRunTaskRequest, BridgeRunTaskResponse> _runTask;
         private readonly Func<string, BridgeTaskStatusResponse> _getTaskStatus;
         private readonly Func<int, BridgePromptContextResponse> _getPromptContext;
+        private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _updateTerm;
+        private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _deleteTerm;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -843,7 +871,9 @@ namespace Supervertaler.Trados.Core
             Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> findReplace = null,
             Func<BridgeRunTaskRequest, BridgeRunTaskResponse> runTask = null,
             Func<string, BridgeTaskStatusResponse> getTaskStatus = null,
-            Func<int, BridgePromptContextResponse> getPromptContext = null)
+            Func<int, BridgePromptContextResponse> getPromptContext = null,
+            Func<BridgeEditTermRequest, BridgeEditTermResponse> updateTerm = null,
+            Func<BridgeEditTermRequest, BridgeEditTermResponse> deleteTerm = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -866,6 +896,8 @@ namespace Supervertaler.Trados.Core
             _runTask = runTask;
             _getTaskStatus = getTaskStatus;
             _getPromptContext = getPromptContext;
+            _updateTerm = updateTerm;
+            _deleteTerm = deleteTerm;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -1243,6 +1275,16 @@ namespace Supervertaler.Trados.Core
                 HandleDiskTool(context, "studio_list_project_templates", "{}");
                 return;
             }
+            if (method == "POST" && path == "/v1/update-term")
+            {
+                HandleEditTerm(context, _updateTerm, "update-term");
+                return;
+            }
+            if (method == "POST" && path == "/v1/delete-term")
+            {
+                HandleEditTerm(context, _deleteTerm, "delete-term");
+                return;
+            }
 
             TryWriteError(context, 404, "not found");
         }
@@ -1380,6 +1422,52 @@ namespace Supervertaler.Trados.Core
                 BridgeLog.Write($"[SupervertalerBridge] help card read failed: {ex.Message}");
                 TryWriteError(context, 500, "help card error: " + ex.Message);
             }
+        }
+
+        /// <summary>Shared handler for POST /v1/update-term and /v1/delete-term.</summary>
+        private void HandleEditTerm(HttpListenerContext context,
+            Func<BridgeEditTermRequest, BridgeEditTermResponse> handler, string name)
+        {
+            if (handler == null)
+            {
+                TryWriteError(context, 501, name + " endpoint not wired");
+                return;
+            }
+
+            BridgeEditTermRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                    req = DeserializeJson<BridgeEditTermRequest>(reader.ReadToEnd());
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeEditTermResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            if (req == null || string.IsNullOrWhiteSpace(req.Source) || string.IsNullOrWhiteSpace(req.Target))
+            {
+                WriteJson(context, 400, new BridgeEditTermResponse
+                {
+                    Ok = false,
+                    Error = "missing 'source'/'target' – identify the entry by its exact current source and target terms"
+                });
+                return;
+            }
+
+            BridgeEditTermResponse response;
+            try
+            {
+                response = handler(req) ?? new BridgeEditTermResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] {name} threw: {ex.Message}");
+                response = new BridgeEditTermResponse { Ok = false, Error = name + " failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
         }
 
         /// <summary>
@@ -1637,8 +1725,24 @@ namespace Supervertaler.Trados.Core
                                             "matches (query text appears inside the source or target term).";
                     }
 
+                    // The DB search covers EVERY Supervertaler termbase, including
+                    // ones whose Read tick is off. Flag hits from inactive termbases,
+                    // and drop them entirely when the caller asked activeOnly=true.
+                    bool activeOnly = string.Equals(
+                        context.Request.QueryString["activeOnly"], "true", StringComparison.OrdinalIgnoreCase);
+                    HashSet<long> disabledTbs;
+                    try
+                    {
+                        disabledTbs = new HashSet<long>(
+                            TermLensSettings.Load()?.DisabledTermbaseIds ?? new List<long>());
+                    }
+                    catch { disabledTbs = new HashSet<long>(); }
+
+                    int excludedInactive = 0;
                     foreach (var entry in entries)
                     {
+                        var inactive = disabledTbs.Contains(entry.TermbaseId);
+                        if (inactive && activeOnly) { excludedInactive++; continue; }
                         response.Hits.Add(new BridgeTermbaseHit
                         {
                             Source = entry.SourceTerm ?? "",
@@ -1647,9 +1751,13 @@ namespace Supervertaler.Trados.Core
                             Definition = entry.Definition,
                             Domain = entry.Domain,
                             Notes = entry.Notes,
-                            NonTranslatable = entry.IsNonTranslatable
+                            NonTranslatable = entry.IsNonTranslatable,
+                            Inactive = inactive
                         });
                     }
+                    if (excludedInactive > 0)
+                        response.Note = ((response.Note ?? "") +
+                            $" {excludedInactive} hit(s) from inactive (Read-unticked) termbases were excluded (activeOnly).").Trim();
                     foreach (var entry in studioHits)
                     {
                         var notes = entry.Notes;

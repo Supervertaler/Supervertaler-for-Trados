@@ -963,7 +963,9 @@ namespace Supervertaler.Trados
                     findReplace: BridgeFindReplace,
                     runTask: BridgeRunTask,
                     getTaskStatus: BridgeGetTaskStatus,
-                    getPromptContext: BuildPromptContext);
+                    getPromptContext: BuildPromptContext,
+                    updateTerm: BridgeUpdateTerm,
+                    deleteTerm: BridgeDeleteTerm);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -2446,6 +2448,174 @@ namespace Supervertaler.Trados
             catch (Exception ex)
             {
                 return new BridgeAddTermResponse { Ok = false, Error = "add term failed: " + ex.Message };
+            }
+        }
+
+        private BridgeEditTermResponse BridgeUpdateTerm(BridgeEditTermRequest req) => BridgeEditTerm(req, delete: false);
+        private BridgeEditTermResponse BridgeDeleteTerm(BridgeEditTermRequest req) => BridgeEditTerm(req, delete: true);
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/update-term and /v1/delete-term (MCP
+        /// update_term / delete_term). Edits SUPERVERTALER termbases only, with
+        /// the same gate as add_term: the termbase must be Write-enabled. The
+        /// entry is identified by its exact current source+target pair (all
+        /// exact matches are affected – identical duplicates go together);
+        /// Trados project termbases (.ttb/.sdltb) stay read-only by design.
+        /// The response echoes exactly what changed, so the chat transcript
+        /// doubles as the audit log. Marshals to the UI thread.
+        /// </summary>
+        private BridgeEditTermResponse BridgeEditTerm(BridgeEditTermRequest req, bool delete)
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeEditTermResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeEditTermResponse)ctrl.Invoke(
+                    new Func<BridgeEditTermRequest, bool, BridgeEditTermResponse>(BridgeEditTerm), req, delete);
+
+            try
+            {
+                var newSource = string.IsNullOrWhiteSpace(req.NewSource) ? null : req.NewSource.Trim();
+                var newTarget = string.IsNullOrWhiteSpace(req.NewTarget) ? null : req.NewTarget.Trim();
+                if (!delete && newSource == null && newTarget == null)
+                    return new BridgeEditTermResponse
+                    {
+                        Ok = false,
+                        Error = "nothing to change – provide 'newSource' and/or 'newTarget'"
+                    };
+
+                var settings = TermLensSettings.Load();
+                if (settings.WriteTermbaseIds == null || settings.WriteTermbaseIds.Count == 0)
+                    return new BridgeEditTermResponse
+                    {
+                        Ok = false,
+                        Error = "No write termbase is configured. The user must tick the 'Write' column for at " +
+                                "least one termbase in the Supervertaler Termbases settings."
+                    };
+                if (string.IsNullOrEmpty(settings.TermbasePath) || !File.Exists(settings.TermbasePath))
+                    return new BridgeEditTermResponse
+                    {
+                        Ok = false,
+                        Error = "Supervertaler database not found – check the termbase path in settings."
+                    };
+
+                var writeIds = new HashSet<long>(settings.WriteTermbaseIds);
+                var source = req.Source.Trim();
+                var target = req.Target.Trim();
+                var tbFilter = string.IsNullOrWhiteSpace(req.Termbase) ? null : req.Termbase.Trim();
+
+                // Resolve the entry: exact current source+target (case-insensitive),
+                // optionally restricted to one termbase by name.
+                List<Models.TermEntry> matches;
+                using (var reader = new TermbaseReader(settings.TermbasePath))
+                {
+                    if (!reader.Open())
+                        return new BridgeEditTermResponse { Ok = false, Error = "could not open Supervertaler database" };
+                    matches = (reader.SearchTerm(source) ?? new List<Models.TermEntry>())
+                        .Where(e => e != null
+                            && string.Equals((e.SourceTerm ?? "").Trim(), source, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals((e.TargetTerm ?? "").Trim(), target, StringComparison.OrdinalIgnoreCase)
+                            && (tbFilter == null
+                                || (e.TermbaseName ?? "").IndexOf(tbFilter, StringComparison.OrdinalIgnoreCase) >= 0))
+                        .ToList();
+                }
+
+                if (matches.Count == 0)
+                    return new BridgeEditTermResponse
+                    {
+                        Ok = false,
+                        Error = $"no entry “{source} → {target}” found" +
+                                (tbFilter != null ? $" in a termbase matching “{tbFilter}”" : "") +
+                                " – the pair must match the stored entry exactly; use lookup_term to see the stored form"
+                    };
+
+                var editable = matches.Where(e => writeIds.Contains(e.TermbaseId)).ToList();
+                if (editable.Count == 0)
+                {
+                    var where = string.Join(", ", matches.Select(e => e.TermbaseName).Distinct());
+                    return new BridgeEditTermResponse
+                    {
+                        Ok = false,
+                        Error = $"the entry exists in: {where} – but none of those termbases is Write-enabled. " +
+                                "The user must tick the 'Write' column for that termbase in the Supervertaler " +
+                                "Termbases settings before the AI may modify it."
+                    };
+                }
+
+                var details = new List<string>();
+                foreach (var e in editable)
+                {
+                    if (delete)
+                    {
+                        if (!TermbaseReader.DeleteTerm(settings.TermbasePath, e.Id)) continue;
+                        TermLensEditorViewPart.NotifyTermDeleted(e.Id);
+                        details.Add($"{e.TermbaseName}: deleted “{e.SourceTerm} → {e.TargetTerm}”");
+                    }
+                    else
+                    {
+                        var s = newSource ?? e.SourceTerm;
+                        var t = newTarget ?? e.TargetTerm;
+                        // Preserve every other field of the entry.
+                        if (!TermbaseReader.UpdateTerm(settings.TermbasePath, e.Id, s, t,
+                                e.Definition ?? "", e.Domain ?? "", e.Notes ?? "",
+                                e.IsNonTranslatable, e.SourceAbbreviation, e.TargetAbbreviation,
+                                e.Url, e.Client, e.Forbidden, e.Project))
+                            continue;
+                        // Refresh TermLens's in-memory index: replace the old entry.
+                        TermLensEditorViewPart.NotifyTermDeleted(e.Id);
+                        var updated = new Models.TermEntry
+                        {
+                            Id = e.Id,
+                            SourceTerm = s,
+                            TargetTerm = t,
+                            SourceLang = e.SourceLang,
+                            TargetLang = e.TargetLang,
+                            TermbaseId = e.TermbaseId,
+                            TermbaseName = e.TermbaseName,
+                            IsProjectTermbase = e.IsProjectTermbase,
+                            Ranking = e.Ranking,
+                            Definition = e.Definition,
+                            Domain = e.Domain,
+                            Notes = e.Notes,
+                            Url = e.Url,
+                            Forbidden = e.Forbidden,
+                            CaseSensitive = e.CaseSensitive,
+                            IsNonTranslatable = e.IsNonTranslatable,
+                            Client = e.Client,
+                            Project = e.Project,
+                            SourceAbbreviation = e.SourceAbbreviation,
+                            TargetAbbreviation = e.TargetAbbreviation,
+                            TargetSynonyms = e.TargetSynonyms ?? new List<string>()
+                        };
+                        TermLensEditorViewPart.NotifyTermInserted(new List<Models.TermEntry> { updated });
+                        details.Add($"{e.TermbaseName}: “{e.SourceTerm} → {e.TargetTerm}” is now “{s} → {t}”");
+                    }
+                }
+
+                var skippedNote = matches.Count > editable.Count
+                    ? $" ({matches.Count - editable.Count} match(es) in non-Write termbases were left untouched: " +
+                      string.Join(", ", matches.Where(e => !writeIds.Contains(e.TermbaseId)).Select(e => e.TermbaseName).Distinct()) + ")"
+                    : "";
+
+                return new BridgeEditTermResponse
+                {
+                    Ok = details.Count > 0,
+                    Error = details.Count == 0 ? "the database operation failed – nothing was changed" : null,
+                    Changed = details.Count,
+                    Details = details.Count > 0 ? details : null,
+                    Note = details.Count > 0
+                        ? "Changes are live in the shared Supervertaler database (also used by the Supervertaler " +
+                          "Workbench) – no save step needed." + skippedNote
+                        : null
+                };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeEditTermResponse
+                {
+                    Ok = false,
+                    Error = (delete ? "delete" : "update") + " term failed: " + ex.Message
+                };
             }
         }
 

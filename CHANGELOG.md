@@ -7,6 +7,13 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.113 / 19.20.113] – 2026-07-22
+
+### Added (Supervertaler MCP Server · the AI can now curate your termbase, not just add to it)
+
+- **Term lookups now tell the AI which termbases are actually in use.** `lookup_term` searches every Supervertaler termbase in your database – including ones whose **Read** tick is off – which is useful for "do I have this anywhere?" questions, but was invisible. Hits from inactive termbases are now flagged, so the AI can say "found, but only in an inactive termbase", and a new `activeOnly` option restricts the search to your Read-enabled termbases – handy once you've accumulated many termbases and want lookups limited to the active set (*"only consult my active termbases"*).
+- **New `update_term` and `delete_term` tools** complete the terminology loop: when the AI spots an outdated or wrong pair in your Supervertaler termbase, it can now fix or remove it instead of telling you to do it by hand. Rails: only termbases with the **Write** column ticked (the same gate as `add_term`); the entry must be identified by its **exact** current source and target; every other field of the entry (definition, notes, domain, flags) is preserved on update; and the response spells out exactly what changed, so the chat transcript doubles as your audit trail. Deleting is flagged to the AI as destructive – it's told to act only on your clear request or confirmation. Trados project termbases (`.ttb`/`.sdltb`) remain **read-only by design** – editing a live Studio termbase file from outside risks corrupting it, so those edits belong in Studio.
+
 ## [18.20.112 / 19.20.112] – 2026-07-21
 
 ### Changed (Supervertaler MCP Server · the connection now starts with Studio, not with the first document)
