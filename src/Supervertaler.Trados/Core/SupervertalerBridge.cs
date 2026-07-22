@@ -808,6 +808,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<int, BridgePromptContextResponse> _getPromptContext;
         private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _updateTerm;
         private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _deleteTerm;
+        private readonly Func<BridgeResultResponse> _saveDocument;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -877,7 +878,8 @@ namespace Supervertaler.Trados.Core
             Func<string, BridgeTaskStatusResponse> getTaskStatus = null,
             Func<int, BridgePromptContextResponse> getPromptContext = null,
             Func<BridgeEditTermRequest, BridgeEditTermResponse> updateTerm = null,
-            Func<BridgeEditTermRequest, BridgeEditTermResponse> deleteTerm = null)
+            Func<BridgeEditTermRequest, BridgeEditTermResponse> deleteTerm = null,
+            Func<BridgeResultResponse> saveDocument = null)
         {
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -902,6 +904,7 @@ namespace Supervertaler.Trados.Core
             _getPromptContext = getPromptContext;
             _updateTerm = updateTerm;
             _deleteTerm = deleteTerm;
+            _saveDocument = saveDocument;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -1287,6 +1290,19 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/delete-term")
             {
                 HandleEditTerm(context, _deleteTerm, "delete-term");
+                return;
+            }
+            if (method == "POST" && path == "/v1/save-document")
+            {
+                if (_saveDocument == null) { TryWriteError(context, 501, "save-document endpoint not wired"); return; }
+                BridgeResultResponse saveResp;
+                try { saveResp = _saveDocument() ?? new BridgeResultResponse { Ok = false, Error = "internal error" }; }
+                catch (Exception ex)
+                {
+                    BridgeLog.Write($"[SupervertalerBridge] save-document threw: {ex.Message}");
+                    saveResp = new BridgeResultResponse { Ok = false, Error = "save failed: " + ex.Message };
+                }
+                WriteJson(context, 200, saveResp);
                 return;
             }
 

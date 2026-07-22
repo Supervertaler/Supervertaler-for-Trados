@@ -965,7 +965,8 @@ namespace Supervertaler.Trados
                     getTaskStatus: BridgeGetTaskStatus,
                     getPromptContext: BuildPromptContext,
                     updateTerm: BridgeUpdateTerm,
-                    deleteTerm: BridgeDeleteTerm);
+                    deleteTerm: BridgeDeleteTerm,
+                    saveDocument: BridgeSaveDocument);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -2474,6 +2475,41 @@ namespace Supervertaler.Trados
 
         private BridgeEditTermResponse BridgeUpdateTerm(BridgeEditTermRequest req) => BridgeEditTerm(req, delete: false);
         private BridgeEditTermResponse BridgeDeleteTerm(BridgeEditTermRequest req) => BridgeEditTerm(req, delete: true);
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/save-document (MCP save_document): saves
+        /// the document open in the editor – the same as the user pressing
+        /// Ctrl+S. Ends the "now press Ctrl+S in Studio" hand-off after AI
+        /// writes, and lets save+batch-task chains run from chat. UI thread.
+        /// </summary>
+        private BridgeResultResponse BridgeSaveDocument()
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed)
+                return new BridgeResultResponse { Ok = false, Error = "ai assistant disposed" };
+            if (ctrl.InvokeRequired)
+                return (BridgeResultResponse)ctrl.Invoke(new Func<BridgeResultResponse>(BridgeSaveDocument));
+
+            if (_activeDocument == null)
+                return new BridgeResultResponse { Ok = false, Error = "no document is open in the Trados editor" };
+            if (_editorController == null)
+                return new BridgeResultResponse { Ok = false, Error = "editor controller unavailable" };
+
+            try
+            {
+                _editorController.Save(_activeDocument);
+                return new BridgeResultResponse
+                {
+                    Ok = true,
+                    Note = "Document saved (all files of a merged document). Batch tasks and exports now see " +
+                           "the current state."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new BridgeResultResponse { Ok = false, Error = "save failed: " + ex.Message };
+            }
+        }
 
         /// <summary>
         /// Bridge delegate for POST /v1/update-term and /v1/delete-term (MCP

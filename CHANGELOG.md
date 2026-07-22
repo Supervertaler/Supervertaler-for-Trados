@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.115 / 19.20.115] – 2026-07-23
+
+### Added (Supervertaler MCP Server · no more "now press Ctrl+S in Studio")
+
+- **New `save_document` tool** – the AI can save the document open in the editor itself (the same as Ctrl+S, covering all files of a merged document) instead of handing you back to Studio to do it. It's instructed to save only when you ask or approve – AI-written translations still land as Draft for your review first – but *"save and then run the analysis"* is now one instruction. The batch-task tools now point the AI at `save_document` for their save-first-then-run flows.
+
 ## [18.20.114 / 19.20.114] – 2026-07-22
 
 ### Added (Supervertaler MCP Server · "look at segment 331" now fetches exactly segment 331)

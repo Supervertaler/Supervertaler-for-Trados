@@ -228,7 +228,7 @@
     },
     {
       "name": "analyze_files",
-      "description": "Start Trados Studio's Analyse Files batch task on the open project. Computes the leverage breakdown (perfect/in-context-exact/exact/fuzzy/new/repetition words and segments) and writes it into the project, which is what get_project_statistics reads back. Runs in the BACKGROUND and returns a jobId immediately – analysis can take several minutes on a large project. Poll get_task_status with that jobId until it reports 'done', then call get_project_statistics to read the bands. Runs against the LAST SAVED state, so ask the user to save first.",
+      "description": "Start Trados Studio's Analyse Files batch task on the open project. Computes the leverage breakdown (perfect/in-context-exact/exact/fuzzy/new/repetition words and segments) and writes it into the project, which is what get_project_statistics reads back. Runs in the BACKGROUND and returns a jobId immediately – analysis can take several minutes on a large project. Poll get_task_status with that jobId until it reports 'done', then call get_project_statistics to read the bands. Runs against the LAST SAVED state, so save first with save_document (with the user's OK).",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -633,7 +633,7 @@
     },
     {
       "name": "pretranslate",
-      "description": "Start Trados Studio's Pre-translate Files batch task: fills untranslated segments with their TM matches (typically exact/context matches). Runs in the BACKGROUND and returns a jobId immediately (it can take a while); poll get_task_status with that jobId to see when it finishes and to read its match-count messages. WRITES into the document from the LAST SAVED state, so ask the user to save first; if the document is open in the editor they may need to close and reopen it to see the results (and if the task fails because the file is open, tell them to close the document and retry).",
+      "description": "Start Trados Studio's Pre-translate Files batch task: fills untranslated segments with their TM matches (typically exact/context matches). Runs in the BACKGROUND and returns a jobId immediately (it can take a while); poll get_task_status with that jobId to see when it finishes and to read its match-count messages. WRITES into the document from the LAST SAVED state, so save first with save_document (with the user's OK); if the document is open in the editor they may need to close and reopen it to see the results (and if the task fails because the file is open, tell them to close the document and retry).",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -754,6 +754,19 @@
       },
       "method": "POST",
       "path": "/v1/update-comment",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "save_document",
+      "description": "Save the document currently open in the Trados editor - the same as the user pressing Ctrl+S (saves all files of a merged document). Use it (a) when the user asks to save, or (b) right before a batch task / export that reads the last-saved state, after telling the user you're saving. Do NOT save silently after every edit: AI-written translations land as Draft precisely so the user can review before anything is persisted - saving is the user's decision, you just no longer have to send them to Studio to do it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "method": "POST",
+      "path": "/v1/save-document",
       "paramMap": {},
       "fixedQuery": {},
       "fixedBody": {}
