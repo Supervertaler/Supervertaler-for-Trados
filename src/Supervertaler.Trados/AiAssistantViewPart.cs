@@ -1325,6 +1325,23 @@ namespace Supervertaler.Trados
                             if (attributeFiles && fid != null)
                                 _fileIdToName.TryGetValue(fid, out segFileName);
                         }
+
+                        // Grid-number range filter ("look at segment 331"). The
+                        // grid number is the segment id's numeric part; split
+                        // segments ("331 a") count by their leading digits. In a
+                        // merged document numbers restart per file, so without a
+                        // file filter the range matches in every file (the
+                        // fileName field tells them apart).
+                        if (query.FromNumber > 0 || query.ToNumber > 0)
+                        {
+                            int digits = 0;
+                            while (digits < segId.Length && char.IsDigit(segId[digits])) digits++;
+                            int segNum;
+                            if (digits == 0 || !int.TryParse(segId.Substring(0, digits), out segNum))
+                                continue;
+                            if (query.FromNumber > 0 && segNum < query.FromNumber) continue;
+                            if (query.ToNumber > 0 && segNum > query.ToNumber) continue;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -1359,6 +1376,10 @@ namespace Supervertaler.Trados
                 if (response.Truncated)
                     response.Note = $"Only {response.Returned} of {matching} matching segments returned – " +
                                     "use offset/limit to page through the rest, or narrow the filters.";
+                if ((query.FromNumber > 0 || query.ToNumber > 0) && filterFileId == null && attributeFiles)
+                    response.Note = ((response.Note ?? "") + " Note: this is a merged multi-file document and " +
+                        "segment numbers restart per file, so the number range matched in every file – check " +
+                        "each hit's fileName, or pass 'file' to target one file.").Trim();
             }
             catch (Exception ex)
             {

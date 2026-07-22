@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.114 / 19.20.114] – 2026-07-22
+
+### Added (Supervertaler MCP Server · "look at segment 331" now fetches exactly segment 331)
+
+- **`get_segments` can now fetch by grid number** – new `fromNumber`/`toNumber` parameters retrieve exactly the segment(s) you refer to by the number you see in Studio's grid, instead of the AI paging through the document and occasionally landing on the wrong window (which could produce confidently wrong conclusions about "what's in segment N"). Works in merged multi-file documents too: numbers restart per file, so the AI combines the range with the file name – and when it doesn't, the response says the match spans files. The tool now explicitly instructs the AI to use exact-number fetch, never offset-guessing, when you mention a segment number.
+
 ## [18.20.113 / 19.20.113] – 2026-07-22
 
 ### Added (Supervertaler MCP Server · the AI can now curate your termbase, not just add to it)

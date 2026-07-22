@@ -341,6 +341,10 @@ namespace Supervertaler.Trados.Core
         public string File;
         public int Limit = 200;
         public int Offset;
+        /// <summary>Grid-number range (inclusive; 0 = unset). Numbers restart per
+        /// file in merged documents, so combine with File to disambiguate.</summary>
+        public int FromNumber;
+        public int ToNumber;
     }
 
     [DataContract]
@@ -1535,11 +1539,15 @@ namespace Supervertaler.Trados.Core
                 Contains = qs["contains"],
                 File = qs["file"]
             };
-            int limit, offset;
+            int limit, offset, fromNum, toNum;
             if (int.TryParse(qs["limit"], out limit) && limit > 0)
                 query.Limit = Math.Min(limit, 2000);
             if (int.TryParse(qs["offset"], out offset) && offset > 0)
                 query.Offset = offset;
+            if (int.TryParse(qs["fromNumber"], out fromNum) && fromNum > 0)
+                query.FromNumber = fromNum;
+            if (int.TryParse(qs["toNumber"], out toNum) && toNum > 0)
+                query.ToNumber = toNum;
 
             BridgeSegmentsResponse response;
             try

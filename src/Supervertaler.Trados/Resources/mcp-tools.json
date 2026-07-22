@@ -425,7 +425,7 @@
     },
     {
       "name": "get_segments",
-      "description": "List segments of the document open in the Trados editor. Returns segment id, source text, target text, confirmation status (e.g. Unspecified/Draft/Translated), locked flag, and 'number' – the segment number the user sees in Studio's grid. ALWAYS cite that number (plus the file name in merged documents, where numbers restart per file) when referring to segments in conversation – never invent numbers. Inline formatting appears as tags like <t1>…</t1> or <b>…</b> – preserve them in any translation you propose. Use the filters to fetch only what you need instead of the whole document. Results are paged via limit/offset; the response says whether it was truncated.",
+      "description": "List segments of the document open in the Trados editor. Returns segment id, source text, target text, confirmation status (e.g. Unspecified/Draft/Translated), locked flag, and 'number' – the segment number the user sees in Studio's grid. ALWAYS cite that number (plus the file name in merged documents, where numbers restart per file) when referring to segments in conversation – never invent numbers. Inline formatting appears as tags like <t1>…</t1> or <b>…</b> – preserve them in any translation you propose. Use the filters to fetch only what you need instead of the whole document. Results are paged via limit/offset; the response says whether it was truncated. To read a SPECIFIC segment the user mentions by number, pass fromNumber=toNumber=<that number> (with 'file' in merged documents - numbers restart per file); never guess a segment's position by paging.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -459,6 +459,14 @@
             "description": "Only segments from this file of a merged multi-file document – a file id or (partial) file name from get_files. Omit for all files.",
             "type": "string",
             "default": null
+          },
+          "fromNumber": {
+            "description": "First grid segment number to include (the number the user sees in Studio). Set fromNumber and toNumber to the SAME value to fetch exactly one segment - ALWAYS use this when the user refers to a specific segment number, instead of paging with offset. In merged multi-file documents numbers restart per file, so also pass 'file'.",
+            "type": "integer"
+          },
+          "toNumber": {
+            "description": "Last grid segment number to include (inclusive). Omit for 'from fromNumber to the end'.",
+            "type": "integer"
           }
         }
       },
