@@ -391,6 +391,9 @@ namespace Supervertaler.Trados.Core
             Dictionary<string, List<TermEntry>> index, string key, TermEntry entry)
         {
             if (string.IsNullOrWhiteSpace(key)) return;
+            // Normalise space variants / script digits so keys line up with the
+            // segment-side normalisation in TermMatcher (matches LoadAllTerms).
+            key = TermMatcher.NormalizeScriptChars(key.Trim());
             if (!index.TryGetValue(key, out var list))
             {
                 list = new List<TermEntry>();

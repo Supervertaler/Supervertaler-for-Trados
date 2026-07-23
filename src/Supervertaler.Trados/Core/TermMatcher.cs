@@ -235,25 +235,42 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// Normalises subscript and superscript digit characters to their ASCII base equivalents
-        /// so that terms like H₂O or mm² can be matched regardless of whether the stored term
-        /// or the segment text uses Unicode script variants.
+        /// True for Unicode space characters that render like a plain space but are
+        /// distinct code points: no-break space (U+00A0), Ogham space mark (U+1680),
+        /// en/em/thin/hair spaces (U+2000–U+200A), narrow no-break space (U+202F),
+        /// medium mathematical space (U+205F) and ideographic space (U+3000).
+        /// </summary>
+        internal static bool IsSpaceVariant(char c)
+        {
+            return c == '\u00A0' || c == '\u1680'
+                || (c >= '\u2000' && c <= '\u200A')
+                || c == '\u202F' || c == '\u205F' || c == '\u3000';
+        }
+
+        /// <summary>
+        /// Normalises characters that have visually-equivalent Unicode variants so terms
+        /// like H₂O or mm² and multi-word phrases can be matched regardless of which
+        /// variant the stored term or the segment text uses.
         /// Subscript digits  ₀-₉  (U+2080–U+2089) → 0-9
         /// Superscript digits ⁰¹²³⁴⁵⁶⁷⁸⁹ (U+2070, U+00B9, U+00B2, U+00B3, U+2074–U+2079) → 0-9
+        /// Unicode space variants (see <see cref="IsSpaceVariant"/>) → ASCII space.
+        /// The space folding matters for multi-word terms: IDML-derived segments can
+        /// carry a no-break space inside a phrase ("display panel"), which would
+        /// otherwise silently defeat the substring search in FindMultiWordMatches.
         /// All other characters are left unchanged.  The method is length-preserving
-        /// (each script char maps to exactly one ASCII char), so character positions remain valid.
+        /// (each variant maps to exactly one ASCII char), so character positions remain valid.
         /// </summary>
         internal static string NormalizeScriptChars(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
 
-            // Fast path: skip allocation if no script chars are present
+            // Fast path: skip allocation if no script chars or space variants are present
             bool hasScript = false;
             foreach (char c in text)
             {
                 if ((c >= '\u2080' && c <= '\u2089') || c == '\u2070' ||
                     c == '\u00B9' || c == '\u00B2' || c == '\u00B3' ||
-                    (c >= '\u2074' && c <= '\u2079'))
+                    (c >= '\u2074' && c <= '\u2079') || IsSpaceVariant(c))
                 {
                     hasScript = true;
                     break;
@@ -270,6 +287,7 @@ namespace Supervertaler.Trados.Core
                 else if (c == '\u00B2')                  sb.Append('2');  // ²
                 else if (c == '\u00B3')                  sb.Append('3');  // ³
                 else if (c >= '\u2074' && c <= '\u2079') sb.Append((char)('0' + (c - '\u2070'))); // ⁴-⁹
+                else if (IsSpaceVariant(c))              sb.Append(' ');
                 else                                     sb.Append(c);
             }
             return sb.ToString();
@@ -470,8 +488,12 @@ namespace Supervertaler.Trados.Core
                             {
                                 if (entry.CaseSensitive)
                                 {
+                                    // Normalise both sides so a space variant in either
+                                    // the stored term or the segment text (e.g. an IDML
+                                    // no-break space) doesn't fail the ordinal comparison.
                                     bool caseMatch = string.Equals(
-                                        entry.SourceTerm.Trim(), matchedText.Trim(),
+                                        NormalizeScriptChars(entry.SourceTerm.Trim()),
+                                        NormalizeScriptChars(matchedText.Trim()),
                                         StringComparison.Ordinal);
                                     if (!caseMatch)
                                     {

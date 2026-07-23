@@ -7,6 +7,13 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.116 / 19.20.116] – 2026-07-23
+
+### Fixed (TermLens · invisible characters can no longer hide your term matches)
+
+- **Multi-word terms now match segments containing Unicode space variants.** InDesign/IDML-derived documents routinely carry a no-break space inside a phrase ("display panel" with U+00A0 instead of a plain space). TermLens's multi-word matching is an exact substring search, so a termbase entry stored with a normal space silently never matched such a segment – and because single words still matched, the miss looked like a termbase problem rather than a document quirk. Matching now folds all Unicode space variants (no-break, narrow no-break, en/em/thin/hair spaces, ideographic space) to a plain space on both the segment side and the termbase-index side – covering Supervertaler termbases, MultiTerm `.sdltb`, Studio 2026 `.ttb` and API-fallback termbases.
+- **Terms can no longer be *saved* with invisible characters.** Selecting text in the editor to add a term pair copied any no-break/zero-width characters straight into the termbase – producing an entry that looked identical to a clean one but could never match anything (a no-break space even stopped the entry being classified as a multi-word term at all). Every term/synonym write path – add, quick-add, batch add, edit, TSV import, non-translatables – now folds space variants to a plain space, strips zero-width characters (ZWSP, word joiner, BOM) and collapses runs of spaces before storage.
+
 ## [18.20.115 / 19.20.115] – 2026-07-23
 
 ### Added (Supervertaler MCP Server · no more "now press Ctrl+S in Studio")

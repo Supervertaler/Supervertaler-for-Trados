@@ -890,10 +890,46 @@ namespace Supervertaler.Trados.Core
         // and matching consistent.
         private static readonly char[] TermTrailingPunct = { '.', ',', ';', ':', '!', '?' };
 
-        /// <summary>Strip surrounding whitespace and trailing sentence punctuation
+        /// <summary>
+        /// Folds Unicode space variants (no-break space, narrow no-break space,
+        /// en/em/thin spaces, ideographic space – see TermMatcher.IsSpaceVariant)
+        /// and tabs to a plain ASCII space, removes zero-width characters
+        /// (ZWSP U+200B, word joiner U+2060, BOM U+FEFF), collapses runs of
+        /// spaces and trims. Terms picked up from editor selections can carry
+        /// these invisible characters (IDML-derived segments are a common
+        /// source); stored verbatim they silently defeat term matching, so
+        /// every term/synonym write path sanitises through here.
+        /// </summary>
+        internal static string SanitizeTermWhitespace(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            var sb = new System.Text.StringBuilder(text.Length);
+            bool prevSpace = false;
+            foreach (var c in text)
+            {
+                if (c == '\u200B' || c == '\u2060' || c == '\uFEFF')
+                    continue; // zero-width – drop entirely
+
+                var ch = (c == '\t' || TermMatcher.IsSpaceVariant(c)) ? ' ' : c;
+                if (ch == ' ')
+                {
+                    if (prevSpace) continue; // collapse runs
+                    prevSpace = true;
+                }
+                else
+                {
+                    prevSpace = false;
+                }
+                sb.Append(ch);
+            }
+            return sb.ToString().Trim();
+        }
+
+        /// <summary>Sanitise whitespace and strip trailing sentence punctuation
         /// from a term before storage (e.g. "circumference." -> "circumference").</summary>
         private static string NormalizeTermForSave(string text)
-            => string.IsNullOrEmpty(text) ? text : text.Trim().TrimEnd(TermTrailingPunct).Trim();
+            => string.IsNullOrEmpty(text) ? text : SanitizeTermWhitespace(text).TrimEnd(TermTrailingPunct).Trim();
 
         public static long InsertTerm(string dbPath, long termbaseId,
             string sourceTerm, string targetTerm,
@@ -911,6 +947,13 @@ namespace Supervertaler.Trados.Core
             {
                 sourceTerm = NormalizeTermForSave(sourceTerm);
                 targetTerm = NormalizeTermForSave(targetTerm);
+            }
+            else
+            {
+                // Non-translatables keep trailing punctuation (e.g. "Inc.")
+                // but still get invisible-whitespace sanitising.
+                sourceTerm = SanitizeTermWhitespace(sourceTerm);
+                targetTerm = SanitizeTermWhitespace(targetTerm);
             }
 
             var connStr = new SqliteConnectionStringBuilder
@@ -1174,6 +1217,13 @@ namespace Supervertaler.Trados.Core
                 sourceTerm = NormalizeTermForSave(sourceTerm);
                 targetTerm = NormalizeTermForSave(targetTerm);
             }
+            else
+            {
+                // Non-translatables keep trailing punctuation (e.g. "Inc.")
+                // but still get invisible-whitespace sanitising.
+                sourceTerm = SanitizeTermWhitespace(sourceTerm);
+                targetTerm = SanitizeTermWhitespace(targetTerm);
+            }
 
             // projectSourceLang: language of `sourceTerm` as supplied by the caller.
             //   When provided, this method makes a PER-TERMBASE decision about
@@ -1382,6 +1432,13 @@ namespace Supervertaler.Trados.Core
             {
                 sourceTerm = NormalizeTermForSave(sourceTerm);
                 targetTerm = NormalizeTermForSave(targetTerm);
+            }
+            else
+            {
+                // Non-translatables keep trailing punctuation (e.g. "Inc.")
+                // but still get invisible-whitespace sanitising.
+                sourceTerm = SanitizeTermWhitespace(sourceTerm);
+                targetTerm = SanitizeTermWhitespace(targetTerm);
             }
 
             var connStr = new SqliteConnectionStringBuilder
@@ -2049,6 +2106,11 @@ namespace Supervertaler.Trados.Core
                         var (tgtMain, tgtSynonyms) = ParsePipeDelimitedCell(targetCell);
                         if (string.IsNullOrWhiteSpace(srcMain) || string.IsNullOrWhiteSpace(tgtMain))
                             continue;
+
+                        // TSV cells can carry invisible whitespace (no-break
+                        // spaces, zero-width chars) just like editor selections.
+                        srcMain = SanitizeTermWhitespace(srcMain);
+                        tgtMain = SanitizeTermWhitespace(tgtMain);
 
                         // Optional metadata
                         var uuid = UnescapeTsvField(GetField(fields, colMap, "uuid"));

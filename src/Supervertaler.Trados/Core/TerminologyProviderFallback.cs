@@ -253,7 +253,7 @@ namespace Supervertaler.Trados.Core
         private static void AddToIndex(Dictionary<string, List<TermEntry>> index,
             string sourceTerm, TermEntry entry)
         {
-            var key = sourceTerm.Trim().ToLowerInvariant();
+            var key = TermMatcher.NormalizeScriptChars(sourceTerm.Trim().ToLowerInvariant());
             if (string.IsNullOrEmpty(key)) return;
 
             if (!index.TryGetValue(key, out var list))
