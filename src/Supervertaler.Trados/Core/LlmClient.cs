@@ -1228,12 +1228,38 @@ namespace Supervertaler.Trados.Core
 
         private static string ExtractClaudeContent(string json)
         {
-            // Extract content[0].text
+            // Extract the text-typed content block(s). Anchoring on "type":"text"
+            // rather than content[0] matters for models with always-on reasoning
+            // (Claude Fable 5): their content array starts with a "thinking"
+            // block, so the first block has no "text" field at all.
+            var typed = Regex.Matches(json,
+                @"\{""type""\s*:\s*""text""\s*,\s*""text""\s*:\s*""((?:[^""\\]|\\.)*)""",
+                RegexOptions.Singleline);
+            if (typed.Count > 0)
+            {
+                var sb = new StringBuilder();
+                foreach (Match m in typed)
+                {
+                    if (sb.Length > 0) sb.Append("\n");
+                    sb.Append(UnescapeJson(m.Groups[1].Value));
+                }
+                return sb.ToString();
+            }
+
+            // Legacy fallback: content[0].text (older response shapes)
             var textMatch = Regex.Match(json,
                 @"""content""\s*:\s*\[\s*\{[^}]*""text""\s*:\s*""((?:[^""\\]|\\.)*)""",
                 RegexOptions.Singleline);
             if (textMatch.Success)
                 return UnescapeJson(textMatch.Groups[1].Value);
+
+            // No text at all: a safety refusal returns stop_reason "refusal"
+            // with an empty content array – surface that instead of a generic
+            // parse error so the user knows what happened.
+            if (Regex.IsMatch(json, @"""stop_reason""\s*:\s*""refusal"""))
+                throw new InvalidOperationException(
+                    "Claude declined this request (safety refusal) – no text was returned. " +
+                    "If this is legitimate translation content, try a different Claude model.");
 
             throw new InvalidOperationException("Could not parse Claude response");
         }
