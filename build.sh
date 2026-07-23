@@ -87,6 +87,12 @@ fi
 echo "  Version check passed: Studio 2024 $MANIFEST_VER / Studio 2026 $MANIFEST_VER_19"
 echo ""
 
+# Guard the help docs' MCP tool table (Supervertaler-Help repo,
+# trados/mcp-server.md) against drift from the shipped tool set. The table's
+# prose stays hand-written; only the set of tool names is enforced.
+python "$SCRIPT_DIR/tools/check_mcp_docs.py" || exit 1
+echo ""
+
 # Abort if Trados Studio is running — it locks plugin files and prevents
 # a clean extraction on next start, leaving the plugin in a broken state.
 if tasklist.exe 2>/dev/null | grep -qi "SDLTradosStudio\|TradosStudio"; then
