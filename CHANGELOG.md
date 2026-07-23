@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.117 / 19.20.117] – 2026-07-23
+
+### Added (AI Assistant · Claude Fable 5)
+
+- **Claude Fable 5 is now selectable as a Claude model** (Supervertaler Settings → AI Settings). Fable 5 is Anthropic’s most capable model (released June 2026), sitting above Opus 4.8: it runs deeper, always-on reasoning on every request and costs double Opus – $10/$50 per million tokens vs Opus 4.8’s $5/$25 – and the always-on reasoning itself bills as output tokens, so the real per-job cost is higher than the sticker ratio suggests. Worth reaching for on the hardest jobs – dense legal/technical material, AI Proofreader passes over a whole document – while **Claude Sonnet 5 stays the recommended default** for routine translation and batch work. The shared pricing list (`pricing.json`) now covers Fable 5, so the cost estimator handles it out of the box.
+
 ## [18.20.116 / 19.20.116] – 2026-07-23
 
 ### Fixed (TermLens · invisible characters can no longer hide your term matches)

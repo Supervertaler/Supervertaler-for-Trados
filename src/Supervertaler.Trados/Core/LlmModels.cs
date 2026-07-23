@@ -92,7 +92,13 @@ namespace Supervertaler.Trados.Core
             new LlmModelInfo
             {
                 Id = "claude-opus-4-8", DisplayName = "Claude Opus 4.8",
-                Description = "Highest quality – Anthropic's most capable model, 1M context",
+                Description = "Highest quality – Anthropic's most capable Opus model, 1M context",
+                Provider = LlmProvider.Claude
+            },
+            new LlmModelInfo
+            {
+                Id = "claude-fable-5", DisplayName = "Claude Fable 5",
+                Description = "Maximum capability – always-on reasoning at double Opus pricing; for the hardest jobs, overkill for routine translation",
                 Provider = LlmProvider.Claude
             }
         };
