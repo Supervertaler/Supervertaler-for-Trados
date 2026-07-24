@@ -138,6 +138,16 @@ namespace Supervertaler.Trados.Licensing
             {
                 Task.Run(() => ValidateOnlineAsync());
             }
+            else
+            {
+                // Trial install: register with the licence server (issue #47).
+                // Observe-only in this release – the server records the
+                // authoritative start date; local trial behaviour is unchanged
+                // and the call fails silently when offline.
+                var trialStart = _info.TrialStartedAt;
+                var trialActive = _info.IsTrialActive;
+                Task.Run(() => TrialRegistration.RegisterAsync(trialStart, trialActive));
+            }
         }
 
         // ─── Activation ─────────────────────────────────────────────
@@ -421,7 +431,8 @@ namespace Supervertaler.Trados.Licensing
         {
             MessageBox.Show(
                 "Your trial has expired. Please enter a licence key in Settings \u2192 Licence to continue using Supervertaler for Trados.\n\n" +
-                "Visit supervertaler.com/trados/ for pricing and purchase options.",
+                "Visit supervertaler.com/trados/ for pricing and purchase options.\n\n" +
+                "Cost shouldn\u2019t be a barrier: if the price is a problem for you, get in touch via beijer.uk/contact and we\u2019ll work something out.",
                 "Licence Required",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);

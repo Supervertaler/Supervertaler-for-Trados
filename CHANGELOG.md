@@ -7,6 +7,13 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.118 / 19.20.118] – 2026-07-24
+
+### Added (Licensing · server-side trial registration, observe-only)
+
+- **Trial installs now register with the licence server on startup** ([#47](https://github.com/Supervertaler/Supervertaler-for-Trados/issues/47)). The server records the trial’s authoritative start date on first contact and returns the same original date ever after, giving the trial one reliable record that survives reinstalls, data-folder moves, and clock changes. **In this release the server’s answer is only recorded, not enforced** – local trial behaviour is completely unchanged, and the call fails silently when offline (a legitimate user is never blocked or nagged). A later release will make the server date authoritative with a generous offline-grace window for air-gapped work. Privacy: only the anonymous machine hash already used for licence activation, plugin/Studio version, locale, and the trial’s local start date are sent – details in the privacy policy at supervertaler.com/privacy.
+- **"Cost shouldn’t be a barrier."** The trial-expired message and the Licence settings panel now say it explicitly: if the price is a problem for you, get in touch and we’ll work something out.
+
 ## [18.20.117 / 19.20.117] – 2026-07-23
 
 ### Added (AI Assistant · Claude Fable 5)

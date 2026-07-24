@@ -105,7 +105,7 @@ namespace Supervertaler.Trados.Licensing
             _activationPanel = new Panel
             {
                 Location = new Point(leftPad, y),
-                Size = new Size(contentWidth, 140),
+                Size = new Size(contentWidth, 170),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Visible = false
             };
@@ -160,9 +160,28 @@ namespace Supervertaler.Trados.Licensing
                 catch { }
             };
 
+            // The open door: nobody should feel they have to crack the trial.
+            var lnkHardship = new LinkLabel
+            {
+                Text = "Cost shouldn’t be a barrier – if the price is a problem for you, get in touch and we’ll work something out.",
+                Location = new Point(0, 92),
+                MaximumSize = new Size(contentWidth, 0),
+                AutoSize = true,
+                Font = font,
+                LinkColor = Color.FromArgb(40, 100, 180),
+                ActiveLinkColor = Color.FromArgb(30, 80, 160)
+            };
+            lnkHardship.LinkArea = new LinkArea(
+                lnkHardship.Text.IndexOf("get in touch", StringComparison.Ordinal), "get in touch".Length);
+            lnkHardship.LinkClicked += (s, e) =>
+            {
+                try { Process.Start(new ProcessStartInfo("https://beijer.uk/contact") { UseShellExecute = true }); }
+                catch { }
+            };
+
             _activationPanel.Controls.AddRange(new Control[]
             {
-                lblEnterKey, _txtLicenseKey, _btnActivate, _lnkBuy
+                lblEnterKey, _txtLicenseKey, _btnActivate, _lnkBuy, lnkHardship
             });
             Controls.Add(_activationPanel);
 
