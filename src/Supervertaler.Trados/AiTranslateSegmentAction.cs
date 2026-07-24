@@ -7,7 +7,7 @@ using Supervertaler.Trados.Licensing;
 namespace Supervertaler.Trados
 {
     /// <summary>
-    /// Legacy duplicate of <see cref="TranslateActiveSegmentAction"/> (Ctrl+T).
+    /// Legacy duplicate of <see cref="TranslateActiveSegmentAction"/>.
     /// Kept REGISTERED (it must never be deleted — Studio instantiates every cached
     /// command-bar action on startup, and a missing type crashes it) but given no
     /// <c>[ActionLayout]</c>, so it is not placed in the editor right-click menu.
@@ -18,11 +18,12 @@ namespace Supervertaler.Trados
     /// (ActionAttribute) and carry an EMPTY, self-closing
     /// &lt;auxiliaryExtensionAttributes /&gt; element — never the element removed
     /// entirely, or the shortcut-cache loader NPEs on startup.
-    /// No default shortcut; redirects to the same batch-translate pipeline as Ctrl+T.
+    /// No default shortcut; redirects to the same pipeline as the live action.
+    /// Do NOT assign it a shortcut — use the non-deprecated "Translate active segment".
     /// </summary>
     [Action("Supervertaler_AiTranslateSegment", typeof(EditorController),
-        Name = "Translate active segment (deprecated – use Ctrl+T)",
-        Description = "Deprecated duplicate of 'Translate active segment' (Ctrl+T). Kept registered to avoid a Studio startup crash; don't assign it a shortcut.")]
+        Name = "Translate active segment (deprecated – do not use)",
+        Description = "Deprecated duplicate of 'Translate active segment'. Kept registered to avoid a Studio startup crash; don't assign it a shortcut — use the non-deprecated action instead.")]
     public class AiTranslateSegmentAction : AbstractAction
     {
         protected override void Execute()

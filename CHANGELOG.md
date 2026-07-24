@@ -7,6 +7,13 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.119 / 19.20.119] – 2026-07-24
+
+### Fixed (Keyboard shortcuts · "Translate active segment" no longer collides with Ctrl+T)
+
+- **The default shortcut for "Translate active segment" moved from `Ctrl+T` to `Alt+T`.** `Ctrl+T` is a Trados **factory default** ("Apply Translation Result"), so a fresh install had *both* commands on the same key. Pressing it fired both – the native match-apply and Supervertaler’s translate – which raced on the same segment and could **freeze Studio** (seen once the AI write and the native apply landed on the same keypress). `Alt+T` is collision-free. This affects **new installs and default bindings only** – Studio stores each user’s keyboard shortcuts, so if you already rebound it (or cleared the Trados `Ctrl+T`), your setup is untouched; to switch, reassign "Translate active segment" to `Alt+T` in **File → Options → Keyboard Shortcuts**. The `Ctrl+T` row is gone from the "free up Trados shortcuts" list in the help docs.
+- **The dead duplicate action is relabelled.** The long-deprecated "Translate active segment (deprecated – use Ctrl+T)" entry (kept registered only so Studio doesn’t crash on a missing type) no longer references `Ctrl+T`; it now reads "(deprecated – do not use)".
+
 ## [18.20.118 / 19.20.118] – 2026-07-24
 
 ### Added (Licensing · server-side trial registration, observe-only)
