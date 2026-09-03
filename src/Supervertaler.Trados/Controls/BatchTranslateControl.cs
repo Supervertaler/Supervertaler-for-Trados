@@ -1155,11 +1155,9 @@ namespace Supervertaler.Trados.Controls
                 foreach (var p in prompts)
                 {
                     // Is this the active prompt for the project?
-                    var isActive = !string.IsNullOrEmpty(activePromptPath)
-                        && string.Equals(
-                            (p.RelativePath ?? "").Replace('/', '\\'),
-                            (activePromptPath ?? "").Replace('/', '\\'),
-                            StringComparison.OrdinalIgnoreCase);
+                    // Marker-tolerant (#100): the remembered path may predate a
+                    // rename of the file it names.
+                    var isActive = PromptPaths.Match(p.RelativePath, activePromptPath);
 
                     // Filter by category if specified – but always include the active
                     // prompt even if its category doesn't match, so "Set as active"
@@ -1173,11 +1171,7 @@ namespace Supervertaler.Trados.Controls
                     _cmbPrompt.Items.Add(isActive ? p.Name + "  \u2714" : p.Name);
                     if (isActive) activeIdx = _cmbPrompt.Items.Count - 1;
 
-                    if (!string.IsNullOrEmpty(selectedRelativePath) &&
-                        string.Equals(
-                            (p.RelativePath ?? "").Replace('/', '\\'),
-                            (selectedRelativePath ?? "").Replace('/', '\\'),
-                            StringComparison.OrdinalIgnoreCase))
+                    if (PromptPaths.Match(p.RelativePath, selectedRelativePath))
                     {
                         selectedIdx = _cmbPrompt.Items.Count - 1;
                     }

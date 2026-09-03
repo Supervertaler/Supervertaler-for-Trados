@@ -180,7 +180,7 @@ namespace Supervertaler.Trados.Settings
             // removes: _shared reporting 0 articles in list_supermemory_banks,
             // and selecting it in the toolbar silently emptying the active bank.
             if (IsSharedBankName(bankName))
-                return Path.Combine(MemoryBanksRoot, Core.MemoryBankReader.SharedBankName);
+                return Path.Combine(MemoryBanksRoot, MemoryBankReader.SharedBankName);
 
             var safe = SanitizeBankName(bankName);
             if (string.IsNullOrEmpty(safe))
@@ -190,7 +190,7 @@ namespace Supervertaler.Trados.Settings
 
         /// <summary>
         /// True when the name refers to the reserved shared bank
-        /// (<see cref="Core.MemoryBankReader.SharedBankName"/>), which is loaded
+        /// (<see cref="MemoryBankReader.SharedBankName"/>), which is loaded
         /// alongside every other bank rather than being a bank of its own.
         /// Deliberately does NOT sanitize: the whole point is that this name
         /// survives the sanitiser unchanged.
@@ -198,7 +198,7 @@ namespace Supervertaler.Trados.Settings
         public static bool IsSharedBankName(string bankName)
         {
             return !string.IsNullOrWhiteSpace(bankName) &&
-                   string.Equals(bankName.Trim(), Core.MemoryBankReader.SharedBankName,
+                   string.Equals(bankName.Trim(), MemoryBankReader.SharedBankName,
                                  StringComparison.OrdinalIgnoreCase);
         }
 
@@ -414,10 +414,10 @@ namespace Supervertaler.Trados.Settings
                 return false;
             }
 
-            if (string.Equals(oldName, Core.MemoryBankReader.SharedBankName,
+            if (string.Equals(oldName, MemoryBankReader.SharedBankName,
                     StringComparison.OrdinalIgnoreCase))
             {
-                error = "The '" + Core.MemoryBankReader.SharedBankName + "' bank cannot be renamed - "
+                error = "The '" + MemoryBankReader.SharedBankName + "' bank cannot be renamed - "
                       + "it is loaded alongside every other bank by that exact name.";
                 return false;
             }
@@ -492,10 +492,10 @@ namespace Supervertaler.Trados.Settings
                 return false;
             }
 
-            if (string.Equals(name, Core.MemoryBankReader.SharedBankName,
+            if (string.Equals(name, MemoryBankReader.SharedBankName,
                     StringComparison.OrdinalIgnoreCase))
             {
-                error = "The '" + Core.MemoryBankReader.SharedBankName + "' bank cannot be deleted - "
+                error = "The '" + MemoryBankReader.SharedBankName + "' bank cannot be deleted - "
                       + "it holds the defaults loaded alongside every other bank.";
                 return false;
             }
@@ -549,70 +549,20 @@ namespace Supervertaler.Trados.Settings
                 catch { }
             }
 
-            Write("brief.md", SkeletonBody("brief.md", bankName));
-            Write("terminology.md", SkeletonBody("terminology.md", bankName));
-            Write("style.md", SkeletonBody("style.md", bankName));
+            Write("brief.md", Supervertaler.Core.MemoryBanks.SkeletonBody("brief.md", bankName));
+            Write("terminology.md", Supervertaler.Core.MemoryBanks.SkeletonBody("terminology.md", bankName));
+            Write("style.md", Supervertaler.Core.MemoryBanks.SkeletonBody("style.md", bankName));
 
             WriteReferenceReadme(bankDir);
         }
 
-        /// <summary>
-        /// The starter body for one skeleton file, or null for a file we do not seed.
-        /// Split out from <see cref="WriteNewBankSkeleton"/> so MemoryBankReader can tell
-        /// an untouched bank from a filled one by comparing against the very text that
-        /// created it – one source of truth, no duplicated template strings to drift.
-        /// </summary>
-        internal static string SkeletonBody(string fileName, string bankName)
-        {
-            switch (fileName)
-            {
-                case "brief.md":
-                    return "# " + bankName + "\r\n\r\n" +
-                "Who this client is and anything standing that applies to all their\r\n" +
-                "work: language pair, register, house preferences, things they have\r\n" +
-                "asked for or rejected before.\r\n\r\n" +
-                "## Standing instructions\r\n\r\n" +
-                "- \r\n\r\n" +
-                "## How far to trust this\r\n\r\n" +
-                "Say where this came from - a supplied style guide is worth more than\r\n" +
-                "something inferred from one review round, and future-you cannot tell\r\n" +
-                "the difference unless it is written down.\r\n\r\n" +
-                "## Files\r\n\r\n" +
-                "- [terminology.md](terminology.md) - term decisions, one table\r\n" +
-                "- [style.md](style.md) - prose rules and approved boilerplate\r\n" +
-                "- `reference/` - source material, unmodified\r\n";
-
-                case "terminology.md":
-                    return "# Terminology - " + bankName + "\r\n\r\n" +
-                "One row per decision. Keep it a table: a table can be scanned and\r\n" +
-                "corrected in seconds, which is the only reason errors get caught.\r\n\r\n" +
-                "**Scope** says how far a row travels - `project`, `client`, or\r\n" +
-                "`domain`. A row that proves true for a second client belongs in the\r\n" +
-                "`" + Core.MemoryBankReader.SharedBankName + "` bank instead; move it there rather than copying it,\r\n" +
-                "or the two drift apart.\r\n\r\n" +
-                "| Source | Target | Scope | Note |\r\n" +
-                "|---|---|---|---|\r\n" +
-                "|  |  |  |  |\r\n";
-
-                case "style.md":
-                    return "# Style - " + bankName + "\r\n\r\n" +
-                "Prose rules and approved boilerplate: how things are phrased, rather\r\n" +
-                "than which term is used. Quote the approved wording in full - a rule\r\n" +
-                "you have to reconstruct from a description is a rule that gets\r\n" +
-                "applied inconsistently.\r\n\r\n" +
-                "## 1. \r\n\r\n";
-
-                default:
-                    return null;
-            }
-        }
 
         /// <summary>Seeds <c>reference/README.md</c>. Never read by the prompt builder.</summary>
         private static void WriteReferenceReadme(string bankDir)
         {
             try
             {
-                var refDir = Path.Combine(bankDir, Core.MemoryBankReader.ReferenceFolder);
+                var refDir = Path.Combine(bankDir, MemoryBankReader.ReferenceFolder);
                 Directory.CreateDirectory(refDir);
                 var readme = Path.Combine(refDir, "README.md");
                 if (!File.Exists(readme))
@@ -651,7 +601,7 @@ namespace Supervertaler.Trados.Settings
             try
             {
                 if (!Directory.Exists(bankDir)) return false;
-                if (Core.MemoryBankReader.BankFiles.Any(
+                if (MemoryBankReader.BankFiles.Any(
                         f => File.Exists(Path.Combine(bankDir, f))))
                     return false;
 
@@ -710,10 +660,10 @@ namespace Supervertaler.Trados.Settings
                 // already never read into a prompt.
                 var map = new[]
                 {
-                    new { Folder = "01_CLIENTS",     Target = Core.MemoryBankReader.BriefFile,       Heading = "Client notes" },
-                    new { Folder = "02_TERMINOLOGY", Target = Core.MemoryBankReader.TerminologyFile, Heading = "Terminology" },
-                    new { Folder = "04_STYLE",       Target = Core.MemoryBankReader.StyleFile,       Heading = "Style" },
-                    new { Folder = "03_DOMAINS",     Target = Core.MemoryBankReader.StyleFile,       Heading = "Domain knowledge" },
+                    new { Folder = "01_CLIENTS",     Target = MemoryBankReader.BriefFile,       Heading = "Client notes" },
+                    new { Folder = "02_TERMINOLOGY", Target = MemoryBankReader.TerminologyFile, Heading = "Terminology" },
+                    new { Folder = "04_STYLE",       Target = MemoryBankReader.StyleFile,       Heading = "Style" },
+                    new { Folder = "03_DOMAINS",     Target = MemoryBankReader.StyleFile,       Heading = "Domain knowledge" },
                 };
 
                 var buffers = new Dictionary<string, StringBuilder>(StringComparer.OrdinalIgnoreCase);
@@ -746,7 +696,7 @@ namespace Supervertaler.Trados.Settings
                     foreach (var file in Directory.GetFiles(dir, "*.md", SearchOption.AllDirectories)
                                                   .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
                     {
-                        if (Core.MemoryBankReader.IsIgnoredSidecar(file)) continue;
+                        if (MemoryBankReader.IsIgnoredSidecar(file)) continue;
                         var rel = file.Substring(bankDir.Length).TrimStart('\\', '/');
                         if (rel.IndexOf("_archive", StringComparison.OrdinalIgnoreCase) >= 0) continue;
 
@@ -772,7 +722,7 @@ namespace Supervertaler.Trados.Settings
 
                 // Anything the map did not cover still needs a home, and the raw
                 // inbox is source material by definition.
-                var legacyRoot = Path.Combine(bankDir, Core.MemoryBankReader.ReferenceFolder, "_legacy");
+                var legacyRoot = Path.Combine(bankDir, MemoryBankReader.ReferenceFolder, "_legacy");
                 Directory.CreateDirectory(legacyRoot);
                 foreach (var folder in SkeletonFolders)
                 {
@@ -783,7 +733,7 @@ namespace Supervertaler.Trados.Settings
                 }
 
                 // A bank with no brief at all still reads as "not a bank".
-                var briefPath = Path.Combine(bankDir, Core.MemoryBankReader.BriefFile);
+                var briefPath = Path.Combine(bankDir, MemoryBankReader.BriefFile);
                 if (!File.Exists(briefPath))
                 {
                     File.WriteAllText(briefPath,

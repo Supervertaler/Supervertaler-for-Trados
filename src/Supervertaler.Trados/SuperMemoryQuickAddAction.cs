@@ -174,7 +174,7 @@ namespace Supervertaler.Trados
                 var msg = new StringBuilder();
                 if (mdWritten)
                 {
-                    var isShared = string.Equals(bankName, Core.MemoryBankReader.SharedBankName,
+                    var isShared = string.Equals(bankName, MemoryBankReader.SharedBankName,
                         StringComparison.OrdinalIgnoreCase);
                     if (dlg.SaveAsRawNote)
                         msg.AppendLine($"\u2713  Saved note to reference/ in memory bank \"{bankName}\".");
@@ -241,7 +241,7 @@ namespace Supervertaler.Trados
             try
             {
                 Directory.CreateDirectory(vaultPath);
-                var path = Path.Combine(vaultPath, Core.MemoryBankReader.TerminologyFile);
+                var path = Path.Combine(vaultPath, MemoryBankReader.TerminologyFile);
 
                 var row = "| " + EscapeCell(term) + " | " + EscapeCell(correction) +
                           " | client | " + EscapeCell(notes) + " |";
@@ -328,7 +328,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var inboxDir = Path.Combine(vaultPath, Core.MemoryBankReader.ReferenceFolder);
+                var inboxDir = Path.Combine(vaultPath, MemoryBankReader.ReferenceFolder);
                 Directory.CreateDirectory(inboxDir);
 
                 var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");

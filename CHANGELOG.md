@@ -15,6 +15,9 @@
 
 ### Changed
 
+- **Translator-comment markers are now written as `[[TC: …]]` instead of `⟦TC: …⟧`.** The white square brackets never occur in source text, which is why they were chosen – but they are missing from the fonts memoQ’s grid uses and rendered there as empty boxes. Both plugins share one prompt library, so prompts written here run in memoQ too; the shared code now uses plain double brackets for both. Only the two delimiter characters change – the rules (one per segment, at the very end, only for a real defect) do not. Prompts already on disk keep whatever they say; they are not rewritten.
+- **Prompt files carry a product marker in their name, and your selected prompt survives it.** Built-in QuickLauncher prompts that only Trados can run are now named e.g. `Define [Trados].md`, so a library shared with memoQ shows which product each belongs to; the marker is never part of the displayed name. The plugin remembers your selected prompt – globally and per project – by its filename, so a rename would previously have made it silently stop resolving mid-job, with the job running on fallback instructions. Every place that looks a stored prompt up now ignores the marker, so paths saved before the rename keep working after it.
+- **The memory-bank reader is now shared code.** memoQ needed the same reader to serve banks over its own bridge, and two copies of a format four programs share is how they drift. No change in behaviour.
 - **QuickLauncher no longer offers to send prompts to Supervertaler Workbench.** Workbench is being retired, and a destination that will not be there is not a choice worth offering. Prompts go to the AI Assistant in Trados, which is where they already went whenever Workbench was not running.
 
 ### Fixed

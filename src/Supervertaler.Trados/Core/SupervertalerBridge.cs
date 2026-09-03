@@ -3562,7 +3562,7 @@ namespace Supervertaler.Trados.Core
                 var lib = new PromptLibrary();
                 PromptTemplate p = null;
                 if (!string.IsNullOrWhiteSpace(relPath))
-                    p = lib.GetPromptByRelativePath(relPath);
+                    p = PromptPaths.Find(lib, relPath);   // marker-tolerant (#100)
                 if (p == null && !string.IsNullOrWhiteSpace(name))
                     p = lib.GetAllPrompts().FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
 
@@ -3629,7 +3629,9 @@ namespace Supervertaler.Trados.Core
                 if (!string.IsNullOrWhiteSpace(req.Path))
                 {
                     // Update an existing prompt identified by its relativePath.
-                    target = lib.GetPromptByRelativePath(req.Path);
+                    // Marker-tolerant (#100): a client holding a path from before a
+                    // rename must still update the same file, not get a 404.
+                    target = PromptPaths.Find(lib, req.Path);
                     if (target == null)
                     {
                         WriteJson(context, 404, new BridgeSavePromptResponse { Ok = false, Error = "no prompt at that path – omit 'path' and pass a 'name' to create a new prompt" });

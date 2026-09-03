@@ -376,7 +376,7 @@ namespace Supervertaler.Trados.Controls
                 var bank = node.Tag as BankNode;
                 var isBank = bank != null && bank.Kind == BankNodeKind.Bank;
                 var isShared = isBank && string.Equals(
-                    bank.BankName, Core.MemoryBankReader.SharedBankName,
+                    bank.BankName, MemoryBankReader.SharedBankName,
                     StringComparison.OrdinalIgnoreCase);
 
                 miBankSep.Visible = isBank;
@@ -420,7 +420,7 @@ namespace Supervertaler.Trados.Controls
                 if (prompt != null && miSetActive.Visible)
                 {
                     miSetActive.Checked = !string.IsNullOrEmpty(_activePromptPath)
-                        && string.Equals(prompt.RelativePath, _activePromptPath, StringComparison.OrdinalIgnoreCase);
+                        && PromptPaths.Match(prompt.RelativePath, _activePromptPath) /* marker-tolerant, #100 */;
                 }
                 miDeleteFolder.Visible = isFolder;
                 miFlatSection.Visible = isQlFolder;
@@ -1259,7 +1259,7 @@ namespace Supervertaler.Trados.Controls
             try { active = SettingsService.Current?.AiSettings?.ActiveMemoryBankName ?? ""; }
             catch { }
 
-            var shared = Core.MemoryBankReader.SharedBankName;
+            var shared = MemoryBankReader.SharedBankName;
 
             foreach (var bank in banks)
             {
@@ -1311,11 +1311,11 @@ namespace Supervertaler.Trados.Controls
                 // reference/ is deliberately NOT read. Greyed, and labelled.
                 try
                 {
-                    var refDir = Path.Combine(dir, Core.MemoryBankReader.ReferenceFolder);
+                    var refDir = Path.Combine(dir, MemoryBankReader.ReferenceFolder);
                     if (Directory.Exists(refDir))
                     {
                         var refNode = new TreeNode(
-                            Core.MemoryBankReader.ReferenceFolder + "/   (not read into prompts)")
+                            MemoryBankReader.ReferenceFolder + "/   (not read into prompts)")
                         {
                             Tag = new BankNode { Kind = BankNodeKind.ReferenceFolder, BankName = bank },
                             ForeColor = Color.FromArgb(150, 150, 150)
@@ -1628,7 +1628,7 @@ namespace Supervertaler.Trados.Controls
                     break;
 
                 default:
-                    _lblBankFileName.Text = Core.MemoryBankReader.ReferenceFolder + "/";
+                    _lblBankFileName.Text = MemoryBankReader.ReferenceFolder + "/";
                     _lblBankFileNote.Text =
                         "The audit trail for \"" + bn.BankName + "\" - where harvested "
                         + "changes and notes land. Never read into a prompt, so a claim the AI "
@@ -1733,7 +1733,7 @@ namespace Supervertaler.Trados.Controls
 
                 // Mark the active prompt for this project
                 var isActive = !string.IsNullOrEmpty(_activePromptPath)
-                    && string.Equals(prompt.RelativePath, _activePromptPath, StringComparison.OrdinalIgnoreCase);
+                    && PromptPaths.Match(prompt.RelativePath, _activePromptPath) /* marker-tolerant, #100 */;
                 if (isActive)
                     displayName = "\U0001F4CC " + displayName; // 📌 pin emoji
 
@@ -2409,7 +2409,7 @@ namespace Supervertaler.Trados.Controls
         }
 
         private static bool IsSharedBank(string name)
-            => string.Equals(name, Core.MemoryBankReader.SharedBankName,
+            => string.Equals(name, MemoryBankReader.SharedBankName,
                              StringComparison.OrdinalIgnoreCase);
 
         private void SetSelectedBankActive()
@@ -2702,7 +2702,7 @@ namespace Supervertaler.Trados.Controls
 
             // Toggle: if already active, clear it; otherwise set it
             if (!string.IsNullOrEmpty(_activePromptPath)
-                && string.Equals(prompt.RelativePath, _activePromptPath, StringComparison.OrdinalIgnoreCase))
+                && PromptPaths.Match(prompt.RelativePath, _activePromptPath) /* marker-tolerant, #100 */)
             {
                 _activePromptPath = "";
             }

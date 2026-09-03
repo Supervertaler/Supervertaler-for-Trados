@@ -2713,7 +2713,7 @@ namespace Supervertaler.Trados
                 throw new InvalidOperationException(
                     $"Memory bank '{bankName}' does not exist yet (expected at {vaultDir}).");
 
-            var inboxDir = Path.Combine(vaultDir, Core.MemoryBankReader.ReferenceFolder);
+            var inboxDir = Path.Combine(vaultDir, MemoryBankReader.ReferenceFolder);
             Directory.CreateDirectory(inboxDir);
 
             string projectName = null, sourceLang = null, targetLang = null;
@@ -6605,7 +6605,7 @@ namespace Supervertaler.Trados
                 }
 
                 // Write inbox note
-                var inboxDir = Path.Combine(vaultDir, Core.MemoryBankReader.ReferenceFolder);
+                var inboxDir = Path.Combine(vaultDir, MemoryBankReader.ReferenceFolder);
                 Directory.CreateDirectory(inboxDir);
 
                 var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -6761,7 +6761,8 @@ namespace Supervertaler.Trados
             if (string.IsNullOrEmpty(selectedPath) || _promptLibrary == null)
                 return null;
 
-            var prompt = _promptLibrary.GetPromptByRelativePath(selectedPath);
+            // Marker-tolerant (#100): the stored path may predate a rename.
+            var prompt = PromptPaths.Find(_promptLibrary, selectedPath);
             if (prompt == null || string.IsNullOrWhiteSpace(prompt.Content))
                 return null;
 
@@ -7819,7 +7820,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var inboxDir = Path.Combine(ActiveMemoryBankDir, Core.MemoryBankReader.ReferenceFolder);
+                var inboxDir = Path.Combine(ActiveMemoryBankDir, MemoryBankReader.ReferenceFolder);
                 if (!Directory.Exists(inboxDir))
                 {
                     _control.Value.UpdateInboxCount(0);
@@ -7877,7 +7878,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var inboxDir = Path.Combine(ActiveMemoryBankDir, Core.MemoryBankReader.ReferenceFolder);
+                var inboxDir = Path.Combine(ActiveMemoryBankDir, MemoryBankReader.ReferenceFolder);
                 if (!Directory.Exists(inboxDir)) return;
 
                 // Watch every file type, not just *.md – users drop TMX, PDF,
@@ -7973,7 +7974,7 @@ namespace Supervertaler.Trados
 
                 var warnings = new List<string>();
 
-                foreach (var f in Core.MemoryBankReader.BankFiles)
+                foreach (var f in MemoryBankReader.BankFiles)
                 {
                     int n = -1;
                     try
@@ -7987,7 +7988,7 @@ namespace Supervertaler.Trados
                         ? "- `" + f + "` - **missing**"
                         : "- `" + f + "` - " + n + " lines");
 
-                    if (n < 0 && f == Core.MemoryBankReader.BriefFile)
+                    if (n < 0 && f == MemoryBankReader.BriefFile)
                         warnings.Add("No `brief.md`, so the AI is told nothing about who this client is.");
                 }
 
@@ -7995,7 +7996,7 @@ namespace Supervertaler.Trados
                 // terminology file that is not one is worth saying out loud.
                 try
                 {
-                    var termPath = Path.Combine(bankDir, Core.MemoryBankReader.TerminologyFile);
+                    var termPath = Path.Combine(bankDir, MemoryBankReader.TerminologyFile);
                     if (File.Exists(termPath))
                     {
                         int rows = 0;
@@ -8024,7 +8025,7 @@ namespace Supervertaler.Trados
                 {
                     var strays = Directory.GetFiles(bankDir, "*.md", SearchOption.TopDirectoryOnly)
                         .Select(Path.GetFileName)
-                        .Where(n => !Core.MemoryBankReader.BankFiles.Contains(n, StringComparer.OrdinalIgnoreCase))
+                        .Where(n => !MemoryBankReader.BankFiles.Contains(n, StringComparer.OrdinalIgnoreCase))
                         .ToList();
                     if (strays.Count > 0)
                         warnings.Add("These sit in the bank root but are never sent to the AI - fold them " +
@@ -8051,9 +8052,9 @@ namespace Supervertaler.Trados
                             !string.IsNullOrWhiteSpace(ctx.SharedTerminologyText) ||
                             !string.IsNullOrWhiteSpace(ctx.SharedStyleText);
                         sb.AppendLine(shared
-                            ? "Includes the `" + Core.MemoryBankReader.SharedBankName +
+                            ? "Includes the `" + MemoryBankReader.SharedBankName +
                               "` bank, which this one overrides where they disagree."
-                            : "No `" + Core.MemoryBankReader.SharedBankName +
+                            : "No `" + MemoryBankReader.SharedBankName +
                               "` bank found - house defaults are not being applied.");
                     }
                 }
@@ -12903,7 +12904,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var sel = aiSettings.SelectedPromptPath;
                     if (!string.IsNullOrEmpty(sel) && lib != null)
                     {
-                        var p = lib.GetPromptByRelativePath(sel);
+                        var p = PromptPaths.Find(lib, sel);   // marker-tolerant (#100)
                         if (p != null && !string.IsNullOrWhiteSpace(p.Content))
                             customPromptContent = PromptLibrary.ApplyVariables(p.Content, sourceLang, targetLang);
                     }

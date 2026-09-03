@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -353,7 +353,7 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         private void PopulateBanks(string activeBankName)
         {
-            var shared = Core.MemoryBankReader.SharedBankName;
+            var shared = MemoryBankReader.SharedBankName;
 
             var banks = Settings.UserDataPath.ListMemoryBanks() ?? new System.Collections.Generic.List<string>();
             var others = new System.Collections.Generic.List<string>();
@@ -397,14 +397,14 @@ namespace Supervertaler.Trados.Controls
             }
 
             var target = SaveAsRawNote
-                ? Core.MemoryBankReader.ReferenceFolder + "/"
-                : Core.MemoryBankReader.TerminologyFile;
+                ? MemoryBankReader.ReferenceFolder + "/"
+                : MemoryBankReader.TerminologyFile;
 
             _lblDestination.Text = "→ " + target + "  in  " + bank;
 
             // Amber only — the combo entry already carries the words, and saying
             // it twice on two adjacent lines reads as a nag rather than a fact.
-            var isShared = string.Equals(bank, Core.MemoryBankReader.SharedBankName,
+            var isShared = string.Equals(bank, MemoryBankReader.SharedBankName,
                 StringComparison.OrdinalIgnoreCase);
             _lblDestination.ForeColor = isShared
                 ? Color.FromArgb(180, 120, 0)   // applies to every job, not just this client
