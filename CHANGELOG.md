@@ -11,6 +11,7 @@
 
 ### Added
 
+- **“Log prompts and responses” now also keeps them on disk.** The setting fed only the Reports tab, so the prompt actually sent to the model was never available after the fact – working out which tag notation the model had really been given took an afternoon of cross-referencing. With the setting on, every AI call is now also appended as one JSON line to a daily file under `trados\logs\prompts`, with the full system and user prompt, chat messages and response, plus tokens and cost. Image bytes are never written (attachments are recorded by type and size), connection tests are skipped, and files older than seven days are removed, so the folder stays bounded even in a synced data folder.
 - **You can now choose whether your Trados comments go into a bilingual export.** A new **Include Trados comments** tick box on the Import/Export tab, on by default. Leave it on when the file is going to a reviewer who needs to read your queries; turn it off when it is going to a client, where your working notes were never meant for them. With it off, the Comments column does not appear at all.
 
 ### Changed

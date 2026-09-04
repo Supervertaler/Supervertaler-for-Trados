@@ -553,13 +553,16 @@ namespace Supervertaler.Trados.Controls
                 "established knowledge base from the start.");
             Span(root, ref row, _chkIncludeSuperMemoryAutoPrompt);
 
-            _chkLogPrompts = Check("Log prompts and responses to Reports tab");
+            _chkLogPrompts = Check("Log prompts and responses (Reports tab and a daily log file)");
             _chkLogPrompts.Checked = false;
             var logTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             logTip.SetToolTip(_chkLogPrompts,
-                "When enabled, every AI API call is logged to the Reports tab with\r\n" +
-                "the full prompt, response, estimated token counts, and cost.\r\n" +
-                "Useful for monitoring costs and debugging prompt behaviour.");
+                "When enabled, every AI call is logged to the Reports tab with the\r\n" +
+                "full prompt, response, token counts and cost - and appended, as one\r\n" +
+                "JSON line per call, to a daily file under your\r\n" +
+                "Supervertaler\\trados\\logs\\prompts folder, so you can see exactly what\r\n" +
+                "was sent after the fact. Image bytes are never written; attachments\r\n" +
+                "are recorded by type and size. Files older than 7 days are removed.");
             Span(root, ref row, _chkLogPrompts);
 
             _chkPersistUsageLog = Check("Keep a persistent token-usage log (for cost monitoring)");

@@ -70,6 +70,8 @@ namespace Supervertaler.Trados
             // pane. The pane's own handler only updates the Reports-tab UI now, so
             // usage logging works even if the pane is never opened this session.
             try { UsageLogger.EnsureSubscribed(); } catch { }
+            // #98: the prompt/response log on disk, same global-subscriber shape.
+            try { PromptFileLogger.EnsureSubscribed(); } catch { }
 
             // Execute runs on the UI thread (it shows WinForms dialogs), so this is
             // a good place to record the context startup notices are marshalled on
