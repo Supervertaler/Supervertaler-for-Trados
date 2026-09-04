@@ -764,9 +764,11 @@ namespace Supervertaler.Trados
             var capturedMessages = messagesToSend;
             var capturedMaxTokens = args.MaxTokens ?? 4096;
             var capturedPromptName = args.PromptName;
-            var capturedFeature = !string.IsNullOrEmpty(args.PromptName)
-                ? PromptLogFeature.QuickLauncher
-                : PromptLogFeature.Chat;
+            // An explicit feature from the caller wins; otherwise a prompt name means
+            // QuickLauncher and anything else is Chat. AutoPrompt passes
+            // PromptGeneration - it used to be counted as Chat.
+            var capturedFeature = args.Feature
+                ?? (!string.IsNullOrEmpty(args.PromptName) ? PromptLogFeature.QuickLauncher : PromptLogFeature.Chat);
 
             // 7. Call LLM async – calculate prompt size for diagnostics
             var promptCharCount = 0;
@@ -6335,7 +6337,7 @@ namespace Supervertaler.Trados
                 // large glossaries and TM pairs can exceed 16K tokens.
                 // showAsStatus: true → display as assistant-styled (gray) bubble since the
                 // user clicked a button, not typed this message themselves
-                _control.Value.SubmitMessage(metaPrompt, displayText, maxTokens: 32768,
+                _control.Value.SubmitMessage(metaPrompt, displayText, maxTokens: 32768, feature: PromptLogFeature.PromptGeneration,
                     showAsStatus: true);
             });
         }
@@ -13571,7 +13573,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     var src = serializeTags
                         ? SerializeForBridge(pair.Source)
-                        : (pair.Source?.ToString() ?? "");
+                        : SegmentTagHandler.ToModelText(pair.Source);   // #97: chat context, never <cf ...>
                     var tgt = pair.Target == null ? ""
                         : serializeTags
                             ? SerializeForBridge(pair.Target)

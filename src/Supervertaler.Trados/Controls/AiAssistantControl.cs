@@ -90,6 +90,7 @@ namespace Supervertaler.Trados.Controls
         // instead of a user-styled (blue) bubble. Used for system-initiated messages.
         private bool _pendingShowAsStatus;
         private string _pendingPromptName;
+        private Supervertaler.Core.Models.PromptLogFeature? _pendingFeature;
 
         private const int MaxImages = 5;
         private const int MaxDocuments = 5;
@@ -1376,6 +1377,8 @@ namespace Supervertaler.Trados.Controls
             _pendingShowAsStatus = false;
             var promptName = _pendingPromptName;
             _pendingPromptName = null;
+            var feature = _pendingFeature;
+            _pendingFeature = null;
 
             SendRequested?.Invoke(this, new ChatSendEventArgs
             {
@@ -1385,7 +1388,8 @@ namespace Supervertaler.Trados.Controls
                 DisplayText = displayText,
                 MaxTokens = maxTokens,
                 ShowAsStatus = showAsStatus,
-                PromptName = promptName
+                PromptName = promptName,
+                Feature = feature
             });
         }
 
@@ -1990,7 +1994,7 @@ namespace Supervertaler.Trados.Controls
         /// expansion that would clutter the chat history.
         /// </summary>
         public void SubmitMessage(string text, string displayText, string promptName = null,
-            int? maxTokens = null, bool showAsStatus = false)
+            int? maxTokens = null, bool showAsStatus = false, Supervertaler.Core.Models.PromptLogFeature? feature = null)
         {
             if (_isThinking) return;
             if (string.IsNullOrWhiteSpace(text)) return;
@@ -2002,6 +2006,7 @@ namespace Supervertaler.Trados.Controls
             _pendingMaxTokens = maxTokens;
             _pendingShowAsStatus = showAsStatus;
             _pendingPromptName = promptName;
+            _pendingFeature = feature;
             _txtInput.Text = text;
             DoSend();
         }
