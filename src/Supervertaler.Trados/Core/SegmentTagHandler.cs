@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -97,6 +97,37 @@ namespace Supervertaler.Trados.Core
         private static readonly Regex TagPlaceholderPattern =
             new Regex(@"<\s*t\s*(\d+)\s*/\s*>|<\s*/\s*t\s*(\d+)\s*>|<\s*t\s*(\d+)\s*>",
                 RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// A segment's text as the model should read it: numbered placeholders for
+        /// inline tags - the same notation Batch Translate sends the segments in -
+        /// never Studio's native markup. <c>ISegment.ToString()</c> renders that
+        /// markup (<c>&lt;cf bold=True&gt;</c> and friends), and every rendering of
+        /// document CONTEXT used it, so one request carried the document in two
+        /// notations at once and AutoPrompt described tags the batch never sends
+        /// (#97). Every prompt-bound rendering goes through here now.
+        ///
+        /// Not the bridge's semantic naming (<c>&lt;b&gt;</c>, <c>&lt;i&gt;</c>): that
+        /// is a third notation, for MCP clients. Context and segments in one request
+        /// must read the same, and the segments use plain placeholders.
+        ///
+        /// Line and paragraph separators (U+2028/9) become spaces, as the chat path
+        /// already did for its own reasons. Never throws: a serialisation quirk
+        /// falls back to the plain text, and the plain text falls back to empty -
+        /// but never to ToString(), which is the thing being kept out.
+        /// </summary>
+        public static string ToModelText(ISegment segment)
+        {
+            if (segment == null) return "";
+            string text;
+            try { text = Serialize(segment).SerializedText ?? ""; }
+            catch
+            {
+                try { text = GetFinalText(segment) ?? ""; }
+                catch { return ""; }
+            }
+            return text.Replace("\u2028", " ").Replace("\u2029", " ");
+        }
 
         // ─── Serialization ───────────────────────────────────
 
