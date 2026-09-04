@@ -749,6 +749,31 @@ namespace Supervertaler.Trados.Controls
             _lblSearchTarget.Location = new Point(_txtSearch.Right + 8, lblY);
             _txtSearchTarget.Location = new Point(_lblSearchTarget.Right + 3, txtY);
             _txtSearchTarget.Width = eachBox;
+
+            // A box that was narrow when its text went in (down to 60 px here) and
+            // has just been widened keeps the scroll it needed then: "droge stof"
+            // showed as "roge stof" until the user pressed Home. A TextBox never
+            // scrolls back by itself, so it is told to here.
+            ResetHorizontalScroll(_txtSearch);
+            ResetHorizontalScroll(_txtSearchTarget);
+        }
+
+        /// <summary>
+        /// Scrolls a single-line TextBox back to its first character without
+        /// disturbing the caret or selection. Setting the text with the caret at
+        /// the end (SetSearchText focuses and selects all) scrolls the box to keep
+        /// the caret visible when the text does not fit; once the box is wider the
+        /// offset is stale but stays. Moving to 0 and back re-derives it from the
+        /// current width: a selection that now fits ends up unscrolled, one that
+        /// still does not scrolls only as far as it must.
+        /// </summary>
+        private static void ResetHorizontalScroll(TextBox box)
+        {
+            if (box == null || !box.IsHandleCreated || box.TextLength == 0) return;
+            int start = box.SelectionStart, length = box.SelectionLength;
+            box.Select(0, 0);
+            box.ScrollToCaret();
+            box.Select(start, length);
         }
 
         private void LayoutReplaceBar()
