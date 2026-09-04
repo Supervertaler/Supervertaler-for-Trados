@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Supervertaler.Trados.Settings;
@@ -55,6 +56,32 @@ namespace Supervertaler.Trados.Core
         {
             if (!Enabled) return;
             Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{category}] {message}{Environment.NewLine}");
+        }
+
+        /// <summary>
+        /// The last message written per category through <see cref="LogIfChanged"/>.
+        /// One string per category is the whole of the state; it exists so a poll
+        /// can report its outcome without repeating it every tick.
+        /// </summary>
+        private static readonly Dictionary<string, string> _lastByCategory =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Like <see cref="Log"/>, but writes only when <paramref name="message"/>
+        /// differs from the last message logged in this category. For code that runs
+        /// on a timer and reports the same state each time: the 2-second MultiTerm
+        /// poll wrote "no termbases" 43,560 times into one file (#99). A real change
+        /// still logs, once, when it happens.
+        /// </summary>
+        public static void LogIfChanged(string category, string message)
+        {
+            if (!Enabled) return;
+            lock (_lock)
+            {
+                if (_lastByCategory.TryGetValue(category, out var last) && last == message) return;
+                _lastByCategory[category] = message;
+            }
+            Log(category, message);
         }
 
         /// <summary>

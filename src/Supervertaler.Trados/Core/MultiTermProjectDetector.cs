@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -36,7 +36,7 @@ namespace Supervertaler.Trados.Core
             var result = new List<MultiTermTermbaseConfig>();
             if (activeDocument == null)
             {
-                DiagnosticLog.Log("MultiTerm", "DetectTermbases: activeDocument is null → 0 termbases.");
+                DiagnosticLog.LogIfChanged("MultiTerm", "DetectTermbases: activeDocument is null → 0 termbases.");
                 return result;
             }
 
@@ -45,17 +45,19 @@ namespace Supervertaler.Trados.Core
                 var project = activeDocument.Project as FileBasedProject;
                 if (project == null)
                 {
-                    DiagnosticLog.Log("MultiTerm", "DetectTermbases: active document's Project is not a FileBasedProject → 0 termbases.");
+                    DiagnosticLog.LogIfChanged("MultiTerm", "DetectTermbases: active document's Project is not a FileBasedProject → 0 termbases.");
                     return result;
                 }
 
                 var tbConfig = project.GetTermbaseConfiguration();
                 if (tbConfig?.Termbases == null || tbConfig.Termbases.Count == 0)
                 {
-                    DiagnosticLog.Log("MultiTerm", $"DetectTermbases: project termbase configuration has no termbases (tbConfig null={tbConfig == null}) → 0 termbases.");
+                    // Edge-triggered (#99): this ran every 2 s from the config poll and
+                    // was the same line each time for any project without MultiTerm.
+                    DiagnosticLog.LogIfChanged("MultiTerm", "DetectTermbases: project termbase configuration has no termbases → 0 termbases.");
                     return result;
                 }
-                DiagnosticLog.Log("MultiTerm", $"DetectTermbases: project has {tbConfig.Termbases.Count} termbase(s) in its configuration, {tbConfig.LanguageIndexes?.Count ?? 0} language index(es).");
+                DiagnosticLog.LogIfChanged("MultiTerm", $"DetectTermbases: project has {tbConfig.Termbases.Count} termbase(s) in its configuration, {tbConfig.LanguageIndexes?.Count ?? 0} language index(es).");
 
                 // Build language index mapping: project language code → termbase index name
                 // e.g. "en-US" → "English", "nl-NL" → "Dutch"
