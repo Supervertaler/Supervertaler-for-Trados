@@ -684,11 +684,22 @@ namespace Supervertaler.Trados.Settings
             TermbasePath = ps.TermbasePath ?? "";
             WriteTermbaseIds = ps.WriteTermbaseIds ?? new List<long>();
             ProjectTermbaseId = ps.ProjectTermbaseId;
-            DisabledTermbaseIds = ps.DisabledTermbaseIds ?? new List<long>();
             DisabledMultiTermIds = ps.DisabledMultiTermIds ?? new List<long>();
 
+            // #103: the two opt-out lists are MERGED, not replaced. They list what is
+            // switched OFF, so a termbase the project file has never heard of - one
+            // created after the file was saved - was absent from it and therefore
+            // ON, in every project opened afterwards, other clients' termbases
+            // included. The file speaks for the ids it knows about; for anything
+            // newer it defers to the global state, which since #62 is off for a
+            // newly created termbase. Ids are monotonic, so "newer than anything
+            // the file mentions" is the whole test - no new field, no migration.
+            var knownMax = HighestKnownTermbaseId(ps);
+            DisabledTermbaseIds = MergeOptOut(ps.DisabledTermbaseIds, DisabledTermbaseIds, knownMax);
+
             if (AiSettings != null && ps.DisabledAiTermbaseIds != null)
-                AiSettings.DisabledAiTermbaseIds = ps.DisabledAiTermbaseIds;
+                AiSettings.DisabledAiTermbaseIds =
+                    MergeOptOut(ps.DisabledAiTermbaseIds, AiSettings.DisabledAiTermbaseIds, knownMax);
 
             if (AiSettings != null && ps.EnabledAiMultiTermIds != null)
                 AiSettings.EnabledAiMultiTermIds = ps.EnabledAiMultiTermIds;
@@ -696,6 +707,45 @@ namespace Supervertaler.Trados.Settings
             // Per-project active prompt (overrides global SelectedPromptPath)
             if (AiSettings != null && !string.IsNullOrEmpty(ps.ActivePromptPath))
                 AiSettings.SelectedPromptPath = ps.ActivePromptPath;
+        }
+
+        /// <summary>
+        /// The highest Supervertaler termbase id a project file mentions anywhere:
+        /// either opt-out list, the write list, the project termbase. Everything the
+        /// file knows about has an id at or below this; anything above it was created
+        /// after the file was last saved. MultiTerm synthetic ids are negative and
+        /// excluded, as is the -1 "none" sentinel. -1 when the file mentions nothing.
+        /// </summary>
+        private static long HighestKnownTermbaseId(ProjectSettings ps)
+        {
+            long max = -1;
+            void Consider(IEnumerable<long> ids)
+            {
+                if (ids == null) return;
+                foreach (var id in ids) if (id > max) max = id;
+            }
+            Consider(ps.DisabledTermbaseIds);
+            Consider(ps.DisabledAiTermbaseIds);
+            Consider(ps.WriteTermbaseIds);
+            if (ps.ProjectTermbaseId > max) max = ps.ProjectTermbaseId;
+            return max;
+        }
+
+        /// <summary>
+        /// A project's opt-out list, plus every id from the global list that the
+        /// project file cannot have known about (above <paramref name="knownMax"/>).
+        /// Known ids keep the project's own setting, listed or not; unknown ones
+        /// inherit the global state. Never null; never mutates its inputs.
+        /// </summary>
+        private static List<long> MergeOptOut(List<long> project, List<long> global, long knownMax)
+        {
+            var merged = new List<long>(project ?? new List<long>());
+            if (global != null)
+            {
+                foreach (var id in global)
+                    if (id > knownMax && !merged.Contains(id)) merged.Add(id);
+            }
+            return merged;
         }
 
         /// <summary>
