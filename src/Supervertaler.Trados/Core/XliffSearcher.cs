@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Xml;
+using Supervertaler.Trados.Models;
 
 namespace Supervertaler.Trados.Core
 {
@@ -40,6 +41,14 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>TM concordance match score (0–100); 0 for SDLXLIFF results.</summary>
         public int MatchScore;
+
+        /// <summary>
+        /// For a termbase hit taken from TermLens's loaded index: the entry itself,
+        /// with its id and termbase, so the hit can be opened for editing (#104).
+        /// Null for every other kind of result, and for a termbase hit read
+        /// straight from the database, which carries text only.
+        /// </summary>
+        public TermEntry Term;
     }
 
     /// <summary>

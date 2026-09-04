@@ -227,6 +227,7 @@ namespace Supervertaler.Trados.Core
                         SourceText = srcText,
                         TargetText = tgtText,
                         Status = kind ?? "Termbase",
+                        Term = e,   // keeps the id, so the hit can be edited (#104)
                     });
                 }
                 progress?.Invoke(list.Count, list.Count);

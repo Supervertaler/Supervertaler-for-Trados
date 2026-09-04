@@ -550,6 +550,14 @@ namespace Supervertaler.Trados.Controls
 
             _grid.CellDoubleClick += OnGridDoubleClick;
             _grid.CellClick += (s, ev) => { if (ev.RowIndex >= 0) UpdatePreview(); };
+
+            // #104: right-click a termbase hit to open it in the term editor.
+            _rowMenu = new ContextMenuStrip();
+            _miEditTerm = new ToolStripMenuItem("Edit term\u2026");
+            _miEditTerm.Click += OnEditTermClick;
+            _rowMenu.Items.Add(_miEditTerm);
+            _rowMenu.Opening += OnRowMenuOpening;
+            _grid.CellMouseDown += OnGridCellMouseDown;
             _grid.KeyDown += OnGridKeyDown;
             _grid.CellPainting += OnCellPainting;
             _grid.SelectionChanged += OnGridSelectionChanged;
@@ -1829,6 +1837,88 @@ namespace Supervertaler.Trados.Controls
                 UseRegex = _chkRegex.Checked,
                 WholeWord = _chkWholeWord.Checked
             });
+        }
+
+        // ─── #104: edit a termbase hit ──────────────────────────────────
+
+        private ContextMenuStrip _rowMenu;
+        private ToolStripMenuItem _miEditTerm;
+
+        private void OnGridCellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
+
+            // Right-click selects the row under the pointer, as everywhere else.
+            var col = Math.Max(0, e.ColumnIndex);
+            _grid.ClearSelection();
+            _grid.Rows[e.RowIndex].Selected = true;
+            try { _grid.CurrentCell = _grid.Rows[e.RowIndex].Cells[col]; } catch { }
+
+            var rect = _grid.GetCellDisplayRectangle(col, e.RowIndex, true);
+            _rowMenu.Show(_grid, rect.Left + e.X, rect.Top + e.Y);
+        }
+
+        private void OnRowMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            var r = SelectedResult();
+            // Only termbase hits get the item at all; for a hit that turns out not
+            // to be editable, the click explains why rather than the item going
+            // grey - a disabled ToolStrip item shows no tooltip, so greying it
+            // out would have said nothing.
+            _miEditTerm.Visible = r != null && r.Kind == ResultKind.TermbaseEntry;
+            if (!_miEditTerm.Visible) e.Cancel = true;
+        }
+
+        private SearchResult SelectedResult()
+        {
+            return _grid.SelectedRows.Count > 0 ? _grid.SelectedRows[0].Tag as SearchResult : null;
+        }
+
+        private static bool CanEditTerm(SearchResult r, out string why)
+        {
+            why = null;
+            if (r == null || r.Kind != ResultKind.TermbaseEntry)
+            {
+                why = "Only termbase entries can be edited from here.";
+                return false;
+            }
+            if (r.Term != null && r.Term.IsMultiTerm)
+            {
+                why = "MultiTerm and .ttb termbases are read-only in Supervertaler. Edit this entry in MultiTerm.";
+                return false;
+            }
+            if (r.Term == null)
+            {
+                why = "This termbase was read straight from the database (TermLens had not finished loading it), " +
+                      "so the hit does not carry the entry. Open the termbase in the Termbase Editor to edit it, " +
+                      "or search again once TermLens has loaded.";
+                return false;
+            }
+            if (!TermLensEditorViewPart.HasActiveInstance)
+            {
+                why = "Open a document in the editor first \u2013 the term editor works through TermLens.";
+                return false;
+            }
+            return true;
+        }
+
+        private void OnEditTermClick(object sender, EventArgs e)
+        {
+            var r = SelectedResult();
+            if (!CanEditTerm(r, out var why))
+            {
+                MessageBox.Show(FindForm(), why, "Supervertaler \u2014 Edit term",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // The same path as the chip's "Edit Term\u2026": resolves the termbase,
+            // opens the dialog, and on save updates TermLens's index and display.
+            TermLensEditorViewPart.HandleEditCurrentTerm(r.Term, null);
+
+            // Results come from memory, so re-running the search is instant and
+            // the row shows the edited text.
+            FireSearch();
         }
 
         private void OnGridDoubleClick(object sender, DataGridViewCellEventArgs e)

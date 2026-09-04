@@ -42,6 +42,10 @@ namespace Supervertaler.Trados
         // Used by AddTermAction to trigger a reload after inserting a term.
         private static TermLensEditorViewPart _currentInstance;
 
+        /// <summary>True while a document is open and TermLens is live - the
+        /// precondition for <see cref="HandleEditCurrentTerm"/> to do anything.</summary>
+        public static bool HasActiveInstance => _currentInstance != null;
+
         // Captured on the UI thread in Initialize(). Lets GetCurrentUsageContext()
         // tell whether it may safely touch the (thread-affine) Trados document model.
         private static int _uiThreadId;
