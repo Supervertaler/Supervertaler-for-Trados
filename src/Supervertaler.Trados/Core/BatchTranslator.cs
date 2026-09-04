@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -288,6 +288,13 @@ namespace Supervertaler.Trados.Core
                             feature: PromptLogFeature.BatchTranslate,
                             suppressLog: true,
                             enablePromptCaching: true);
+
+                        // #98: suppressLog above keeps the per-batch call out of the Reports
+                        // tab and the usage ledger, but the on-disk prompt log needs exactly
+                        // this exchange - the segments sent and the reply received - which the
+                        // aggregated entry at the end deliberately does not carry.
+                        PromptFileLogger.RecordBatchExchange(provider, model, batchNum + 1, totalBatches,
+                            systemPrompt, userPrompt, response);
 
                         // Accumulate token counts for the aggregated log entry
                         aggInputTokens += TokenEstimator.EstimateInputTokens(userPrompt, systemPrompt);

@@ -84,6 +84,57 @@ namespace Supervertaler.Trados.Core
             catch { /* never let logging disrupt translation */ }
         }
 
+        /// <summary>
+        /// One Batch Translate exchange - the segments sent and the reply received.
+        ///
+        /// Batch Translate deliberately suppresses the per-call PromptCompleted
+        /// event (one aggregated entry per run keeps the Reports tab and the usage
+        /// ledger from double-counting), and that aggregate carries a placeholder
+        /// user prompt and no response. So the event alone gives this log the
+        /// system prompt but not the exchange - the half of "what did we really
+        /// send, and what came back" that matters most. The runner calls this
+        /// directly, per batch, bypassing the event; nothing else sees it.
+        ///
+        /// The system prompt is byte-stable across a run (the runner relies on that
+        /// for prompt caching), so it is written with the FIRST batch only and
+        /// omitted after: with a 300 KB system prompt and twenty batches that is
+        /// the difference between 300 KB and 6 MB per run.
+        /// </summary>
+        public static void RecordBatchExchange(string provider, string model, int batchNumber, int totalBatches,
+            string systemPrompt, string userPrompt, string response)
+        {
+            try
+            {
+                var settings = SettingsService.Current;
+                if (settings?.AiSettings == null || !settings.AiSettings.LogPromptsToReports) return;
+
+                var rec = new PromptFileRecord
+                {
+                    Ts = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    Feature = "BatchTranslate.batch",
+                    PromptName = $"batch {batchNumber} of {totalBatches}",
+                    Provider = provider,
+                    Model = model,
+                    SystemPrompt = batchNumber == 1 ? systemPrompt : null,
+                    UserPrompt = userPrompt,
+                    Response = response,
+                    UsageSource = "n/a",
+                    Ok = true,
+                };
+                var line = Serialize(rec);
+                if (line == null) return;
+
+                var path = Path.Combine(LogDir, DateTime.Now.ToString("yyyy-MM-dd") + ".jsonl");
+                Directory.CreateDirectory(LogDir);
+                lock (_lock)
+                {
+                    PruneOnceNoLock();
+                    File.AppendAllText(path, line + "\n", new UTF8Encoding(false));
+                }
+            }
+            catch { /* never let logging disrupt translation */ }
+        }
+
         private static PromptFileRecord Build(PromptLogEntry e)
         {
             var rec = new PromptFileRecord
