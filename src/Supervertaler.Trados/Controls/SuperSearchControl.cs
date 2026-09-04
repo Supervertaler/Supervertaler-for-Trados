@@ -557,7 +557,10 @@ namespace Supervertaler.Trados.Controls
             _miEditTerm.Click += OnEditTermClick;
             _rowMenu.Items.Add(_miEditTerm);
             _rowMenu.Opening += OnRowMenuOpening;
-            _grid.CellMouseDown += OnGridCellMouseDown;
+            // CellMouseClick, not CellMouseDown: a menu shown on mouse-down is
+            // dismissed by the same click's mouse-up. The Termbase Editor's menu
+            // uses CellMouseClick and works; this matches it.
+            _grid.CellMouseClick += OnGridCellMouseClick;
             _grid.KeyDown += OnGridKeyDown;
             _grid.CellPainting += OnCellPainting;
             _grid.SelectionChanged += OnGridSelectionChanged;
@@ -1844,7 +1847,7 @@ namespace Supervertaler.Trados.Controls
         private ContextMenuStrip _rowMenu;
         private ToolStripMenuItem _miEditTerm;
 
-        private void OnGridCellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
+        private void OnGridCellMouseClick(object sender, DataGridViewCellMouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
 
@@ -1860,13 +1863,15 @@ namespace Supervertaler.Trados.Controls
 
         private void OnRowMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            // The menu always appears and the item is always there: a right-click
+            // that shows nothing is indistinguishable from a broken one. Whether the
+            // hit can actually be edited is decided on the click, which explains
+            // itself when it cannot - a disabled ToolStrip item shows no tooltip, so
+            // greying it out would have said nothing either.
             var r = SelectedResult();
-            // Only termbase hits get the item at all; for a hit that turns out not
-            // to be editable, the click explains why rather than the item going
-            // grey - a disabled ToolStrip item shows no tooltip, so greying it
-            // out would have said nothing.
-            _miEditTerm.Visible = r != null && r.Kind == ResultKind.TermbaseEntry;
-            if (!_miEditTerm.Visible) e.Cancel = true;
+            _miEditTerm.Text = r != null && r.Kind == ResultKind.TermbaseEntry
+                ? "Edit term…"
+                : "Edit term… (termbase entries only)";
         }
 
         private SearchResult SelectedResult()
