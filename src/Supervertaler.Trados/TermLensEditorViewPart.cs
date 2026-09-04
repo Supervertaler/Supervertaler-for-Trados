@@ -1257,7 +1257,9 @@ namespace Supervertaler.Trados
                         System.Diagnostics.Debug.WriteLine($"[TermLens] Migrated AI termbase IDs for existing project: disabled {allIds.Count} termbases");
                     }
 
-                    _settings.ApplyProjectOverlay(ps);
+                    // Hand over every termbase id so anything this project has never
+                    // heard of is OFF here, not inherited from the previous project (#103).
+                    _settings.ApplyProjectOverlay(ps, GetAllTermbaseIds(ps.TermbasePath ?? _settings.TermbasePath));
                     // CRITICAL: persist the global settings file so that
                     // disk-based readers (QuickAddTermAction, AddTermAction)
                     // see the new project's WriteTermbaseIds / ProjectTermbaseId
@@ -1302,7 +1304,7 @@ namespace Supervertaler.Trados
                         EnabledAiMultiTermIds = inheritedAiMtIds,
                         AiTermbaseIdsInitialized = true,
                     };
-                    _settings.ApplyProjectOverlay(newPs);
+                    _settings.ApplyProjectOverlay(newPs, allIds);
                     ProjectSettings.Save(projectPath, newPs);
                     // CRITICAL: persist the global settings file so disk-based
                     // readers see the empty WriteTermbaseIds / cleared
@@ -2132,7 +2134,8 @@ namespace Supervertaler.Trados
                 var ps = ProjectSettings.Load(instance._currentProjectPath);
                 if (ps != null)
                 {
-                    instance._settings.ApplyProjectOverlay(ps);
+                    instance._settings.ApplyProjectOverlay(ps,
+                        instance.GetAllTermbaseIds(ps.TermbasePath ?? instance._settings.TermbasePath));
                     // Keep the global settings file in sync so disk-based
                     // readers (QuickAddTermAction, AddTermAction) see the
                     // current project's effective Write/Project termbase IDs.
@@ -2179,7 +2182,8 @@ namespace Supervertaler.Trados
                 var ps = ProjectSettings.Load(instance._currentProjectPath);
                 if (ps != null)
                 {
-                    instance._settings.ApplyProjectOverlay(ps);
+                    instance._settings.ApplyProjectOverlay(ps,
+                        instance.GetAllTermbaseIds(ps.TermbasePath ?? instance._settings.TermbasePath));
                     // Keep the global settings file in sync (see notes above).
                     SettingsService.Save();
                 }

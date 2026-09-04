@@ -677,7 +677,14 @@ namespace Supervertaler.Trados.Settings
         /// Applies a project-specific settings overlay onto this global settings instance.
         /// Only copies the per-project fields (termbase path, enabled/disabled IDs, etc.).
         /// </summary>
-        public void ApplyProjectOverlay(ProjectSettings ps)
+        /// <param name="allTermbaseIds">
+        /// Every Supervertaler termbase id currently in the database, when the
+        /// caller has it. With it, a termbase the project file has never heard of
+        /// is switched OFF in this project outright - deterministic, whatever the
+        /// global state. Without it, unknown ids fall back to inheriting the global
+        /// list, which is only as good as whatever the previous project left there.
+        /// </param>
+        public void ApplyProjectOverlay(ProjectSettings ps, IEnumerable<long> allTermbaseIds = null)
         {
             if (ps == null) return;
 
@@ -700,6 +707,17 @@ namespace Supervertaler.Trados.Settings
             if (AiSettings != null && ps.DisabledAiTermbaseIds != null)
                 AiSettings.DisabledAiTermbaseIds =
                     MergeOptOut(ps.DisabledAiTermbaseIds, AiSettings.DisabledAiTermbaseIds, knownMax);
+
+            // #103, second step: with the full id list in hand, "unknown" is not left
+            // to the global state at all. Every termbase above the ceiling is off in
+            // this project, full stop - a project only reads, and only sends to the
+            // model, what it was told about.
+            if (allTermbaseIds != null)
+            {
+                AddUnknownAsOff(DisabledTermbaseIds, allTermbaseIds, knownMax);
+                if (AiSettings?.DisabledAiTermbaseIds != null)
+                    AddUnknownAsOff(AiSettings.DisabledAiTermbaseIds, allTermbaseIds, knownMax);
+            }
 
             if (AiSettings != null && ps.EnabledAiMultiTermIds != null)
                 AiSettings.EnabledAiMultiTermIds = ps.EnabledAiMultiTermIds;
@@ -746,6 +764,13 @@ namespace Supervertaler.Trados.Settings
                     if (id > knownMax && !merged.Contains(id)) merged.Add(id);
             }
             return merged;
+        }
+
+        /// <summary>Adds every id above <paramref name="knownMax"/> to an opt-out list.</summary>
+        private static void AddUnknownAsOff(List<long> optOut, IEnumerable<long> allIds, long knownMax)
+        {
+            foreach (var id in allIds)
+                if (id > knownMax && !optOut.Contains(id)) optOut.Add(id);
         }
 
         /// <summary>
