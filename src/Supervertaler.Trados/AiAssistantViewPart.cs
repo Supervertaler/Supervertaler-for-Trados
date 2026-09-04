@@ -617,7 +617,8 @@ namespace Supervertaler.Trados
             SaveChatHistory();
 
             // 2. Gather current context
-            var sourceText = _activeDocument?.ActiveSegmentPair?.Source?.ToString();
+            // #97: as the model reads it - placeholders, never Studio markup.
+            var sourceText = SegmentTagHandler.ToModelText(_activeDocument?.ActiveSegmentPair?.Source);
             // Strip Unicode line/paragraph separators (U+2028, U+2029).
             // These are used by InDesign (IDML) as forced line breaks and by some
             // PDF converters as layout artifacts. They're invisible in Trados but
@@ -6457,7 +6458,8 @@ namespace Supervertaler.Trados
                 var candidates = new List<TmMatch>();
                 foreach (var pair in _activeDocument.SegmentPairs)
                 {
-                    var sourceText = pair.Source?.ToString() ?? "";
+                    // #97: reference text, read not reproduced - plain on both sides.
+                    var sourceText = pair.Source != null ? SegmentTagHandler.GetFinalText(pair.Source) : "";
                     var targetText = pair.Target != null
                         ? SegmentTagHandler.GetFinalText(pair.Target) : "";
 
@@ -13193,7 +13195,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // Include TM matches and auto-propagated segments (which originate from TM)
                 if (originType == "tm" || originType == "auto-propagated")
                 {
-                    var sourceText = pair.Source?.ToString();
+                    var sourceText = pair.Source != null ? SegmentTagHandler.GetFinalText(pair.Source) : null;   // #97
                     var targetText = pair.Target != null
                         ? SegmentTagHandler.GetFinalText(pair.Target) : null;
 
@@ -13409,8 +13411,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 foreach (var pair in _activeDocument.SegmentPairs)
                 {
-                    var sourceText = pair.Source?.ToString() ?? "";
-                    var targetText = pair.Target?.ToString() ?? "";
+                    // #97: the proofreader sees its segments as <tN>; its context must match.
+                    var sourceText = SegmentTagHandler.ToModelText(pair.Source);
+                    var targetText = SegmentTagHandler.ToModelText(pair.Target);
                     segments.Add((sourceText, targetText));
                 }
             }
@@ -13434,7 +13437,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             try
             {
                 foreach (var pair in doc.SegmentPairs)
-                    segments.Add(pair.Source?.ToString() ?? "");
+                    segments.Add(SegmentTagHandler.ToModelText(pair.Source));   // #97
             }
             catch { /* document may not be accessible during transitions */ }
             return segments;
@@ -13468,7 +13471,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 int index = 0;
                 foreach (var pair in _activeDocument.SegmentPairs)
                 {
-                    var sourceText = pair.Source?.ToString() ?? "";
+                    // #97: placeholders, as the batch segments - never <cf ...>.
+                    var sourceText = SegmentTagHandler.ToModelText(pair.Source);
                     segments.Add(sourceText);
 
                     // Match against active segment

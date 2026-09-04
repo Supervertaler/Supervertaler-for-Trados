@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -132,7 +132,7 @@ namespace Supervertaler.Trados.Core
                     }
 
                     fileSegIdx++;
-                    var src = pair.Source?.ToString() ?? "";
+                    var src = SegmentTagHandler.ToModelText(pair.Source);   // #97: placeholders, never <cf ...>
                     sb.Append('[').Append(fileSegIdx).Append("] ").AppendLine(src);
                 }
                 catch { }
@@ -189,7 +189,7 @@ namespace Supervertaler.Trados.Core
 
                         fileSegIdx++;
 
-                        var src = pair.Source?.ToString() ?? "";
+                        var src = SegmentTagHandler.ToModelText(pair.Source);   // #97
                         entries.Add((src, fileSegIdx));
 
                         if (activeIdx < 0 && puId == activePuId && sid == activeSegId)
@@ -244,7 +244,7 @@ namespace Supervertaler.Trados.Core
                 // Include TM matches and auto-propagated segments (which originate from TM)
                 if (originType == "tm" || originType == "auto-propagated")
                 {
-                    var sourceText = pair.Source?.ToString();
+                    var sourceText = pair.Source != null ? SegmentTagHandler.GetFinalText(pair.Source) : null;   // #97: match the target side
                     var targetText = pair.Target != null
                         ? SegmentTagHandler.GetFinalText(pair.Target) : null;
 
