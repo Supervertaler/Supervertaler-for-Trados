@@ -1000,11 +1000,11 @@ namespace Supervertaler.Trados.Settings
             // confirmation so a re-tick re-asks. Read column is exempt –
             // there's no harm in *reading* a non-matching termbase, only in
             // writing into it.
-            if ((colName == "colWrite" || colName == "colProject") && e.RowIndex < _termbases.Count)
+            if ((colName == "colWrite" || colName == "colProject")
+                && _dgvTermbases.Rows[e.RowIndex].Tag is TermbaseInfo tb)   // by Tag: survives sorting
             {
                 _dgvTermbases.CommitEdit(DataGridViewDataErrorContexts.Commit);
                 var clicked = _dgvTermbases.Rows[e.RowIndex].Cells[colName].Value as bool? ?? false;
-                var tb = _termbases[e.RowIndex];
 
                 if (clicked)
                 {
@@ -1174,9 +1174,8 @@ namespace Supervertaler.Trados.Settings
                     // each one needs explicit per-termbase confirmation, not a
                     // hidden bulk override. Already-confirmed ones flow
                     // through normally. Unticking is unconditional.
-                    if (newValue && col.Name == "colWrite" && row.Index < _termbases.Count)
+                    if (newValue && col.Name == "colWrite" && row.Tag is TermbaseInfo tb)   // by Tag: survives sorting
                     {
-                        var tb = _termbases[row.Index];
                         if (!IsTermbaseEligibleForBulkWriteTick(tb))
                             continue;
                     }
@@ -1508,9 +1507,14 @@ namespace Supervertaler.Trados.Settings
         {
             var dbPath = _txtTermbasePath.Text.Trim();
             if (string.IsNullOrEmpty(dbPath) || !File.Exists(dbPath)) return;
-            if (rowIndex < 0 || rowIndex >= _termbases.Count) return;
+            if (rowIndex < 0 || rowIndex >= _dgvTermbases.Rows.Count) return;
 
-            var tb = _termbases[rowIndex];
+            // The row's own Tag, never _termbases[rowIndex]: the grid can be sorted
+            // by any column, after which row positions no longer line up with the
+            // list, and the wrong termbase was offered for renaming. A MultiTerm
+            // row carries a different Tag type and cannot be renamed here.
+            var tb = _dgvTermbases.Rows[rowIndex].Tag as TermbaseInfo;
+            if (tb == null) return;
 
             using (var dlg = new Form())
             {
@@ -2249,7 +2253,7 @@ namespace Supervertaler.Trados.Settings
             if (keyData == Keys.F2 && _dgvTermbases.Focused && _dgvTermbases.SelectedRows.Count > 0)
             {
                 var rowIndex = _dgvTermbases.SelectedRows[0].Index;
-                if (rowIndex >= 0 && rowIndex < _termbases.Count)
+                if (rowIndex >= 0)
                     RenameTermbase(rowIndex);
                 return true;
             }
