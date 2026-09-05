@@ -1851,17 +1851,65 @@ namespace Supervertaler.Trados
                     }
                 }
 
-                SafeInvoke(() =>
-                {
-                    _control.Value.UpdateSegment(sourceText);
-                    // Keep the dockable TermPicker pane in step with the panel.
-                    // No-op unless the user has actually opened that pane.
-                    try { TermPickerViewPart.RefreshIfOpen(); } catch { }
-                });
+                QueueRender();
             }
             catch (Exception)
             {
                 // Silently handle – segment may not be available during transitions
+            }
+        }
+
+        // #95: 1 while a render is posted and not yet run. Calls arriving in that
+        // window are folded into the pending one - a caller that loops (the range
+        // delete did, per row) costs one render, not one per iteration, and the
+        // panel's layout is never re-entered from a queue of stale requests.
+        private int _renderQueued;
+
+        /// <summary>
+        /// Renders the active segment into the panel, once, on the UI thread. The
+        /// render reads the active segment when it runs, so the latest state wins
+        /// however many requests were folded into it. Synchronous when the control
+        /// has no window handle yet (BeginInvoke needs one).
+        /// </summary>
+        private void QueueRender()
+        {
+            var ctrl = _control.Value;
+            if (!ctrl.IsHandleCreated || ctrl.IsDisposed)
+            {
+                RenderActiveSegment();
+                return;
+            }
+            if (System.Threading.Interlocked.Exchange(ref _renderQueued, 1) != 0) return;
+            try
+            {
+                ctrl.BeginInvoke((Action)(() =>
+                {
+                    System.Threading.Interlocked.Exchange(ref _renderQueued, 0);
+                    RenderActiveSegment();
+                }));
+            }
+            catch
+            {
+                // Handle went away between the check and the post; the next
+                // segment change renders again. Do not leave the flag set.
+                System.Threading.Interlocked.Exchange(ref _renderQueued, 0);
+            }
+        }
+
+        private void RenderActiveSegment()
+        {
+            try
+            {
+                var pair = _activeDocument?.ActiveSegmentPair;
+                var text = pair != null ? GetPlainText(pair.Source) : "";
+                _control.Value.UpdateSegment(text);
+                // Keep the dockable TermPicker pane in step with the panel.
+                // No-op unless the user has actually opened that pane.
+                try { TermPickerViewPart.RefreshIfOpen(); } catch { }
+            }
+            catch
+            {
+                // Segment may not be available during transitions.
             }
         }
 
@@ -2217,6 +2265,9 @@ namespace Supervertaler.Trados
             // never tear down the panel.
             try
             {
+                // #95: a fresh panel first, so refresh is a way out of any display
+                // state - not a re-render into whatever the old panel was left in.
+                _control.Value.RebuildFlowPanel();
                 NotifyTermAdded();
             }
             catch (Exception ex)

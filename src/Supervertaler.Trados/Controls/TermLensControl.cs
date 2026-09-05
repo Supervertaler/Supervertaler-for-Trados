@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -16,7 +16,7 @@ namespace Supervertaler.Trados.Controls
     /// </summary>
     public class TermLensControl : UserControl, IUIControl
     {
-        private readonly FlowLayoutPanel _flowPanel;
+        private FlowLayoutPanel _flowPanel;   // replaced by RebuildFlowPanel (#95)
         private readonly Label _statusLabel;
         private readonly Panel _headerPanel;
         private readonly Label _headerLabel;
@@ -293,21 +293,8 @@ namespace Supervertaler.Trados.Controls
                 "Right-click for voice command settings.");
             _headerPanel.Controls.Add(_btnVoice);
 
-            // Main flow panel for term blocks
-            _flowPanel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                WrapContents = true,
-                Padding = new Padding(UiScale.Pixels(4)),
-                BackColor = Color.White,
-                FlowDirection = FlowDirection.LeftToRight
-            };
-
-            // Joins adjacent highlighted words into one band; the gaps between
-            // controls are the panel's to paint, not any word's.
-            _flowPanel.Paint += FlowPanelPaintSelectionBand;
-
+            // Main flow panel for term blocks (same factory RebuildFlowPanel uses, #95)
+            _flowPanel = CreateFlowPanel();
             Controls.Add(_flowPanel);
             Controls.Add(_headerPanel);
 
@@ -537,38 +524,99 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public void UpdateSegment(string sourceText)
         {
+            // #95: layout is resumed in a finally. It used to be resumed only on the
+            // normal path, so one exception mid-render left the panel suspended for
+            // good - WinForms counts suspensions, and every later render added one
+            // and removed one, never reaching zero. The header kept reporting
+            // matches while the panel drew two words, and nothing short of a Studio
+            // restart cleared it.
             _flowPanel.SuspendLayout();
-            _flowPanel.Controls.Clear();
-
-            if (string.IsNullOrWhiteSpace(sourceText))
+            try
             {
-                _statusLabel.Text = "";
+                _flowPanel.Controls.Clear();
+
+                if (string.IsNullOrWhiteSpace(sourceText))
+                {
+                    _statusLabel.Text = "";
+                    MatchCount = 0;
+                    return;
+                }
+
+                int maxBlockWidth = _flowPanel.ClientSize.Width
+                    - _flowPanel.Padding.Horizontal
+                    - UiScale.Pixels(4); // margin allowance
+                if (maxBlockWidth < 60) maxBlockWidth = 60;
+
+                var built = BuildSegmentBlocks(sourceText, maxBlockWidth);
+                int matchCount = 0;
+                int wordCount = 0;
+                foreach (var ctrl in built)
+                {
+                    _flowPanel.Controls.Add(ctrl);
+                    if (ctrl is TermBlock) matchCount++;
+                    wordCount++;
+                }
+
+                MatchCount = matchCount;
+
+                _statusLabel.Text = (matchCount > 0
+                    ? $"\u2713 Found {matchCount} terms in {wordCount} words"
+                    : $"{wordCount} words, no matches") + _multiTermStatusSuffix;
+            }
+            finally
+            {
                 _flowPanel.ResumeLayout(true);
-                return;
             }
+        }
 
-            int maxBlockWidth = _flowPanel.ClientSize.Width
-                - _flowPanel.Padding.Horizontal
-                - UiScale.Pixels(4); // margin allowance
-            if (maxBlockWidth < 60) maxBlockWidth = 60;
-
-            var built = BuildSegmentBlocks(sourceText, maxBlockWidth);
-            int matchCount = 0;
-            int wordCount = 0;
-            foreach (var ctrl in built)
+        /// <summary>
+        /// Replaces the flow panel with a fresh one (#95): the one guaranteed way
+        /// out of any display state, whatever caused it - a leaked layout
+        /// suspension, a control left half-added. The new panel takes the old one's
+        /// place in the z-order, which matters because Dock.Fill is resolved against
+        /// the header's Dock.Top by that order. The caller re-renders afterwards.
+        /// </summary>
+        public void RebuildFlowPanel()
+        {
+            var old = _flowPanel;
+            var fresh = CreateFlowPanel();
+            SuspendLayout();
+            try
             {
-                _flowPanel.Controls.Add(ctrl);
-                if (ctrl is TermBlock) matchCount++;
-                wordCount++;
+                int index = old != null ? Controls.IndexOf(old) : -1;
+                if (old != null)
+                {
+                    try { old.Paint -= FlowPanelPaintSelectionBand; } catch { }
+                    Controls.Remove(old);
+                }
+                Controls.Add(fresh);
+                if (index >= 0) Controls.SetChildIndex(fresh, index);
+                _flowPanel = fresh;
+                _statusLabel.Text = "";
+                MatchCount = 0;
             }
+            finally
+            {
+                ResumeLayout(true);
+            }
+            try { old?.Dispose(); } catch { }
+        }
 
-            MatchCount = matchCount;
-
-            _statusLabel.Text = (matchCount > 0
-                ? $"\u2713 Found {matchCount} terms in {wordCount} words"
-                : $"{wordCount} words, no matches") + _multiTermStatusSuffix;
-
-            _flowPanel.ResumeLayout(true);
+        private FlowLayoutPanel CreateFlowPanel()
+        {
+            var panel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                WrapContents = true,
+                Padding = new Padding(UiScale.Pixels(4)),
+                BackColor = Color.White,
+                FlowDirection = FlowDirection.LeftToRight
+            };
+            // Joins adjacent highlighted words into one band; the gaps between
+            // controls are the panel's to paint, not any word's.
+            panel.Paint += FlowPanelPaintSelectionBand;
+            return panel;
         }
 
         /// <summary>
