@@ -6,8 +6,10 @@ using System.Windows.Forms;
 namespace Supervertaler.Trados.Controls
 {
     /// <summary>
-    /// Tiny modal busy window that runs an async LLM call (the AutoPrompt context
-    /// classification) and closes itself when it completes. Because it is modal and
+    /// Tiny modal busy window that runs an async LLM call and closes itself when it
+    /// completes. Written for the AutoPrompt context classification and reused by
+    /// "Add term with abbreviation (AI)" - so the caller names the window and says
+    /// what is being waited for; the defaults are AutoPrompt's. Because it is modal and
     /// awaits on the UI thread, the window stays responsive (the marquee animates)
     /// while the "Reading the document…" step runs, and the user cannot re-trigger
     /// AutoPrompt underneath it. Mirrors the Workbench background-worker + busy
@@ -23,12 +25,12 @@ namespace Supervertaler.Trados.Controls
         /// <summary>The exception if the call failed, otherwise null.</summary>
         public Exception Error { get; private set; }
 
-        public AutoPromptBusyForm(Func<Task<string>> work)
+        public AutoPromptBusyForm(Func<Task<string>> work, string title = null, string message = null)
         {
             _work = work;
             Icon = Supervertaler.Trados.Core.IconHelper.AppIcon;
 
-            Text = "AutoPrompt";
+            Text = string.IsNullOrEmpty(title) ? "AutoPrompt" : title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
@@ -39,7 +41,7 @@ namespace Supervertaler.Trados.Controls
 
             var label = new Label
             {
-                Text = "Reading the document to detect its context…",
+                Text = string.IsNullOrEmpty(message) ? "Reading the document to detect its context…" : message,
                 Location = new Point(16, 18),
                 Size = new Size(328, 20),
                 AutoSize = false,

@@ -258,7 +258,9 @@ namespace Supervertaler.Trados
                         userPrompt,
                         AbbreviationTermExtractor.SystemPrompt,
                         maxTokens: 400,
-                        suppressLog: true)))
+                        suppressLog: true),
+                    title: "Add term with abbreviation",
+                    message: "Reading the segment to extract the term pair and its abbreviation…"))
                 {
                     busy.ShowDialog();
                     reply = busy.Result;
