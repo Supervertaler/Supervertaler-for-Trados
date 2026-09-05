@@ -1,4 +1,4 @@
-# Layout probe for the plugin's WinForms dialogs.
+﻿# Layout probe for the plugin's WinForms dialogs.
 #
 # Loads the built assembly, constructs each dialog off-screen with realistic
 # text, forces a real layout pass, then measures every control and reports:
@@ -85,6 +85,20 @@ $cases = @(
         Type = "Supervertaler.Trados.Controls.AboutDialog"
         Name = "AboutDialog"
         Args = @()
+    },
+    @{
+        # #94. Long file and termbase names, and the longest note the dialog
+        # writes; the grid is empty here (SetColumns is not called), which is
+        # the frame's own worst case for the labels.
+        Type = "Supervertaler.Trados.Controls.TsvColumnMappingDialog"
+        Name = "TsvColumnMappingDialog"
+        Args = @(
+            "Acme PROJ-001 terminology export, reviewed and approved, final version 3 (2026-09-05).tsv",
+            12345,
+            "Acme - pharmaceutical patents - approved terminology (client-facing)",
+            "English (United Kingdom)",
+            "Dutch (Netherlands)",
+            "This file is Dutch (Netherlands) -> English (United Kingdom), which is not this termbase's pair (English (United Kingdom) -> Dutch (Netherlands)). Check you picked the right termbase before importing.")
     },
     @{
         Type = "Supervertaler.Trados.Controls.AnnouncementDialog"

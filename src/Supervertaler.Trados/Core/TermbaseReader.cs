@@ -2393,7 +2393,8 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         /// <returns>Number of terms imported/updated.</returns>
         public static int ImportTsv(string dbPath, long termbaseId, string tsvPath,
-            string sourceLang, string targetLang, IProgress<int> progress = null)
+            string sourceLang, string targetLang, IProgress<int> progress = null,
+            Dictionary<string, int> columnMap = null)
         {
             // Read all lines
             string[] lines;
@@ -2409,9 +2410,12 @@ namespace Supervertaler.Trados.Core
             if (lines.Length < 2)
                 throw new InvalidOperationException("TSV file must contain a header row and at least one data row.");
 
-            // Parse headers
+            // Parse headers. A mapping chosen by the user (#94) replaces the guess
+            // from the header names; it has the same shape.
             var headers = lines[0].Split('\t');
-            var colMap = MapTsvColumns(headers, sourceLang, targetLang);
+            var colMap = columnMap != null
+                ? new Dictionary<string, int>(columnMap)
+                : MapTsvColumns(headers, sourceLang, targetLang);
 
             if (!colMap.ContainsKey("source") || !colMap.ContainsKey("target"))
                 throw new InvalidOperationException(
@@ -2468,6 +2472,7 @@ namespace Supervertaler.Trados.Core
                         var uuid = UnescapeTsvField(GetField(fields, colMap, "uuid"));
                         var priority = ParseInt(GetField(fields, colMap, "priority"), 99);
                         var domain = UnescapeTsvField(GetField(fields, colMap, "domain") ?? "");
+                        var definition = UnescapeTsvField(GetField(fields, colMap, "definition") ?? "");
                         var notes = UnescapeTsvField(GetField(fields, colMap, "notes") ?? "");
                         var project = UnescapeTsvField(GetField(fields, colMap, "project") ?? "");
                         var client = UnescapeTsvField(GetField(fields, colMap, "client") ?? "");
@@ -2522,7 +2527,7 @@ namespace Supervertaler.Trados.Core
                                 UPDATE termbase_terms SET
                                     source_term = @src, target_term = @tgt,
                                     source_lang = @srcLang, target_lang = @tgtLang,
-                                    priority = @prio, domain = @domain, notes = @notes,
+                                    priority = @prio, domain = @domain, definition = @definition, notes = @notes,
                                     project = @project, client = @client, forbidden = @forbidden,
                                     modified_date = CURRENT_TIMESTAMP
                                 WHERE id = @id", conn, tx))
@@ -2533,6 +2538,7 @@ namespace Supervertaler.Trados.Core
                                 upd.Parameters.AddWithValue("@tgtLang", targetLang);
                                 upd.Parameters.AddWithValue("@prio", priority);
                                 upd.Parameters.AddWithValue("@domain", domain);
+                                upd.Parameters.AddWithValue("@definition", definition);
                                 upd.Parameters.AddWithValue("@notes", notes);
                                 upd.Parameters.AddWithValue("@project", project);
                                 upd.Parameters.AddWithValue("@client", client);
@@ -2571,10 +2577,10 @@ namespace Supervertaler.Trados.Core
                             using (var ins = new SqliteCommand(@"
                                 INSERT INTO termbase_terms
                                     (source_term, target_term, termbase_id, source_lang, target_lang,
-                                     priority, domain, notes, project, client, forbidden, case_sensitive, term_uuid)
+                                     priority, domain, definition, notes, project, client, forbidden, case_sensitive, term_uuid)
                                 VALUES
                                     (@src, @tgt, @tbId, @srcLang, @tgtLang,
-                                     @prio, @domain, @notes, @project, @client, @forbidden, 0, @uuid);
+                                     @prio, @domain, @definition, @notes, @project, @client, @forbidden, 0, @uuid);
                                 SELECT last_insert_rowid();", conn, tx))
                             {
                                 ins.Parameters.AddWithValue("@src", srcMain);
@@ -2584,6 +2590,7 @@ namespace Supervertaler.Trados.Core
                                 ins.Parameters.AddWithValue("@tgtLang", targetLang);
                                 ins.Parameters.AddWithValue("@prio", priority);
                                 ins.Parameters.AddWithValue("@domain", domain);
+                                ins.Parameters.AddWithValue("@definition", definition);
                                 ins.Parameters.AddWithValue("@notes", notes);
                                 ins.Parameters.AddWithValue("@project", project);
                                 ins.Parameters.AddWithValue("@client", client);
@@ -3056,7 +3063,9 @@ namespace Supervertaler.Trados.Core
                     map["priority"] = i;
                 else if (h == "domain" || h == "subject" || h == "field" || h == "category")
                     map["domain"] = i;
-                else if (h == "notes" || h == "note" || h == "definition" || h == "comment" || h == "comments" || h == "description")
+                else if (h == "definition" || h == "def")
+                    map["definition"] = i;   // its own column since #94; used to be folded into notes
+                else if (h == "notes" || h == "note" || h == "comment" || h == "comments" || h == "description")
                     map["notes"] = i;
                 else if (h == "project" || h == "proj")
                     map["project"] = i;
@@ -3224,6 +3233,59 @@ namespace Supervertaler.Trados.Core
             /// <summary>The header text over the column that will be read as target, verbatim.</summary>
             public string TargetHeader;
             public TsvColumnOrigin Origin;
+        }
+
+        /// <summary>
+        /// What the column-mapping dialog needs (#94): the headers, a few data rows
+        /// to show beside them, the mapping the importer would guess and how it got
+        /// there, and the data row count. One read of the file.
+        /// </summary>
+        internal sealed class TsvPreview
+        {
+            public string[] Headers = new string[0];
+            public List<string[]> SampleRows = new List<string[]>();
+            public Dictionary<string, int> SuggestedMap = new Dictionary<string, int>();
+            public TsvColumnOrigin Origin = TsvColumnOrigin.Unresolved;
+            public int DataRowCount;
+            /// <summary>The header over the suggested source / target column, verbatim, or null.</summary>
+            public string SourceHeader, TargetHeader;
+        }
+
+        /// <summary>Never throws: an unreadable file yields an empty preview and the
+        /// import itself produces the real error.</summary>
+        internal static TsvPreview InspectTsv(string tsvPath, string sourceLang, string targetLang, int sampleRows = 3)
+        {
+            var preview = new TsvPreview();
+            try
+            {
+                using (var sr = new StreamReader(tsvPath, new UTF8Encoding(true)))
+                {
+                    var first = sr.ReadLine();
+                    if (string.IsNullOrEmpty(first)) return preview;
+                    preview.Headers = System.Linq.Enumerable.ToArray(
+                        System.Linq.Enumerable.Select(first.Split('\t'), h => h.Trim()));
+
+                    string line;
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        preview.DataRowCount++;
+                        if (preview.SampleRows.Count < sampleRows)
+                            preview.SampleRows.Add(System.Linq.Enumerable.ToArray(
+                                System.Linq.Enumerable.Select(line.Split('\t'), f => UnescapeTsvField(f.Trim()))));
+                    }
+                }
+
+                TsvColumnOrigin origin;
+                preview.SuggestedMap = MapTsvColumns(preview.Headers, sourceLang, targetLang, out origin);
+                preview.Origin = origin;
+                if (preview.SuggestedMap.TryGetValue("source", out var si) && si < preview.Headers.Length)
+                    preview.SourceHeader = preview.Headers[si];
+                if (preview.SuggestedMap.TryGetValue("target", out var ti) && ti < preview.Headers.Length)
+                    preview.TargetHeader = preview.Headers[ti];
+            }
+            catch { }
+            return preview;
         }
 
         /// <summary>
