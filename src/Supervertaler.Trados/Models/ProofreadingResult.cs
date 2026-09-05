@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -17,6 +17,10 @@ namespace Supervertaler.Trados.Models
         public object SegmentPairRef { get; set; }   // ISegmentPair or string[] for navigation
         public string ParagraphUnitId { get; set; }
         public string SegmentId { get; set; }
+
+        /// <summary>Ticked off in the Reports tab (#105). Survives a restore, so a
+        /// report put back after a restart shows only what is still open.</summary>
+        public bool Dismissed { get; set; }
     }
 
     public class ProofreadingReport
@@ -27,6 +31,13 @@ namespace Supervertaler.Trados.Models
         public int OkCount => Issues.Count(i => i.IsOk);
         public DateTime Timestamp { get; set; } = DateTime.Now;
         public TimeSpan Duration { get; set; }
+
+        /// <summary>The document the run was made on (#105): a restored report is
+        /// shown only when this document is the active one again.</summary>
+        public string DocumentPath { get; set; }
+        public string DocumentName { get; set; }
+        public string SourceLang { get; set; }
+        public string TargetLang { get; set; }
     }
 
     public enum BatchMode { Translate, Proofread }

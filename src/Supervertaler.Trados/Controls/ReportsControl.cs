@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
 using Supervertaler.Trados.Models;
@@ -74,6 +75,10 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Fired when the user clicks "Save report\u2026" (#105). Only raised
         /// while a proofreading report is loaded; the button is disabled otherwise.</summary>
         public event EventHandler SaveReportRequested;
+
+        /// <summary>An issue was ticked off (#105); the owner persists the report so the
+        /// dismissal survives a restart.</summary>
+        public event EventHandler IssueDismissed;
 
         /// <summary>Gets the number of issues currently displayed.</summary>
         public int IssueCount => _issueCount;
@@ -346,18 +351,28 @@ namespace Supervertaler.Trados.Controls
             }
 
             _lblEmpty.Visible = false;
+            if (report.Issues.All(i => i.IsOk || i.Dismissed))
+            {
+                _checkedCount = _issueCount;
+                UpdateIssueCountLabel();
+                _lblEmpty.Text = "All issues addressed \u2014 well done!";
+                _lblEmpty.Visible = true;
+                return;
+            }
             _resultsPanel.SuspendLayout();
 
             var bodyFont = new Font("Segoe UI", 8.5f);
             var segNumFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
             var suggFont = new Font("Segoe UI", 8f);
 
-            _checkedCount = 0;
+            // Issues already ticked off (a restored report) count as addressed and get no card.
+            _checkedCount = report.Issues.Count(i => !i.IsOk && i.Dismissed);
+            if (_checkedCount > 0) UpdateIssueCountLabel();
             int yPos = 4;
 
             foreach (var issue in report.Issues)
             {
-                if (issue.IsOk) continue;
+                if (issue.IsOk || issue.Dismissed) continue;
 
                 var card = new Panel
                 {
@@ -470,9 +485,13 @@ namespace Supervertaler.Trados.Controls
                 var capturedSegNum = lblSegNum;
                 var capturedDesc = txtDesc;
                 var capturedSugg = txtSugg;
+                var capturedIssue = issue;
                 chk.CheckedChanged += (s, e) =>
                 {
                     if (!chk.Checked) return;
+
+                    capturedIssue.Dismissed = true;   // #105: the report remembers
+                    try { IssueDismissed?.Invoke(this, EventArgs.Empty); } catch { }
 
                     // Remove the card from the panel
                     _resultsPanel.SuspendLayout();

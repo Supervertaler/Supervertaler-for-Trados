@@ -296,6 +296,8 @@ namespace Supervertaler.Trados
             reportsControl.NavigateToSegmentRequested += OnNavigateToSegment;
             reportsControl.ClearResultsRequested += OnClearReports;
             reportsControl.SaveReportRequested += OnSaveReport;   // #105
+            reportsControl.IssueDismissed += (s, e) => ProofreadingReportWriter.TrySaveState(_currentReport);   // #105
+            TryRestoreReport();   // #105: a document may already be open when the panel initialises
 
             // Wire Import / Export control events (v4.20.7). Export collects
             // segments from the active document and writes them via the
@@ -408,6 +410,7 @@ namespace Supervertaler.Trados
                 UpdateBatchSegmentCounts();
                 PopulateBatchPromptDropdown();
                 ApplyProjectMemoryBank();
+                TryRestoreReport();   // #105
             }
             else
             {
@@ -11285,8 +11288,13 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                     // #105: every completed run goes to disk, so a report that leaves
                     // the tab - cleared, or lost with the panel's state - is never gone.
+                    _currentReport.DocumentName = GetActiveFileNameSafe();
+                    _currentReport.DocumentPath = GetActiveFilePathSafe();
+                    _currentReport.SourceLang = GetDocumentSourceLanguage();
+                    _currentReport.TargetLang = GetDocumentTargetLanguage();
+                    ProofreadingReportWriter.TrySaveState(_currentReport);
                     var savedPath = ProofreadingReportWriter.TrySave(_currentReport,
-                        GetActiveFileNameSafe(), GetDocumentSourceLanguage(), GetDocumentTargetLanguage());
+                        _currentReport.DocumentName, _currentReport.SourceLang, _currentReport.TargetLang);
                     if (savedPath != null)
                     {
                         _control.Value.ReportsControl.ShowSavedPath(savedPath);
@@ -11367,11 +11375,49 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             _currentReport = null;
             _control.Value.ReportsControl.ClearResults();
             _control.Value.UpdateReportsBadge(0);
+            ProofreadingReportWriter.DeleteState();   // #105: Clear means finished
         }
 
         private string GetActiveFileNameSafe()
         {
             try { return _activeDocument?.ActiveFile?.Name; } catch { return null; }
+        }
+
+        private string GetActiveFilePathSafe()
+        {
+            try { return _activeDocument?.ActiveFile?.LocalFilePath; } catch { return null; }
+        }
+
+        /// <summary>
+        /// #105: puts the saved report back into the Reports tab if it belongs to the
+        /// active document and nothing is showing. Called when the panel initialises
+        /// and on every document change, so the report follows its document across a
+        /// restart, a panel rebuild or a switch away and back. Clicking a card still
+        /// navigates: that uses the stored paragraph-unit and segment ids.
+        /// </summary>
+        private void TryRestoreReport()
+        {
+            try
+            {
+                if (_currentReport != null) return;
+                if (_activeDocument == null) return;
+                var saved = ProofreadingReportWriter.TryLoadState();
+                if (saved == null) return;
+                if (!ProofreadingReportWriter.BelongsTo(saved, GetActiveFilePathSafe(), GetActiveFileNameSafe())) return;
+
+                _currentReport = saved;
+                SafeInvoke(() =>
+                {
+                    var ctrl = _control.Value;
+                    ctrl.ReportsControl.SetResults(saved);
+                    ctrl.ReportsControl.ShowSavedPath(ProofreadingReportWriter.StatePath);
+                    ctrl.UpdateReportsBadge(saved.Issues.Count(i => !i.IsOk && !i.Dismissed));
+                });
+            }
+            catch (Exception ex)
+            {
+                try { DiagnosticLog.Log("Reports", "Could not restore report: " + ex.Message); } catch { }
+            }
         }
 
         /// <summary>#105: "Save report\u2026" on the Reports tab. Same Markdown as the
