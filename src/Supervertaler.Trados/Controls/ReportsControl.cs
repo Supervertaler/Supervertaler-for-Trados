@@ -248,6 +248,11 @@ namespace Supervertaler.Trados.Controls
 
             // Handle resize for responsive layout
             Resize += OnControlResize;
+            // The count label is AutoSize: its width is only known after its text is
+            // set, and setting text raises no Resize on this control - so the header
+            // was laid out against an empty label and the text then grew under the
+            // buttons. Re-lay out whenever the label's size changes (#105).
+            _lblIssueCount.SizeChanged += OnControlResize;
             OnControlResize(this, EventArgs.Empty);
         }
 
@@ -273,9 +278,13 @@ namespace Supervertaler.Trados.Controls
                 leftmostButton = _btnSave.Left;
             }
 
-            // Position issue count label between the title and the buttons.
+            // Position issue count label between the title and the buttons; if the
+            // panel is too narrow for it, hide it rather than let it run under them
+            // (the count is also on the tab badge).
+            var labelLeft = leftmostButton - _lblIssueCount.Width - HeaderSpacing;
+            _lblIssueCount.Visible = labelLeft >= _lblHeader.Right + HeaderSpacing;
             _lblIssueCount.Location = new Point(
-                Math.Max(_lblHeader.Right + HeaderSpacing, leftmostButton - _lblIssueCount.Width - HeaderSpacing),
+                Math.Max(_lblHeader.Right + HeaderSpacing, labelLeft),
                 _btnClear.Top + Math.Max(0, (_btnClear.Height - _lblIssueCount.Height) / 2));
 
             var resultsTop = Math.Max(_lblHeader.Bottom, _btnClear.Bottom) + HeaderSpacing;
@@ -322,7 +331,7 @@ namespace Supervertaler.Trados.Controls
             // Update count label
             _lblIssueCount.Text = $"{_issueCount} issue{(_issueCount != 1 ? "s" : "")} found in {totalChecked} segment{(totalChecked != 1 ? "s" : "")}";
             // Force re-position after text change
-            _lblIssueCount.Parent?.PerformLayout();
+            OnControlResize(this, EventArgs.Empty);
 
             // Update footer
             _lblFooter.Text = $"Last run: {report.Timestamp:HH:mm:ss} \u2014 {report.Duration.TotalSeconds:F1}s";
@@ -842,7 +851,7 @@ namespace Supervertaler.Trados.Controls
             if (_checkedCount > 0)
                 _lblIssueCount.Text = $"{_issueCount} issue{(_issueCount != 1 ? "s" : "")} found – {_checkedCount} addressed";
             // Text is set in SetResults initially; only update when checked count changes
-            _lblIssueCount.Parent?.PerformLayout();
+            OnControlResize(this, EventArgs.Empty);
         }
 
         private ContextMenuStrip BuildIssueContextMenu(ProofreadingIssue issue, bool hasSuggestion)
