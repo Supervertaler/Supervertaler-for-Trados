@@ -396,6 +396,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "description")] public string Description { get; set; }
         [DataMember(Name = "category")] public string Category { get; set; }
         [DataMember(Name = "path")] public string Path { get; set; }
+        /// <summary>"both", "trados" or "memoq"; applied to a NEW prompt only. Absent = the connected product.</summary>
+        [DataMember(Name = "app")] public string App { get; set; }
     }
 
     [DataContract]
@@ -407,6 +409,10 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "name", Order = 3, EmitDefaultValue = false)] public string Name { get; set; }
         [DataMember(Name = "relativePath", Order = 4, EmitDefaultValue = false)] public string RelativePath { get; set; }
         [DataMember(Name = "promptsFolder", Order = 5, EmitDefaultValue = false)] public string PromptsFolder { get; set; }
+        [DataMember(Name = "draftedBy", Order = 6, EmitDefaultValue = false)] public string DraftedBy { get; set; }
+        [DataMember(Name = "app", Order = 7, EmitDefaultValue = false)] public string App { get; set; }
+        /// <summary>What was recorded, in words the model can pass on to the user.</summary>
+        [DataMember(Name = "note", Order = 8, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
     [DataContract]
@@ -3649,6 +3655,10 @@ namespace Supervertaler.Trados.Core
                     }
                     target.Content = req.Content;
                     if (req.Description != null) target.Description = req.Description;
+                    // App is deliberately NOT touched on an update: it is a restriction
+                    // (a prompt marked for one product vanishes from the other's list),
+                    // and a re-save must not quietly take a prompt away from a product
+                    // that has been using it.
                     created = false;
                 }
                 else
@@ -3670,10 +3680,22 @@ namespace Supervertaler.Trados.Core
                         Content = req.Content,
                         Description = req.Description,
                         Category = string.IsNullOrWhiteSpace(req.Category) ? "" : req.Category.Trim(),
-                        IsDefault = false
+                        IsDefault = false,
+                        // Which product it is for - on a NEW prompt only. Stamped rather
+                        // than asked for, like the language pair: the bridge knows it
+                        // and the caller would have to be told. A prompt drafted against
+                        // this runtime describes how Trados delivers segments.
+                        App = AppFor(req.App)
                     };
                     created = true;
                 }
+
+                // Recorded by the bridge and not overridable: everything arriving at
+                // this endpoint was written by a model, and a caller must not be able
+                // to describe its own output as hand-written. Two such prompts turned
+                // up in memoQ's chooser unmarked, looking hand-written and available
+                // to either product; neither was true (core 057d9a2).
+                target.DraftedBy = "chat";
 
                 lib.SavePrompt(target);
 
@@ -3688,19 +3710,47 @@ namespace Supervertaler.Trados.Core
                     return;
                 }
 
+                var appWord = string.IsNullOrWhiteSpace(target.App) ? "both" : target.App;
                 WriteJson(context, 200, new BridgeSavePromptResponse
                 {
                     Ok = true,
                     Created = created,
                     Name = target.Name,
                     RelativePath = target.RelativePath,
-                    PromptsFolder = PromptLibrary.PromptsFolderPath
+                    PromptsFolder = PromptLibrary.PromptsFolderPath,
+                    DraftedBy = target.DraftedBy,
+                    App = appWord,
+                    Note = (created ? "Saved to the shared prompt library as \"" : "Updated \"") + target.Name + "\" ("
+                         + target.RelativePath + "). Recorded as drafted by the chat"
+                         + (string.Equals(appWord, "both", StringComparison.OrdinalIgnoreCase)
+                             ? " and available to both products. "
+                             : " and marked for " + appWord + " only, so it does not appear in the other product's list. ")
+                         + "The user selects it in Supervertaler for Trados under Batch Operations > Prompt, "
+                         + "or from the Prompt Library tab."
                 });
             }
             catch (Exception ex)
             {
                 BridgeLog.Write($"[SupervertalerBridge] save prompt failed: {ex.Message}");
                 WriteJson(context, 500, new BridgeSavePromptResponse { Ok = false, Error = "save prompt failed: " + ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// The product a new prompt is marked for. An unrecognised value is no
+        /// answer rather than a reason to reject the save: the prompt is worth
+        /// keeping either way, and the wrong consequence of guessing is a prompt in
+        /// one list too many, not a lost one.
+        /// </summary>
+        private static string AppFor(string requested)
+        {
+            switch ((requested ?? "").Trim().ToLowerInvariant())
+            {
+                case "both": return "both";
+                case "trados": return "trados";
+                case "memoq": return "memoq";
+                case "workbench": return "workbench";
+                default: return "trados";
             }
         }
 

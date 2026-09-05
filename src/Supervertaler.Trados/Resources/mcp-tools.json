@@ -321,7 +321,9 @@
     {
       "name": "get_tracked_changes",
       "access": "conditional",
-      "writeWhen": ["save"],
+      "writeWhen": [
+        "save"
+      ],
       "description": "Extract the tracked changes (revisions) from the open document as (before, after) pairs per segment: 'before' is the target as it was offered (e.g. an AI draft or fuzzy match), 'after' is the reviewed final. These pairs show how the user actually corrects drafts – raw material for learning their style and terminology preferences. Only exists where Track Changes was switched ON in Studio while the edits were made; target-side text changes only (formatting-only edits are excluded). Pass save=true to ALSO write the FULL harvest (independent of 'limit', so the file is complete even when the response is truncated) as a Markdown note into the active SuperMemory bank's reference/ folder, where it is kept as source material. Nothing reads it automatically: to make it useful, read the harvest and add the recurring decisions to the bank's terminology.md table and style.md – typically once at the end of a review pass, and only when the user asked for it or agreed. Check with list_supermemory_banks that the right bank (client) is active before saving.",
       "inputSchema": {
         "type": "object",
@@ -1201,7 +1203,7 @@
     {
       "name": "save_prompt",
       "access": "write",
-      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with the Workbench). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten – save your version under a new name. Ideal for saving an improved prompt you refined together with the user.",
+      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with the Workbench). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten – save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1226,6 +1228,11 @@
           },
           "category": {
             "description": "Optional folder for a NEW prompt, e.g. \"Translate\", \"Proofread\", or \"QuickLauncher/Default\" (right-click menu). Omit for the library root.",
+            "type": "string",
+            "default": null
+          },
+          "app": {
+            "description": "Which product may run this prompt: \"both\", \"trados\" or \"memoq\". Omit and it is marked for the product you are connected to, because a prompt drafted here was written against that product's runtime and describes how it delivers segments. Pass \"both\" only for a prompt that genuinely says nothing about how segments arrive.",
             "type": "string",
             "default": null
           }
