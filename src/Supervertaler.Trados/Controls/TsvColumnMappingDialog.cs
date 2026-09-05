@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -120,6 +120,9 @@ namespace Supervertaler.Trados.Controls
                 Margin = new Padding(0),
             };
             _grid.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
+            // Size the header row to its text; the fixed default clipped the bold font.
+            _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            _grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(2, 4, 2, 4);
             _grid.DataError += (s, e) => { e.ThrowException = false; };
             // One click opens the dropdown, rather than click-to-select then click-to-open.
             _grid.CellEnter += (s, e) =>
@@ -194,7 +197,9 @@ namespace Supervertaler.Trados.Controls
             {
                 _grid.Columns.Add(new DataGridViewTextBoxColumn
                 {
-                    HeaderText = sampleCount == 1 ? "Sample" : $"Sample {s + 1}",
+                    // What is in this column on row N of the file - so a column headed
+                    // "Col A" can still be recognised from its contents.
+                    HeaderText = $"Row {s + 1}",
                     ReadOnly = true, FillWeight = 18, MinimumWidth = 70,
                 });
             }
