@@ -15018,7 +15018,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     // puts the run above the style, so an explicit value here
                     // wins. Silence leaves the context's answer standing.
                     bool? rBold, rItalic, rUnderline;
-                    DetectEnclosingRunFormatting(pair.Source,
+                    DetectEnclosingRunFormatting(pair.Source, parentParagraphUnit,
                         out rBold, out rItalic, out rUnderline);
                     if (rBold.HasValue)      pBold      = rBold.Value;
                     if (rItalic.HasValue)    pItalic    = rItalic.Value;
@@ -15624,6 +15624,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// </summary>
         private static void DetectEnclosingRunFormatting(
             ISegment sourceSegment,
+            IParagraphUnit parentParagraphUnit,
             out bool? isBold, out bool? isItalic, out bool? isUnderline)
         {
             isBold = null; isItalic = null; isUnderline = null;
@@ -15641,11 +15642,21 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             // formatting on the stack.
             try
             {
+                // The segment ISegmentPair hands out has NO parent - ParentParagraph and
+                // Parent are both null at runtime (traced 2026-09-05), which is why every
+                // walk that started from the segment found nothing. The paragraph unit the
+                // caller already holds has the real source paragraph; the target segment
+                // is found in it by id.
                 IParagraph paragraph = null;
                 try { paragraph = ((IAbstractMarkupData)sourceSegment).ParentParagraph; } catch { }
                 if (paragraph == null)
                 {
-                    trace?.Append("no ParentParagraph; ");
+                    try { paragraph = parentParagraphUnit?.Source; } catch { }
+                    trace?.Append(paragraph == null ? "no paragraph (segment detached, no unit); " : "paragraph from unit; ");
+                }
+                if (paragraph == null)
+                {
+                    // nothing to walk
                 }
                 else
                 {
