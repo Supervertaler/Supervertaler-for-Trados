@@ -15525,6 +15525,32 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             ref bool isBold, ref bool isItalic, ref bool isUnderline)
         {
             if (fmt == null) return;
+            // Typed path (#53): IFormattingGroup IS IDictionary<string, IFormattingItem>,
+            // with an explicit implementation - invisible to GetProperty("Keys") but
+            // a plain cast away. The reflection below stays for anything else.
+            if (fmt is Sdl.FileTypeSupport.Framework.Formatting.IFormattingGroup group)
+            {
+                try
+                {
+                    foreach (var kv in (IDictionary<string, Sdl.FileTypeSupport.Framework.Formatting.IFormattingItem>)group)
+                    {
+                        var lc = (kv.Key ?? "").ToLowerInvariant();
+                        bool on;
+                        if (kv.Value is Sdl.FileTypeSupport.Framework.Formatting.AbstractBooleanFormatting bf) on = bf.Value;
+                        else
+                        {
+                            var sv = (kv.Value?.StringValue ?? "").ToLowerInvariant();
+                            on = sv.Contains("true") || sv.Contains("single");
+                        }
+                        if (!on) continue;
+                        if (lc.Contains("bold")) isBold = true;
+                        else if (lc.Contains("italic")) isItalic = true;
+                        else if (lc.Contains("underline")) isUnderline = true;
+                    }
+                    return;
+                }
+                catch { /* fall through to the reflection path */ }
+            }
             try
             {
                 var type = fmt.GetType();
@@ -15603,34 +15629,199 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             isBold = null; isItalic = null; isUnderline = null;
             if (sourceSegment == null) return;
 
+            // With diagnostic logging on, say what both walks saw. Two earlier
+            // attempts at this changed nothing at runtime and nobody could tell
+            // why; this makes the third one falsifiable from a log line (#53).
+            var trace = DiagnosticLog.Enabled ? new System.Text.StringBuilder() : null;
+
+            // Source 1: the paragraph, walked DOWN in document order with a stack
+            // of the tag pairs open at each point. Asks nothing of Parent. When a
+            // cf tag pair encloses several whole segments they are its children,
+            // and the walk reaches the target inside that pair with the pair's
+            // formatting on the stack.
+            try
+            {
+                IParagraph paragraph = null;
+                try { paragraph = ((IAbstractMarkupData)sourceSegment).ParentParagraph; } catch { }
+                if (paragraph == null)
+                {
+                    trace?.Append("no ParentParagraph; ");
+                }
+                else
+                {
+                    var stack = new List<TagFormatting>();
+                    bool found = WalkParagraphForSegment(paragraph, sourceSegment, stack, trace,
+                        ref isBold, ref isItalic, ref isUnderline);
+                    trace?.Append(found ? "walk: found target; " : "walk: target NOT found; ");
+                }
+            }
+            catch (Exception ex)
+            {
+                trace?.Append("walk EX ").Append(ex.GetType().Name).Append(": ").Append(ex.Message).Append("; ");
+            }
+
+            // Source 2: the parent chain, for anything the walk left unanswered.
             try
             {
                 IAbstractMarkupData node = sourceSegment;
-                // Bounded so a malformed tree cannot spin forever.
                 for (int depth = 0; node != null && depth < 64; depth++)
                 {
+                    if (trace != null && depth > 0) trace.Append("parent[").Append(depth).Append("]=").Append(node.GetType().Name).Append(' ');
                     if (node is ITagPair tagPair)
                     {
-                        var fmt = tagPair.StartTagProperties?.Formatting;
-                        if (fmt != null)
-                        {
-                            if (isBold      == null) isBold      = ReadBoolFormatting(fmt, "Bold");
-                            if (isItalic    == null) isItalic    = ReadBoolFormatting(fmt, "Italic");
-                            if (isUnderline == null) isUnderline = ReadBoolFormatting(fmt, "Underline");
-                        }
+                        var f = ReadTagFormatting(tagPair, trace);
+                        if (isBold      == null) isBold      = f.Bold;
+                        if (isItalic    == null) isItalic    = f.Italic;
+                        if (isUnderline == null) isUnderline = f.Underline;
                     }
-
                     if (isBold != null && isItalic != null && isUnderline != null) break;
-
-                    // IAbstractMarkupData.Parent returns IAbstractMarkupDataContainer.
-                    // Continuing the walk requires that container to ALSO be
-                    // markup data (true for ITagPair, false for IParagraph),
-                    // which is exactly the SDK's own stopping point for "this
-                    // is the top of the formatting tree".
                     node = node.Parent as IAbstractMarkupData;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                trace?.Append("parents EX ").Append(ex.Message).Append("; ");
+            }
+
+            if (trace != null)
+            {
+                string id = null;
+                try { id = sourceSegment.Properties?.Id.Id; } catch { }
+                DiagnosticLog.Log("Export", "run formatting for segment " + (id ?? "?") + ": bold=" + Fmt(isBold)
+                    + " italic=" + Fmt(isItalic) + " underline=" + Fmt(isUnderline) + " | " + trace);
+            }
+        }
+
+        private static string Fmt(bool? v) => v == null ? "unset" : (v.Value ? "on" : "off");
+
+        private struct TagFormatting
+        {
+            public bool? Bold, Italic, Underline;
+        }
+
+        /// <summary>
+        /// Walks <paramref name="container"/> in document order looking for
+        /// <paramref name="target"/>. Tag pairs push their formatting while their
+        /// children are visited. Other segments are not entered (their inline
+        /// tags apply to them alone); other containers - revision marks, locked
+        /// content - are entered without pushing anything. On finding the target,
+        /// the innermost explicit value on the stack wins for each channel.
+        /// </summary>
+        private static bool WalkParagraphForSegment(
+            IAbstractMarkupDataContainer container, ISegment target, List<TagFormatting> stack,
+            System.Text.StringBuilder trace, ref bool? isBold, ref bool? isItalic, ref bool? isUnderline)
+        {
+            foreach (var child in container)
+            {
+                if (child == null) continue;
+
+                if (child is ISegment seg)
+                {
+                    if (!IsSameSegment(seg, target)) continue;
+                    trace?.Append("stack depth ").Append(stack.Count).Append("; ");
+                    for (int k = stack.Count - 1; k >= 0; k--)
+                    {
+                        if (isBold      == null) isBold      = stack[k].Bold;
+                        if (isItalic    == null) isItalic    = stack[k].Italic;
+                        if (isUnderline == null) isUnderline = stack[k].Underline;
+                    }
+                    return true;
+                }
+
+                if (child is ITagPair tagPair)
+                {
+                    stack.Add(ReadTagFormatting(tagPair, trace));
+                    bool found = WalkParagraphForSegment(tagPair, target, stack, trace,
+                        ref isBold, ref isItalic, ref isUnderline);
+                    stack.RemoveAt(stack.Count - 1);
+                    if (found) return true;
+                    continue;
+                }
+
+                if (child is IAbstractMarkupDataContainer other)
+                {
+                    if (WalkParagraphForSegment(other, target, stack, trace,
+                            ref isBold, ref isItalic, ref isUnderline))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsSameSegment(ISegment a, ISegment b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            try
+            {
+                var ia = a.Properties?.Id.Id; var ib = b.Properties?.Id.Id;
+                return !string.IsNullOrEmpty(ia) && ia == ib;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// A tag pair's bold/italic/underline as a tri-state each: first from the
+        /// typed formatting group, then - if that says nothing - from the raw tag
+        /// text ("&lt;cf bold=False&gt;"), which is what the SDLXLIFF holds and does
+        /// not depend on the formatting key names or on whether this side of the
+        /// pair is a ghost.
+        /// </summary>
+        private static TagFormatting ReadTagFormatting(ITagPair tagPair, System.Text.StringBuilder trace)
+        {
+            var f = new TagFormatting();
+            string content = null;
+            try
+            {
+                var props = tagPair.StartTagProperties;
+                var fmt = props?.Formatting;
+                if (fmt != null)
+                {
+                    f.Bold      = ReadBoolFormatting(fmt, "Bold");
+                    f.Italic    = ReadBoolFormatting(fmt, "Italic");
+                    f.Underline = ReadBoolFormatting(fmt, "Underline");
+                }
+                try { content = props?.TagContent; } catch { }
+                if (!string.IsNullOrEmpty(content))
+                {
+                    if (f.Bold      == null) f.Bold      = ParseTagAttribute(content, "bold");
+                    if (f.Italic    == null) f.Italic    = ParseTagAttribute(content, "italic");
+                    if (f.Underline == null) f.Underline = ParseTagAttribute(content, "underline");
+                }
+            }
+            catch (Exception ex)
+            {
+                trace?.Append("tag EX ").Append(ex.Message).Append("; ");
+            }
+            if (trace != null)
+            {
+                trace.Append("tag{");
+                try { trace.Append(tagPair.IsStartTagGhost ? "ghost-start " : ""); } catch { }
+                trace.Append("content=").Append(content == null ? "null" : TruncateTag(content))
+                     .Append(" b=").Append(Fmt(f.Bold)).Append(" i=").Append(Fmt(f.Italic)).Append(" u=").Append(Fmt(f.Underline))
+                     .Append("} ");
+            }
+            return f;
+        }
+
+        private static string TruncateTag(string s) => s.Length <= 60 ? s : s.Substring(0, 60) + "\u2026";
+
+        // <cf bold=False> / <cf bold="True" underline="Single"> - true for true/single/on,
+        // false for false/none/off, null when the attribute is absent.
+        private static readonly System.Text.RegularExpressions.Regex TagAttrPattern =
+            new System.Text.RegularExpressions.Regex(@"\b(?<name>bold|italic|underline)\s*=\s*""?(?<val>[A-Za-z0-9]+)""?",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static bool? ParseTagAttribute(string tagContent, string name)
+        {
+            foreach (System.Text.RegularExpressions.Match m in TagAttrPattern.Matches(tagContent))
+            {
+                if (!string.Equals(m.Groups["name"].Value, name, StringComparison.OrdinalIgnoreCase)) continue;
+                var v = m.Groups["val"].Value.ToLowerInvariant();
+                if (v == "true" || v == "single" || v == "on" || v == "1") return true;
+                if (v == "false" || v == "none" || v == "off" || v == "0") return false;
+                return true;   // some other underline style ("double") is still underlined
+            }
+            return null;
         }
 
         /// <summary>
