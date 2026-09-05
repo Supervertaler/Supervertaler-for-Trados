@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -35,6 +35,8 @@ namespace Supervertaler.Trados.Controls
         private Label _lblHeader;
         private Label _lblIssueCount;
         private Button _btnClear;
+        private Button _btnSave;      // #105: enabled only while a proofreading report is showing
+        private readonly ToolTip _footerTip = new ToolTip();
 
         // Results area
         private Panel _resultsPanel;
@@ -68,6 +70,10 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Fired when user clicks "Clear Results".</summary>
         public event EventHandler ClearResultsRequested;
+
+        /// <summary>Fired when the user clicks "Save report\u2026" (#105). Only raised
+        /// while a proofreading report is loaded; the button is disabled otherwise.</summary>
+        public event EventHandler SaveReportRequested;
 
         /// <summary>Gets the number of issues currently displayed.</summary>
         public int IssueCount => _issueCount;
@@ -124,6 +130,26 @@ namespace Supervertaler.Trados.Controls
             _btnClear.FlatAppearance.MouseOverBackColor = Color.FromArgb(230, 230, 230);
             _btnClear.Click += (s, e) => ClearResultsRequested?.Invoke(this, EventArgs.Empty);
             Controls.Add(_btnClear);
+
+            // #105: save the proofreading report. Sits beside Clear so it is seen, and
+            // is enabled only while a report is showing - the prompt-log cards that
+            // share this tab are already on disk (#98) and are not what it saves.
+            _btnSave = new Button
+            {
+                Text = "Save report\u2026",
+                Size = new Size(ClearButtonMinWidth, ClearButtonMinHeight),
+                Location = new Point(120, y),
+                FlatStyle = FlatStyle.Flat,
+                Font = bodyFont,
+                ForeColor = Color.FromArgb(80, 80, 80),
+                BackColor = Color.FromArgb(245, 245, 245),
+                Cursor = Cursors.Hand,
+                Enabled = false
+            };
+            _btnSave.FlatAppearance.BorderColor = Color.FromArgb(200, 200, 200);
+            _btnSave.FlatAppearance.MouseOverBackColor = Color.FromArgb(230, 230, 230);
+            _btnSave.Click += (s, e) => SaveReportRequested?.Invoke(this, EventArgs.Empty);
+            Controls.Add(_btnSave);
 
             _lblIssueCount = new Label
             {
@@ -239,9 +265,17 @@ namespace Supervertaler.Trados.Controls
                 Math.Max(HeaderLeft, clientWidth - _btnClear.Width - HeaderSpacing),
                 HeaderTop - 2);
 
-            // Position issue count label between the title and Clear button.
+            // Save sits immediately left of Clear (#105).
+            var leftmostButton = _btnClear.Left;
+            if (_btnSave != null)
+            {
+                _btnSave.Location = new Point(Math.Max(HeaderLeft, _btnClear.Left - _btnSave.Width - HeaderSpacing), _btnClear.Top);
+                leftmostButton = _btnSave.Left;
+            }
+
+            // Position issue count label between the title and the buttons.
             _lblIssueCount.Location = new Point(
-                Math.Max(_lblHeader.Right + HeaderSpacing, _btnClear.Left - _lblIssueCount.Width - HeaderSpacing),
+                Math.Max(_lblHeader.Right + HeaderSpacing, leftmostButton - _lblIssueCount.Width - HeaderSpacing),
                 _btnClear.Top + Math.Max(0, (_btnClear.Height - _lblIssueCount.Height) / 2));
 
             var resultsTop = Math.Max(_lblHeader.Bottom, _btnClear.Bottom) + HeaderSpacing;
@@ -261,6 +295,13 @@ namespace Supervertaler.Trados.Controls
             _btnClear.Size = new Size(
                 Math.Max(ClearButtonMinWidth, measured.Width + ClearButtonHorizontalPadding),
                 Math.Max(ClearButtonMinHeight, measured.Height + ClearButtonVerticalPadding));
+            if (_btnSave != null)
+            {
+                var m2 = TextRenderer.MeasureText(_btnSave.Text, _btnSave.Font);
+                _btnSave.Size = new Size(
+                    Math.Max(ClearButtonMinWidth, m2.Width + ClearButtonHorizontalPadding),
+                    _btnClear.Height);
+            }
         }
 
         // ─── Public Methods ───────────────────────────────────────
@@ -285,6 +326,8 @@ namespace Supervertaler.Trados.Controls
 
             // Update footer
             _lblFooter.Text = $"Last run: {report.Timestamp:HH:mm:ss} \u2014 {report.Duration.TotalSeconds:F1}s";
+            _footerTip.SetToolTip(_lblFooter, "");
+            if (_btnSave != null) _btnSave.Enabled = true;   // #105
 
             if (_issueCount == 0)
             {
@@ -498,8 +541,21 @@ namespace Supervertaler.Trados.Controls
             _issueCount = 0;
             _lblIssueCount.Text = "";
             _lblFooter.Text = "";
+            _footerTip.SetToolTip(_lblFooter, "");
+            if (_btnSave != null) _btnSave.Enabled = false;   // #105
             _lblEmpty.Text = "No reports yet";
             _lblEmpty.Visible = true;
+        }
+
+        /// <summary>
+        /// Notes in the footer that the report was written to disk (#105); the full
+        /// path is the footer's tooltip.
+        /// </summary>
+        public void ShowSavedPath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || _lblFooter == null) return;
+            _lblFooter.Text += "  \u2014  saved as " + System.IO.Path.GetFileName(path);
+            _footerTip.SetToolTip(_lblFooter, path);
         }
 
         // ─── Prompt Log ─────────────────────────────────────────────

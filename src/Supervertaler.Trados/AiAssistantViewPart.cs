@@ -295,6 +295,7 @@ namespace Supervertaler.Trados
             var reportsControl = _control.Value.ReportsControl;
             reportsControl.NavigateToSegmentRequested += OnNavigateToSegment;
             reportsControl.ClearResultsRequested += OnClearReports;
+            reportsControl.SaveReportRequested += OnSaveReport;   // #105
 
             // Wire Import / Export control events (v4.20.7). Export collects
             // segments from the active document and writes them via the
@@ -11282,6 +11283,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     _control.Value.ReportsControl.SetResults(_currentReport);
                     _control.Value.UpdateReportsBadge(_currentReport.IssueCount);
 
+                    // #105: every completed run goes to disk, so a report that leaves
+                    // the tab - cleared, or lost with the panel's state - is never gone.
+                    var savedPath = ProofreadingReportWriter.TrySave(_currentReport,
+                        GetActiveFileNameSafe(), GetDocumentSourceLanguage(), GetDocumentTargetLanguage());
+                    if (savedPath != null)
+                    {
+                        _control.Value.ReportsControl.ShowSavedPath(savedPath);
+                        try { _control.Value.BatchTranslateControl.AppendLog("Report saved to " + savedPath, false); } catch { }
+                    }
+
                     if (_currentReport.IssueCount > 0)
                     {
                         _control.Value.SwitchToReportsTab();
@@ -11356,6 +11367,53 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             _currentReport = null;
             _control.Value.ReportsControl.ClearResults();
             _control.Value.UpdateReportsBadge(0);
+        }
+
+        private string GetActiveFileNameSafe()
+        {
+            try { return _activeDocument?.ActiveFile?.Name; } catch { return null; }
+        }
+
+        /// <summary>#105: "Save report\u2026" on the Reports tab. Same Markdown as the
+        /// automatic copy, wherever the user wants it - a client folder, an email
+        /// attachment. Opens in the reports folder so the automatic copies are in view.</summary>
+        private void OnSaveReport(object sender, EventArgs e)
+        {
+            var report = _currentReport;
+            if (report == null)
+            {
+                MessageBox.Show("There is no proofreading report to save. Run the AI Proofreader first.",
+                    "Supervertaler \u2014 Save report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                var docName = GetActiveFileNameSafe();
+                string initialDir = null;
+                try { Directory.CreateDirectory(ProofreadingReportWriter.ReportsDir); initialDir = ProofreadingReportWriter.ReportsDir; } catch { }
+                using (var dlg = new SaveFileDialog
+                {
+                    Title = "Save proofreading report",
+                    FileName = ProofreadingReportWriter.DefaultFileName(report, docName),
+                    Filter = "Markdown (*.md)|*.md|Text (*.txt)|*.txt|All files (*.*)|*.*",
+                    DefaultExt = "md",
+                    AddExtension = true,
+                    OverwritePrompt = true,
+                    InitialDirectory = initialDir ?? ""
+                })
+                {
+                    if (dlg.ShowDialog(_control.Value.FindForm()) != DialogResult.OK) return;
+                    File.WriteAllText(dlg.FileName,
+                        ProofreadingReportWriter.ToMarkdown(report, docName, GetDocumentSourceLanguage(), GetDocumentTargetLanguage()),
+                        new System.Text.UTF8Encoding(false));
+                    _control.Value.ReportsControl.ShowSavedPath(dlg.FileName);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("The report could not be saved:\n\n" + ex.Message,
+                    "Supervertaler \u2014 Save report", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void OnPromptCompleted(object sender, PromptLogEntry entry)
