@@ -3314,6 +3314,40 @@ namespace Supervertaler.Trados
         /// terms loaded but none surviving the AI filter is the precise condition,
         /// and it costs nothing at the point where both lists already exist.
         /// </summary>
+        /// <summary>
+        /// The termbase terms a prompt should carry: of the AI-enabled terms, only
+        /// those that occur in <paramref name="sourceTexts"/> (#102). Sending every
+        /// term of every AI-enabled termbase sized the prompt by the termbase, not the
+        /// document - 2,889 rows, 98% of a 310 KB system prompt, for 25 segments.
+        /// Same filter AutoPrompt and get_prompt_context already use, so one rule
+        /// everywhere. Callers pass the WHOLE run's segments, not one batch's, so the
+        /// system prompt stays identical across batches and prompt caching holds.
+        /// One log line says what went. Never throws: on any failure the unfiltered
+        /// list is returned - a prompt with too many terms beats a run that dies.
+        /// </summary>
+        private static List<TermEntry> TermsForPrompt(List<TermEntry> aiTerms, IEnumerable<string> sourceTexts,
+            BatchTranslateControl batchControl)
+        {
+            if (aiTerms == null || aiTerms.Count == 0) return aiTerms ?? new List<TermEntry>();
+            try
+            {
+                var texts = (sourceTexts ?? Enumerable.Empty<string>()).Where(s => !string.IsNullOrEmpty(s)).ToList();
+                var kept = PromptGenerator.FilterRelevantTerms(aiTerms, texts);
+                try
+                {
+                    batchControl?.AppendLog(
+                        $"Termbase: {kept.Count} of {aiTerms.Count} AI-enabled terms occur in the {texts.Count} " +
+                        "source segment(s) and will be sent with the prompt.", false);
+                }
+                catch { /* the log line is not the point */ }
+                return kept;
+            }
+            catch
+            {
+                return aiTerms;
+            }
+        }
+
         private static void WarnIfNoAiTermbases(BatchTranslateControl batchControl, int loadedTerms, int aiTerms)
         {
             if (batchControl == null || loadedTerms <= 0 || aiTerms > 0) return;
@@ -8727,6 +8761,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                 var termbaseTerms = allTerms.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
+                // #102: the exe translates the whole scope, so filter against the whole
+                // document (uncapped) while it is still open.
+                termbaseTerms = TermsForPrompt(termbaseTerms, CollectDocumentSourceSegments(doc), batchControl);
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
                 aiSettings.SelectedPromptPath = selectedPromptPath; SettingsService.Save();
                 var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
@@ -9046,6 +9083,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var aiCfgC = _settings?.AiSettings ?? new AiSettings();
                 var termbaseTerms = allTerms.Where(t => aiCfgC.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
+                termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
 
                 // Resolve custom prompt from library selection
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
@@ -9456,6 +9494,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var aiCfgB = aiSettings ?? new AiSettings();
                 var termbaseTerms = allTerms.Where(t => aiCfgB.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
+                termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
 
                 // Persist the prompt dropdown selection before resolving
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
@@ -10779,6 +10818,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var aiCfgB = aiSettings ?? new AiSettings();
                 var termbaseTerms = allTerms.Where(t => aiCfgB.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
+                termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
 
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
                 if (aiSettings != null)
@@ -11143,6 +11183,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var aiCfgC = _settings?.AiSettings ?? new AiSettings();
                 var termbaseTerms = allTerms.Where(t => aiCfgC.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
+                termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
 
                 // Resolve custom prompt from library selection
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
@@ -12450,6 +12491,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var allTbTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                     var aiCfgE = settings?.AiSettings ?? new AiSettings();
                     var termbaseTerms = allTbTerms.Where(t => aiCfgE.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
+                    termbaseTerms = TermsForPrompt(termbaseTerms, new[] { sourceText }, null);   // #102
 
                     // Resolve custom prompt from settings
                     var customPromptContent = instance.ResolveCustomPromptContent(sourceLang, targetLang);
@@ -12727,6 +12769,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                     var aiCfgD = aiSettings ?? new AiSettings();
                     var termbaseTerms = allTerms.Where(t => aiCfgD.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
+                    termbaseTerms = TermsForPrompt(termbaseTerms, new[] { sourceText }, null);   // #102
 
                     // Resolve custom prompt (from batch translate tab selection)
                     var batchControl = _control.Value.BatchTranslateControl;
@@ -12891,6 +12934,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                 var termbaseTerms = allTerms.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
+                termbaseTerms = TermsForPrompt(termbaseTerms, new[] { sourceText }, null);   // #102
 
                 // Document context, same as a batch run. SuperMemory context is
                 // pane state and the pane has never been opened on this path,
