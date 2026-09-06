@@ -290,7 +290,14 @@ namespace Supervertaler.Trados.Core
             foreach (var c in contenders ?? new List<ModelChoice>())
                 total += TokenEstimator.EstimateCost(c.Model, sys * batches + src, (int)(src * 1.2));
             if (judge != null)
-                total += TokenEstimator.EstimateCost(judge.Model, src * (1 + (contenders?.Count ?? 0)) + 800, 1500);
+            {
+                // The judge reads the instructions and the approved terms as well as
+                // every candidate - on a real run that was most of its input.
+                int instructions = TokenEstimator.EstimateTokens(inputs.CustomPromptContent ?? "");
+                int terms = (inputs.TermbaseTerms?.Count ?? 0) * 12;
+                total += TokenEstimator.EstimateCost(judge.Model,
+                    instructions + terms + src * (1 + (contenders?.Count ?? 0)) + 1200, 1800);
+            }
             return total;
         }
     }

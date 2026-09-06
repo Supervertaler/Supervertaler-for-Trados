@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -261,7 +261,9 @@ namespace Supervertaler.Trados.Controls
                 _run = await Task.Run(() => SuperBenchRunner.RunAsync(inputs, contenders, judge, progress, _cts.Token));
                 ShowRun(_run);
                 _savedPath = TrySave(_run);
-                _lblStatus.Text = "Done." + (_savedPath != null ? " Saved as " + Path.GetFileName(_savedPath) : "");
+                _lblStatus.Text = "Done." + (_savedPath != null
+                    ? " Saved automatically to the reports folder as " + Path.GetFileName(_savedPath) + " (Save report… writes a copy elsewhere)."
+                    : " The report could not be saved to the reports folder; use Save report…");
                 _btnSave.Enabled = true;
             }
             catch (OperationCanceledException)
