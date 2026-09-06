@@ -63,6 +63,7 @@ namespace Supervertaler.Trados.Controls
         private CheckBox _chkAddComments;
         private LinkLabel _lnkGeneratePrompt;
         private LinkLabel _lnkPreviewPrompt;
+        private LinkLabel _lnkSuperBench;   // #107
         private LinkLabel _lnkNumerals;
         private LinkLabel _lnkDocImages;
         private LinkLabel _lnkRefFolder;
@@ -133,6 +134,9 @@ namespace Supervertaler.Trados.Controls
         /// exactly what would be sent to the AI (system prompt + termbase + document
         /// context + bilingual segment list), regardless of mode (API or Clipboard).</summary>
         public event EventHandler PreviewPromptRequested;
+
+        /// <summary>Fired when the user clicks "SuperBench" - compare three models on this document (#107).</summary>
+        public event EventHandler SuperBenchRequested;
 
         /// <summary>Raised when the user asks for the reference-numeral
         /// inventory: every parenthesised numeral cited in the source, with the
@@ -580,6 +584,27 @@ namespace Supervertaler.Trados.Controls
                 "document context for proofread), plus the numbered segment list.\r\n" +
                 "Useful for inspecting before triggering an actual call.");
             Controls.Add(_lnkPreviewPrompt);
+
+            // ─── SuperBench link (#107) ─────────────────────────────
+            // Sits to the right of Preview prompt and follows it wherever the
+            // action row puts it, so it needs no layout code of its own.
+            _lnkSuperBench = new LinkLabel
+            {
+                Text = "\u2696  SuperBench\u2026",
+                AutoSize = true,
+                Font = bodyFont,
+                Location = new Point(_lnkPreviewPrompt.Right + Px(12), _lnkPreviewPrompt.Top)
+            };
+            _lnkSuperBench.LinkClicked += (s, ev) => SuperBenchRequested?.Invoke(this, EventArgs.Empty);
+            var benchTip = new ToolTip();
+            benchTip.SetToolTip(_lnkSuperBench,
+                "Translate the first segments of this document with three models under\r\n" +
+                "exactly these batch settings, and have a judge compare them blind.\r\n" +
+                "Nothing is written to the document.");
+            _lnkPreviewPrompt.LocationChanged += (s, ev) =>
+                _lnkSuperBench.Location = new Point(_lnkPreviewPrompt.Right + Px(12), _lnkPreviewPrompt.Top);
+            _lnkPreviewPrompt.VisibleChanged += (s, ev) => _lnkSuperBench.Visible = _lnkPreviewPrompt.Visible;
+            Controls.Add(_lnkSuperBench);
 
             // ─── Clipboard Mode buttons (hidden by default) ─────
             _btnCopyToClipboard = new Button

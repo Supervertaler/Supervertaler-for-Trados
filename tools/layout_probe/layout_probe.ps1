@@ -87,6 +87,12 @@ $cases = @(
         Args = @()
     },
     @{
+        # #107. Three model rows, a judge, the segment spinner and the results split.
+        Type = "Supervertaler.Trados.Controls.SuperBenchDialog"
+        Name = "SuperBenchDialog"
+        Args = @()
+    },
+    @{
         # #92. Rewritten on a TableLayoutPanel; a new prompt, so every row shows
         # except the menu-only "When run" row.
         Type = "Supervertaler.Trados.Controls.PromptEditorDialog"

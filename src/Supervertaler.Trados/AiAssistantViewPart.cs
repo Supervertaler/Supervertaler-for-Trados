@@ -281,6 +281,7 @@ namespace Supervertaler.Trados
             batchControl.CopyToClipboardRequested += OnCopyToClipboardRequested;
             batchControl.PasteFromClipboardRequested += OnPasteFromClipboardRequested;
             batchControl.PreviewPromptRequested += OnPreviewPromptRequested;
+            batchControl.SuperBenchRequested += OnSuperBenchRequested;   // #107
             batchControl.ReferenceNumeralsRequested += OnReferenceNumeralsRequested;
             batchControl.DocumentImagesRequested += OnDocumentImagesRequested;
             batchControl.ReferenceImagesFolderRequested += OnReferenceImagesFolderRequested;
@@ -11371,6 +11372,67 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
                 catch { /* control may not be available */ }
             });
+        }
+
+        // ─── SuperBench (#107) ────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Everything a batch run would use, gathered the way OnBatchTranslateRequested
+        /// gathers it - scope All, no limit; the dialog takes the first N. Returns null
+        /// with a message when there is nothing to run on.
+        /// </summary>
+        private SuperBenchInputs PrepareSuperBenchInputs()
+        {
+            var batchControl = _control.Value.BatchTranslateControl;
+            var aiSettings = _settings?.AiSettings ?? new AiSettings();
+            var sourceLang = GetDocumentSourceLanguage();
+            var targetLang = GetDocumentTargetLanguage();
+            if (string.IsNullOrEmpty(sourceLang) || string.IsNullOrEmpty(targetLang))
+                throw new InvalidOperationException("Cannot determine the document's source and target language.");
+
+            var segments = CollectSegments(BatchScope.All) ?? new List<BatchSegment>();
+            if (segments.Count == 0) return null;
+
+            TermLensEditorViewPart.PrewarmFallbackTermsFor(segments.Select(sg => sg.SourceText));
+            var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
+            var termbaseTerms = allTerms.Where(tm => aiSettings.IsTermbaseAiEnabled(tm.TermbaseId)).ToList();
+            termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), null);   // #102
+
+            var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
+            List<string> docSegments = aiSettings.IncludeDocumentContext ? CollectDocumentContext().Item1 : null;
+            var projectName = GetProjectName();
+            var kbContext = LoadKbContextForPrompt(projectName, sourceLang, targetLang);
+            var promptName = batchControl.GetSelectedPrompt()?.Name ?? "(default prompt)";
+
+            return new SuperBenchInputs
+            {
+                Segments = segments,
+                SourceLang = sourceLang,
+                TargetLang = targetLang,
+                DocumentName = GetActiveFileNameSafe(),
+                AiSettings = aiSettings,
+                TermbaseTerms = termbaseTerms,
+                BatchSize = aiSettings.BatchSize > 0 ? aiSettings.BatchSize : 20,
+                CustomPromptContent = customPromptContent,
+                CustomSystemPrompt = aiSettings.CustomSystemPrompt,
+                DocSegments = docSegments,
+                KbContext = kbContext,
+                SettingsSummary = $"prompt “{promptName}”, {termbaseTerms.Count} termbase terms, document context " +
+                                  (aiSettings.IncludeDocumentContext ? "on" : "off") + (kbContext != null ? ", SuperMemory on" : ""),
+            };
+        }
+
+        private void OnSuperBenchRequested(object sender, EventArgs e)
+        {
+            if (_activeDocument == null)
+            {
+                MessageBox.Show("Open a document in the editor first.", "SuperBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            int available = 0;
+            try { available = CollectSegments(BatchScope.All)?.Count ?? 0; } catch { }
+            using (var dlg = new Controls.SuperBenchDialog(PrepareSuperBenchInputs, _settings?.AiSettings, GetActiveFileNameSafe() ?? "(document)", available))
+                dlg.ShowDialog(_control.Value.FindForm());
         }
 
         private void OnClearReports(object sender, EventArgs e)
