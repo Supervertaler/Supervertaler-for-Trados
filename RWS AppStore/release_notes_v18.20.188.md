@@ -5,8 +5,8 @@ version numbers so the App Store never sees a collision):
 
 | Build | Version number | Min studio | Max studio | Checksum (SHA-256) |
 |-------|----------------|------------|------------|--------------------|
-| Studio 2024 | `18.20.188.0` | `18.0` | `18.9` | `041b67f2c081d3e95323dc9333241dbaa2703e2e385be65fead6fe2f133a7e15` |
-| Studio 2026 | `19.20.188.0` | `19.0` | `19.9` | `7771ab2e656d8d895fe3fb59131f3128f9a888946d9ae9ac0286b45ec32eef8f` |
+| Studio 2024 | `18.20.188.0` | `18.0` | `18.9` | `cb1b712a85f84c39c1f7034c574ef7ea0de35ff0a7eb0c391856e084b083f8f0` |
+| Studio 2026 | `19.20.188.0` | `19.0` | `19.9` | `c3e285e750658e6fa97381824a9591648f68ce58b936d8474f89ca8791635981` |
 
 ---
 
