@@ -81,6 +81,16 @@ namespace Supervertaler.Trados.Settings
         [DataMember(EmitDefaultValue = false)]
         public bool ShowAllModels { get; set; }
 
+        /// <summary>
+        /// #109: send the document's list numbering (claim numbers, lettered steps,
+        /// bullets) to the AI as structure context, as a "[#e)]" prefix on the source
+        /// with a rule explaining it. Off by default for the first version that ships
+        /// it: the mechanism is trusted only once the TMX diffs across the model
+        /// line-up show no sentinel reaching a target.
+        /// </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public bool StructureContext { get; set; }
+
         [DataMember(Name = "selectedCustomProfileName")]
         public string SelectedCustomProfileName { get; set; } = "";
 

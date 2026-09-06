@@ -71,6 +71,7 @@ namespace Supervertaler.Trados.Controls
         // AI Context section – shared (all AI features)
         private Label _lblAiContextHeader;
         private CheckBox _chkIncludeDocumentContext;
+        private CheckBox _chkStructureContext;   // #109: list numbering as structure context
         private Label _lblMaxSegments;
         private NumericUpDown _nudMaxSegments;
         private Label _lblPromptContext;
@@ -570,6 +571,20 @@ namespace Supervertaler.Trados.Controls
             };
             Span(root, ref row, _chkIncludeDocumentContext);
 
+            // #109: the document's list numbering as structure context. Off by default
+            // in the first version that ships it.
+            _chkStructureContext = Check("Send list numbering to the AI as structure context (Word files; experimental)");
+            _chkStructureContext.Checked = false;
+            var structTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+            structTip.SetToolTip(_chkStructureContext,
+                "Word numbers claims, letters steps and bullets lists outside the segment text,\r\n" +
+                "so the AI cannot see that a segment is step e) of a list, or claim 9. With this on,\r\n" +
+                "Batch Translate and Translate Segment prefix each numbered paragraph with its marker\r\n" +
+                "inside a sentinel - [#e)] - and tell the AI it is structure, not text. Anything the\r\n" +
+                "AI echoes back is removed before the target is written, and logged.\r\n" +
+                "Word documents only; other formats get a rule telling the AI the numbering exists.");
+            Span(root, ref row, _chkStructureContext);
+
             _lblMaxSegments = FieldLabel("Max segments:", indentSteps: 1);
             _nudMaxSegments = SmallNud(100, 2000, 500, 100);
             var maxSegTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
@@ -884,6 +899,7 @@ namespace Supervertaler.Trados.Controls
             _chkIncludeTmMatches.Checked = settings.IncludeTmMatches;
             _chkDemoMode.Checked = settings.DemoMode;
             _chkIncludeDocumentContext.Checked = settings.IncludeDocumentContext;
+            _chkStructureContext.Checked = settings.StructureContext;
             _nudMaxSegments.Value = Math.Max(_nudMaxSegments.Minimum,
                 Math.Min(_nudMaxSegments.Maximum, settings.DocumentContextMaxSegments));
             _nudMaxSegments.Enabled = settings.IncludeDocumentContext;
@@ -988,6 +1004,7 @@ namespace Supervertaler.Trados.Controls
             settings.IncludeTmMatches = _chkIncludeTmMatches.Checked;
             settings.DemoMode = _chkDemoMode.Checked;
             settings.IncludeDocumentContext = _chkIncludeDocumentContext.Checked;
+            settings.StructureContext = _chkStructureContext.Checked;
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;
             settings.PromptContextMaxSegments = (int)_nudPromptContext.Value;
             settings.QuickLauncherSurroundingSegments = (int)_nudSurroundingSegments.Value;

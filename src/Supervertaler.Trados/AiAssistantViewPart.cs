@@ -412,6 +412,7 @@ namespace Supervertaler.Trados
                 PopulateBatchPromptDropdown();
                 ApplyProjectMemoryBank();
                 TryRestoreReport();   // #105
+                StructureContextResolver.Invalidate();   // #109: markers belong to one document
             }
             else
             {
@@ -9066,6 +9067,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // Collect segments based on selected scope
                 var scope = batchControl.GetSelectedScope();
                 var segments = CollectSegments(scope);
+                var structureMode = ApplyStructureMarkers(_activeDocument, segments, aiSettings, out var structureNote);   // #109
+                if (structureNote != null) batchControl.AppendLog(structureNote);
 
                 // Apply segment limit if set
                 var maxSeg = batchControl.GetMaxSegments();
@@ -9198,7 +9201,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             aiSettings, termbaseTerms, batchSize, ct,
                             customPromptContent, customSystemPrompt,
                             docSegments, kbContext,
-                            retryUntilComplete: batchControl.IsRetryEnabled);
+                            retryUntilComplete: batchControl.IsRetryEnabled,
+                            structureContext: structureMode);
                     }
                     catch (Exception ex)
                     {
@@ -9500,6 +9504,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                 var aiCfgB = aiSettings ?? new AiSettings();
+                var structureMode = ApplyStructureMarkers(_activeDocument, segments, aiCfgB, out var structureNote);   // #109
+                if (structureNote != null) batchControl.AppendLog(structureNote);
                 var termbaseTerms = allTerms.Where(t => aiCfgB.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
                 termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
@@ -9546,7 +9552,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     clipboardText = ClipboardRelay.FormatForTranslation(
                         segments, sourceLang, targetLang,
                         customPromptContent, termbaseTerms, customSystemPrompt,
-                        docSegments, maxDocSegs, includeTermMeta);
+                        docSegments, maxDocSegs, includeTermMeta,
+                        structureContext: structureMode);
                 }
 
                 // Copy to clipboard
@@ -10824,6 +10831,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                 var aiCfgB = aiSettings ?? new AiSettings();
+                var structureMode = ApplyStructureMarkers(_activeDocument, segments, aiCfgB, out var structureNote);   // #109
+                if (structureNote != null) batchControl.AppendLog(structureNote);
                 var termbaseTerms = allTerms.Where(t => aiCfgB.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 WarnIfNoAiTermbases(batchControl, allTerms.Count, termbaseTerms.Count);
                 termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
@@ -10864,7 +10873,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     promptText = ClipboardRelay.FormatForTranslation(
                         segments, sourceLang, targetLang,
                         customPromptContent, termbaseTerms, customSystemPrompt,
-                        docSegments, maxDocSegs, includeTermMeta);
+                        docSegments, maxDocSegs, includeTermMeta,
+                        structureContext: structureMode);
                 }
 
                 var modeLabel = batchControl.CurrentMode == BatchMode.Proofread
@@ -10926,6 +10936,17 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     // Parse translations
                     var parsed = ClipboardRelay.ParseTranslationResponse(
                         text, _clipboardSegments.Count, targetLang, GetDocumentSourceLanguage());
+
+                    // #109: sentinels went out with the copy only if a segment carried a marker;
+                    // whatever the web LLM echoed back comes off here, and is logged.
+                    if (_clipboardSegments.Any(cs => cs.StructureMarker != null))
+                    {
+                        foreach (var pt in parsed)
+                        {
+                            pt.Translation = Supervertaler.Core.StructureContext.Strip(pt.Translation, out var echoed);
+                            if (echoed) batchControl.AppendLog($"Structure marker echoed by the model in segment {pt.Number} – removed before writing.");
+                        }
+                    }
 
                     if (parsed.Count == 0)
                     {
@@ -11392,6 +11413,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             var segments = CollectSegments(BatchScope.All) ?? new List<BatchSegment>();
             if (segments.Count == 0) return null;
+            var structureMode = ApplyStructureMarkers(_activeDocument, segments, aiSettings, out _);   // #109: as the batch would send them
 
             TermLensEditorViewPart.PrewarmFallbackTermsFor(segments.Select(sg => sg.SourceText));
             var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
@@ -11407,6 +11429,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return new SuperBenchInputs
             {
                 Segments = segments,
+                StructureContext = structureMode,
                 SourceLang = sourceLang,
                 TargetLang = targetLang,
                 DocumentName = GetActiveFileNameSafe(),
@@ -11729,6 +11752,63 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return name == "Translated"
                 || name == "ApprovedTranslation"
                 || name == "ApprovedSignOff";
+        }
+
+        /// <summary>
+        /// #109: gives each segment its paragraph's list marker when the setting is on
+        /// and says which rule the request needs. Markers: the document is a Word
+        /// file whose numbering was read; the first segment of every numbered
+        /// paragraph in this run gets its marker and the preamble rule ships.
+        /// Unavailable: the user asked but this file cannot supply markers, so the
+        /// fallback rule ships instead. Off: the setting is off and the prompt is
+        /// exactly what it was before #109. Never throws into a batch.
+        /// </summary>
+        private static StructureContextMode ApplyStructureMarkers(IStudioDocument doc, List<BatchSegment> segments,
+            AiSettings settings, out string note)
+        {
+            note = null;
+            if (settings == null || !settings.StructureContext || doc == null || segments == null)
+                return StructureContextMode.Off;
+            try
+            {
+                var map = StructureContextResolver.Resolve(doc);
+                note = map.Note;
+                if (!map.Available) return StructureContextMode.Unavailable;
+
+                int applied = 0;
+                foreach (var seg in segments)
+                {
+                    seg.StructureMarker = null;
+                    var pair = seg.SegmentPairRef as ISegmentPair;
+                    if (pair == null) continue;
+                    IParagraphUnit pu = null;
+                    try { pu = doc.GetParentParagraphUnit(pair); } catch { }
+                    var id = pu?.Properties?.ParagraphUnitId.Id;
+                    if (id == null || !map.MarkerByParagraphUnit.TryGetValue(id, out var marker)) continue;
+                    // The marker says where the paragraph starts: its first segment carries it.
+                    if (!IsFirstSegmentOfParagraph(pu, pair)) continue;
+                    seg.StructureMarker = marker;
+                    applied++;
+                }
+                note += $" {applied} of {segments.Count} segment(s) in this run carry one.";
+                return StructureContextMode.Markers;
+            }
+            catch (Exception ex)
+            {
+                note = "Structure context: not available (" + ex.Message + ").";
+                return StructureContextMode.Unavailable;
+            }
+        }
+
+        private static bool IsFirstSegmentOfParagraph(IParagraphUnit pu, ISegmentPair pair)
+        {
+            try
+            {
+                foreach (var sp in pu.SegmentPairs)
+                    return ReferenceEquals(sp, pair) || string.Equals(sp.Properties?.Id.Id, pair.Properties?.Id.Id, StringComparison.Ordinal);
+            }
+            catch { }
+            return true;
         }
 
         private List<BatchSegment> CollectSegments(BatchScope scope)
@@ -12937,6 +13017,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     // Get termbase terms (same filtering as batch translate)
                     var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                     var aiCfgD = aiSettings ?? new AiSettings();
+                    var structureMode = ApplyStructureMarkers(instance._activeDocument, segments, aiCfgD, out var structureNote);   // #109
+                    if (structureNote != null) _control.Value.BatchTranslateControl.AppendLog(structureNote);
                     var termbaseTerms = allTerms.Where(t => aiCfgD.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                     termbaseTerms = TermsForPrompt(termbaseTerms, new[] { sourceText }, null);   // #102
 
@@ -12980,7 +13062,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 segments, sourceLang, targetLang,
                                 aiSettings, termbaseTerms, 1, ct,
                                 customPromptContent, customSystemPrompt,
-                                docSegments, kbContext);
+                                docSegments, kbContext,
+                                structureContext: structureMode);
                         }
                         catch (Exception ex)
                         {
@@ -13097,6 +13180,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     }
                 };
 
+                var structureMode = ApplyStructureMarkers(doc, segments, aiSettings, out var structureNote);   // #109
+                if (structureNote != null) BridgeLog.Write(structureNote);
+
                 // Single segment, but a fallback-served MultiTerm termbase still needs an
                 // explicit lookup for it to reach the prompt (#38).
                 TermLensEditorViewPart.PrewarmFallbackTermsFor(new[] { sourceText });
@@ -13150,7 +13236,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             segments, sourceLang, targetLang,
                             aiSettings, termbaseTerms, 1, cts.Token,
                             customPromptContent, customSystemPrompt,
-                            docSegments);
+                            docSegments,
+                            structureContext: structureMode);
                     }
                     catch (Exception ex)
                     {
@@ -15422,7 +15509,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// and return the first non-null/non-empty match. All access
         /// goes through reflection so no compile-time SDK type is
         /// referenced.</summary>
-        private static string TryGetContextMetaData(object ctx, string key)
+        internal static string TryGetContextMetaData(object ctx, string key)
         {
             if (ctx == null || string.IsNullOrEmpty(key)) return null;
             var type = ctx.GetType();

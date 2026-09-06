@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Supervertaler.Core;
 using Supervertaler.Trados.Core;
 using Supervertaler.Trados.Models;
 using Supervertaler.Trados.Settings;
@@ -36,6 +37,15 @@ namespace Supervertaler.Trados.Core
         /// Only populated when HasTags is true.
         /// </summary>
         public Dictionary<int, TagInfo> TagMap { get; set; }
+
+        /// <summary>
+        /// #109: the list marker the document renders in front of this segment's
+        /// paragraph ("9.", "e)", "•"), set on the paragraph's first segment only,
+        /// or null. SourceText stays the document's text; the sentinel is added to
+        /// the prompt only, so the TMX backup, the logs and every comparison see the
+        /// segment as Studio has it.
+        /// </summary>
+        public string StructureMarker { get; set; }
     }
 
     public enum BatchScope
@@ -130,7 +140,8 @@ namespace Supervertaler.Trados.Core
             string customSystemPrompt = null,
             List<string> documentSegments = null,
             string kbContext = null,
-            bool retryUntilComplete = false)
+            bool retryUntilComplete = false,
+            StructureContextMode structureContext = StructureContextMode.Off)
         {
             var sw = Stopwatch.StartNew();
             int translated = 0;
@@ -191,7 +202,8 @@ namespace Supervertaler.Trados.Core
                 includeDoc ? documentSegments : null,
                 maxDocSegs,
                 includeTermMeta,
-                kbContext);
+                kbContext,
+                structureContext);
 
             // Resolve provider settings
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
@@ -270,7 +282,7 @@ namespace Supervertaler.Trados.Core
                             promptSegments.Add(new BatchSegmentInput
                             {
                                 Number = i + 1, // 1-based numbering
-                                SourceText = segments[i].SourceText
+                                SourceText = PromptSource(segments[i], structureContext)
                             });
                         }
 
@@ -322,7 +334,8 @@ namespace Supervertaler.Trados.Core
                         // Map parsed translations back to segments by number
                         var translationMap = new Dictionary<int, string>();
                         foreach (var p in parsed)
-                            translationMap[p.Number] = p.Translation;
+                            translationMap[p.Number] = CleanTarget(p.Translation,
+                                p.Number >= 1 && p.Number <= segments.Count ? segments[p.Number - 1].Index + 1 : p.Number, structureContext);
 
                         // Apply translations
                         int batchTranslated = 0;
@@ -428,7 +441,7 @@ namespace Supervertaler.Trados.Core
                             {
                                 var ps = new List<BatchSegmentInput>();
                                 for (int i = rs; i < re; i++)
-                                    ps.Add(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = pending[i].SourceText });
+                                    ps.Add(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) });
 
                                 var rUserPrompt = TranslationPrompt.BuildBatchUserPrompt(ps);
                                 var rResponse = await client.SendPromptAsync(
@@ -450,7 +463,9 @@ namespace Supervertaler.Trados.Core
 
                                 var rParsed = TranslationPrompt.ParseBatchResponse(rResponse, re - rs);
                                 var rMap = new Dictionary<int, string>();
-                                foreach (var p in rParsed) rMap[p.Number] = p.Translation;
+                                foreach (var p in rParsed)
+                                    rMap[p.Number] = CleanTarget(p.Translation,
+                                        rs + p.Number - 1 < pending.Count && p.Number >= 1 ? pending[rs + p.Number - 1].Index + 1 : p.Number, structureContext);
 
                                 for (int i = rs; i < re; i++)
                                 {
@@ -542,6 +557,42 @@ namespace Supervertaler.Trados.Core
                 TotalTime = sw.Elapsed,
                 WasCancelled = cancellationToken.IsCancellationRequested
             });
+        }
+
+        /// <summary>
+        /// #109: the source as the model sees it - the document's list marker in a
+        /// sentinel, then the text - when markers are being sent; the text alone
+        /// otherwise. BatchSegment.SourceText itself is never changed.
+        /// </summary>
+        private static string PromptSource(BatchSegment segment, StructureContextMode mode)
+        {
+            return mode == StructureContextMode.Markers
+                ? StructureContext.Prefix(segment.StructureMarker, segment.SourceText)
+                : segment.SourceText;
+        }
+
+        /// <summary>
+        /// #109: a sentinel the model echoed at the start of a target is removed
+        /// before anything is written, and logged: that log is the per-model
+        /// evidence on whether the rule is obeyed. Only when markers were sent - with
+        /// the feature off the prompt is unchanged and so is the reply.
+        /// </summary>
+        private string CleanTarget(string translation, int segmentNumber, StructureContextMode mode)
+        {
+            if (mode == StructureContextMode.Off || string.IsNullOrEmpty(translation)) return translation;
+            var cleaned = StructureContext.Strip(translation, out var fired);
+            if (fired)
+            {
+                DiagnosticLog.Log("Structure", $"Sentinel echoed by the model in segment {segmentNumber}: removed. Reply began: {Truncate(translation, 60)}");
+                RaiseProgress(0, 0, $"Structure marker echoed by the model in segment {segmentNumber} – removed before writing.", false, TimeSpan.Zero);
+            }
+            return cleaned;
+        }
+
+        private static string Truncate(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length <= max) return s ?? "";
+            return s.Substring(0, max) + "…";
         }
 
         private void RaiseProgress(int current, int total, string message,

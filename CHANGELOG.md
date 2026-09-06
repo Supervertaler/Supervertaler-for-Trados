@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.188 / 19.20.188] – unreleased
+
+### Added
+- **The document’s list numbering can be sent to the AI as structure context (Word files, opt-in).** Word numbers claims, letters steps and bullets lists as paragraph properties, not text, so the segment grid never contains the `a)` or the `9.` – and neither did anything the AI received. On a real patent the model read six unlettered steps, translated “steps a. to f.” faithfully, and then flagged it as a possible source defect: a note that would have reached the client. With **Send list numbering to the AI as structure context** ticked in AI Settings, Batch Translate, Translate Segment and SuperBench prefix the first segment of every numbered paragraph with the marker Word renders, inside a sentinel – `[#e)]het fixeren…`, `[#9.]Werkwijze…`, `[#•]een behuizing…` – and a rule in the plugin’s own preamble tells the model it is structure to use for cross-references and parallelism, never to translate or reproduce. The rule ships with every request, including prompts you wrote yourself and AutoPrompt’s. The markers are read from the original Word file Studio keeps inside the sdlxliff and computed for the whole document at once, so a list that restarts at claim 11 reads `11.`, and lettered steps that continue from one claim into the next keep counting, exactly as Word shows them. Anything the model echoes back is removed before the target is written and logged in the batch log, and the TMX backup records the segment as Studio has it. Files that are not Word documents get a one-line fallback rule instead: the numbering exists, is not in the text, and is not a defect. Off by default for this version. Issue #109; the same design ships in Supervertaler for memoQ.
+
 ## [18.20.187 / 19.20.187] – 2026-09-06
 
 ### Added

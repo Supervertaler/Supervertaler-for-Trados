@@ -26,6 +26,8 @@ namespace Supervertaler.Trados.Core
         public string KbContext;
         /// <summary>One line for the report: which prompt, how many terms, context on or off.</summary>
         public string SettingsSummary;
+        /// <summary>#109: whether the segments carry list markers, exactly as the batch would send them.</summary>
+        public StructureContextMode StructureContext = StructureContextMode.Off;
 
         public SuperBenchInputs Take(int count)
         {
@@ -34,6 +36,7 @@ namespace Supervertaler.Trados.Core
             {
                 Index = i, SourceText = s.SourceText, ExistingTarget = s.ExistingTarget,
                 SegmentPairRef = s.SegmentPairRef, HasTags = s.HasTags, TagMap = s.TagMap,
+                StructureMarker = s.StructureMarker,
             }).ToList();
             return copy;
         }
@@ -133,7 +136,8 @@ namespace Supervertaler.Trados.Core
                 usage.Start();
                 await translator.TranslateAsync(inputs.Segments, inputs.SourceLang, inputs.TargetLang, settings,
                     inputs.TermbaseTerms, inputs.BatchSize, ct, inputs.CustomPromptContent, inputs.CustomSystemPrompt,
-                    inputs.DocSegments, inputs.KbContext, retryUntilComplete: false).ConfigureAwait(false);
+                    inputs.DocSegments, inputs.KbContext, retryUntilComplete: false,
+                    structureContext: inputs.StructureContext).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)

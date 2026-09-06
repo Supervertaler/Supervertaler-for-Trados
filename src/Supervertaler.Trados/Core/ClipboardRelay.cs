@@ -29,7 +29,8 @@ namespace Supervertaler.Trados.Core
             string customSystemPrompt = null,
             List<string> documentSegments = null,
             int maxDocumentSegments = 500,
-            bool includeTermMetadata = true)
+            bool includeTermMetadata = true,
+            Supervertaler.Core.StructureContextMode structureContext = Supervertaler.Core.StructureContextMode.Off)
         {
             var sb = new StringBuilder(segments.Count * 300 + 4096);
 
@@ -37,7 +38,8 @@ namespace Supervertaler.Trados.Core
             var systemPrompt = TranslationPrompt.BuildSystemPrompt(
                 sourceLang, targetLang,
                 customPromptContent, termbaseTerms, customSystemPrompt,
-                documentSegments, maxDocumentSegments, includeTermMetadata);
+                documentSegments, maxDocumentSegments, includeTermMetadata,
+                kbContext: null, structureContext: structureContext);
 
             sb.AppendLine(systemPrompt);
             sb.AppendLine();
@@ -80,7 +82,11 @@ namespace Supervertaler.Trados.Core
                     sb.Append(" [").Append(status).Append("]");
                 sb.AppendLine(":");
 
-                sb.Append(srcLabel).Append(": ").AppendLine(seg.SourceText);
+                // #109: the list marker in its sentinel, exactly as the API path sends it.
+                var sourceForPrompt = structureContext == Supervertaler.Core.StructureContextMode.Markers
+                    ? Supervertaler.Core.StructureContext.Prefix(seg.StructureMarker, seg.SourceText)
+                    : seg.SourceText;
+                sb.Append(srcLabel).Append(": ").AppendLine(sourceForPrompt);
                 sb.Append(tgtLabel).Append(": ");
 
                 // Include existing target for fuzzy/translated segments
