@@ -7,7 +7,7 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
-## [18.20.187 / 19.20.187] – unreleased
+## [18.20.187 / 19.20.187] – 2026-09-06
 
 ### Added
 - **API keys now live in one file shared by every Supervertaler product.** `settings\\api-keys.json` in your data folder – one line per provider, plain text, editable in Notepad. Supervertaler for Trados reads it first and writes it whenever you change a key in AI Settings; Supervertaler for memoQ and Sidekick read the same file, so a key pasted once works everywhere. On first start the file is filled from the keys the plugin already had, so nothing is retyped. And the key box now says when a key plainly belongs to another service – an OpenAI key starts with `sk-`, an Anthropic key with `sk-ant-`, a Gemini key with `AIza` – before the provider refuses it with a 401 that names nothing.
