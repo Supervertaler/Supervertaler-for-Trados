@@ -76,8 +76,6 @@ namespace Supervertaler.Trados.Controls
         private Button _btnCopyToClipboard;
         private Button _btnPasteFromClipboard;
 
-        // Offload to 64-bit Workbench (for files too large for 32-bit Trados)
-        private Button _btnViaWorkbench;
         // Shared "retry segments left empty" – applies to Translate and the offload
         private CheckBox _chkRetry;
 
@@ -127,8 +125,6 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Fired when user clicks "Paste from Clipboard" in Clipboard Mode.</summary>
         public event EventHandler PasteFromClipboardRequested;
 
-        /// <summary>Fired when user clicks "Translate via Workbench (large files)".</summary>
-        public event EventHandler TranslateViaWorkbenchRequested;
 
         /// <summary>Fired when user clicks "Preview prompt" – pops a dialog showing
         /// exactly what would be sent to the AI (system prompt + termbase + document
@@ -294,7 +290,7 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_chkClipboardMode);
             y += Px(24);
 
-            // ─── Retry option (shared by Translate and Translate via Workbench) ────
+            // ─── Retry option ────
             _chkRetry = new CheckBox
             {
                 Text = "Retry segments left empty",
@@ -306,8 +302,7 @@ namespace Supervertaler.Trados.Controls
             };
             var retryTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             retryTip.SetToolTip(_chkRetry,
-                "Re-translate any segments the model leaves empty, in extra passes.\r\n" +
-                "Applies to both Translate and Translate via Workbench.");
+                "Re-translate any segments the model leaves empty, in extra passes.\r\n");
             Controls.Add(_chkRetry);
             y += Px(26);
 
@@ -511,25 +506,6 @@ namespace Supervertaler.Trados.Controls
             _btnTranslate.Click += OnActionClick;
             Controls.Add(_btnTranslate);
 
-            // ─── Translate via Workbench – sits to the right of the Translate button ───
-            _btnViaWorkbench = new Button
-            {
-                Text = "Translate via Workbench (large files)",
-                Location = new Point(_btnTranslate.Right + Px(8), y),
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Height = Px(28),
-                FlatStyle = FlatStyle.System,
-                Font = bodyFont
-            };
-            _btnViaWorkbench.Click += (s, e) => TranslateViaWorkbenchRequested?.Invoke(this, EventArgs.Empty);
-            var wbTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
-            wbTip.SetToolTip(_btnViaWorkbench,
-                "Translates the whole document in the 64-bit Supervertaler Workbench and\r\n" +
-                "swaps the result back in – for files too large for 32-bit Trados Studio 2024.\r\n" +
-                "Requires Supervertaler Workbench to be installed.");
-            Controls.Add(_btnViaWorkbench);
-
             _chkAddComments = new CheckBox
             {
                 Text = "Also add issues as Trados comments",
@@ -556,7 +532,6 @@ namespace Supervertaler.Trados.Controls
             int actionRowY = y;
             _btnTranslate.SizeChanged += (s, ev) =>
             {
-                _btnViaWorkbench.Location = new Point(_btnTranslate.Right + Px(8), actionRowY);
                 _chkAddComments.Location = new Point(_btnTranslate.Right + Px(8), actionRowY + Px(4));
                 RepositionPreviewPromptLink();
             };
@@ -664,7 +639,7 @@ namespace Supervertaler.Trados.Controls
 
             // ─── Reference numerals link ─────────────────────
             // Its own row, deliberately. The action row above already holds
-            // Translate, Translate via Workbench and the Preview prompt link,
+            // Translate and the Preview prompt link,
             // and RepositionPreviewPromptLink() pushes Preview past whichever
             // is widest - so a fourth item lands off the right edge of a docked
             // panel and renders as "...numerals". Left-aligned here, it cannot
@@ -899,7 +874,6 @@ namespace Supervertaler.Trados.Controls
             var isTranslateMode = _currentMode == BatchMode.Translate && !(_chkClipboardMode?.Checked ?? false);
             _chkTmxBackup.Visible = isTranslateMode;
             _lnkOpenBackupFolder.Visible = isTranslateMode;
-            if (_btnViaWorkbench != null) _btnViaWorkbench.Visible = isTranslateMode;
             RepositionPreviewPromptLink();
 
             // Notify listeners to refresh prompt dropdown
@@ -969,7 +943,6 @@ namespace Supervertaler.Trados.Controls
             var showTmx = !clip && _currentMode == BatchMode.Translate;
             _chkTmxBackup.Visible = showTmx;
             _lnkOpenBackupFolder.Visible = showTmx;
-            if (_btnViaWorkbench != null) _btnViaWorkbench.Visible = showTmx;
 
             // Preview prompt link sits after the rightmost visible control on the
             // action row – position depends on which controls are showing.
@@ -1271,8 +1244,6 @@ namespace Supervertaler.Trados.Controls
                 rightEdge = Math.Max(rightEdge, _btnPasteFromClipboard.Right);
             if (_chkAddComments != null && _chkAddComments.Visible)
                 rightEdge = Math.Max(rightEdge, _chkAddComments.Right);
-            if (_btnViaWorkbench != null && _btnViaWorkbench.Visible)
-                rightEdge = Math.Max(rightEdge, _btnViaWorkbench.Right);
 
             // Nothing visible on the action row (shouldn't happen in practice,
             // but guard rather than write a negative X).
