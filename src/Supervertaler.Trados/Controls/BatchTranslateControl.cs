@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
+using Supervertaler.Trados.Settings;
 using Supervertaler.Trados.Models;
 
 namespace Supervertaler.Trados.Controls
@@ -1023,9 +1024,11 @@ namespace Supervertaler.Trados.Controls
             Func<List<CustomProfileMenuItem>> customProfilesSource,
             EventHandler onItemClicked)
         {
+            // #106: curated models plus what the provider's own list added.
+            var aiSettings = SettingsService.Current?.AiSettings;
             foreach (var providerKey in LlmModels.AllProviderKeys)
             {
-                var models = LlmModels.GetModelsForProvider(providerKey);
+                var models = Core.ModelCatalog.ModelsFor(providerKey, aiSettings);
 
                 // Custom OpenAI profiles get their own submenu below.
                 if (providerKey == LlmModels.ProviderCustomOpenAi)

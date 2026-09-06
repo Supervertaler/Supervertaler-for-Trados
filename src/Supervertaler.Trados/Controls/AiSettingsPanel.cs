@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
@@ -25,6 +26,11 @@ namespace Supervertaler.Trados.Controls
         // Provider + Model
         private ComboBox _cmbProvider;
         private ComboBox _cmbModel;
+        private Button _btnFetchModels;   // #106: asks the provider for its current list
+        // The fetched lists as of this dialog session - loaded from settings, updated
+        // by the button, written back by ApplyToSettings. Held here so a fetch with
+        // an unsaved key does not touch the saved settings until OK.
+        private AiSettings _fetchedSource = new AiSettings();
         // Optional free-text model ID — overrides _cmbModel when filled. Lets
         // users pick a model that isn't in the curated dropdown (e.g. a new
         // release, a preview model, or an OpenRouter router like openrouter/free).
@@ -285,7 +291,26 @@ namespace Supervertaler.Trados.Controls
             Row(root, ref row, "Provider:", _cmbProvider);
 
             _cmbModel = FillCombo();
-            Row(root, ref row, "Model:", _cmbModel);
+            // #106: the dropdown and a Models... button side by side. The button asks
+            // the provider for its own list, so a model released after this build
+            // can be picked here rather than typed into the Model ID box below.
+            _btnFetchModels = TextButton("Models\u2026");
+            _btnFetchModels.Margin = new Padding(UiScale.Pixels(6), UiScale.Pixels(3), 0, UiScale.Pixels(3));
+            var ttFetch = new ToolTip();
+            ttFetch.SetToolTip(_btnFetchModels,
+                "Ask the provider for its current model list, using the API key above " +
+                "(it need not be saved yet). New models are added to the dropdown and " +
+                "remembered.");
+            _btnFetchModels.Click += OnFetchModelsClick;
+            var modelHost = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1, Margin = new Padding(0)
+            };
+            modelHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            modelHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            modelHost.Controls.Add(_cmbModel, 0, 0);
+            modelHost.Controls.Add(_btnFetchModels, 1, 0);
+            Row(root, ref row, "Model:", modelHost);
 
             var lnkViewModels = new LinkLabel
             {
@@ -777,6 +802,8 @@ namespace Supervertaler.Trados.Controls
 
         public void PopulateFromSettings(AiSettings settings)
         {
+            // #106: the cached provider lists, so the dropdown shows them from the start.
+            _fetchedSource = new AiSettings { FetchedModels = new List<FetchedModelEntry>(settings?.FetchedModels ?? new List<FetchedModelEntry>()) };
             if (settings == null) return;
 
             // Load ALL provider API keys into the dictionary so switching preserves them
@@ -843,6 +870,9 @@ namespace Supervertaler.Trados.Controls
         public void ApplyToSettings(AiSettings settings)
         {
             if (settings == null) return;
+
+            // #106: whatever was fetched during this dialog session is kept.
+            settings.FetchedModels = new List<FetchedModelEntry>(_fetchedSource.FetchedModels ?? new List<FetchedModelEntry>());
 
             var provider = GetSelectedProviderKey();
             settings.SelectedProvider = provider;
@@ -932,17 +962,10 @@ namespace Supervertaler.Trados.Controls
             if (_lastProviderKey != null)
                 _providerApiKeys[_lastProviderKey] = _txtApiKey.Text.Trim();
 
-            // Populate model list
-            _cmbModel.Items.Clear();
-            var models = LlmModels.GetModelsForProvider(providerKey);
-            foreach (var m in models)
-                _cmbModel.Items.Add(new ModelItem(m));
-
-            // Auto-size the dropdown to fit the longest model description
-            AutoSizeDropDown(_cmbModel);
-
-            if (_cmbModel.Items.Count > 0)
-                _cmbModel.SelectedIndex = 0;
+            // Populate model list: curated plus whatever a fetch added (#106)
+            PopulateModels(providerKey, null);
+            if (_btnFetchModels != null)
+                _btnFetchModels.Enabled = Supervertaler.Core.LlmModelCatalog.CanFetch(providerKey);
 
             // Restore the incoming provider's API key
             string savedKey;
@@ -974,6 +997,72 @@ namespace Supervertaler.Trados.Controls
             _lblStatus.Text = "";
 
             _lastProviderKey = providerKey;
+        }
+
+        /// <summary>
+        /// Fills the model dropdown for a provider from the merged catalogue, keeping
+        /// <paramref name="keepId"/> selected if it is present, else the first entry.
+        /// </summary>
+        private void PopulateModels(string providerKey, string keepId)
+        {
+            _cmbModel.Items.Clear();
+            foreach (var m in ModelCatalog.ModelsFor(providerKey, _fetchedSource))
+                _cmbModel.Items.Add(new ModelItem(m));
+
+            // Auto-size the dropdown to fit the longest model description
+            AutoSizeDropDown(_cmbModel);
+
+            if (_cmbModel.Items.Count == 0) return;
+            _cmbModel.SelectedIndex = 0;
+            if (string.IsNullOrEmpty(keepId)) return;
+            for (int i = 0; i < _cmbModel.Items.Count; i++)
+            {
+                if (string.Equals(((ModelItem)_cmbModel.Items[i]).Id, keepId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _cmbModel.SelectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        /// <summary>#106: ask the provider for its model list and add what is new.</summary>
+        private async void OnFetchModelsClick(object sender, EventArgs e)
+        {
+            var provider = GetSelectedProviderKey();
+            var keep = (_cmbModel.SelectedItem as ModelItem)?.Id;
+            _btnFetchModels.Enabled = false;
+            _lblStatus.Text = "Fetching the model list\u2026";
+            _lblStatus.ForeColor = Color.FromArgb(100, 100, 100);
+            try
+            {
+                var apiKey = GetEffectiveApiKey();
+                string baseUrl = null;
+                if (provider == LlmModels.ProviderOllama) baseUrl = _txtOllamaEndpoint.Text.Trim();
+                else if (provider == LlmModels.ProviderCustomOpenAi) baseUrl = _txtCustomEndpoint.Text.Trim();
+
+                var models = await Supervertaler.Core.LlmModelCatalog.FetchAsync(provider, apiKey, baseUrl, CancellationToken.None);
+
+                var curated = new HashSet<string>(
+                    (LlmModels.GetModelsForProvider(provider) ?? new LlmModelInfo[0]).Select(m => m.Id),
+                    StringComparer.OrdinalIgnoreCase);
+                int added = models.Count(m => !curated.Contains(m.Id));
+
+                ModelCatalog.RecordFetched(_fetchedSource, provider, models);
+                PopulateModels(provider, keep);
+
+                _lblStatus.Text = $"\u2713 {LlmModels.GetProviderDisplayName(provider)}: {models.Count} models" +
+                                  (added > 0 ? $", {added} not in the built-in list - added to the dropdown" : ", all already listed");
+                _lblStatus.ForeColor = Color.FromArgb(30, 130, 60);
+            }
+            catch (Exception ex)
+            {
+                _lblStatus.Text = $"\u2717 Model list: {ex.Message}";
+                _lblStatus.ForeColor = Color.FromArgb(180, 60, 60);
+            }
+            finally
+            {
+                _btnFetchModels.Enabled = Supervertaler.Core.LlmModelCatalog.CanFetch(provider);
+            }
         }
 
         private async void OnTestConnectionClick(object sender, EventArgs e)

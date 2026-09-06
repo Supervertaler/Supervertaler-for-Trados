@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 > **Versioning change (2026-07-02):** from this release on, the plugin's major
 > version tracks the Trados Studio major it targets – **Studio 2024 = 18**,
@@ -10,6 +10,7 @@
 ## [18.20.187 / 19.20.187] – unreleased
 
 ### Added
+- **A Models… button next to the model dropdown fetches the provider’s current model list.** Until now the dropdown only knew the models compiled into the plugin, so a model released this week could only be used by typing its ID into the Model ID box, and never appeared in the batch model menu. The button asks the provider for its own list – Anthropic, OpenAI, Gemini, Mistral, DeepSeek, xAI, OpenRouter, Ollama and custom OpenAI-compatible endpoints all publish one – using the key in the box, saved or not. Anything not in the built-in list is added to the dropdown with the provider’s own name for it, remembered across restarts, and shown in the Batch Operations and chat model menus too. The built-in entries keep their descriptions and per-model defaults; fetched extras show when they were fetched.
 - **Importing a TSV now shows a column-mapping dialog.** One row per column in the file, a sample of what is in it, and a dropdown saying which termbase field it goes to – source term, target term, term UUID, priority, domain, definition, notes, project, client, forbidden, or ignore. It is pre-filled from the file’s headers, so a file Supervertaler exported is one glance and **Import**; a file with no language headers, with target before source, or with its notes column called something unexpected, is a choice you make instead of a guess the plugin makes. The warnings about a file pointing the other way or belonging to another language pair are still there, as a note under the grid. A **Definition** column is now imported into the definition field rather than folded into notes.
 
 - **Proofreading reports are saved to disk – automatically, and with a Save button.** A user wrote that a long proofreading run's results had vanished from the Reports tab more than once, after a break or one of Studio's panel refreshes, with no way to get them back. The report existed only in the tab. Every completed run is now written as Markdown to `trados\

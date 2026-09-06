@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Runtime.Serialization;
 using Supervertaler.Trados.Core;
 
@@ -63,6 +63,15 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "customOpenAiProfiles")]
         public List<CustomOpenAiProfile> CustomOpenAiProfiles { get; set; }
             = new List<CustomOpenAiProfile>();
+
+        /// <summary>
+        /// Models fetched from the providers' own lists (#106), one entry per
+        /// provider and id, so a model released after this plugin build can be
+        /// picked without a plugin update. Shown after the curated list; replaced
+        /// per provider on every fetch. Absent in older settings files.
+        /// </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public List<FetchedModelEntry> FetchedModels { get; set; } = new List<FetchedModelEntry>();
 
         [DataMember(Name = "selectedCustomProfileName")]
         public string SelectedCustomProfileName { get; set; } = "";
@@ -451,6 +460,16 @@ namespace Supervertaler.Trados.Settings
     // AiApiKeys moved to Supervertaler.Core (core/src/AiApiKeys.cs) — LlmClient
     // needs it and so does the memoQ plugin. Available here through the global
     // using in GlobalUsings.cs.
+
+    [DataContract]
+    public class FetchedModelEntry
+    {
+        [DataMember] public string Provider { get; set; } = "";
+        [DataMember] public string Id { get; set; } = "";
+        [DataMember(EmitDefaultValue = false)] public string DisplayName { get; set; }
+        /// <summary>yyyy-MM-dd of the fetch.</summary>
+        [DataMember(EmitDefaultValue = false)] public string FetchedAt { get; set; }
+    }
 
     [DataContract]
     public class CustomOpenAiProfile
