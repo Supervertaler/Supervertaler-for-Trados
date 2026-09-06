@@ -297,7 +297,7 @@ namespace Supervertaler.Trados.Controls
             // #106: the dropdown and a Models... button side by side. The button asks
             // the provider for its own list, so a model released after this build
             // can be picked here rather than typed into the Model ID box below.
-            _btnFetchModels = TextButton("Models\u2026");
+            _btnFetchModels = TextButton("Fetch list");   // no ellipsis: it updates the dropdown in place, no window
             _btnFetchModels.Margin = new Padding(UiScale.Pixels(6), UiScale.Pixels(3), 0, UiScale.Pixels(3));
             var ttFetch = new ToolTip();
             ttFetch.SetToolTip(_btnFetchModels,
@@ -370,9 +370,12 @@ namespace Supervertaler.Trados.Controls
             Row(root, ref row, "API Key:", KeyRow(_txtApiKey, _btnShowKey));
             // #108: a key pasted into the wrong provider's box is caught here, in words,
             // before the provider refuses it with a 401 that names nothing.
+            // One fixed line with an ellipsis: a status line that reflows a laid-out
+            // dialog is worse than one that truncates (memoQ's finding).
             _lblKeyHint = new Label
             {
-                AutoSize = true, Visible = false, ForeColor = Color.FromArgb(180, 90, 0),
+                AutoSize = false, AutoEllipsis = true, Dock = DockStyle.Fill, Height = UiScale.Pixels(18),
+                Visible = false, ForeColor = Color.FromArgb(180, 90, 0),
                 Font = new Font("Segoe UI", 8.5f), Margin = new Padding(0, 0, 0, UiScale.Pixels(4)),
             };
             Pair(root, ref row, NoLabel(), _lblKeyHint);
