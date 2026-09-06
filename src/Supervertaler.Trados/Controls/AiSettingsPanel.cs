@@ -27,6 +27,7 @@ namespace Supervertaler.Trados.Controls
         private ComboBox _cmbProvider;
         private ComboBox _cmbModel;
         private Button _btnFetchModels;   // #106: asks the provider for its current list
+        private CheckBox _chkShowAllModels; // #106: advanced mode - the whole fetched list
         // The fetched lists as of this dialog session - loaded from settings, updated
         // by the button, written back by ApplyToSettings. Held here so a fetch with
         // an unsaved key does not touch the saved settings until OK.
@@ -302,14 +303,31 @@ namespace Supervertaler.Trados.Controls
                 "(it need not be saved yet). New models are added to the dropdown and " +
                 "remembered.");
             _btnFetchModels.Click += OnFetchModelsClick;
+            _chkShowAllModels = new CheckBox
+            {
+                Text = "Show all models",
+                AutoSize = true,
+                Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(6), 0, UiScale.Pixels(3)),
+            };
+            var ttAll = new ToolTip();
+            ttAll.SetToolTip(_chkShowAllModels,
+                "Off: the short list - the few models worth recommending, with a verdict each. " +
+                "On: everything the provider's own list returned as well.");
+            _chkShowAllModels.CheckedChanged += (s, e) =>
+            {
+                _fetchedSource.ShowAllModels = _chkShowAllModels.Checked;
+                PopulateModels(GetSelectedProviderKey(), (_cmbModel.SelectedItem as ModelItem)?.Id);
+            };
             var modelHost = new TableLayoutPanel
             {
-                Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1, Margin = new Padding(0)
+                Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, RowCount = 1, Margin = new Padding(0)
             };
             modelHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             modelHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            modelHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             modelHost.Controls.Add(_cmbModel, 0, 0);
             modelHost.Controls.Add(_btnFetchModels, 1, 0);
+            modelHost.Controls.Add(_chkShowAllModels, 2, 0);
             Row(root, ref row, "Model:", modelHost);
 
             var lnkViewModels = new LinkLabel
@@ -803,7 +821,12 @@ namespace Supervertaler.Trados.Controls
         public void PopulateFromSettings(AiSettings settings)
         {
             // #106: the cached provider lists, so the dropdown shows them from the start.
-            _fetchedSource = new AiSettings { FetchedModels = new List<FetchedModelEntry>(settings?.FetchedModels ?? new List<FetchedModelEntry>()) };
+            _fetchedSource = new AiSettings
+            {
+                FetchedModels = new List<FetchedModelEntry>(settings?.FetchedModels ?? new List<FetchedModelEntry>()),
+                ShowAllModels = settings?.ShowAllModels ?? false
+            };
+            if (_chkShowAllModels != null) _chkShowAllModels.Checked = _fetchedSource.ShowAllModels;
             if (settings == null) return;
 
             // Load ALL provider API keys into the dictionary so switching preserves them
@@ -873,6 +896,7 @@ namespace Supervertaler.Trados.Controls
 
             // #106: whatever was fetched during this dialog session is kept.
             settings.FetchedModels = new List<FetchedModelEntry>(_fetchedSource.FetchedModels ?? new List<FetchedModelEntry>());
+            settings.ShowAllModels = _fetchedSource.ShowAllModels;
 
             var provider = GetSelectedProviderKey();
             settings.SelectedProvider = provider;
@@ -1048,10 +1072,12 @@ namespace Supervertaler.Trados.Controls
                 int added = models.Count(m => !curated.Contains(m.Id));
 
                 ModelCatalog.RecordFetched(_fetchedSource, provider, models);
-                PopulateModels(provider, keep);
+                // Fetching means "show me": switch to the full list.
+                if (added > 0 && !_chkShowAllModels.Checked) _chkShowAllModels.Checked = true;   // repopulates
+                else PopulateModels(provider, keep);
 
                 _lblStatus.Text = $"\u2713 {LlmModels.GetProviderDisplayName(provider)}: {models.Count} models" +
-                                  (added > 0 ? $", {added} not in the built-in list - added to the dropdown" : ", all already listed");
+                                  (added > 0 ? $", {added} beyond the short list - shown with Show all models ticked" : ", none beyond the short list");
                 _lblStatus.ForeColor = Color.FromArgb(30, 130, 60);
             }
             catch (Exception ex)
@@ -1450,7 +1476,9 @@ namespace Supervertaler.Trados.Controls
             public ModelItem(LlmModelInfo info)
             {
                 Id = info.Id;
-                _display = $"{info.DisplayName}  –  {info.Description}";
+                _display = string.IsNullOrWhiteSpace(info.Description)
+                    ? info.DisplayName
+                    : $"{info.DisplayName}  –  {info.Description}";
             }
             public override string ToString() => _display;
         }

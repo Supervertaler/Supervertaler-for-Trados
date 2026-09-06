@@ -73,6 +73,14 @@ namespace Supervertaler.Trados.Settings
         [DataMember(EmitDefaultValue = false)]
         public List<FetchedModelEntry> FetchedModels { get; set; } = new List<FetchedModelEntry>();
 
+        /// <summary>
+        /// Advanced mode (#106): the model dropdown and menus show everything the
+        /// provider's list returned, not only the curated few. Off by default - a
+        /// translator in a hurry wants the short list with the verdicts.
+        /// </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public bool ShowAllModels { get; set; }
+
         [DataMember(Name = "selectedCustomProfileName")]
         public string SelectedCustomProfileName { get; set; } = "";
 
