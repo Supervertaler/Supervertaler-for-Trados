@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
@@ -7,22 +8,36 @@ using Supervertaler.Trados.Models;
 namespace Supervertaler.Trados.Controls
 {
     /// <summary>
-    /// Modal dialog for creating or editing a prompt template.
-    /// Shows name, description, domain, and content fields with variable reference.
+    /// Creates or edits a prompt. Four things about the task and nothing else (#92):
+    /// name, description, what happens when it is run, content.
+    ///
+    /// Membership of the QuickLauncher menu means one thing: the prompt lives in the
+    /// QuickLauncher folder. The dialog no longer asks about it - the old
+    /// "Show in QuickLauncher menu" box duplicated the folder, and the old Mode row
+    /// (two tick boxes and a Default dropdown, one of them Workbench residue) was
+    /// three controls for one decision. That decision is now one dropdown: send to
+    /// the Assistant, copy to the clipboard, or ask each time. Hiding a built-in
+    /// menu entry moved to the Library tree's right-click menu, beside the entry.
+    ///
+    /// Laid out with a TableLayoutPanel, not pixel coordinates, so the layout
+    /// probe can check it and DPI cannot break it.
     /// </summary>
     public class PromptEditorDialog : Form
     {
+        private const string RunAssistant = "Send to the AI Assistant";
+        private const string RunClipboard = "Copy to the clipboard";
+        private const string RunAsk = "Ask me each time";
+
+        private TableLayoutPanel _layout;
         private TextBox _txtName;
         private TextBox _txtDescription;
-        private TextBox _txtDomain;
-        private CheckBox _chkShowInMenu;
+        private Label _lblFolder;
+        private TextBox _txtFolder;
+        private Label _lblWhenRun;
+        private ComboBox _cboWhenRun;
+        private Label _lblContent;
         private TextBox _txtContent;
-        private Label _lblDefault;
-        private Label _lblMode;
-        private CheckBox _chkModeAssistant;
-        private CheckBox _chkModeClipboard;
-        private Label _lblDefaultMode;
-        private ComboBox _cboDefaultMode;
+        private Label _lblNote;
         private Button _btnOK;
         private Button _btnCancel;
         private ContextMenuStrip _varMenu;
@@ -30,13 +45,13 @@ namespace Supervertaler.Trados.Controls
         private readonly PromptTemplate _prompt;
         private readonly bool _isNew;
 
-        /// <summary>
-        /// Creates a prompt editor dialog.
-        /// </summary>
+        /// <summary>For the layout probe: a new, empty prompt.</summary>
+        public PromptEditorDialog() : this(null) { }
+
         /// <param name="prompt">The prompt to edit, or null to create a new one.</param>
-        public PromptEditorDialog(PromptTemplate prompt = null)
+        public PromptEditorDialog(PromptTemplate prompt)
         {
-            Icon = Supervertaler.Trados.Core.IconHelper.AppIcon;
+            Icon = IconHelper.AppIcon;
             _isNew = prompt == null;
             _prompt = prompt ?? new PromptTemplate();
             BuildUI();
@@ -46,12 +61,15 @@ namespace Supervertaler.Trados.Controls
         /// <summary>The edited prompt template (valid after DialogResult.OK).</summary>
         public PromptTemplate Result => _prompt;
 
+        private bool IsQuickLauncherFolder(string category)
+        {
+            var c = (category ?? "").Trim().Replace('\\', '/');
+            return c.Equals("QuickLauncher", StringComparison.OrdinalIgnoreCase)
+                || c.StartsWith("QuickLauncher/", StringComparison.OrdinalIgnoreCase);
+        }
+
         private void BuildUI()
         {
-            // Let WinForms scale this dialog by system DPI so it doesn't squish
-            // at >100% Windows display scaling. Cheap fallback; for surfaces
-            // with their own UiScale-driven layout, set AutoScaleMode = None
-            // instead and let UiScale own scaling.
             AutoScaleMode = AutoScaleMode.Dpi;
             Text = _isNew ? "New Prompt" : "Edit Prompt";
             Font = new Font("Segoe UI", 9f);
@@ -59,220 +77,73 @@ namespace Supervertaler.Trados.Controls
             MaximizeBox = true;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(600, 520);
-            MinimumSize = new Size(450, 400);
+            ClientSize = new Size(640, 560);
+            MinimumSize = new Size(480, 420);
             BackColor = Color.White;
 
             var labelColor = Color.FromArgb(80, 80, 80);
-            var y = 12;
+            Label L(string text) => new Label
+            {
+                Text = text, AutoSize = true, ForeColor = labelColor,
+                Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0),
+            };
+            TextBox Box() => new TextBox { Dock = DockStyle.Fill, Margin = new Padding(0, 3, 0, 3) };
 
-            // ─── Name ─────────────────────────────────────
-            var lblName = new Label
+            _layout = new TableLayoutPanel
             {
-                Text = "Name:",
-                Location = new Point(12, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8, Padding = new Padding(12),
             };
-            // Right margin = 12 (form edge) + 17 (Windows scrollbar width) so
-            // the right edge lines up with where the Prompt-content text area
-            // ends, not where the scrollbar-inclusive textbox border ends.
-            // Without this all the top textboxes' borders sat ~17 px right of
-            // the prompt content's visible text area, looking misaligned.
-            _txtName = new TextBox
-            {
-                Location = new Point(100, y),
-                Width = ClientSize.Width - 129,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            Controls.Add(lblName);
-            Controls.Add(_txtName);
-            y += 30;
+            _layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            for (int i = 0; i < 5; i++) _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // name, description, folder, when run, content label
+            _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));                            // content
+            _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));                                 // note
+            _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));                                 // buttons
 
-            // ─── Description ──────────────────────────────
-            var lblDesc = new Label
-            {
-                Text = "Description:",
-                Location = new Point(12, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _txtDescription = new TextBox
-            {
-                Location = new Point(100, y),
-                Width = ClientSize.Width - 129,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            Controls.Add(lblDesc);
-            Controls.Add(_txtDescription);
-            y += 30;
+            int row = 0;
+            _txtName = Box();
+            _layout.Controls.Add(L("Name:"), 0, row); _layout.Controls.Add(_txtName, 1, row++);
 
-            // ─── Domain/Category ──────────────────────────
-            var lblDomain = new Label
-            {
-                Text = "Category:",
-                Location = new Point(12, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor
-            };
-            _txtDomain = new TextBox
-            {
-                Location = new Point(100, y),
-                Width = 200,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left
-            };
-            // The "App" dropdown (Both / Trados only / Workbench only) is gone.
-            // Only "Workbench only" ever did anything, and what it did was hide the
-            // prompt with no explanation; the other two were inert. A control whose
-            // options are two no-ops and one disappearing act is worse than none.
-            // The underlying field is still preserved in the file - see PromptLibrary.
-            Controls.Add(lblDomain);
-            Controls.Add(_txtDomain);
-            y += 30;
+            _txtDescription = Box();
+            var ttDesc = new ToolTip();
+            ttDesc.SetToolTip(_txtDescription, "One line, shown in the Library tab and as the menu entry's tooltip. Never sent to the AI.");
+            _layout.Controls.Add(L("Description:"), 0, row); _layout.Controls.Add(_txtDescription, 1, row++);
 
-            // ─── Show in QuickLauncher menu ─────────────
-            _chkShowInMenu = new CheckBox
+            // Folder: only for prompts outside the QuickLauncher menu (Translate,
+            // Proofread...). A menu entry's folder is where it was created.
+            _lblFolder = L("Folder:");
+            _txtFolder = Box();
+            var ttFolder = new ToolTip();
+            ttFolder.SetToolTip(_txtFolder, "Where the prompt is filed, e.g. Translate or Proofread. Translate prompts appear in the Batch Operations dropdown.");
+            _layout.Controls.Add(_lblFolder, 0, row); _layout.Controls.Add(_txtFolder, 1, row++);
+
+            // When run: one decision, one dropdown (#92).
+            _lblWhenRun = L("When run:");
+            _cboWhenRun = new ComboBox
             {
-                Text = "Show in QuickLauncher menu",
-                Location = new Point(100, y),
-                AutoSize = true,
-                Checked = true,
-                ForeColor = labelColor,
-                Visible = false // shown only for QuickLauncher prompts
+                DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left,
+                Width = 260, Margin = new Padding(0, 3, 0, 3),
             };
-            Controls.Add(_chkShowInMenu);
+            _cboWhenRun.Items.AddRange(new object[] { RunAssistant, RunClipboard, RunAsk });
+            _cboWhenRun.SelectedIndex = 0;
+            var ttRun = new ToolTip();
+            ttRun.SetToolTip(_cboWhenRun,
+                "What the menu entry does. Send: the expanded prompt goes to the AI Assistant.\r\n" +
+                "Copy: it goes to the clipboard, for pasting into claude.ai, ChatGPT or Gemini.\r\n" +
+                "Ask: the entry becomes a submenu offering both.");
+            _layout.Controls.Add(_lblWhenRun, 0, row); _layout.Controls.Add(_cboWhenRun, 1, row++);
 
-            // ─── Default prompt indicator ────────────────
-            _lblDefault = new Label
+            _lblContent = new Label
             {
-                Text = "(default prompt)",
-                Location = new Point(330, y + 2),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(150, 150, 150),
-                Font = new Font("Segoe UI", 8f, FontStyle.Italic),
-                Visible = false // shown only for default prompts
+                Text = "Prompt content   (Ctrl+, inserts a variable)",
+                AutoSize = true, ForeColor = labelColor, Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Margin = new Padding(0, 10, 0, 2),
             };
-            Controls.Add(_lblDefault);
-            y += 26;
+            _layout.Controls.Add(_lblContent, 0, row); _layout.SetColumnSpan(_lblContent, 2); row++;
 
-            // ─── QuickLauncher mode selector ─────────────
-            // When two or more modes are checked, the QuickLauncher menu
-            // renders a cascading submenu so the user can pick at runtime.
-            // Default mode = which submenu item gets the natural first-Enter
-            // activation. Whole row is shown only for QuickLauncher prompts
-            // (same condition as the "Show in menu" checkbox above).
-            _lblMode = new Label
-            {
-                Text = "Mode:",
-                Location = new Point(12, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor,
-                Visible = false
-            };
-            Controls.Add(_lblMode);
-
-            _chkModeAssistant = new CheckBox
-            {
-                Text = "Send to Assistant",
-                Location = new Point(100, y),
-                AutoSize = true,
-                Checked = true,
-                ForeColor = labelColor,
-                Visible = false
-            };
-            Controls.Add(_chkModeAssistant);
-
-            _chkModeClipboard = new CheckBox
-            {
-                Text = "Copy to clipboard",
-                Location = new Point(245, y),
-                AutoSize = true,
-                Checked = false,
-                ForeColor = labelColor,
-                Visible = false
-            };
-            Controls.Add(_chkModeClipboard);
-
-            // "Default:" + combo. Anchored Top|Right so they always sit
-            // flush with the right edge of the dialog, just like the
-            // Description / Prompt-content textboxes above and below.
-            // Without the right anchor the combo stayed at a fixed x
-            // while Description stretched on resize / DPI scale, and the
-            // two right edges drifted out of alignment.
-            //
-            // Combo right edge = ClientSize.Width - 12, matching the 12-px
-            // right margin used by Description and Prompt content.
-            _lblDefaultMode = new Label
-            {
-                Text = "Default:",
-                Location = new Point(ClientSize.Width - 197, y + 3),
-                AutoSize = true,
-                ForeColor = labelColor,
-                Visible = false,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            Controls.Add(_lblDefaultMode);
-
-            _cboDefaultMode = new ComboBox
-            {
-                Location = new Point(ClientSize.Width - 122, y),
-                Width = 93,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Visible = false,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            _cboDefaultMode.Items.AddRange(new object[] { "Assistant", "Clipboard" });
-            _cboDefaultMode.SelectedIndex = 0;
-            Controls.Add(_cboDefaultMode);
-
-            // Enable / disable the default-mode combo based on how many
-            // mode checkboxes are checked. When only one is checked, there
-            // is nothing to default to (single-mode prompts skip the
-            // submenu entirely) so the combo is greyed out.
-            EventHandler updateDefaultModeEnabled = (s, e) =>
-            {
-                var modesChecked =
-                    (_chkModeAssistant.Checked ? 1 : 0) +
-                    (_chkModeClipboard.Checked ? 1 : 0);
-                _cboDefaultMode.Enabled = modesChecked >= 2;
-                _lblDefaultMode.ForeColor = _cboDefaultMode.Enabled
-                    ? labelColor : Color.FromArgb(170, 170, 170);
-            };
-            _chkModeAssistant.CheckedChanged += updateDefaultModeEnabled;
-            _chkModeClipboard.CheckedChanged += updateDefaultModeEnabled;
-
-            y += 26;
-
-            // ─── Content label + variable hint ────────────
-            var lblContent = new Label
-            {
-                Text = "Prompt content:",
-                Location = new Point(12, y),
-                AutoSize = true,
-                ForeColor = labelColor,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
-            };
-            Controls.Add(lblContent);
-            y += 20;
-
-            var lblVars = new Label
-            {
-                Text = "Press Ctrl+, to insert a variable",
-                Location = new Point(12, y),
-                AutoSize = false,
-                Height = 16,
-                Width = ClientSize.Width - 24,
-                ForeColor = Color.FromArgb(130, 130, 130),
-                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            Controls.Add(lblVars);
-            y += 20;
-
-            // ─── Content TextBox ──────────────────────────
             _txtContent = new TextBox
             {
-                Location = new Point(12, y),
+                Dock = DockStyle.Fill,
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 Font = new Font("Consolas", 9f),
@@ -282,149 +153,106 @@ namespace Supervertaler.Trados.Controls
                 AcceptsReturn = true,
                 AcceptsTab = true,
                 // TextBox.MaxLength defaults to Int16.MaxValue (32767) and silently
-                // truncates pastes past that – patent-sized prompts hit it instantly.
+                // truncates pastes past that - patent-sized prompts hit it instantly.
                 MaxLength = int.MaxValue,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
+                Margin = new Padding(0),
             };
-            _txtContent.Width = ClientSize.Width - 24;
-            _txtContent.Height = ClientSize.Height - y - 50;
-            Controls.Add(_txtContent);
+            _layout.Controls.Add(_txtContent, 0, row); _layout.SetColumnSpan(_txtContent, 2); row++;
 
-            // ─── Variable picker menu (Ctrl+,) ────────────
+            _lblNote = new Label
+            {
+                AutoSize = true, ForeColor = Color.FromArgb(150, 90, 0), Margin = new Padding(0, 8, 0, 0),
+                Visible = false, MaximumSize = new Size(ClientSize.Width - 24, 0),
+            };
+            _layout.Controls.Add(_lblNote, 0, row); _layout.SetColumnSpan(_lblNote, 2); row++;
+
+            var buttons = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0, 10, 0, 0), WrapContents = false,
+            };
+            _btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true, MinimumSize = new Size(80, 26), FlatStyle = FlatStyle.System };
+            _btnOK = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(80, 26), FlatStyle = FlatStyle.System };
+            _btnOK.Click += OnOKClick;
+            buttons.Controls.Add(_btnCancel);
+            buttons.Controls.Add(_btnOK);
+            _layout.Controls.Add(buttons, 0, row); _layout.SetColumnSpan(buttons, 2); row++;
+
+            Controls.Add(_layout);
+            AcceptButton = _btnOK;
+            CancelButton = _btnCancel;
+            Resize += (s, e) => _lblNote.MaximumSize = new Size(Math.Max(200, ClientSize.Width - 24), 0);
+
+            // Variable picker menu (Ctrl+,)
             _varMenu = new ContextMenuStrip { Font = new Font("Segoe UI", 9f) };
             void AddVar(string variable, string description)
             {
-                var item = new ToolStripMenuItem($"{variable}  \u2014  {description}");
+                var item = new ToolStripMenuItem($"{variable}  —  {description}");
                 item.Click += (s, e) => InsertVariable(variable);
                 _varMenu.Items.Add(item);
             }
-
-            // Common variables (shared with Workbench)
             AddVar("{{SOURCE_LANGUAGE}}", "Source language name (e.g. \"Dutch\")");
             AddVar("{{TARGET_LANGUAGE}}", "Target language name (e.g. \"English\")");
             AddVar("{{SOURCE_SEGMENT}}", "Source text of the active segment");
             AddVar("{{TARGET_SEGMENT}}", "Target text of the active segment");
             AddVar("{{SELECTION}}", "Currently selected text in the editor");
             _varMenu.Items.Add(new ToolStripSeparator());
-
-            // Trados-specific variables
             AddVar("{{PROJECT_NAME}}", "Name of the active Trados project");
             AddVar("{{DOCUMENT_NAME}}", "Name of the active file");
             AddVar("{{SURROUNDING_SEGMENTS}}", "Context segments around the active segment");
             AddVar("{{PROJECT}}", "All source segments in the document");
-            AddVar("{{TM_MATCHES}}", "Translation memory fuzzy matches (\u226570%)");
-
-            // ─── OK / Cancel ──────────────────────────────
-            _btnOK = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Location = new Point(ClientSize.Width - 170, ClientSize.Height - 40),
-                Width = 75,
-                FlatStyle = FlatStyle.System,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
-            };
-            _btnOK.Click += OnOKClick;
-
-            _btnCancel = new Button
-            {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(ClientSize.Width - 88, ClientSize.Height - 40),
-                Width = 75,
-                FlatStyle = FlatStyle.System,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
-            };
-
-            AcceptButton = _btnOK;
-            CancelButton = _btnCancel;
-            Controls.Add(_btnOK);
-            Controls.Add(_btnCancel);
+            AddVar("{{TM_MATCHES}}", "Translation memory fuzzy matches (≥70%)");
         }
 
         private void PopulateFromPrompt()
         {
             _txtName.Text = _prompt.Name ?? "";
             _txtDescription.Text = _prompt.Description ?? "";
-            _txtDomain.Text = _prompt.Category ?? "";
+            _txtFolder.Text = _prompt.Category ?? "";
             _txtContent.Text = _prompt.Content ?? "";
 
-            // Show "Show in QuickLauncher menu" checkbox for QuickLauncher prompts
-            UpdateShowInMenuVisibility();
-            _chkShowInMenu.Checked = !_prompt.HiddenFromMenu;
-            _txtDomain.TextChanged += (s, ev) => UpdateShowInMenuVisibility();
+            bool inMenu = _prompt.IsQuickLauncher || IsQuickLauncherFolder(_prompt.Category);
+            // A menu entry's folder is implied; every other prompt says where it is filed.
+            _lblFolder.Visible = !inMenu;
+            _txtFolder.Visible = !inMenu;
+            _lblWhenRun.Visible = inMenu;
+            _cboWhenRun.Visible = inMenu;
 
-            // Pre-tick mode checkboxes from the prompt's QuickLauncherModes
-            // list. Single-mode prompts ("assistant" only) show Assistant
-            // ticked and Clipboard unticked — the default. Multi-mode
-            // prompts tick both and enable the default-mode selector.
-            var modes = _prompt.QuickLauncherModes ?? new System.Collections.Generic.List<string>();
-            _chkModeAssistant.Checked = modes.Count == 0 || modes.Contains("assistant");
-            _chkModeClipboard.Checked = modes.Contains("clipboard");
-            _cboDefaultMode.SelectedIndex =
-                string.Equals(_prompt.DefaultMode, "clipboard", StringComparison.OrdinalIgnoreCase)
-                    ? 1 : 0;
-            // Trigger initial enabled/disabled state on the default combo
-            _cboDefaultMode.Enabled = _chkModeAssistant.Checked && _chkModeClipboard.Checked;
+            var modes = _prompt.QuickLauncherModes ?? new List<string>();
+            bool assistant = modes.Count == 0 || modes.Contains("assistant");
+            bool clipboard = modes.Contains("clipboard");
+            _cboWhenRun.SelectedItem = assistant && clipboard ? RunAsk : clipboard ? RunClipboard : RunAssistant;
 
             if (_prompt.IsReadOnly)
             {
                 _txtName.ReadOnly = true;
                 _txtDescription.ReadOnly = true;
-                _txtDomain.ReadOnly = true;
-                _chkShowInMenu.Enabled = false;
-                _chkModeAssistant.Enabled = false;
-                _chkModeClipboard.Enabled = false;
-                _cboDefaultMode.Enabled = false;
+                _txtFolder.ReadOnly = true;
+                _cboWhenRun.Enabled = false;
                 _txtContent.ReadOnly = true;
                 _btnOK.Enabled = false;
                 Text += " (read-only)";
             }
             else if (_prompt.IsDefault)
             {
-                // Default prompts: content is immutable, but visibility +
-                // mode toggles can be changed. To modify content, use Clone.
+                // Built-in: the text is immutable (use Clone to change it), but what
+                // happens when it is run is the user's to choose.
                 _txtName.ReadOnly = true;
                 _txtDescription.ReadOnly = true;
-                _txtDomain.ReadOnly = true;
+                _txtFolder.ReadOnly = true;
                 _txtContent.ReadOnly = true;
-                // _chkShowInMenu, mode checkboxes, default combo stay enabled —
-                // users can hide a default prompt and toggle clipboard mode on
-                // it without needing to clone first. Those are routing prefs,
-                // not content edits.
-                _lblDefault.Visible = true;
-                Text += " (default — use Clone to modify)";
+                _lblNote.Text = "This is a built-in prompt: its text cannot be changed here. Use Clone in the Library tab to make " +
+                                "your own copy" + (inMenu ? ", or right-click it there to hide it from the menu." : ".");
+                _lblNote.Visible = true;
+                Text += " (built-in)";
             }
-        }
-
-        private void UpdateShowInMenuVisibility()
-        {
-            var domain = (_txtDomain.Text ?? "").Trim();
-            var isQuickLauncher =
-                domain.Equals("QuickLauncher", StringComparison.OrdinalIgnoreCase) ||
-                domain.StartsWith("QuickLauncher/", StringComparison.OrdinalIgnoreCase) ||
-                domain.StartsWith("QuickLauncher\\", StringComparison.OrdinalIgnoreCase);
-
-            _chkShowInMenu.Visible = isQuickLauncher;
-            // The mode-selector row is only meaningful for prompts that
-            // appear in the QuickLauncher menu in the first place, so it
-            // tracks the same visibility flag.
-            _lblMode.Visible = isQuickLauncher;
-            _chkModeAssistant.Visible = isQuickLauncher;
-            _chkModeClipboard.Visible = isQuickLauncher;
-            _lblDefaultMode.Visible = isQuickLauncher;
-            _cboDefaultMode.Visible = isQuickLauncher;
         }
 
         private void OnOKClick(object sender, EventArgs e)
         {
-            // Built-in prompts: content / name / category are immutable, but
-            // routing prefs (visibility + clipboard mode) can be edited.
             if (_prompt.IsDefault)
             {
-                if (_chkShowInMenu.Visible)
-                    _prompt.HiddenFromMenu = !_chkShowInMenu.Checked;
-                ApplyModesFromUi();
+                ApplyWhenRun();
                 return;
             }
 
@@ -439,45 +267,37 @@ namespace Supervertaler.Trados.Controls
 
             _prompt.Name = name;
             _prompt.Description = _txtDescription.Text.Trim();
-            _prompt.Category = _txtDomain.Text.Trim();
+            if (_txtFolder.Visible) _prompt.Category = _txtFolder.Text.Trim();
             _prompt.Content = _txtContent.Text;
-
-            // _prompt.App is deliberately left as loaded. The editor no longer
-            // offers it, and rewriting it here would silently rewrite every file
-            // it saved.
-
-            // Save QuickLauncher menu visibility
-            if (_chkShowInMenu.Visible)
-                _prompt.HiddenFromMenu = !_chkShowInMenu.Checked;
-
-            ApplyModesFromUi();
+            // _prompt.App and HiddenFromMenu are left as loaded: the editor no longer
+            // offers them, and rewriting them here would silently rewrite every file it saved.
+            ApplyWhenRun();
         }
 
         /// <summary>
-        /// Build <see cref="PromptTemplate.QuickLauncherModes"/> + <see cref="PromptTemplate.DefaultMode"/>
-        /// from the mode-selector checkboxes / combo. Force Assistant on if
-        /// the user managed to uncheck everything — silently making a prompt
-        /// unreachable from QuickLauncher would be worse than ignoring the
-        /// edit.
+        /// One dropdown to <see cref="PromptTemplate.QuickLauncherModes"/> +
+        /// <see cref="PromptTemplate.DefaultMode"/>. "Ask me" is both modes with
+        /// Assistant first - the only case in which the menu shows a submenu.
         /// </summary>
-        private void ApplyModesFromUi()
+        private void ApplyWhenRun()
         {
-            if (!_lblMode.Visible)
-                return; // non-QuickLauncher prompts: leave modes untouched
-
-            var modes = new System.Collections.Generic.List<string>();
-            if (_chkModeAssistant.Checked) modes.Add("assistant");
-            if (_chkModeClipboard.Checked) modes.Add("clipboard");
-            if (modes.Count == 0)
-                modes.Add("assistant");
-
-            _prompt.QuickLauncherModes = modes;
-            _prompt.DefaultMode = _cboDefaultMode.SelectedIndex == 1 ? "clipboard" : "assistant";
-            // If the user picked a default that's no longer in the list
-            // (e.g. picked Clipboard then unticked Clipboard), fall back to
-            // whatever IS in the list.
-            if (!modes.Contains(_prompt.DefaultMode))
-                _prompt.DefaultMode = modes[0];
+            if (!_cboWhenRun.Visible) return;   // not a menu entry: leave modes untouched
+            var choice = _cboWhenRun.SelectedItem as string;
+            if (choice == RunClipboard)
+            {
+                _prompt.QuickLauncherModes = new List<string> { "clipboard" };
+                _prompt.DefaultMode = "clipboard";
+            }
+            else if (choice == RunAsk)
+            {
+                _prompt.QuickLauncherModes = new List<string> { "assistant", "clipboard" };
+                _prompt.DefaultMode = "assistant";
+            }
+            else
+            {
+                _prompt.QuickLauncherModes = new List<string> { "assistant" };
+                _prompt.DefaultMode = "assistant";
+            }
         }
 
         private void ShowVarMenu()

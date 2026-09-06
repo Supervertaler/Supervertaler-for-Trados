@@ -87,6 +87,13 @@ $cases = @(
         Args = @()
     },
     @{
+        # #92. Rewritten on a TableLayoutPanel; a new prompt, so every row shows
+        # except the menu-only "When run" row.
+        Type = "Supervertaler.Trados.Controls.PromptEditorDialog"
+        Name = "PromptEditorDialog"
+        Args = @()
+    },
+    @{
         # #94. Long file and termbase names, and the longest note the dialog
         # writes; the grid is empty here (SetColumns is not called), which is
         # the frame's own worst case for the labels.
@@ -116,6 +123,10 @@ $failed = 0
 
 function Get-Leaves($ctrl, $offX, $offY, $acc) {
     foreach ($c in $ctrl.Controls) {
+        # A hidden control cannot overlap anything the user sees, and a row a
+        # TableLayoutPanel has collapsed keeps its last bounds - so measuring
+        # it reports an overlap that is not there (#92's "When run" row).
+        if (-not $c.Visible) { continue }
         $absX = $offX + $c.Left
         $absY = $offY + $c.Top
         if ($c.Controls.Count -gt 0) {

@@ -320,6 +320,13 @@ namespace Supervertaler.Trados.Controls
             miDelete.Click += OnDeletePrompt;
             _treeContextMenu.Items.Add(miDelete);
 
+            // #92: hiding a menu entry lives here, beside the entry, not in the
+            // editor. A user's own entry can simply be deleted; a built-in one
+            // comes back on the next start, so it is hidden instead.
+            var miHide = new ToolStripMenuItem("Hide from QuickLauncher menu");
+            miHide.Click += OnToggleHiddenFromMenu;
+            _treeContextMenu.Items.Add(miHide);
+
             _treeContextMenu.Items.Add(new ToolStripSeparator());
 
             var miShortcut = new ToolStripMenuItem("Assign Shortcut");
@@ -415,6 +422,9 @@ namespace Supervertaler.Trados.Controls
                 miEdit.Visible = prompt != null;
                 miClone.Visible = prompt != null;
                 miDelete.Visible = prompt != null;
+                miHide.Visible = prompt != null && prompt.IsQuickLauncher;
+                if (miHide.Visible)
+                    miHide.Text = prompt.HiddenFromMenu ? "Show in QuickLauncher menu" : "Hide from QuickLauncher menu";
                 miShortcut.Visible = prompt != null && prompt.IsQuickLauncher;
                 miSetActive.Visible = prompt != null && !prompt.IsQuickLauncher;
                 if (prompt != null && miSetActive.Visible)
@@ -2086,6 +2096,24 @@ namespace Supervertaler.Trados.Controls
                     _library.SavePrompt(dlg.Result);
                     RefreshTree();
                 }
+            }
+        }
+
+        /// <summary>#92: toggles a menu entry's visibility in the QuickLauncher menu.</summary>
+        private void OnToggleHiddenFromMenu(object sender, EventArgs e)
+        {
+            var prompt = GetSelectedPrompt();
+            if (prompt == null || !prompt.IsQuickLauncher) return;
+            try
+            {
+                prompt.HiddenFromMenu = !prompt.HiddenFromMenu;
+                _library.SavePrompt(prompt);
+                RefreshTree();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Could not change the entry: " + ex.Message, "Prompts",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
