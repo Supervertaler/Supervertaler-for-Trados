@@ -73,6 +73,15 @@ namespace Supervertaler.Trados.Settings
                     {
                         _current = LoadOrDefault();
                         DiagnosticLog.Log(LogCategory, "Settings loaded into the shared instance");
+                        // #108: the shared key file takes over from the keys in this file.
+                        // Fill it from them where it has none, once, so nothing is retyped.
+                        try
+                        {
+                            var added = Supervertaler.Core.ApiKeyStore.MigrateFrom(_current.AiSettings?.ApiKeys);
+                            if (added > 0)
+                                DiagnosticLog.Log(LogCategory, $"Copied {added} API key(s) into {Supervertaler.Core.ApiKeyStore.FilePath}");
+                        }
+                        catch { /* a key file that cannot be written is a nuisance, not a reason to fail start-up */ }
                     }
                     return _current;
                 }

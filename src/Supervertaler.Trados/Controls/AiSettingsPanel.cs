@@ -39,6 +39,8 @@ namespace Supervertaler.Trados.Controls
 
         // API Key
         private TextBox _txtApiKey;
+        private Label _lblKeyHint;   // #108: "this does not look like an OpenAI key"
+
         private Button _btnShowKey;
         private Button _btnTestConnection;
         private Label _lblStatus;
@@ -366,6 +368,15 @@ namespace Supervertaler.Trados.Controls
             _btnShowKey = TextButton("Show");
             _btnShowKey.Click += OnShowKeyClick;
             Row(root, ref row, "API Key:", KeyRow(_txtApiKey, _btnShowKey));
+            // #108: a key pasted into the wrong provider's box is caught here, in words,
+            // before the provider refuses it with a 401 that names nothing.
+            _lblKeyHint = new Label
+            {
+                AutoSize = true, Visible = false, ForeColor = Color.FromArgb(180, 90, 0),
+                Font = new Font("Segoe UI", 8.5f), Margin = new Padding(0, 0, 0, UiScale.Pixels(4)),
+            };
+            Pair(root, ref row, NoLabel(), _lblKeyHint);
+            _txtApiKey.TextChanged += (s, e) => UpdateKeyHint();
 
             _btnTestConnection = TextButton("Test Connection");
             _btnTestConnection.Click += OnTestConnectionClick;
@@ -831,13 +842,15 @@ namespace Supervertaler.Trados.Controls
 
             // Load ALL provider API keys into the dictionary so switching preserves them
             var keys = settings.ApiKeys ?? new AiApiKeys();
-            _providerApiKeys[LlmModels.ProviderOpenAi] = keys.OpenAi ?? "";
-            _providerApiKeys[LlmModels.ProviderClaude] = keys.Claude ?? "";
-            _providerApiKeys[LlmModels.ProviderGemini] = keys.Gemini ?? "";
-            _providerApiKeys[LlmModels.ProviderGrok] = keys.Grok ?? "";
-            _providerApiKeys[LlmModels.ProviderMistral] = keys.Mistral ?? "";
-            _providerApiKeys[LlmModels.ProviderDeepSeek] = keys.DeepSeek ?? "";
-            _providerApiKeys[LlmModels.ProviderOpenRouter] = keys.OpenRouter ?? "";
+            // #108: the shared key file wins; the plugin's own key is the fallback.
+            string Shared(string provider, string own) => Supervertaler.Core.ApiKeyStore.Get(provider) ?? own ?? "";
+            _providerApiKeys[LlmModels.ProviderOpenAi] = Shared(LlmModels.ProviderOpenAi, keys.OpenAi);
+            _providerApiKeys[LlmModels.ProviderClaude] = Shared(LlmModels.ProviderClaude, keys.Claude);
+            _providerApiKeys[LlmModels.ProviderGemini] = Shared(LlmModels.ProviderGemini, keys.Gemini);
+            _providerApiKeys[LlmModels.ProviderGrok] = Shared(LlmModels.ProviderGrok, keys.Grok);
+            _providerApiKeys[LlmModels.ProviderMistral] = Shared(LlmModels.ProviderMistral, keys.Mistral);
+            _providerApiKeys[LlmModels.ProviderDeepSeek] = Shared(LlmModels.ProviderDeepSeek, keys.DeepSeek);
+            _providerApiKeys[LlmModels.ProviderOpenRouter] = Shared(LlmModels.ProviderOpenRouter, keys.OpenRouter);
             _providerApiKeys[LlmModels.ProviderCustomOpenAi] = keys.CustomOpenAi ?? "";
             _providerApiKeys[LlmModels.ProviderOllama] = ""; // Ollama doesn't use API keys
 
@@ -948,6 +961,17 @@ namespace Supervertaler.Trados.Controls
             settings.ApiKeys.OpenRouter = _providerApiKeys.TryGetValue(LlmModels.ProviderOpenRouter, out val) ? val : "";
             settings.ApiKeys.CustomOpenAi = _providerApiKeys.TryGetValue(LlmModels.ProviderCustomOpenAi, out val) ? val : "";
 
+            // #108: the shared key file is the source of truth - write what changed.
+            foreach (var keyProvider in new[] { LlmModels.ProviderOpenAi, LlmModels.ProviderClaude, LlmModels.ProviderGemini,
+                                             LlmModels.ProviderGrok, LlmModels.ProviderMistral, LlmModels.ProviderDeepSeek,
+                                             LlmModels.ProviderOpenRouter })
+            {
+                var typed = _providerApiKeys.TryGetValue(keyProvider, out val) ? (val ?? "").Trim() : "";
+                var stored = Supervertaler.Core.ApiKeyStore.Get(keyProvider) ?? "";
+                if (!string.Equals(typed, stored, StringComparison.Ordinal))
+                    Supervertaler.Core.ApiKeyStore.Set(keyProvider, typed);
+            }
+
             // Ollama endpoint + timeout
             settings.OllamaEndpoint = _txtOllamaEndpoint.Text.Trim();
             settings.OllamaTimeoutMinutes = (int)_nudOllamaTimeout.Value;
@@ -994,6 +1018,7 @@ namespace Supervertaler.Trados.Controls
             // Restore the incoming provider's API key
             string savedKey;
             _txtApiKey.Text = _providerApiKeys.TryGetValue(providerKey, out savedKey) ? savedKey : "";
+            UpdateKeyHint();
 
             // Show/hide provider-specific rows. Hiding both cells of a row
             // collapses it, so the root grid reflows automatically — no manual
@@ -1133,6 +1158,16 @@ namespace Supervertaler.Trados.Controls
             {
                 _btnTestConnection.Enabled = true;
             }
+        }
+
+        /// <summary>#108: says when the key in the box plainly belongs to another service.</summary>
+        private void UpdateKeyHint()
+        {
+            if (_lblKeyHint == null || _txtApiKey == null) return;
+            string hint = null;
+            try { hint = Supervertaler.Core.ApiKeyStore.CheckShape(GetSelectedProviderKey(), _txtApiKey.Text); } catch { }
+            _lblKeyHint.Text = hint ?? "";
+            _lblKeyHint.Visible = hint != null;
         }
 
         private void OnShowKeyClick(object sender, EventArgs e)
