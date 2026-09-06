@@ -412,6 +412,7 @@ namespace Supervertaler.Trados
                 PopulateBatchPromptDropdown();
                 ApplyProjectMemoryBank();
                 TryRestoreReport();   // #105
+                DumpStructureContexts();   // #109 diagnostic: does the API expose list numbering?
             }
             else
             {
@@ -11433,6 +11434,83 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             try { available = CollectSegments(BatchScope.All)?.Count ?? 0; } catch { }
             using (var dlg = new Controls.SuperBenchDialog(PrepareSuperBenchInputs, _settings?.AiSettings, GetActiveFileNameSafe() ?? "(document)", available))
                 dlg.ShowDialog(_control.Value.FindForm());
+        }
+
+        /// <summary>
+        /// #109 diagnostic, with diagnostic logging on: for the first paragraph units
+        /// of the newly active document, every context's type/code/name/description
+        /// and every metadata pair, plus the structure info - so the question "does
+        /// Studio expose Word's list numbering anywhere in its object model" is
+        /// answered from a log rather than guessed. Runs once per document.
+        /// </summary>
+        private void DumpStructureContexts()
+        {
+            if (!DiagnosticLog.Enabled) return;
+            var doc = _activeDocument;
+            if (doc == null) return;
+            try
+            {
+                int shown = 0;
+                foreach (var pair in doc.SegmentPairs)
+                {
+                    if (pair?.Source == null) continue;
+                    var pu = doc.GetParentParagraphUnit(pair);
+                    var text = SegmentTagHandler.GetFinalText(pair.Source) ?? "";
+                    if (text.Length > 60) text = text.Substring(0, 60) + "…";
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append("PU ").Append(pu?.Properties?.ParagraphUnitId.Id ?? "?").Append(" seg ").Append(pair.Properties?.Id.Id ?? "?")
+                      .Append(" \"").Append(text).Append("\"");
+                    var props = pu?.Properties;
+                    var contexts = props?.Contexts;
+                    if (contexts != null)
+                    {
+                        try
+                        {
+                            var si = contexts.StructureInfo;
+                            if (si != null)
+                                sb.Append(" | structure: ").Append(si.ContextInfo?.ContextType).Append('/').Append(si.ContextInfo?.DisplayCode)
+                                  .Append(" parent=").Append(si.ParentStructure?.ContextInfo?.ContextType);
+                        }
+                        catch (Exception ex) { sb.Append(" | structure EX ").Append(ex.Message); }
+                        try
+                        {
+                            int n = 0;
+                            foreach (var ctx in contexts.Contexts)
+                            {
+                                if (ctx == null) continue;
+                                sb.Append(" | ctx").Append(n++).Append(": type=").Append(ctx.ContextType)
+                                  .Append(" code=").Append(ctx.DisplayCode).Append(" name=").Append(ctx.DisplayName)
+                                  .Append(" desc=").Append(ctx.Description).Append(" purpose=").Append(ctx.Purpose);
+                                try
+                                {
+                                    var md = ctx as Sdl.FileTypeSupport.Framework.NativeApi.IMetaDataContainer;
+                                    if (md != null && md.HasMetaData)
+                                    {
+                                        sb.Append(" meta{");
+                                        foreach (var kv in md.MetaData)
+                                        {
+                                            var v = kv.Value ?? "";
+                                            if (v.Length > 160) v = v.Substring(0, 160) + "…";
+                                            sb.Append(kv.Key).Append('=').Append(v.Replace('\n', ' ')).Append("; ");
+                                        }
+                                        sb.Append('}');
+                                    }
+                                }
+                                catch (Exception ex) { sb.Append(" metaEX ").Append(ex.Message); }
+                            }
+                        }
+                        catch (Exception ex) { sb.Append(" | contexts EX ").Append(ex.Message); }
+                    }
+                    else sb.Append(" | no contexts");
+                    DiagnosticLog.Log("Structure", sb.ToString());
+                    if (++shown >= 80) break;
+                }
+                DiagnosticLog.Log("Structure", "dump complete: " + shown + " segments");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Structure", "dump failed: " + ex.Message);
+            }
         }
 
         private void OnClearReports(object sender, EventArgs e)
