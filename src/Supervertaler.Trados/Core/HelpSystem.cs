@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace Supervertaler.Trados.Core
 {
@@ -67,6 +67,7 @@ namespace Supervertaler.Trados.Core
             public const string SuperMemoryObsidian = "trados/ai-assistant/super-memory/obsidian-setup/";
 
             public const string SuperSearch         = "trados/supersearch/";
+            public const string SuperBench          = "trados/superbench/";
             public const string QuickLauncher       = "trados/quicklauncher/";
             public const string VoiceCommands       = "trados/voice-commands/";
 

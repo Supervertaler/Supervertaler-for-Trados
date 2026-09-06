@@ -126,6 +126,17 @@ namespace Supervertaler.Trados.Controls
             _btnFolder = Btn("Open reports folder"); _btnFolder.Click += (s, e) => OpenFolder();
             _btnClose = Btn("Close"); _btnClose.Click += (s, e) => Close();
             foreach (var b in new[] { _btnRun, _btnCancel, _btnSave, _btnFolder, _btnClose }) buttons.Controls.Add(b);
+            // Contextual help: the docs page for this dialog (also F1). A LinkLabel rather
+            // than the title-bar HelpButton, which WinForms only shows when the window
+            // cannot be maximised - and a results table wants to be maximised.
+            var lnkHelp = new LinkLabel
+            {
+                Text = "? Help", AutoSize = true, Margin = new Padding(8, 7, 0, 0),
+                LinkBehavior = LinkBehavior.HoverUnderline,
+            };
+            lnkHelp.LinkClicked += (s, e) => HelpSystem.OpenHelp(HelpSystem.Topics.SuperBench);
+            new ToolTip().SetToolTip(lnkHelp, "Open the SuperBench page in the online documentation (F1)");
+            buttons.Controls.Add(lnkHelp);
             _layout.Controls.Add(buttons, 0, row); _layout.SetColumnSpan(buttons, 2); row++;
 
             _split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, Margin = new Padding(0), SplitterWidth = 6 };
@@ -374,6 +385,16 @@ namespace Supervertaler.Trados.Controls
                 System.Diagnostics.Process.Start("explorer.exe", "\"" + ReportsDir + "\"");
             }
             catch { }
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.F1)
+            {
+                HelpSystem.OpenHelp(HelpSystem.Topics.SuperBench);
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
