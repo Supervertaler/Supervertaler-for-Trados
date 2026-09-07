@@ -120,7 +120,7 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(_lblFolderNote, 1, row); root.SetColumnSpan(_lblFolderNote, 2); row++;
 
             // Found
-            root.Controls.Add(L("Found:"), 0, row);
+            root.Controls.Add(L("Documents:"), 0, row);
             _lblFound = Wrap("");
             root.Controls.Add(_lblFound, 1, row); root.SetColumnSpan(_lblFound, 2); row++;
 
@@ -200,9 +200,11 @@ namespace Supervertaler.Trados.Controls
                 : st.FolderImages == 0 ? "Empty so far. Extract puts the document's images here, named for their figures."
                 : st.FolderImages + " image file(s) in the folder.";
 
+            // Say where the images come from: a new user looking at "Extract" has to
+            // know which files are meant, and it is not the file open in Studio.
             var found = st.Documents.Count == 0
-                ? "No Word documents found beside this project."
-                : string.Join(Environment.NewLine, st.Documents);
+                ? "No Word files found in the project folder or the folder above it. The images are taken from Word files kept there, not from the file open in Studio."
+                : "Word files in the project folder and the folder above it:" + Environment.NewLine + string.Join(Environment.NewLine, st.Documents);
             _lblFound.Text = found;
 
             bool haveImages = st.TotalImages > 0;
@@ -210,14 +212,16 @@ namespace Supervertaler.Trados.Controls
             _btnAnalyse.Enabled = st.ProjectOpen && folderSet && haveImages && !string.IsNullOrEmpty(st.BankName) && !st.AnalysisRunning;
             _btnWrite.Enabled = st.ProjectOpen && haveImages && !string.IsNullOrEmpty(st.BankName) && !st.AnalysisRunning;
 
-            _lblExtractCost.Text = !folderSet ? "needs the folder" : "free, no AI";
+            _lblExtractCost.Text = !folderSet ? "needs the folder"
+                : !haveImages ? "no images in the documents above"
+                : "free, no AI – copies the " + st.TotalImages + " image(s) from the documents above into the folder";
             _lblAnalyseCost.Text = st.AnalysisRunning ? "running\u2026"
                 : !folderSet ? "needs the folder"
                 : string.IsNullOrEmpty(st.BankName) ? "needs an active memory bank"
-                : haveImages ? st.TotalImages + " AI request(s) to " + (st.ProviderName ?? "the provider") + ", one per image; writes figures.md"
-                : "no images";
+                : haveImages ? st.TotalImages + " AI request(s) to " + (st.ProviderName ?? "the provider") + ", one per image in the documents above; writes figures.md"
+                : "no images in the documents above";
             _lblWriteCost.Text = string.IsNullOrEmpty(st.BankName) ? "needs an active memory bank"
-                : "free, no AI \u2013 what the text says about each figure, without the drawings";
+                : "free, no AI – what the documents above say about each figure, without looking at the images";
 
             if (string.IsNullOrEmpty(st.BankName))
                 _lblFigures.Text = "No memory bank is active, so there is nowhere to write figures.md.";
