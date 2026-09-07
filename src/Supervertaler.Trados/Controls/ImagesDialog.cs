@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -149,7 +149,7 @@ namespace Supervertaler.Trados.Controls
             new ToolTip().SetToolTip(lnkReport, "Every image in the project's Word documents, with its figure label and the text it sits among. Opens in the Chat tab. No AI call.");
             bottom.Controls.Add(lnkReport);
             var lnkHelp = new LinkLabel { Text = "? Help", AutoSize = true, Margin = new Padding(0, UiScale.Pixels(7), UiScale.Pixels(12), 0), LinkBehavior = LinkBehavior.HoverUnderline };
-            lnkHelp.LinkClicked += (s, e) => Core.HelpSystem.OpenHelp(Core.HelpSystem.Topics.BatchOperations);
+            lnkHelp.LinkClicked += (s, e) => Core.HelpSystem.OpenHelp(Core.HelpSystem.Topics.Images);
             bottom.Controls.Add(lnkHelp);
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.Controls.Add(bottom, 0, row); root.SetColumnSpan(bottom, 3); row++;
