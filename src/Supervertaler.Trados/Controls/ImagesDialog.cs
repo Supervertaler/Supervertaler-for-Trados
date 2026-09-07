@@ -133,7 +133,7 @@ namespace Supervertaler.Trados.Controls
             _btnAnalyse = Stage("Analyse with AI", out _lblAnalyseCost, stages, 1); _btnAnalyse.Click += (s, e) => Run(_actions.Analyse);
             tips.SetToolTip(_btnAnalyse, "Step 2. Shows each image to the AI, together with what the text says about it, and writes the descriptions to figures.md. One paid request per image. Asks before replacing an existing figures.md.");
             _btnWrite = Stage("Write figures.md", out _lblWriteCost, stages, 2); _btnWrite.Click += (s, e) => Run(_actions.WriteFigures);
-            tips.SetToolTip(_btnWrite, "Writes figures.md from the text alone - what the document says each figure shows - without looking at the images. Free. Use it if you do not want to spend AI requests, or before you do.");
+            tips.SetToolTip(_btnWrite, "The free alternative to Analyse with AI: writes figures.md from the text alone - what the document says each figure shows - without looking at the images. Use one or the other. Replaces an existing figures.md, and asks first.");
             root.Controls.Add(stages, 0, row); root.SetColumnSpan(stages, 3); row++;
 
             // figures.md state
@@ -163,7 +163,10 @@ namespace Supervertaler.Trados.Controls
 
             Controls.Add(root);
             CancelButton = btnClose;
+            ActiveControl = btnClose;
             Shown += (s, e) => btnClose.Focus();
+            // Whatever focuses the read-only box, no selection: it is a path to read, not to edit.
+            _txtFolder.GotFocus += (s, e) => { _txtFolder.SelectionStart = _txtFolder.TextLength; _txtFolder.SelectionLength = 0; };
 
             // While an analysis runs on a pool thread, the figures.md line follows it.
             _poll = new Timer { Interval = 1500 };
@@ -221,7 +224,7 @@ namespace Supervertaler.Trados.Controls
                 : haveImages ? st.TotalImages + " AI request(s) to " + (st.ProviderName ?? "the provider") + ", one per image in the documents above; writes figures.md"
                 : "no images in the documents above";
             _lblWriteCost.Text = string.IsNullOrEmpty(st.BankName) ? "needs an active memory bank"
-                : "free, no AI – what the documents above say about each figure, without looking at the images";
+                : "free, no AI – the alternative to Analyse: what the documents above say about each figure, without looking at the images. Replaces figures.md; asks first.";
 
             if (string.IsNullOrEmpty(st.BankName))
                 _lblFigures.Text = "No memory bank is active, so there is nowhere to write figures.md.";

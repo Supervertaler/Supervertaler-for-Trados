@@ -10001,6 +10001,31 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             var docxFiles = ProjectSourceDocx();
 
+            // The AI pass writes the same file, with a column this pass cannot
+            // fill. Read top to bottom, this button comes after Analyse - and
+            // silently replacing paid-for descriptions with the text-only
+            // version is exactly what a new user would do by accident.
+            var existingFigures = Path.Combine(bankDir, "figures.md");
+            if (File.Exists(existingFigures))
+            {
+                bool analysed = false;
+                try { analysed = !File.ReadAllText(existingFigures).Contains("## What is not here"); } catch { }
+                var answer = MessageBox.Show(_control.Value.FindForm(),
+                    "figures.md already exists in memory bank \"" + bankName + "\""
+                        + (analysed ? " and holds descriptions the AI wrote." : ".")
+                        + "\n\nThis will REPLACE it with what the text says about each figure, without looking at the images."
+                        + (analysed ? "\nThe AI's descriptions and any corrections you made will be lost." : "")
+                        + "\n\nContinue?",
+                    "Write figures.md",
+                    MessageBoxButtons.YesNo, analysed ? MessageBoxIcon.Warning : MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2);
+                if (answer != DialogResult.Yes)
+                {
+                    batchControl.AppendLog("figures.md left alone.");
+                    return;
+                }
+            }
+
             // Decided after the sweep below, so the heading can follow what
             // the documents turned out to contain.
             var anyLabelled = false;
