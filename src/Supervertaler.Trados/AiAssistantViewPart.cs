@@ -9358,7 +9358,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             var docxFiles = FindProjectDocx(anchorPath);
             if (docxFiles.Count == 0)
             {
-                batchControl.AppendLog("No Word documents found beside this project.", true);
+                batchControl.AppendLog("No Word documents in this project.", true);
                 return;
             }
 
@@ -9776,29 +9776,50 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return st;
         }
 
-        /// <summary>Word documents beside the project - its folder and the one
-        /// above, because a patent keeps its drawings next to the Studio folder.</summary>
-        private List<string> FindProjectDocx(string anchorPath)
+        /// <summary>
+        /// The Word documents this project translates: every source-language
+        /// file whose original is a .docx (reference files excluded). Studio keeps
+        /// its own copy of the original beside the sdlxliff; failing that, the
+        /// original embedded in the sdlxliff header is written out once. Nothing
+        /// is read from the folder around the project: what people keep there is
+        /// their business, and the images the AI needs are the ones in the
+        /// documents being translated.
+        /// </summary>
+        private List<string> FindProjectDocx(string anchorPath) => ProjectSourceDocx();
+
+        private List<string> ProjectSourceDocx()
         {
             var found = new List<string>();
             try
             {
-                var d = Path.GetDirectoryName(anchorPath);
-                var dirs = new List<string>();
-                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                var up = Path.GetDirectoryName(d);
-                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                    dirs.Add(up);
+                var project = _activeDocument?.Project as Sdl.ProjectAutomation.FileBased.FileBasedProject;
+                if (project == null)
+                {
+                    try { project = SdlTradosStudio.Application?.GetController<ProjectsController>()?.CurrentProject; } catch { }
+                }
+                if (project == null) return found;
 
-                foreach (var dir in dirs)
-                    foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
-                    {
-                        if (Path.GetFileName(f).StartsWith("~$")) continue;
-                        if (!found.Contains(f)) found.Add(f);
-                    }
+                var cacheDir = Path.Combine(UserDataPath.TradosRuntimeDir, "originals");
+                foreach (var f in project.GetSourceLanguageFiles())
+                {
+                    if (f == null || f.Role == Sdl.ProjectAutomation.Core.FileRole.Reference) continue;
+                    var path = f.LocalFilePath;
+                    if (string.IsNullOrEmpty(path) || !File.Exists(path)) continue;
+
+                    if (path.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) { found.Add(path); continue; }
+                    if (!path.EndsWith(".sdlxliff", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var beside = path.Substring(0, path.Length - ".sdlxliff".Length);
+                    if (beside.EndsWith(".docx", StringComparison.OrdinalIgnoreCase) && File.Exists(beside)) { found.Add(beside); continue; }
+
+                    var made = StructureContextResolver.MaterialiseOriginal(path, cacheDir);
+                    if (made != null) found.Add(made);
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Images", "ProjectSourceDocx: " + ex.Message);
+            }
             return found;
         }
 
@@ -9891,25 +9912,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 return;
             }
 
-            var docxFiles = new List<string>();
-            try
-            {
-                var d = Path.GetDirectoryName(anchorPath);
-                var dirs = new List<string>();
-                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                var up = Path.GetDirectoryName(d);
-                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                    dirs.Add(up);
-
-                foreach (var dir in dirs)
-                    foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
-                    {
-                        if (Path.GetFileName(f).StartsWith("~$")) continue;
-                        if (!docxFiles.Contains(f)) docxFiles.Add(f);
-                    }
-            }
-            catch { }
+            var docxFiles = ProjectSourceDocx();
 
             // Which documents actually carry images? Counting first decides
             // whether one folder is enough or each needs its own.
@@ -9996,28 +9999,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 return;
             }
 
-            // Same sweep as the Document images report: the project folder
-            // and its parent, because a patent keeps its drawings beside the
-            // Studio folder rather than inside it.
-            var docxFiles = new List<string>();
-            try
-            {
-                var d = Path.GetDirectoryName(anchorPath);
-                var dirs = new List<string>();
-                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                var up = Path.GetDirectoryName(d);
-                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                    dirs.Add(up);
-
-                foreach (var dir in dirs)
-                    foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
-                    {
-                        if (Path.GetFileName(f).StartsWith("~$")) continue;
-                        if (!docxFiles.Contains(f)) docxFiles.Add(f);
-                    }
-            }
-            catch { }
+            var docxFiles = ProjectSourceDocx();
 
             // Decided after the sweep below, so the heading can follow what
             // the documents turned out to contain.
@@ -10238,34 +10220,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 return;
             }
 
-            // The project folder and one level up. Deduplicated, because a
-            // single-file project can have both resolve to the same place.
-            var dirs = new List<string>();
-            try
-            {
-                var d = Path.GetDirectoryName(anchorPath);
-                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                var up = Path.GetDirectoryName(d);
-                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                    dirs.Add(up);
-            }
-            catch { }
-
-            var docxFiles = new List<string>();
-            foreach (var d in dirs)
-            {
-                try
-                {
-                    foreach (var f in Directory.GetFiles(d, "*.docx", SearchOption.TopDirectoryOnly))
-                    {
-                        // Word's lock files are not documents.
-                        if (Path.GetFileName(f).StartsWith("~$")) continue;
-                        if (!docxFiles.Contains(f)) docxFiles.Add(f);
-                    }
-                }
-                catch { }
-            }
+            var docxFiles = ProjectSourceDocx();
 
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("## Document images");
@@ -10275,7 +10230,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             if (docxFiles.Count == 0)
             {
-                sb.AppendLine("No Word documents found beside this project.");
+                sb.AppendLine("No Word documents in this project.");
                 sb.AppendLine();
             }
 

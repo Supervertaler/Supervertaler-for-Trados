@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 using Sdl.FileTypeSupport.Framework.BilingualApi;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
@@ -159,6 +160,55 @@ namespace Supervertaler.Trados.Core
             }
             catch { }
             return -1;
+        }
+
+        /// <summary>
+        /// The original .docx of an sdlxliff as a file on disk, for readers that
+        /// want a path (the image extractor opens with the OpenXml SDK). Studio
+        /// usually keeps its own copy beside the sdlxliff; when it does not, the
+        /// embedded original is written to <paramref name="cacheDir"/> once per
+        /// version of the sdlxliff. Null when the file is not a Word document or
+        /// has no embedded original.
+        /// </summary>
+        internal static string MaterialiseOriginal(string sdlxliffPath, string cacheDir)
+        {
+            try
+            {
+                var name = Path.GetFileNameWithoutExtension(sdlxliffPath);   // "X.docx" for "X.docx.sdlxliff"
+                if (!name.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) return null;
+                var target = Path.Combine(cacheDir, name);
+                var srcTime = File.GetLastWriteTimeUtc(sdlxliffPath);
+                if (File.Exists(target) && File.GetLastWriteTimeUtc(target) >= srcTime) return target;
+
+                using (var s = ReadEmbeddedOriginal(sdlxliffPath))
+                {
+                    if (s == null) return null;
+                    Directory.CreateDirectory(cacheDir);
+                    using (var zip = new ZipArchive(s, ZipArchiveMode.Read, leaveOpen: true))
+                    {
+                        if (zip.GetEntry("word/document.xml") != null)
+                        {
+                            s.Position = 0;
+                            using (var f = File.Create(target)) s.CopyTo(f);
+                        }
+                        else
+                        {
+                            ZipArchiveEntry inner = null;
+                            foreach (var e in zip.Entries) if (e.Length > 0) { inner = e; break; }
+                            if (inner == null) return null;
+                            using (var es = inner.Open())
+                            using (var f = File.Create(target)) es.CopyTo(f);
+                        }
+                    }
+                }
+                File.SetLastWriteTimeUtc(target, DateTime.UtcNow);
+                return target;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log(LogCategory, "MaterialiseOriginal failed for " + Path.GetFileName(sdlxliffPath ?? "") + ": " + ex.Message);
+                return null;
+            }
         }
 
         /// <summary>

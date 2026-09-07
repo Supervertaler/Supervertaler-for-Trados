@@ -661,9 +661,9 @@ namespace Supervertaler.Trados.Controls
             _lnkImages.LinkClicked += (s, ev) => ImagesRequested?.Invoke(this, EventArgs.Empty);
             var imagesTip = new ToolTip();
             imagesTip.SetToolTip(_lnkImages,
-                "The images that go with this document - diagrams, drawings, photos - which are\r\n" +
-                "often in a separate file. Find them, keep them in a folder, and give the AI a\r\n" +
-                "description of what each one shows. Opens a panel that explains each step.");
+                "The AI sees the text of your documents, not the pictures in them. Take the images\r\n" +
+                "out of the project's source documents into a folder, and give the AI a description\r\n" +
+                "of what each one shows. Opens a panel that explains each step.");
             Controls.Add(_lnkImages);
 
             y += Px(26);

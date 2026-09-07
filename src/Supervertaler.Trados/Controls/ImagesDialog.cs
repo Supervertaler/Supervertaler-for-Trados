@@ -15,7 +15,7 @@ namespace Supervertaler.Trados.Controls
         public string Folder;
         /// <summary>Image files in that folder, when it is set and exists; -1 when it does not exist.</summary>
         public int FolderImages;
-        /// <summary>One line per Word document found beside the project, or the reason none was.</summary>
+        /// <summary>One line per Word document in the project (source-language files), or the reason none was found.</summary>
         public List<string> Documents = new List<string>();
         public int TotalImages;
         public int Labelled;
@@ -101,9 +101,9 @@ namespace Supervertaler.Trados.Controls
             root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             int row = 0;
 
-            var intro = Wrap("The images that go with a document - diagrams, drawings, photos - are often in a separate file, and the AI cannot see " +
-                             "what they show. This panel finds them, keeps them in a folder, and writes a description of each one to a file called " +
-                             "figures.md in the memory bank. The AI reads that file with every request, so it knows what the images show.");
+            var intro = Wrap("The AI sees the text of the documents you translate, not the pictures in them. This panel takes the images out of " +
+                             "the project's source documents into a folder, and writes a description of each one to a file called figures.md in " +
+                             "the memory bank. The AI reads that file with every request, so it knows what the images show.");
             root.Controls.Add(intro, 0, row); root.SetColumnSpan(intro, 3); row++;
 
             // Folder
@@ -120,7 +120,7 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(_lblFolderNote, 1, row); root.SetColumnSpan(_lblFolderNote, 2); row++;
 
             // Found
-            root.Controls.Add(L("Documents:"), 0, row);
+            root.Controls.Add(L("Source documents:"), 0, row);
             _lblFound = Wrap("");
             root.Controls.Add(_lblFound, 1, row); root.SetColumnSpan(_lblFound, 2); row++;
 
@@ -203,8 +203,8 @@ namespace Supervertaler.Trados.Controls
             // Say where the images come from: a new user looking at "Extract" has to
             // know which files are meant, and it is not the file open in Studio.
             var found = st.Documents.Count == 0
-                ? "No Word files found in the project folder or the folder above it. The images are taken from Word files kept there, not from the file open in Studio."
-                : "Word files in the project folder and the folder above it:" + Environment.NewLine + string.Join(Environment.NewLine, st.Documents);
+                ? "No Word documents in this project. Images are read from the project's source documents, the files in Studio's Files view."
+                : "The project's source documents:" + Environment.NewLine + string.Join(Environment.NewLine, st.Documents);
             _lblFound.Text = found;
 
             bool haveImages = st.TotalImages > 0;
