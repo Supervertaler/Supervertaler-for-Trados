@@ -9764,17 +9764,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         var n = set.Images.Count;
                         var labelled = set.Images.Count(i => !string.IsNullOrEmpty(i.Label));
                         st.TotalImages += n; st.Labelled += labelled;
-                        var line = Path.GetFileName(f) + ": " + n + " image" + (n == 1 ? "" : "s");
-                        if (n > 0)
-                        {
-                            line += ", " + labelled + " with a figure label";
-                            if (set.Method == Core.LabelingMethod.Ordinal) line += ", paired by position and checked";
-                            else if (set.Method == Core.LabelingMethod.Refused) line += " \u2013 labels withheld: " + set.Warning;
-                            else if (set.Method == Core.LabelingMethod.Proximity) line += ", labels taken from nearby text";
-                        }
+                        st.DocumentCount++;
+                        if (n == 0) { st.DocumentsWithoutImages++; continue; }
+                        // Only documents that have images are listed: a project of
+                        // sixty files with pictures in three of them wants three lines.
+                        var line = Path.GetFileName(f) + ": " + n + " image" + (n == 1 ? "" : "s")
+                                 + ", " + labelled + " with a figure label";
+                        if (set.Method == Core.LabelingMethod.Ordinal) line += ", paired by position and checked";
+                        else if (set.Method == Core.LabelingMethod.Refused) line += " \u2013 labels withheld: " + set.Warning;
+                        else if (set.Method == Core.LabelingMethod.Proximity) line += ", labels taken from nearby text";
                         st.Documents.Add(line);
                     }
-                    catch (Exception ex) { st.Documents.Add(Path.GetFileName(f) + ": could not be read (" + ex.Message + ")"); }
+                    catch (Exception ex) { st.DocumentCount++; st.Documents.Add(Path.GetFileName(f) + ": could not be read (" + ex.Message + ")"); }
                 }
 
                 st.BankName = ActiveMemoryBankName;
@@ -9789,10 +9790,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         {
                             var text = File.ReadAllText(st.FiguresPath);
                             st.FiguresWithoutVision = text.Contains("## What is not here");
-                            foreach (var line in text.Split('\n'))
+                            // Table rows only: a header row is the one followed by the
+                            // |---| separator, whatever its column names.
+                            var lines = text.Split('\n');
+                            for (int li = 0; li < lines.Length; li++)
                             {
-                                var l = line.TrimStart();
-                                if (l.StartsWith("| ") && !l.StartsWith("|--") && !l.Contains("Source part")) st.FiguresRows++;
+                                var l = lines[li].TrimStart();
+                                if (!l.StartsWith("|") || l.StartsWith("|-") || l.StartsWith("| -")) continue;
+                                var next = li + 1 < lines.Length ? lines[li + 1].TrimStart() : "";
+                                if (next.StartsWith("|-") || next.StartsWith("| -")) continue;   // header
+                                st.FiguresRows++;
                             }
                         }
                         catch { }

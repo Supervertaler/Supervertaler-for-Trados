@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -15,8 +15,11 @@ namespace Supervertaler.Trados.Controls
         public string Folder;
         /// <summary>Image files in that folder, when it is set and exists; -1 when it does not exist.</summary>
         public int FolderImages;
-        /// <summary>One line per Word document in the project (source-language files), or the reason none was found.</summary>
+        /// <summary>One line per Word document in the project that has images (or could not be read).</summary>
         public List<string> Documents = new List<string>();
+        /// <summary>Every Word document in the project, images or not.</summary>
+        public int DocumentCount;
+        public int DocumentsWithoutImages;
         public int TotalImages;
         public int Labelled;
         public string BankName;
@@ -77,10 +80,16 @@ namespace Supervertaler.Trados.Controls
             FolderImages = 14,
             Documents = new List<string>
             {
-                "20260713-PROJ-001 Application as filed.docx: 0 images",
                 "20260713-PROJ-001 Figures as filed.docx: 14 images, 14 with a figure label, paired by position and checked",
+                "20260713-PROJ-001 Figures as filed, sheet 2 of a very long document title that wraps.docx: 9 images, 9 with a figure label, labels taken from nearby text",
+                "Annex A.docx: 2 images, 0 with a figure label",
+                "Annex B.docx: 1 image, 1 with a figure label, paired by position and checked",
+                "Annex C.docx: 1 image, 1 with a figure label, paired by position and checked",
+                "Annex D.docx: 3 images, 3 with a figure label, paired by position and checked",
+                "Annex E.docx: 1 image, 1 with a figure label, paired by position and checked",
             },
-            TotalImages = 14, Labelled = 14,
+            DocumentCount = 60, DocumentsWithoutImages = 53,
+            TotalImages = 31, Labelled = 29,
             BankName = "acme-proj-001",
             FiguresPath = @"D:\Supervertaler\memory-banks\acme-proj-001\figures.md",
             FiguresWritten = new DateTime(2026, 8, 26, 23, 58, 0),
@@ -210,10 +219,7 @@ namespace Supervertaler.Trados.Controls
             bool haveBank = !string.IsNullOrEmpty(st.BankName);
             string n = st.TotalImages + " image" + (st.TotalImages == 1 ? "" : "s");
 
-            _lblDocs.Text = !st.ProjectOpen ? "No project open."
-                : st.Documents.Count == 0
-                    ? "No Word documents in this project. Images are read from the project's source documents, the files in Studio's Files view."
-                    : string.Join(Environment.NewLine, st.Documents);
+            _lblDocs.Text = DocumentsText(st);
 
             // Step 1
             _btnExtract.Enabled = st.ProjectOpen && haveImages && !st.AnalysisRunning;
@@ -248,6 +254,31 @@ namespace Supervertaler.Trados.Controls
                     + (st.FiguresWithoutVision ? " \u00b7 from the text only, the images not yet looked at" : " \u00b7 with what the AI saw")
                     + " \u00b7 figures.md in memory bank \u201c" + st.BankName + "\u201d, read by the AI with every request.";
         }
+
+        /// <summary>
+        /// A summary first, then only the documents that have images, bulleted and
+        /// capped: a project can hold sixty files with pictures in three of them.
+        /// </summary>
+        private static string DocumentsText(ImagesState st)
+        {
+            if (!st.ProjectOpen) return "No project open.";
+            if (st.DocumentCount == 0)
+                return "No Word documents in this project. Images are read from the project's source documents, the files in Studio's Files view.";
+            if (st.TotalImages == 0)
+                return "No images in the " + Plural(st.DocumentCount, "document") + " of this project.";
+            var sb = new System.Text.StringBuilder();
+            int withImages = st.Documents.Count;
+            sb.Append(Plural(st.TotalImages, "image") + " in " + withImages + " of " + Plural(st.DocumentCount, "document") + ":");
+            const int cap = 6;
+            int shown = withImages > cap ? cap - 1 : withImages;
+            for (int i = 0; i < shown; i++) sb.Append(Environment.NewLine + "\u2022 " + st.Documents[i]);
+            if (withImages > shown) sb.Append(Environment.NewLine + "\u2022 \u2026 and " + Plural(withImages - shown, "more document") + " with images");
+            if (st.DocumentsWithoutImages > 0)
+                sb.Append(Environment.NewLine + Plural(st.DocumentsWithoutImages, "document") + (st.DocumentsWithoutImages == 1 ? " has" : " have") + " no images.");
+            return sb.ToString();
+        }
+
+        private static string Plural(int n, string noun) => n + " " + noun + (n == 1 ? "" : "s");
 
         private static Label L(string text) => new Label { Text = text, AutoSize = true, Margin = new Padding(0, UiScale.Pixels(6), UiScale.Pixels(10), 0) };
 
