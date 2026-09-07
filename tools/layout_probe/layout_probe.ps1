@@ -100,6 +100,13 @@ $cases = @(
         Args = @()
     },
     @{
+        # #84. The parameterless constructor carries the longest realistic
+        # state: a long folder path, two document lines, a dated figures.md.
+        Type = "Supervertaler.Trados.Controls.ImagesDialog"
+        Name = "ImagesDialog"
+        Args = @()
+    },
+    @{
         # #94. Long file and termbase names, and the longest note the dialog
         # writes; the grid is empty here (SetColumns is not called), which is
         # the frame's own worst case for the labels.

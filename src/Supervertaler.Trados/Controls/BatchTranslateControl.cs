@@ -65,11 +65,7 @@ namespace Supervertaler.Trados.Controls
         private LinkLabel _lnkPreviewPrompt;
         private LinkLabel _lnkSuperBench;   // #107
         private LinkLabel _lnkNumerals;
-        private LinkLabel _lnkDocImages;
-        private LinkLabel _lnkRefFolder;
-        private LinkLabel _lnkExtractImages;
-        private LinkLabel _lnkWriteFigures;
-        private LinkLabel _lnkAnalyseFigures;
+        private LinkLabel _lnkImages;   // #84: the figure pipeline, one panel
 
         // Clipboard Mode
         private CheckBox _chkClipboardMode;
@@ -140,25 +136,10 @@ namespace Supervertaler.Trados.Controls
         /// document.</summary>
         public event EventHandler ReferenceNumeralsRequested;
 
-        /// <summary>Raised when the user asks what images this project's Word
-        /// documents contain, and how each is tied to the text. No AI call.</summary>
-        public event EventHandler DocumentImagesRequested;
-
-        /// <summary>Raised when the user wants to choose the folder holding
-        /// this project's drawings.</summary>
-        public event EventHandler ReferenceImagesFolderRequested;
-
-        /// <summary>Raised to write the figure inventory to the active bank's
-        /// figures.md, where prompts actually read it.</summary>
-        public event EventHandler WriteFiguresFileRequested;
-
-        /// <summary>Raised to extract the document's images into the
-        /// reference images folder, named for their figures.</summary>
-        public event EventHandler ExtractImagesRequested;
-
-        /// <summary>Raised to extract, look at, and describe the drawings.
-        /// The only figure action that calls a provider.</summary>
-        public event EventHandler AnalyseFiguresRequested;
+        /// <summary>Raised to open the Images panel (#84): the reference images
+        /// folder, what the project's Word documents contain, and the three
+        /// stages - extract, analyse with AI, write figures.md - with their cost.</summary>
+        public event EventHandler ImagesRequested;
 
         /// <summary>Gets the current batch mode.</summary>
         public BatchMode CurrentMode => _currentMode;
@@ -667,97 +648,22 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_lnkNumerals);
             y += Px(22);
 
-            // Its own row for the same reason as the one above: a docked
-            // panel is narrow and these two together would not fit.
-            _lnkDocImages = new LinkLabel
+            // #84: one link for the whole figure pipeline. The panel behind it
+            // shows the folder, what the documents contain and the three stages
+            // with their cost, so nothing here needs a tooltip to explain the order.
+            _lnkImages = new LinkLabel
             {
-                Text = "▣  Document images",
+                Text = "\u25A3  Images\u2026",
                 AutoSize = true,
                 Font = bodyFont,
                 Location = new Point(leftMargin, y)
             };
-            _lnkDocImages.LinkClicked += (s, ev) =>
-                DocumentImagesRequested?.Invoke(this, EventArgs.Empty);
+            _lnkImages.LinkClicked += (s, ev) => ImagesRequested?.Invoke(this, EventArgs.Empty);
             var imagesTip = new ToolTip();
-            imagesTip.SetToolTip(_lnkDocImages,
-                "List the images in this project's Word documents, with any figure\r\n" +
-                "label and the text each one sits among. Also reports the reference\r\n" +
-                "images folder, if one is set. Makes no AI call.");
-            Controls.Add(_lnkDocImages);
-            y += Px(22);
-
-            // The folder setting, one click from the feature that reads it.
-            // It also lives in Settings > Library on a bank node, where two
-            // sessions running failed to find it - one reported it as not
-            // existing. Four levels into a modal dialog is the wrong home
-            // for a per-project setting only this tab consumes.
-            _lnkRefFolder = new LinkLabel
-            {
-                Text = "⚙  Reference images folder\u2026",
-                AutoSize = true,
-                Font = bodyFont,
-                Location = new Point(leftMargin, y)
-            };
-            _lnkRefFolder.LinkClicked += (s, ev) =>
-                ReferenceImagesFolderRequested?.Invoke(this, EventArgs.Empty);
-            var refTip = new ToolTip();
-            refTip.SetToolTip(_lnkRefFolder,
-                "Choose the folder holding this project's drawings." + "\r\n" +
-                "Remembered per Trados project. The same setting also appears in" + "\r\n" +
-                "Settings > Library on a memory bank, but this is the short way in.");
-            Controls.Add(_lnkRefFolder);
-            y += Px(22);
-
-            _lnkExtractImages = new LinkLabel
-            {
-                Text = "⇩  Extract images to folder",
-                AutoSize = true,
-                Font = bodyFont,
-                Location = new Point(leftMargin, y)
-            };
-            _lnkExtractImages.LinkClicked += (s, ev) =>
-                ExtractImagesRequested?.Invoke(this, EventArgs.Empty);
-            var exTip = new ToolTip();
-            exTip.SetToolTip(_lnkExtractImages,
-                "Write this project's document images into the reference images" + "\r\n" +
-                "folder, named for the figure each one is - Figure 01.png and so" + "\r\n" +
-                "on, zero-padded so they sort. Re-running overwrites. No AI call.");
-            Controls.Add(_lnkExtractImages);
-            y += Px(22);
-
-            _lnkWriteFigures = new LinkLabel
-            {
-                Text = "→  Write figures.md to memory bank",
-                AutoSize = true,
-                Font = bodyFont,
-                Location = new Point(leftMargin, y)
-            };
-            _lnkWriteFigures.LinkClicked += (s, ev) =>
-                WriteFiguresFileRequested?.Invoke(this, EventArgs.Empty);
-            var figTip = new ToolTip();
-            figTip.SetToolTip(_lnkWriteFigures,
-                "Write the figure inventory to figures.md in the active memory" + "\r\n" +
-                "bank, where it IS read into every prompt." + "\r\n" +
-                "Saving a report to the bank from the chat puts it in reference/," + "\r\n" +
-                "which is the audit trail and is never read. Makes no AI call.");
-            Controls.Add(_lnkWriteFigures);
-            y += Px(22);
-
-            _lnkAnalyseFigures = new LinkLabel
-            {
-                Text = "✦  Analyse images (AI)",
-                AutoSize = true,
-                Font = bodyFont,
-                Location = new Point(leftMargin, y)
-            };
-            _lnkAnalyseFigures.LinkClicked += (s, ev) =>
-                AnalyseFiguresRequested?.Invoke(this, EventArgs.Empty);
-            var anTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
-            anTip.SetToolTip(_lnkAnalyseFigures,
-                "Shows each image to the AI and writes figures.md to the memory bank." + "\r\n" +
-                "Costs one AI request per image. Asks before replacing figures.md.");
-
-            Controls.Add(_lnkAnalyseFigures);
+            imagesTip.SetToolTip(_lnkImages,
+                "The project's drawings: the reference images folder, the images in the\r\n" +
+                "Word documents beside the project, and figures.md in the memory bank.");
+            Controls.Add(_lnkImages);
 
             y += Px(26);
 

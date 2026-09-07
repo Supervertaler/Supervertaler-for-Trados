@@ -283,11 +283,7 @@ namespace Supervertaler.Trados
             batchControl.PreviewPromptRequested += OnPreviewPromptRequested;
             batchControl.SuperBenchRequested += OnSuperBenchRequested;   // #107
             batchControl.ReferenceNumeralsRequested += OnReferenceNumeralsRequested;
-            batchControl.DocumentImagesRequested += OnDocumentImagesRequested;
-            batchControl.ReferenceImagesFolderRequested += OnReferenceImagesFolderRequested;
-            batchControl.WriteFiguresFileRequested += OnWriteFiguresFileRequested;
-            batchControl.ExtractImagesRequested += OnExtractImagesRequested;
-            batchControl.AnalyseFiguresRequested += OnAnalyseFiguresRequested;
+            batchControl.ImagesRequested += OnImagesRequested;   // #84: the figure pipeline as one panel
             batchControl.ModelChangeRequested += OnModelChangeRequested;
             batchControl.CustomProfilesSource = GetCustomProfileMenuItems;
 
@@ -9388,9 +9384,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     "This will send " + figureCount + " image(s) to "
                         + (_settings?.AiSettings?.SelectedProvider ?? "the AI provider")
                         + " and REPLACE the existing figures.md in memory bank \""
-                        + bankName + "\"." + "''' + N + N + '''"
+                        + bankName + "\"." + "\n\n"
                         + "Any corrections you have made to that file will be lost."
-                        + "''' + N + N + '''Continue?",
+                        + "\n\nContinue?",
                     "Analyse images",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
                     MessageBoxDefaultButton.Button2);
@@ -9678,6 +9674,108 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return capital ? char.ToUpperInvariant(word[0]) + word.Substring(1) : word;
         }
 
+        /// <summary>
+        /// #84: the figure pipeline as one panel. The four stages and the report
+        /// are the same methods the five links used to call; the dialog adds the
+        /// state - folder, what the documents contain, what figures.md holds -
+        /// and states the cost before it is spent.
+        /// </summary>
+        private void OnImagesRequested(object sender, EventArgs e)
+        {
+            SafeInvoke(() =>
+            {
+                var actions = new Controls.ImagesActions
+                {
+                    Refresh = BuildImagesState,
+                    Browse = ChooseReferenceImagesFolder,
+                    Extract = ExtractImagesToFolder,
+                    Analyse = () => OnAnalyseFiguresRequested(this, EventArgs.Empty),
+                    WriteFigures = WriteFiguresFile,
+                    ShowReport = ShowDocumentImagesReport,
+                };
+                using (var dlg = new Controls.ImagesDialog(actions, BuildImagesState()))
+                    dlg.ShowDialog(_control.Value.FindForm());
+            });
+        }
+
+        /// <summary>
+        /// Everything the Images dialog shows, read fresh: cheap enough to do on
+        /// every open and after every action (two Word files scanned for images,
+        /// one folder listed, one file's date read). Never throws.
+        /// </summary>
+        private Controls.ImagesState BuildImagesState()
+        {
+            var st = new Controls.ImagesState();
+            try
+            {
+                var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+                st.ProjectOpen = !string.IsNullOrEmpty(projectPath);
+                st.ProjectName = TermLensEditorViewPart.GetCurrentProjectName();
+                if (st.ProjectOpen)
+                {
+                    try { st.Folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; } catch { st.Folder = ""; }
+                    if (!string.IsNullOrEmpty(st.Folder))
+                    {
+                        if (!Directory.Exists(st.Folder)) st.FolderImages = -1;
+                        else { try { st.FolderImages = Core.ReferenceImages.List(st.Folder)?.Count ?? 0; } catch { st.FolderImages = 0; } }
+                    }
+                }
+
+                var anchorPath = ResolveProjectAnchorPathCore();
+                var docxFiles = string.IsNullOrEmpty(anchorPath) ? new List<string>() : FindProjectDocx(anchorPath);
+                foreach (var f in docxFiles)
+                {
+                    try
+                    {
+                        var set = Core.DocxImageExtractor.Extract(f);
+                        var n = set.Images.Count;
+                        var labelled = set.Images.Count(i => !string.IsNullOrEmpty(i.Label));
+                        st.TotalImages += n; st.Labelled += labelled;
+                        var line = Path.GetFileName(f) + ": " + n + " image" + (n == 1 ? "" : "s");
+                        if (n > 0)
+                        {
+                            line += ", " + labelled + " with a figure label";
+                            if (set.Method == Core.LabelingMethod.Ordinal) line += ", paired by position and checked";
+                            else if (set.Method == Core.LabelingMethod.Refused) line += " \u2013 labels withheld: " + set.Warning;
+                            else if (set.Method == Core.LabelingMethod.Proximity) line += ", labels taken from nearby text";
+                        }
+                        st.Documents.Add(line);
+                    }
+                    catch (Exception ex) { st.Documents.Add(Path.GetFileName(f) + ": could not be read (" + ex.Message + ")"); }
+                }
+
+                st.BankName = ActiveMemoryBankName;
+                if (!string.IsNullOrWhiteSpace(st.BankName))
+                {
+                    var bankDir = UserDataPath.GetMemoryBankDir(st.BankName);
+                    st.FiguresPath = string.IsNullOrEmpty(bankDir) ? null : Path.Combine(bankDir, "figures.md");
+                    if (st.FiguresPath != null && File.Exists(st.FiguresPath))
+                    {
+                        st.FiguresWritten = File.GetLastWriteTime(st.FiguresPath);
+                        try
+                        {
+                            var text = File.ReadAllText(st.FiguresPath);
+                            st.FiguresWithoutVision = text.Contains("## What is not here");
+                            foreach (var line in text.Split('\n'))
+                            {
+                                var l = line.TrimStart();
+                                if (l.StartsWith("| ") && !l.StartsWith("|--") && !l.Contains("Source part")) st.FiguresRows++;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                st.AnalysisRunning = System.Threading.Volatile.Read(ref _figureAnalysisRunning) != 0;
+                try { st.ProviderName = LlmModels.GetProviderDisplayName(_settings?.AiSettings?.SelectedProvider ?? ""); } catch { }
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Images", "BuildImagesState: " + ex.Message);
+            }
+            return st;
+        }
+
         /// <summary>Word documents beside the project - its folder and the one
         /// above, because a patent keeps its drawings next to the Studio folder.</summary>
         private List<string> FindProjectDocx(string anchorPath)
@@ -9763,102 +9861,99 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// sub-folder, because "Figure 01.png" from two documents is the same
         /// name and the second would silently replace the first.</para>
         /// </summary>
-        private void OnExtractImagesRequested(object sender, EventArgs e)
+        private void ExtractImagesToFolder()
         {
-            SafeInvoke(() =>
+            var batchControl = _control.Value.BatchTranslateControl;
+
+            var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+            if (string.IsNullOrEmpty(projectPath))
             {
-                var batchControl = _control.Value.BatchTranslateControl;
+                batchControl.AppendLog("No project open.", true);
+                return;
+            }
 
-                var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
-                if (string.IsNullOrEmpty(projectPath))
-                {
-                    batchControl.AppendLog("No project open.", true);
-                    return;
-                }
+            string folder = "";
+            try { folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; }
+            catch { }
 
-                string folder = "";
-                try { folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; }
+            if (string.IsNullOrEmpty(folder))
+            {
+                batchControl.AppendLog(
+                    "No reference images folder set - use the Reference images folder link first.",
+                    true);
+                return;
+            }
+
+            var anchorPath = ResolveProjectAnchorPathCore();
+            if (string.IsNullOrEmpty(anchorPath))
+            {
+                batchControl.AppendLog("No project open.", true);
+                return;
+            }
+
+            var docxFiles = new List<string>();
+            try
+            {
+                var d = Path.GetDirectoryName(anchorPath);
+                var dirs = new List<string>();
+                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
+                var up = Path.GetDirectoryName(d);
+                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
+                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
+                    dirs.Add(up);
+
+                foreach (var dir in dirs)
+                    foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
+                    {
+                        if (Path.GetFileName(f).StartsWith("~$")) continue;
+                        if (!docxFiles.Contains(f)) docxFiles.Add(f);
+                    }
+            }
+            catch { }
+
+            // Which documents actually carry images? Counting first decides
+            // whether one folder is enough or each needs its own.
+            var withImages = new List<string>();
+            foreach (var f in docxFiles)
+            {
+                try { if (Core.DocxImageExtractor.Extract(f).Images.Count > 0) withImages.Add(f); }
                 catch { }
+            }
 
-                if (string.IsNullOrEmpty(folder))
-                {
-                    batchControl.AppendLog(
-                        "No reference images folder set - use the Reference images folder link first.",
-                        true);
-                    return;
-                }
+            if (withImages.Count == 0)
+            {
+                batchControl.AppendLog(
+                    "No images found in this project's Word documents.", true);
+                return;
+            }
 
-                var anchorPath = ResolveProjectAnchorPathCore();
-                if (string.IsNullOrEmpty(anchorPath))
-                {
-                    batchControl.AppendLog("No project open.", true);
-                    return;
-                }
+            var total = 0;
+            var lines = new List<string>();
+            foreach (var f in withImages)
+            {
+                var target = withImages.Count == 1
+                    ? folder
+                    : Path.Combine(folder, Path.GetFileNameWithoutExtension(f));
 
-                var docxFiles = new List<string>();
-                try
-                {
-                    var d = Path.GetDirectoryName(anchorPath);
-                    var dirs = new List<string>();
-                    if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                    var up = Path.GetDirectoryName(d);
-                    if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                        && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                        dirs.Add(up);
+                var set = Core.DocxImageExtractor.Extract(f, false, target);
+                total += set.SavedFiles.Count;
 
-                    foreach (var dir in dirs)
-                        foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
-                        {
-                            if (Path.GetFileName(f).StartsWith("~$")) continue;
-                            if (!docxFiles.Contains(f)) docxFiles.Add(f);
-                        }
-                }
-                catch { }
+                lines.Add("**" + Path.GetFileName(f) + "** \u2192 "
+                    + set.SavedFiles.Count + " file(s)"
+                    + (withImages.Count > 1
+                        ? " in `" + Path.GetFileName(target) + "`" : "")
+                    + (set.Method == Core.LabelingMethod.Refused
+                        ? " \u2014 named by position, not by figure: the labels could not be checked"
+                        : ""));
+            }
 
-                // Which documents actually carry images? Counting first decides
-                // whether one folder is enough or each needs its own.
-                var withImages = new List<string>();
-                foreach (var f in docxFiles)
-                {
-                    try { if (Core.DocxImageExtractor.Extract(f).Images.Count > 0) withImages.Add(f); }
-                    catch { }
-                }
+            batchControl.AppendLog("Extracted " + total + " image(s) to " + folder + ".");
 
-                if (withImages.Count == 0)
-                {
-                    batchControl.AppendLog(
-                        "No images found in this project's Word documents.", true);
-                    return;
-                }
-
-                var total = 0;
-                var lines = new List<string>();
-                foreach (var f in withImages)
-                {
-                    var target = withImages.Count == 1
-                        ? folder
-                        : Path.Combine(folder, Path.GetFileNameWithoutExtension(f));
-
-                    var set = Core.DocxImageExtractor.Extract(f, false, target);
-                    total += set.SavedFiles.Count;
-
-                    lines.Add("**" + Path.GetFileName(f) + "** \u2192 "
-                        + set.SavedFiles.Count + " file(s)"
-                        + (withImages.Count > 1
-                            ? " in `" + Path.GetFileName(target) + "`" : "")
-                        + (set.Method == Core.LabelingMethod.Refused
-                            ? " \u2014 named by position, not by figure: the labels could not be checked"
-                            : ""));
-                }
-
-                batchControl.AppendLog("Extracted " + total + " image(s) to " + folder + ".");
-
-                ShowSuperMemoryMessage(
-                    "Extracted **" + total + "** image(s) to:\n`" + folder + "`\n\n"
-                    + string.Join("\n", lines)
-                    + "\n\nNamed for the figure each one is, zero-padded so they sort. "
-                    + "Re-running overwrites them.");
-            });
+            ShowSuperMemoryMessage(
+                "Extracted **" + total + "** image(s) to:\n`" + folder + "`\n\n"
+                + string.Join("\n", lines)
+                + "\n\nNamed for the figure each one is, zero-padded so they sort. "
+                + "Re-running overwrites them.");
         }
 
         /// <summary>
@@ -9876,172 +9971,169 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// needs a model to look at the drawings is named as missing rather than
         /// left to look complete.</para>
         /// </summary>
-        private void OnWriteFiguresFileRequested(object sender, EventArgs e)
+        private void WriteFiguresFile()
         {
-            SafeInvoke(() =>
+            var batchControl = _control.Value.BatchTranslateControl;
+
+            var bankName = ActiveMemoryBankName;
+            if (string.IsNullOrWhiteSpace(bankName))
             {
-                var batchControl = _control.Value.BatchTranslateControl;
+                batchControl.AppendLog("No memory bank is active.", true);
+                return;
+            }
 
-                var bankName = ActiveMemoryBankName;
-                if (string.IsNullOrWhiteSpace(bankName))
-                {
-                    batchControl.AppendLog("No memory bank is active.", true);
-                    return;
-                }
+            var bankDir = UserDataPath.GetMemoryBankDir(bankName);
+            if (string.IsNullOrEmpty(bankDir) || !Directory.Exists(bankDir))
+            {
+                batchControl.AppendLog("Memory bank folder not found: " + bankDir, true);
+                return;
+            }
 
-                var bankDir = UserDataPath.GetMemoryBankDir(bankName);
-                if (string.IsNullOrEmpty(bankDir) || !Directory.Exists(bankDir))
-                {
-                    batchControl.AppendLog("Memory bank folder not found: " + bankDir, true);
-                    return;
-                }
+            var anchorPath = ResolveProjectAnchorPathCore();
+            if (string.IsNullOrEmpty(anchorPath))
+            {
+                batchControl.AppendLog("No project open.", true);
+                return;
+            }
 
-                var anchorPath = ResolveProjectAnchorPathCore();
-                if (string.IsNullOrEmpty(anchorPath))
-                {
-                    batchControl.AppendLog("No project open.", true);
-                    return;
-                }
+            // Same sweep as the Document images report: the project folder
+            // and its parent, because a patent keeps its drawings beside the
+            // Studio folder rather than inside it.
+            var docxFiles = new List<string>();
+            try
+            {
+                var d = Path.GetDirectoryName(anchorPath);
+                var dirs = new List<string>();
+                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
+                var up = Path.GetDirectoryName(d);
+                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
+                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
+                    dirs.Add(up);
 
-                // Same sweep as the Document images report: the project folder
-                // and its parent, because a patent keeps its drawings beside the
-                // Studio folder rather than inside it.
-                var docxFiles = new List<string>();
+                foreach (var dir in dirs)
+                    foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
+                    {
+                        if (Path.GetFileName(f).StartsWith("~$")) continue;
+                        if (!docxFiles.Contains(f)) docxFiles.Add(f);
+                    }
+            }
+            catch { }
+
+            // Decided after the sweep below, so the heading can follow what
+            // the documents turned out to contain.
+            var anyLabelled = false;
+            foreach (var f in docxFiles)
+            {
                 try
                 {
-                    var d = Path.GetDirectoryName(anchorPath);
-                    var dirs = new List<string>();
-                    if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                    var up = Path.GetDirectoryName(d);
-                    if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                        && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                        dirs.Add(up);
-
-                    foreach (var dir in dirs)
-                        foreach (var f in Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly))
-                        {
-                            if (Path.GetFileName(f).StartsWith("~$")) continue;
-                            if (!docxFiles.Contains(f)) docxFiles.Add(f);
-                        }
+                    if (Core.DocxImageExtractor.Extract(f).Images
+                            .Any(i => !string.IsNullOrEmpty(i.Label)))
+                    { anyLabelled = true; break; }
                 }
                 catch { }
+            }
 
-                // Decided after the sweep below, so the heading can follow what
-                // the documents turned out to contain.
-                var anyLabelled = false;
-                foreach (var f in docxFiles)
-                {
-                    try
-                    {
-                        if (Core.DocxImageExtractor.Extract(f).Images
-                                .Any(i => !string.IsNullOrEmpty(i.Label)))
-                        { anyLabelled = true; break; }
-                    }
-                    catch { }
-                }
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("# " + VisualNoun(anyLabelled, true, true));
+            sb.AppendLine();
+            sb.AppendLine("*Written by Supervertaler on "
+                + DateTime.Now.ToString("yyyy-MM-dd HH:mm")
+                + ". Regenerate from Batch Operations \u2192 Write figures.md.*");
+            sb.AppendLine();
 
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("# " + VisualNoun(anyLabelled, true, true));
-                sb.AppendLine();
-                sb.AppendLine("*Written by Supervertaler on "
-                    + DateTime.Now.ToString("yyyy-MM-dd HH:mm")
-                    + ". Regenerate from Batch Operations \u2192 Write figures.md.*");
+            var wrote = 0;
+            var refused = 0;
+
+            foreach (var f in docxFiles)
+            {
+                var set = Core.DocxImageExtractor.Extract(f);
+                if (set.Images.Count == 0) continue;
+
+                sb.AppendLine("## " + Path.GetFileName(f));
                 sb.AppendLine();
 
-                var wrote = 0;
-                var refused = 0;
-
-                foreach (var f in docxFiles)
+                if (set.Method == Core.LabelingMethod.Refused)
                 {
-                    var set = Core.DocxImageExtractor.Extract(f);
-                    if (set.Images.Count == 0) continue;
-
-                    sb.AppendLine("## " + Path.GetFileName(f));
+                    refused++;
+                    sb.AppendLine("**Figure labels could not be established.** " + set.Warning);
                     sb.AppendLine();
-
-                    if (set.Method == Core.LabelingMethod.Refused)
-                    {
-                        refused++;
-                        sb.AppendLine("**Figure labels could not be established.** " + set.Warning);
-                        sb.AppendLine();
-                        sb.AppendLine("The images are listed in document order, unlabelled. Do not "
-                                    + "assume image *N* is figure *N* here.");
-                        sb.AppendLine();
-                    }
-                    else if (set.Method == Core.LabelingMethod.Ordinal)
-                    {
-                        sb.AppendLine("Image *N* carries figure *N*, checked for all "
-                                    + set.Images.Count + ".");
-                        sb.AppendLine();
-                    }
-
-                    sb.AppendLine("| " + VisualNoun(anyLabelled, false, true)
-                                + " | Source part | What the document says it shows |");
-                    sb.AppendLine("|---|---|---|");
-                    foreach (var img in set.Images)
-                    {
-                        // Not truncated: the chat table cuts at 110 characters
-                        // because a docked panel is narrow. This file is read by
-                        // the model and by a Markdown previewer, and both want
-                        // the whole sentence.
-                        var desc = "";
-                        if (img.Descriptions != null && img.Descriptions.Count > 0)
-                            desc = string.Join(" ", img.Descriptions);
-                        if (string.IsNullOrWhiteSpace(desc)) desc = "\u2014";
-                        desc = desc.Replace("\r", " ").Replace("\n", " ").Replace("|", "\\|").Trim();
-
-                        var part = (img.PartName ?? "").Replace("/word/", "").Replace("|", "\\|");
-
-                        sb.AppendLine("| " + (img.Label ?? ("image " + img.Ordinal))
-                            + " | " + part + " | " + desc + " |");
-                        wrote++;
-                    }
+                    sb.AppendLine("The images are listed in document order, unlabelled. Do not "
+                                + "assume image *N* is figure *N* here.");
+                    sb.AppendLine();
+                }
+                else if (set.Method == Core.LabelingMethod.Ordinal)
+                {
+                    sb.AppendLine("Image *N* carries figure *N*, checked for all "
+                                + set.Images.Count + ".");
                     sb.AppendLine();
                 }
 
-                if (wrote == 0)
+                sb.AppendLine("| " + VisualNoun(anyLabelled, false, true)
+                            + " | Source part | What the document says it shows |");
+                sb.AppendLine("|---|---|---|");
+                foreach (var img in set.Images)
                 {
-                    batchControl.AppendLog(
-                        "No images found in this project's Word documents - nothing written.", true);
-                    return;
-                }
+                    // Not truncated: the chat table cuts at 110 characters
+                    // because a docked panel is narrow. This file is read by
+                    // the model and by a Markdown previewer, and both want
+                    // the whole sentence.
+                    var desc = "";
+                    if (img.Descriptions != null && img.Descriptions.Count > 0)
+                        desc = string.Join(" ", img.Descriptions);
+                    if (string.IsNullOrWhiteSpace(desc)) desc = "\u2014";
+                    desc = desc.Replace("\r", " ").Replace("\n", " ").Replace("|", "\\|").Trim();
 
-                sb.AppendLine("## What is not here");
+                    var part = (img.PartName ?? "").Replace("/word/", "").Replace("|", "\\|");
+
+                    sb.AppendLine("| " + (img.Label ?? ("image " + img.Ordinal))
+                        + " | " + part + " | " + desc + " |");
+                    wrote++;
+                }
                 sb.AppendLine();
-                sb.AppendLine("What each drawing **actually shows** \u2014 the parts visible in it, and "
-                            + "any reference sign printed on the drawing but absent from the text \u2014 "
-                            + "is not in this file. Establishing that needs a pass that looks at the "
-                            + "images, which does not exist yet (issue #69). Everything above comes "
-                            + "from the document's own text.");
+            }
 
-                var outPath = Path.Combine(bankDir, "figures.md");
-                try
-                {
-                    // CRLF throughout: AppendLine emits CRLF but the text it wraps
-                    // arrives with bare LF, and a mixed file makes Markdown editors
-                    // complain. Same reasoning as the chat-save writer.
-                    var text = sb.ToString()
-                        .Replace("\r\n", "\n")
-                        .Replace("\r", "\n")
-                        .Replace("\n", "\r\n");
-                    File.WriteAllText(outPath, text, new System.Text.UTF8Encoding(false));
-                }
-                catch (Exception ex)
-                {
-                    batchControl.AppendLog("Could not write figures.md: " + ex.Message, true);
-                    return;
-                }
+            if (wrote == 0)
+            {
+                batchControl.AppendLog(
+                    "No images found in this project's Word documents - nothing written.", true);
+                return;
+            }
 
-                batchControl.AppendLog("figures.md written to memory bank " + bankName
-                    + " (" + wrote + " figure(s)"
-                    + (refused > 0 ? ", " + refused + " document(s) unlabelled" : "")
-                    + "). It is read into every prompt.");
+            sb.AppendLine("## What is not here");
+            sb.AppendLine();
+            sb.AppendLine("What each drawing **actually shows** \u2014 the parts visible in it, and "
+                        + "any reference sign printed on the drawing but absent from the text \u2014 "
+                        + "is not in this file. Establishing that needs a pass that looks at the "
+                        + "images, which does not exist yet (issue #69). Everything above comes "
+                        + "from the document's own text.");
 
-                ShowSuperMemoryMessage(
-                    "Wrote **figures.md** to memory bank **" + bankName + "** \u2014 "
-                    + wrote + " figure(s).\n\nUnlike a chat save, this sits at the bank root, "
-                    + "so it is read into every prompt.");
-            });
+            var outPath = Path.Combine(bankDir, "figures.md");
+            try
+            {
+                // CRLF throughout: AppendLine emits CRLF but the text it wraps
+                // arrives with bare LF, and a mixed file makes Markdown editors
+                // complain. Same reasoning as the chat-save writer.
+                var text = sb.ToString()
+                    .Replace("\r\n", "\n")
+                    .Replace("\r", "\n")
+                    .Replace("\n", "\r\n");
+                File.WriteAllText(outPath, text, new System.Text.UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                batchControl.AppendLog("Could not write figures.md: " + ex.Message, true);
+                return;
+            }
+
+            batchControl.AppendLog("figures.md written to memory bank " + bankName
+                + " (" + wrote + " figure(s)"
+                + (refused > 0 ? ", " + refused + " document(s) unlabelled" : "")
+                + "). It is read into every prompt.");
+
+            ShowSuperMemoryMessage(
+                "Wrote **figures.md** to memory bank **" + bankName + "** \u2014 "
+                + wrote + " figure(s).\n\nUnlike a chat save, this sits at the bank root, "
+                + "so it is read into every prompt.");
         }
 
         /// <summary>
@@ -10053,77 +10145,74 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// as not existing, so it is reachable from the tab that actually
         /// consumes it as well.</para>
         /// </summary>
-        private void OnReferenceImagesFolderRequested(object sender, EventArgs e)
+        private void ChooseReferenceImagesFolder()
         {
-            SafeInvoke(() =>
+            var batchControl = _control.Value.BatchTranslateControl;
+
+            var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+            if (string.IsNullOrEmpty(projectPath))
             {
-                var batchControl = _control.Value.BatchTranslateControl;
+                batchControl.AppendLog(
+                    "No project open - there is nothing to attach a folder to.", true);
+                return;
+            }
 
-                var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
-                if (string.IsNullOrEmpty(projectPath))
-                {
-                    batchControl.AppendLog(
-                        "No project open - there is nothing to attach a folder to.", true);
-                    return;
-                }
+            string current = "";
+            try { current = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; }
+            catch { }
 
-                string current = "";
-                try { current = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; }
-                catch { }
-
-                // Start where the drawings usually are: beside the project rather
-                // than inside the Studio folder.
-                var start = current;
-                if (string.IsNullOrEmpty(start))
-                {
-                    try
-                    {
-                        var suggestions = Core.ReferenceImages.Suggest(projectPath);
-                        if (suggestions != null && suggestions.Count > 0) start = suggestions[0];
-                    }
-                    catch { }
-                }
-
-                // FolderPicker, not FolderBrowserDialog: the latter is the
-                // Windows 2000-era tree with nowhere to paste a path.
-                var chosen = Controls.FolderPicker.Show(
-                    _control.Value.FindForm(),
-                    "Choose the folder holding this project's drawings",
-                    start);
-                if (string.IsNullOrEmpty(chosen)) return;
-
-                var found = 0;
-                try { found = Core.ReferenceImages.List(chosen)?.Count ?? 0; }
-                catch { }
-
-                if (found == 0)
-                {
-                    var go = MessageBox.Show(_control.Value.FindForm(),
-                        "No images found in" + "\n\n" + chosen + "\n\nUse it anyway?",
-                        "Reference images",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Question,
-                        MessageBoxDefaultButton.Button2);
-                    if (go != DialogResult.Yes) return;
-                }
-
+            // Start where the drawings usually are: beside the project rather
+            // than inside the Studio folder.
+            var start = current;
+            if (string.IsNullOrEmpty(start))
+            {
                 try
                 {
-                    var ps = Settings.ProjectSettings.Load(projectPath) ?? new Settings.ProjectSettings();
-                    ps.ReferenceImagesFolder = chosen;
-                    if (string.IsNullOrEmpty(ps.ProjectPath)) ps.ProjectPath = projectPath;
-                    if (string.IsNullOrEmpty(ps.ProjectName))
-                        ps.ProjectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "";
-                    Settings.ProjectSettings.Save(projectPath, ps);
+                    var suggestions = Core.ReferenceImages.Suggest(projectPath);
+                    if (suggestions != null && suggestions.Count > 0) start = suggestions[0];
                 }
-                catch (Exception ex)
-                {
-                    batchControl.AppendLog("Could not save the folder: " + ex.Message, true);
-                    return;
-                }
+                catch { }
+            }
 
-                batchControl.AppendLog("Reference images folder set: " + chosen
-                    + " (" + found + " image file(s)).");
-            });
+            // FolderPicker, not FolderBrowserDialog: the latter is the
+            // Windows 2000-era tree with nowhere to paste a path.
+            var chosen = Controls.FolderPicker.Show(
+                _control.Value.FindForm(),
+                "Choose the folder holding this project's drawings",
+                start);
+            if (string.IsNullOrEmpty(chosen)) return;
+
+            var found = 0;
+            try { found = Core.ReferenceImages.List(chosen)?.Count ?? 0; }
+            catch { }
+
+            if (found == 0)
+            {
+                var go = MessageBox.Show(_control.Value.FindForm(),
+                    "No images found in" + "\n\n" + chosen + "\n\nUse it anyway?",
+                    "Reference images",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2);
+                if (go != DialogResult.Yes) return;
+            }
+
+            try
+            {
+                var ps = Settings.ProjectSettings.Load(projectPath) ?? new Settings.ProjectSettings();
+                ps.ReferenceImagesFolder = chosen;
+                if (string.IsNullOrEmpty(ps.ProjectPath)) ps.ProjectPath = projectPath;
+                if (string.IsNullOrEmpty(ps.ProjectName))
+                    ps.ProjectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "";
+                Settings.ProjectSettings.Save(projectPath, ps);
+            }
+            catch (Exception ex)
+            {
+                batchControl.AppendLog("Could not save the folder: " + ex.Message, true);
+                return;
+            }
+
+            batchControl.AppendLog("Reference images folder set: " + chosen
+                + " (" + found + " image file(s)).");
         }
 
         /// <summary>
@@ -10138,241 +10227,238 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// file would say "no images" on exactly the documents this feature
         /// exists for.</para>
         /// </summary>
-        private void OnDocumentImagesRequested(object sender, EventArgs e)
+        private void ShowDocumentImagesReport()
         {
-            SafeInvoke(() =>
+            var batchControl = _control.Value.BatchTranslateControl;
+
+            var anchorPath = ResolveProjectAnchorPathCore();
+            if (string.IsNullOrEmpty(anchorPath))
             {
-                var batchControl = _control.Value.BatchTranslateControl;
+                batchControl.AppendLog("No project open.", true);
+                return;
+            }
 
-                var anchorPath = ResolveProjectAnchorPathCore();
-                if (string.IsNullOrEmpty(anchorPath))
-                {
-                    batchControl.AppendLog("No project open.", true);
-                    return;
-                }
+            // The project folder and one level up. Deduplicated, because a
+            // single-file project can have both resolve to the same place.
+            var dirs = new List<string>();
+            try
+            {
+                var d = Path.GetDirectoryName(anchorPath);
+                if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
+                var up = Path.GetDirectoryName(d);
+                if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
+                    && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
+                    dirs.Add(up);
+            }
+            catch { }
 
-                // The project folder and one level up. Deduplicated, because a
-                // single-file project can have both resolve to the same place.
-                var dirs = new List<string>();
+            var docxFiles = new List<string>();
+            foreach (var d in dirs)
+            {
                 try
                 {
-                    var d = Path.GetDirectoryName(anchorPath);
-                    if (!string.IsNullOrEmpty(d) && Directory.Exists(d)) dirs.Add(d);
-                    var up = Path.GetDirectoryName(d);
-                    if (!string.IsNullOrEmpty(up) && Directory.Exists(up)
-                        && !string.Equals(up, d, StringComparison.OrdinalIgnoreCase))
-                        dirs.Add(up);
+                    foreach (var f in Directory.GetFiles(d, "*.docx", SearchOption.TopDirectoryOnly))
+                    {
+                        // Word's lock files are not documents.
+                        if (Path.GetFileName(f).StartsWith("~$")) continue;
+                        if (!docxFiles.Contains(f)) docxFiles.Add(f);
+                    }
                 }
                 catch { }
+            }
 
-                var docxFiles = new List<string>();
-                foreach (var d in dirs)
-                {
-                    try
-                    {
-                        foreach (var f in Directory.GetFiles(d, "*.docx", SearchOption.TopDirectoryOnly))
-                        {
-                            // Word's lock files are not documents.
-                            if (Path.GetFileName(f).StartsWith("~$")) continue;
-                            if (!docxFiles.Contains(f)) docxFiles.Add(f);
-                        }
-                    }
-                    catch { }
-                }
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("## Document images");
+            sb.AppendLine();
 
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("## Document images");
+            int totalImages = 0, totalLabelled = 0, totalAnchored = 0;
+
+            if (docxFiles.Count == 0)
+            {
+                sb.AppendLine("No Word documents found beside this project.");
+                sb.AppendLine();
+            }
+
+            foreach (var f in docxFiles)
+            {
+                var set = Core.DocxImageExtractor.Extract(f);
+                var images = set.Images;
+                var labelled = images.Count(i => !string.IsNullOrEmpty(i.Label));
+                var anchored = images.Count(i => !string.IsNullOrWhiteSpace(i.Anchor));
+                var described = images.Count(i => i.Descriptions != null && i.Descriptions.Count > 0);
+                totalImages += images.Count;
+                totalLabelled += labelled;
+                totalAnchored += anchored;
+
+                sb.AppendLine("### " + Path.GetFileName(f));
                 sb.AppendLine();
 
-                int totalImages = 0, totalLabelled = 0, totalAnchored = 0;
-
-                if (docxFiles.Count == 0)
+                if (images.Count == 0)
                 {
-                    sb.AppendLine("No Word documents found beside this project.");
+                    sb.AppendLine("No images.");
                     sb.AppendLine();
+                    continue;
                 }
 
-                foreach (var f in docxFiles)
-                {
-                    var set = Core.DocxImageExtractor.Extract(f);
-                    var images = set.Images;
-                    var labelled = images.Count(i => !string.IsNullOrEmpty(i.Label));
-                    var anchored = images.Count(i => !string.IsNullOrWhiteSpace(i.Anchor));
-                    var described = images.Count(i => i.Descriptions != null && i.Descriptions.Count > 0);
-                    totalImages += images.Count;
-                    totalLabelled += labelled;
-                    totalAnchored += anchored;
-
-                    sb.AppendLine("### " + Path.GetFileName(f));
-                    sb.AppendLine();
-
-                    if (images.Count == 0)
-                    {
-                        sb.AppendLine("No images.");
-                        sb.AppendLine();
-                        continue;
-                    }
-
-                    sb.AppendLine("**" + images.Count + " image(s)** \u2013 "
-                        + labelled + " with a figure label, "
-                        + described + " with a description in the text, "
-                        + anchored + " with surrounding text.");
-                    sb.AppendLine();
-
-                    // Say how the labels were arrived at. The old report could
-                    // not, and so announced success over four figures collapsed
-                    // onto FIG. 3.
-                    if (set.Method == Core.LabelingMethod.Ordinal)
-                    {
-                        sb.AppendLine("Labels paired by position and checked: image *N* carries "
-                                    + "figure *N*, verified for all " + images.Count + ".");
-                    }
-                    else if (set.Method == Core.LabelingMethod.Refused)
-                    {
-                        sb.AppendLine("> \u26A0 **Labels withheld.** " + set.Warning);
-                    }
-                    else if (set.Method == Core.LabelingMethod.Proximity)
-                    {
-                        sb.AppendLine("*Labels taken from nearby text \u2013 right for captioned "
-                                    + "inline images, a guess on a document of plates.*");
-                    }
-                    sb.AppendLine();
-
-                    // A list, not a table. This goes to a narrow docked panel;
-                    // figures.md keeps the table because it is read full width.
-                    foreach (var img in images)
-                    {
-                        // The description matched by figure number, not the text
-                        // the image happens to sit among. On a patent the latter
-                        // is the plate label and some empty paragraphs; the
-                        // former is hundreds of paragraphs away and is the point.
-                        // Prefer the longest: a patent carries a short entry in
-                        // the figure list and a longer one in the detailed
-                        // description, and the longer one names the parts.
-                        string cell = null;
-                        // Counted here, appended AFTER truncation: adding it now
-                        // loses it on exactly the long rows that have more than
-                        // one description, which is all of figures 8-14.
-                        int extra = 0;
-                        if (img.Descriptions != null && img.Descriptions.Count > 0)
-                        {
-                            foreach (var d in img.Descriptions)
-                                if (cell == null || d.Length > cell.Length) cell = d;
-                            extra = img.Descriptions.Count - 1;
-                        }
-
-                        if (string.IsNullOrWhiteSpace(cell))
-                        {
-                            cell = (img.Anchor ?? "").Trim();
-                            if (cell.Length > 0) cell = "*sits among:* " + cell;
-                        }
-
-                        cell = (cell ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
-                        if (cell.Length > 110) cell = cell.Substring(0, 107) + "\u2026";
-                        if (cell.Length == 0) cell = "*(nothing found)*";
-                        cell = cell.Replace("|", "\\|");
-                        if (extra > 0) cell += " *(+" + extra + " more)*";
-
-                        var head = img.Label ?? ("image " + img.Ordinal);
-                        var part = (img.PartName ?? "").Replace("/word/media/", "");
-                        sb.AppendLine("**" + head + "**"
-                            + (part.Length > 0 ? "  \u00b7  " + part : ""));
-                        sb.AppendLine();
-                        sb.AppendLine(cell);
-                        sb.AppendLine();
-                    }
-                    sb.AppendLine();
-                }
-
-                // The folder half of the picture.
-                string folder = "";
-                try
-                {
-                    var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
-                    if (!string.IsNullOrEmpty(projectPath))
-                        folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? "";
-                }
-                catch { }
-
-                sb.AppendLine("### Reference images folder");
+                sb.AppendLine("**" + images.Count + " image(s)** \u2013 "
+                    + labelled + " with a figure label, "
+                    + described + " with a description in the text, "
+                    + anchored + " with surrounding text.");
                 sb.AppendLine();
-                if (string.IsNullOrEmpty(folder))
+
+                // Say how the labels were arrived at. The old report could
+                // not, and so announced success over four figures collapsed
+                // onto FIG. 3.
+                if (set.Method == Core.LabelingMethod.Ordinal)
                 {
-                    // The row is real, but it only appears once a bank node or a
-                    // figures.md is SELECTED - so naming the path alone reads as a
-                    // dead end to anyone who opens Library and sees prompt folders.
-                    sb.AppendLine("Not set for this project. Use the "
-                                + "**Reference images folder** link on the Batch Operations "
-                                + "tab, just below this report's button. Remembered per Trados "
-                                + "project. (It is also on a memory bank in Settings > Library, "
-                                + "but that route is easy to miss.)");
+                    sb.AppendLine("Labels paired by position and checked: image *N* carries "
+                                + "figure *N*, verified for all " + images.Count + ".");
                 }
-                else
+                else if (set.Method == Core.LabelingMethod.Refused)
                 {
-                    var listed = Core.ReferenceImages.List(folder);
-                    sb.AppendLine("`" + folder + "` \u2013 " + listed.Count + " image file(s).");
+                    sb.AppendLine("> \u26A0 **Labels withheld.** " + set.Warning);
+                }
+                else if (set.Method == Core.LabelingMethod.Proximity)
+                {
+                    sb.AppendLine("*Labels taken from nearby text \u2013 right for captioned "
+                                + "inline images, a guess on a document of plates.*");
                 }
                 sb.AppendLine();
 
-                // What is here, and what is still missing to use it. NOT a
-                // recommendation: the shape of a job varies per client and per
-                // document, and one sample is not a rule.
-                sb.AppendLine("### What this means");
-                sb.AppendLine();
-                if (totalImages == 0)
+                // A list, not a table. This goes to a narrow docked panel;
+                // figures.md keeps the table because it is read full width.
+                foreach (var img in images)
                 {
-                    sb.AppendLine("Nothing visual was found in these Word files. If the job has "
-                                + "drawings, they are somewhere this does not look yet \u2013 a PDF, a "
-                                + "file elsewhere, or a document type not read here. Point the "
-                                + "Reference images folder at them so they are at least on record.");
-                }
-                else
-                {
-                    sb.AppendLine("Found **" + totalImages + "** image(s): "
-                        + totalLabelled + " carry a figure label in the text, "
-                        + totalAnchored + " sit among text that could anchor them.");
+                    // The description matched by figure number, not the text
+                    // the image happens to sit among. On a patent the latter
+                    // is the plate label and some empty paragraphs; the
+                    // former is hundreds of paragraphs away and is the point.
+                    // Prefer the longest: a patent carries a short entry in
+                    // the figure list and a longer one in the detailed
+                    // description, and the longer one names the parts.
+                    string cell = null;
+                    // Counted here, appended AFTER truncation: adding it now
+                    // loses it on exactly the long rows that have more than
+                    // one description, which is all of figures 8-14.
+                    int extra = 0;
+                    if (img.Descriptions != null && img.Descriptions.Count > 0)
+                    {
+                        foreach (var d in img.Descriptions)
+                            if (cell == null || d.Length > cell.Length) cell = d;
+                        extra = img.Descriptions.Count - 1;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(cell))
+                    {
+                        cell = (img.Anchor ?? "").Trim();
+                        if (cell.Length > 0) cell = "*sits among:* " + cell;
+                    }
+
+                    cell = (cell ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+                    if (cell.Length > 110) cell = cell.Substring(0, 107) + "\u2026";
+                    if (cell.Length == 0) cell = "*(nothing found)*";
+                    cell = cell.Replace("|", "\\|");
+                    if (extra > 0) cell += " *(+" + extra + " more)*";
+
+                    var head = img.Label ?? ("image " + img.Ordinal);
+                    var part = (img.PartName ?? "").Replace("/word/media/", "");
+                    sb.AppendLine("**" + head + "**"
+                        + (part.Length > 0 ? "  \u00b7  " + part : ""));
                     sb.AppendLine();
-
-                    if (totalLabelled < totalImages)
-                    {
-                        sb.AppendLine("- " + (totalImages - totalLabelled) + " have no label in the "
-                                    + "document. Where the number is drawn inside the picture, only "
-                                    + "looking at the image can recover it.");
-                    }
-                    if (totalAnchored < totalImages)
-                    {
-                        sb.AppendLine("- " + (totalImages - totalAnchored) + " have no surrounding "
-                                    + "text, so nothing ties them to a place in the translation.");
-                    }
-                    if (totalLabelled == totalImages && totalAnchored == totalImages
-                        && totalImages > 0)
-                    {
-                        sb.AppendLine("- Every image has both a label and surrounding text.");
-                    }
+                    sb.AppendLine(cell);
+                    sb.AppendLine();
                 }
                 sb.AppendLine();
-                sb.AppendLine("*None of this reaches the AI yet. Getting any visual in a document "
-                            + "through to the model \u2013 labelled or not, anchored or not \u2013 is issue "
-                            + "#69.*");
+            }
 
-                var markdown = sb.ToString().TrimEnd();
+            // The folder half of the picture.
+            string folder = "";
+            try
+            {
+                var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+                if (!string.IsNullOrEmpty(projectPath))
+                    folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? "";
+            }
+            catch { }
 
-                _control.Value.SwitchToChatTab();
-                _chatHistory.Add(new ChatMessage
+            sb.AppendLine("### Reference images folder");
+            sb.AppendLine();
+            if (string.IsNullOrEmpty(folder))
+            {
+                // The row is real, but it only appears once a bank node or a
+                // figures.md is SELECTED - so naming the path alone reads as a
+                // dead end to anyone who opens Library and sees prompt folders.
+                sb.AppendLine("Not set for this project. Use the "
+                            + "**Reference images folder** link on the Batch Operations "
+                            + "tab, just below this report's button. Remembered per Trados "
+                            + "project. (It is also on a memory bank in Settings > Library, "
+                            + "but that route is easy to miss.)");
+            }
+            else
+            {
+                var listed = Core.ReferenceImages.List(folder);
+                sb.AppendLine("`" + folder + "` \u2013 " + listed.Count + " image file(s).");
+            }
+            sb.AppendLine();
+
+            // What is here, and what is still missing to use it. NOT a
+            // recommendation: the shape of a job varies per client and per
+            // document, and one sample is not a rule.
+            sb.AppendLine("### What this means");
+            sb.AppendLine();
+            if (totalImages == 0)
+            {
+                sb.AppendLine("Nothing visual was found in these Word files. If the job has "
+                            + "drawings, they are somewhere this does not look yet \u2013 a PDF, a "
+                            + "file elsewhere, or a document type not read here. Point the "
+                            + "Reference images folder at them so they are at least on record.");
+            }
+            else
+            {
+                sb.AppendLine("Found **" + totalImages + "** image(s): "
+                    + totalLabelled + " carry a figure label in the text, "
+                    + totalAnchored + " sit among text that could anchor them.");
+                sb.AppendLine();
+
+                if (totalLabelled < totalImages)
                 {
-                    Role = ChatRole.Assistant,
-                    Content = markdown
-                });
-                _control.Value.AddMessage(new ChatMessage
+                    sb.AppendLine("- " + (totalImages - totalLabelled) + " have no label in the "
+                                + "document. Where the number is drawn inside the picture, only "
+                                + "looking at the image can recover it.");
+                }
+                if (totalAnchored < totalImages)
                 {
-                    Role = ChatRole.Assistant,
-                    Content = markdown
-                });
-                SaveChatHistory();
+                    sb.AppendLine("- " + (totalImages - totalAnchored) + " have no surrounding "
+                                + "text, so nothing ties them to a place in the translation.");
+                }
+                if (totalLabelled == totalImages && totalAnchored == totalImages
+                    && totalImages > 0)
+                {
+                    sb.AppendLine("- Every image has both a label and surrounding text.");
+                }
+            }
+            sb.AppendLine();
+            sb.AppendLine("*None of this reaches the AI yet. Getting any visual in a document "
+                        + "through to the model \u2013 labelled or not, anchored or not \u2013 is issue "
+                        + "#69.*");
 
-                batchControl.AppendLog("Document images: " + totalImages
-                    + " across " + docxFiles.Count + " document(s) - see the Chat tab.");
+            var markdown = sb.ToString().TrimEnd();
+
+            _control.Value.SwitchToChatTab();
+            _chatHistory.Add(new ChatMessage
+            {
+                Role = ChatRole.Assistant,
+                Content = markdown
             });
+            _control.Value.AddMessage(new ChatMessage
+            {
+                Role = ChatRole.Assistant,
+                Content = markdown
+            });
+            SaveChatHistory();
+
+            batchControl.AppendLog("Document images: " + totalImages
+                + " across " + docxFiles.Count + " document(s) - see the Chat tab.");
         }
 
         /// <summary>
