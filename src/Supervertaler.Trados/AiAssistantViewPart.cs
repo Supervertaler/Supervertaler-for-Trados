@@ -9310,7 +9310,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrEmpty(folder))
             {
                 batchControl.AppendLog(
-                    "No reference images folder set - use the Reference images folder link first.", true);
+                    "No images folder chosen yet - do step 1 in the Images panel first.", true);
                 return;
             }
 
@@ -9687,8 +9687,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var actions = new Controls.ImagesActions
                 {
                     Refresh = BuildImagesState,
-                    Browse = ChooseReferenceImagesFolder,
-                    Extract = ExtractImagesToFolder,
+                    ExtractChoosingFolder = ExtractImagesChoosingFolder,
+                    ChangeFolder = ChooseReferenceImagesFolder,
+                    OpenFolder = OpenReferenceImagesFolder,
                     Analyse = () => OnAnalyseFiguresRequested(this, EventArgs.Empty),
                     WriteFigures = WriteFiguresFile,
                     ShowReport = ShowDocumentImagesReport,
@@ -9703,6 +9704,38 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// every open and after every action (two Word files scanned for images,
         /// one folder listed, one file's date read). Never throws.
         /// </summary>
+        /// <summary>
+        /// Step 1 of the Images panel: the folder is chosen inside the step the
+        /// first time, then the images are extracted into it. A new user has no
+        /// folder yet and should not have to know that choosing one is separate.
+        /// </summary>
+        private void ExtractImagesChoosingFolder()
+        {
+            var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+            if (string.IsNullOrEmpty(projectPath)) return;
+            string folder = "";
+            try { folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; } catch { }
+            if (string.IsNullOrEmpty(folder))
+            {
+                ChooseReferenceImagesFolder();
+                try { folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; } catch { }
+                if (string.IsNullOrEmpty(folder)) return;   // cancelled the picker
+            }
+            ExtractImagesToFolder();
+        }
+
+        private void OpenReferenceImagesFolder()
+        {
+            var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+            if (string.IsNullOrEmpty(projectPath)) return;
+            string folder = "";
+            try { folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; } catch { }
+            if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
+            {
+                try { System.Diagnostics.Process.Start("explorer.exe", "\"" + folder + "\""); } catch { }
+            }
+        }
+
         private Controls.ImagesState BuildImagesState()
         {
             var st = new Controls.ImagesState();
@@ -9900,7 +9933,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrEmpty(folder))
             {
                 batchControl.AppendLog(
-                    "No reference images folder set - use the Reference images folder link first.",
+                    "No images folder chosen yet - do step 1 in the Images panel first.",
                     true);
                 return;
             }

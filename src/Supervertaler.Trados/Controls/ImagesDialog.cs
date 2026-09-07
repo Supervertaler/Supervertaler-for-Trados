@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -6,12 +6,12 @@ using Supervertaler.Trados.Core;
 
 namespace Supervertaler.Trados.Controls
 {
-    /// <summary>What the Images dialog shows: the state of the figure pipeline for the open project (#84).</summary>
+    /// <summary>What the Images dialog shows: the state of the image pipeline for the open project (#84).</summary>
     internal sealed class ImagesState
     {
         public bool ProjectOpen;
         public string ProjectName;
-        /// <summary>The reference images folder, or empty when none is set.</summary>
+        /// <summary>The images folder, or empty when none is chosen yet.</summary>
         public string Folder;
         /// <summary>Image files in that folder, when it is set and exists; -1 when it does not exist.</summary>
         public int FolderImages;
@@ -23,7 +23,7 @@ namespace Supervertaler.Trados.Controls
         public string FiguresPath;
         public DateTime? FiguresWritten;
         public int FiguresRows;
-        /// <summary>True when figures.md was written without the AI pass, so the "what the drawing shows" column is missing.</summary>
+        /// <summary>True when figures.md was written without the AI pass, so the "what the image shows" column is missing.</summary>
         public bool FiguresWithoutVision;
         public bool AnalysisRunning;
         public string ProviderName;
@@ -33,32 +33,39 @@ namespace Supervertaler.Trados.Controls
     internal sealed class ImagesActions
     {
         public Func<ImagesState> Refresh;
-        public Action Browse;
-        public Action Extract;
+        /// <summary>Step 1: ask for a folder if none is chosen yet, then extract into it.</summary>
+        public Action ExtractChoosingFolder;
+        /// <summary>Change the folder without extracting (the user already has the images somewhere).</summary>
+        public Action ChangeFolder;
+        public Action OpenFolder;
         public Action Analyse;
         public Action WriteFigures;
         public Action ShowReport;
     }
 
     /// <summary>
-    /// The figure pipeline as one panel (#84): the folder, what the documents
-    /// contain, the three stages as buttons with their cost stated, and the
-    /// state of figures.md. Replaces five peer links that read as five
-    /// unrelated choices, and needs no tooltips because the layout says the
-    /// order. The overwrite confirmation and the re-entrancy guard live in the
-    /// actions, not here.
+    /// The image pipeline as one panel (#84), laid out as the two steps a new
+    /// user takes: get the images out into a folder, then have them described
+    /// for the AI. The folder is chosen inside step 1, not as a step of its own;
+    /// "Change" exists for someone who already keeps the images in a folder. Cost
+    /// is stated beside each button before it is spent. The overwrite
+    /// confirmations and the re-entrancy guard live in the actions, not here.
     /// </summary>
     internal sealed class ImagesDialog : Form
     {
         private readonly ImagesActions _actions;
         private ImagesState _state;
 
-        private readonly TextBox _txtFolder;
-        private readonly Label _lblFolderNote;
-        private readonly Label _lblFound;
-        private readonly Button _btnExtract, _btnAnalyse, _btnWrite;
-        private readonly Label _lblExtractCost, _lblAnalyseCost, _lblWriteCost;
-        private readonly Label _lblFigures;
+        private readonly Label _lblDocs;
+        private readonly Button _btnExtract;
+        private readonly Label _lblExtractNote;
+        private readonly Label _lblFolder;
+        private readonly LinkLabel _lnkChange, _lnkOpen;
+        private readonly Button _btnAnalyse;
+        private readonly Label _lblAnalyseNote;
+        private readonly Button _btnWrite;
+        private readonly Label _lblWriteNote;
+        private readonly Label _lblResult;
         private readonly Timer _poll;
 
         /// <summary>For the layout probe: the longest realistic state, no actions.</summary>
@@ -66,7 +73,7 @@ namespace Supervertaler.Trados.Controls
         {
             ProjectOpen = true,
             ProjectName = "Acme PROJ-001 (application as filed, drawings as filed, sequence listing)",
-            Folder = @"D:\Google Drive\Jobs\Acme\0187\Acme PROJ-001 (application as filed)\Reference images folder with a long name",
+            Folder = @"D:\Google Drive\Jobs\Acme\0187\Acme PROJ-001 (application as filed)\Images folder with a long name",
             FolderImages = 14,
             Documents = new List<string>
             {
@@ -92,53 +99,59 @@ namespace Supervertaler.Trados.Controls
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(UiScale.Pixels(640), UiScale.Pixels(430));
-            MinimumSize = new Size(UiScale.Pixels(520), UiScale.Pixels(380));
+            ClientSize = new Size(UiScale.Pixels(660), UiScale.Pixels(470));
+            MinimumSize = new Size(UiScale.Pixels(540), UiScale.Pixels(420));
 
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Padding = new Padding(UiScale.Pixels(12)) };
+            var tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(UiScale.Pixels(12)) };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             int row = 0;
 
-            var intro = Wrap("The AI sees the text of the documents you translate, not the pictures in them. This panel takes the images out of " +
-                             "the project's source documents into a folder, and writes a description of each one to a file called figures.md in " +
-                             "the memory bank. The AI reads that file with every request, so it knows what the images show.");
-            root.Controls.Add(intro, 0, row); root.SetColumnSpan(intro, 3); row++;
+            var intro = Wrap("The AI sees the text of your documents, not the pictures in them. Two steps give it a description of each image: " +
+                             "get the images out of the documents into a folder, then have them described.");
+            root.Controls.Add(intro, 0, row); root.SetColumnSpan(intro, 2); row++;
 
-            // Folder
-            root.Controls.Add(L("Folder:"), 0, row);
-            // TabStop off: as the first control it took focus and opened with the
-            // whole path selected, which reads as "something to edit". It is a label.
-            _txtFolder = new TextBox { ReadOnly = true, TabStop = false, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(6), 0) };
-            root.Controls.Add(_txtFolder, 1, row);
-            var btnBrowse = Btn("Browse\u2026"); btnBrowse.Click += (s, e) => Run(_actions.Browse);
-            var tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
-            tips.SetToolTip(btnBrowse, "Pick a folder where the images will be put. An empty folder is fine; Extract fills it. Remembered for this project.");
-            root.Controls.Add(btnBrowse, 2, row); row++;
-            _lblFolderNote = Wrap(""); _lblFolderNote.ForeColor = Color.FromArgb(100, 100, 100);
-            root.Controls.Add(_lblFolderNote, 1, row); root.SetColumnSpan(_lblFolderNote, 2); row++;
+            // What is there
+            root.Controls.Add(L("Your documents:"), 0, row);
+            _lblDocs = Wrap("");
+            root.Controls.Add(_lblDocs, 1, row); row++;
 
-            // Found
-            root.Controls.Add(L("Source documents:"), 0, row);
-            _lblFound = Wrap("");
-            root.Controls.Add(_lblFound, 1, row); root.SetColumnSpan(_lblFound, 2); row++;
+            // Step 1
+            root.Controls.Add(Step("Step 1"), 0, row);
+            _btnExtract = Btn("Extract images to a folder\u2026");
+            _btnExtract.Click += (s, e) => Run(_actions.ExtractChoosingFolder);
+            tips.SetToolTip(_btnExtract, "Asks where to put the images the first time, then copies them out of the documents into that folder, named after their figure numbers (Figure 01.png, Figure 02.png...). Running it again replaces the copies.");
+            _lblExtractNote = Note("");
+            root.Controls.Add(Pair(_btnExtract, _lblExtractNote), 1, row); row++;
 
-            // The three stages, in the order they run, each with its cost beside it.
-            var stages = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(10), 0, UiScale.Pixels(6)) };
-            stages.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            stages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            _btnExtract = Stage("Extract images to folder", out _lblExtractCost, stages, 0); _btnExtract.Click += (s, e) => Run(_actions.Extract);
-            tips.SetToolTip(_btnExtract, "Step 1. Copies the images out of the Word documents into the folder above, named after their figure numbers (Figure 01.png, Figure 02.png...). Running it again replaces them.");
-            _btnAnalyse = Stage("Analyse with AI", out _lblAnalyseCost, stages, 1); _btnAnalyse.Click += (s, e) => Run(_actions.Analyse);
-            tips.SetToolTip(_btnAnalyse, "Step 2. Shows each image to the AI, together with what the text says about it, and writes the descriptions to figures.md. One paid request per image. Asks before replacing an existing figures.md.");
-            _btnWrite = Stage("Write figures.md", out _lblWriteCost, stages, 2); _btnWrite.Click += (s, e) => Run(_actions.WriteFigures);
-            tips.SetToolTip(_btnWrite, "The free alternative to Analyse with AI: writes figures.md from the text alone - what the document says each figure shows - without looking at the images. Use one or the other. Replaces an existing figures.md, and asks first.");
-            root.Controls.Add(stages, 0, row); root.SetColumnSpan(stages, 3); row++;
+            var folderRow = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill, WrapContents = true, Margin = new Padding(0, 0, 0, UiScale.Pixels(8)) };
+            _lblFolder = new Label { AutoSize = true, ForeColor = Color.FromArgb(100, 100, 100), Margin = new Padding(0, UiScale.Pixels(2), UiScale.Pixels(8), 0) };
+            _lnkChange = Lnk("Change\u2026"); _lnkChange.LinkClicked += (s, e) => Run(_actions.ChangeFolder);
+            tips.SetToolTip(_lnkChange, "Use a different folder - for example one where you already keep the images. Remembered for this project.");
+            _lnkOpen = Lnk("Open folder"); _lnkOpen.LinkClicked += (s, e) => Run(_actions.OpenFolder);
+            folderRow.Controls.Add(_lblFolder); folderRow.Controls.Add(_lnkChange); folderRow.Controls.Add(_lnkOpen);
+            root.Controls.Add(folderRow, 1, row); row++;
 
-            // figures.md state
-            _lblFigures = Wrap(""); _lblFigures.ForeColor = Color.FromArgb(70, 70, 70);
-            root.Controls.Add(_lblFigures, 0, row); root.SetColumnSpan(_lblFigures, 3); row++;
+            // Step 2
+            root.Controls.Add(Step("Step 2"), 0, row);
+            _btnAnalyse = Btn("Describe images with AI");
+            _btnAnalyse.Click += (s, e) => Run(_actions.Analyse);
+            tips.SetToolTip(_btnAnalyse, "Shows each image to the AI, together with what the text says about it, and saves the descriptions where every prompt reads them. One paid request per image. Asks before replacing descriptions that already exist.");
+            _lblAnalyseNote = Note("");
+            root.Controls.Add(Pair(_btnAnalyse, _lblAnalyseNote), 1, row); row++;
+
+            _btnWrite = Btn("Describe from the text only");
+            _btnWrite.Click += (s, e) => Run(_actions.WriteFigures);
+            tips.SetToolTip(_btnWrite, "The free alternative: saves what the document itself says about each figure, without looking at the images. Use one or the other. Asks before replacing descriptions that already exist.");
+            _lblWriteNote = Note("");
+            var alt = Pair(_btnWrite, _lblWriteNote); alt.Margin = new Padding(0, 0, 0, UiScale.Pixels(8));
+            root.Controls.Add(alt, 1, row); row++;
+
+            // Result
+            root.Controls.Add(L("Result:"), 0, row);
+            _lblResult = Wrap("");
+            root.Controls.Add(_lblResult, 1, row); row++;
 
             // filler
             root.RowStyles.Clear();
@@ -146,29 +159,26 @@ namespace Supervertaler.Trados.Controls
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
             root.Controls.Add(new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty }, 0, row); row++;
 
-            // bottom row: report link, help, close
+            // bottom: report link, help, close
             var bottom = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty };
             var btnClose = Btn("Close"); btnClose.Click += (s, e) => Close();
             bottom.Controls.Add(btnClose);
-            var lnkReport = new LinkLabel { Text = "Document images report", AutoSize = true, Margin = new Padding(0, UiScale.Pixels(7), UiScale.Pixels(12), 0), LinkBehavior = LinkBehavior.HoverUnderline };
+            var lnkReport = Lnk("Document images report"); lnkReport.Margin = new Padding(0, UiScale.Pixels(7), UiScale.Pixels(12), 0);
             lnkReport.LinkClicked += (s, e) => Run(_actions.ShowReport);
-            new ToolTip().SetToolTip(lnkReport, "Every image in the project's Word documents, with its figure label and the text it sits among. Opens in the Chat tab. No AI call.");
+            tips.SetToolTip(lnkReport, "Every image in the project's documents, with its figure label and the text around it. Opens in the Chat tab. No AI call.");
             bottom.Controls.Add(lnkReport);
-            var lnkHelp = new LinkLabel { Text = "? Help", AutoSize = true, Margin = new Padding(0, UiScale.Pixels(7), UiScale.Pixels(12), 0), LinkBehavior = LinkBehavior.HoverUnderline };
-            lnkHelp.LinkClicked += (s, e) => Core.HelpSystem.OpenHelp(Core.HelpSystem.Topics.Images);
+            var lnkHelp = Lnk("? Help"); lnkHelp.Margin = new Padding(0, UiScale.Pixels(7), UiScale.Pixels(12), 0);
+            lnkHelp.LinkClicked += (s, e) => HelpSystem.OpenHelp(HelpSystem.Topics.Images);
             bottom.Controls.Add(lnkHelp);
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.Controls.Add(bottom, 0, row); root.SetColumnSpan(bottom, 3); row++;
+            root.Controls.Add(bottom, 0, row); root.SetColumnSpan(bottom, 2); row++;
             root.RowCount = row;
 
             Controls.Add(root);
             CancelButton = btnClose;
             ActiveControl = btnClose;
-            Shown += (s, e) => btnClose.Focus();
-            // Whatever focuses the read-only box, no selection: it is a path to read, not to edit.
-            _txtFolder.GotFocus += (s, e) => { _txtFolder.SelectionStart = _txtFolder.TextLength; _txtFolder.SelectionLength = 0; };
 
-            // While an analysis runs on a pool thread, the figures.md line follows it.
+            // While a description run is on a pool thread, the result line follows it.
             _poll = new Timer { Interval = 1500 };
             _poll.Tick += (s, e) => { if (_state.AnalysisRunning) RefreshState(); };
             _poll.Start();
@@ -196,48 +206,54 @@ namespace Supervertaler.Trados.Controls
         {
             var st = _state;
             bool folderSet = !string.IsNullOrEmpty(st.Folder);
-            _txtFolder.Text = folderSet ? st.Folder : "";
-            _lblFolderNote.Text = !st.ProjectOpen ? "No project open."
-                : !folderSet ? "Not set. Click Browse and pick a folder where the images will be put - a new, empty folder next to the job is fine. It is remembered for this project."
-                : st.FolderImages < 0 ? "The folder no longer exists."
-                : st.FolderImages == 0 ? "Empty so far. Extract puts the document's images here, named for their figures."
-                : st.FolderImages + " image file(s) in the folder.";
-
-            // Say where the images come from: a new user looking at "Extract" has to
-            // know which files are meant, and it is not the file open in Studio.
-            var found = st.Documents.Count == 0
-                ? "No Word documents in this project. Images are read from the project's source documents, the files in Studio's Files view."
-                : "The project's source documents:" + Environment.NewLine + string.Join(Environment.NewLine, st.Documents);
-            _lblFound.Text = found;
-
             bool haveImages = st.TotalImages > 0;
-            _btnExtract.Enabled = st.ProjectOpen && folderSet && haveImages && !st.AnalysisRunning;
-            _btnAnalyse.Enabled = st.ProjectOpen && folderSet && haveImages && !string.IsNullOrEmpty(st.BankName) && !st.AnalysisRunning;
-            _btnWrite.Enabled = st.ProjectOpen && haveImages && !string.IsNullOrEmpty(st.BankName) && !st.AnalysisRunning;
+            bool haveBank = !string.IsNullOrEmpty(st.BankName);
+            string n = st.TotalImages + " image" + (st.TotalImages == 1 ? "" : "s");
 
-            _lblExtractCost.Text = !folderSet ? "needs the folder"
-                : !haveImages ? "no images in the documents above"
-                : "free, no AI – copies the " + st.TotalImages + " image(s) from the documents above into the folder";
-            _lblAnalyseCost.Text = st.AnalysisRunning ? "running\u2026"
-                : !folderSet ? "needs the folder"
-                : string.IsNullOrEmpty(st.BankName) ? "needs an active memory bank"
-                : haveImages ? st.TotalImages + " AI request(s) to " + (st.ProviderName ?? "the provider") + ", one per image in the documents above; writes figures.md"
-                : "no images in the documents above";
-            _lblWriteCost.Text = string.IsNullOrEmpty(st.BankName) ? "needs an active memory bank"
-                : "free, no AI – the alternative to Analyse: what the documents above say about each figure, without looking at the images. Replaces figures.md; asks first.";
+            _lblDocs.Text = !st.ProjectOpen ? "No project open."
+                : st.Documents.Count == 0
+                    ? "No Word documents in this project. Images are read from the project's source documents, the files in Studio's Files view."
+                    : string.Join(Environment.NewLine, st.Documents);
 
-            if (string.IsNullOrEmpty(st.BankName))
-                _lblFigures.Text = "No memory bank is active, so there is nowhere to write figures.md.";
+            // Step 1
+            _btnExtract.Enabled = st.ProjectOpen && haveImages && !st.AnalysisRunning;
+            _lblExtractNote.Text = !haveImages ? "Nothing to extract: the documents above have no images."
+                : !folderSet ? "Copies the " + n + " out of the documents above. You will be asked where to put them; a new, empty folder next to the job is fine."
+                : "Copies the " + n + " out of the documents above into the folder below. Free, no AI.";
+            _lblFolder.Text = !folderSet ? "Folder: not chosen yet."
+                : st.FolderImages < 0 ? "Folder: " + st.Folder + "  (no longer exists)"
+                : "Folder: " + st.Folder + "  (" + st.FolderImages + " image file" + (st.FolderImages == 1 ? "" : "s") + ")";
+            _lnkChange.Text = folderSet ? "Change\u2026" : "Already have the images in a folder? Choose it\u2026";
+            _lnkOpen.Visible = folderSet && st.FolderImages >= 0;
+
+            // Step 2
+            _btnAnalyse.Enabled = st.ProjectOpen && haveImages && folderSet && haveBank && !st.AnalysisRunning;
+            _lblAnalyseNote.Text = st.AnalysisRunning ? "Running\u2026"
+                : !haveImages ? "No images to describe."
+                : !folderSet ? "Do step 1 first."
+                : !haveBank ? "Needs an active memory bank to save the descriptions in."
+                : st.TotalImages + " AI request" + (st.TotalImages == 1 ? "" : "s") + " to " + (st.ProviderName ?? "the provider") + ", one per image.";
+            _btnWrite.Enabled = st.ProjectOpen && haveImages && haveBank && !st.AnalysisRunning;
+            _lblWriteNote.Text = !haveBank ? "Needs an active memory bank."
+                : "Free, no AI: only what the document says about each figure. The alternative to the button above, not a third step.";
+
+            // Result
+            if (!haveBank)
+                _lblResult.Text = "No memory bank is active, so there is nowhere to save the descriptions. Pick one on the Chat tab.";
             else if (st.FiguresWritten == null)
-                _lblFigures.Text = "figures.md not written yet in memory bank \u201c" + st.BankName + "\u201d.";
+                _lblResult.Text = "No descriptions yet. They are saved as figures.md in memory bank \u201c" + st.BankName + "\u201d, which the AI reads with every request.";
             else
-                _lblFigures.Text = "figures.md last written " + st.FiguresWritten.Value.ToString("yyyy-MM-dd HH:mm")
-                    + " \u00b7 " + st.FiguresRows + " figure(s)"
-                    + (st.FiguresWithoutVision ? " \u00b7 from the text only, not yet analysed" : " \u00b7 with what the AI saw")
-                    + " \u00b7 memory bank \u201c" + st.BankName + "\u201d, read into every prompt.";
+                _lblResult.Text = "Descriptions saved " + st.FiguresWritten.Value.ToString("yyyy-MM-dd HH:mm")
+                    + " \u00b7 " + st.FiguresRows + " figure" + (st.FiguresRows == 1 ? "" : "s")
+                    + (st.FiguresWithoutVision ? " \u00b7 from the text only, the images not yet looked at" : " \u00b7 with what the AI saw")
+                    + " \u00b7 figures.md in memory bank \u201c" + st.BankName + "\u201d, read by the AI with every request.";
         }
 
-        private static Label L(string text) => new Label { Text = text, AutoSize = true, Margin = new Padding(0, UiScale.Pixels(6), UiScale.Pixels(8), 0) };
+        private static Label L(string text) => new Label { Text = text, AutoSize = true, Margin = new Padding(0, UiScale.Pixels(6), UiScale.Pixels(10), 0) };
+
+        private static Label Step(string text) => new Label { Text = text, AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold), Margin = new Padding(0, UiScale.Pixels(8), UiScale.Pixels(10), 0) };
+
+        private static Label Note(string text) => new Label { Text = text, AutoSize = true, ForeColor = Color.FromArgb(100, 100, 100), Margin = new Padding(UiScale.Pixels(10), UiScale.Pixels(8), 0, 0) };
 
         private Label Wrap(string text)
         {
@@ -246,16 +262,21 @@ namespace Supervertaler.Trados.Controls
             return l;
         }
 
+        private static LinkLabel Lnk(string text) => new LinkLabel { Text = text, AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, UiScale.Pixels(2), UiScale.Pixels(12), 0) };
+
         private static Button Btn(string text) => new Button { Text = text, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlatStyle = FlatStyle.System, Padding = new Padding(UiScale.Pixels(8), 0, UiScale.Pixels(8), 0), Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3)) };
 
-        private static Button Stage(string text, out Label cost, TableLayoutPanel host, int r)
+        /// <summary>A button with its note to the right; the note wraps under the dialog width.</summary>
+        private Control Pair(Button b, Label note)
         {
-            var b = Btn(text);
-            b.Dock = DockStyle.Fill;
-            cost = new Label { AutoSize = true, ForeColor = Color.FromArgb(100, 100, 100), Margin = new Padding(UiScale.Pixels(10), UiScale.Pixels(9), 0, 0) };
-            host.Controls.Add(b, 0, r);
-            host.Controls.Add(cost, 1, r);
-            return b;
+            var host = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill, Margin = Padding.Empty };
+            host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            note.MaximumSize = new Size(ClientSize.Width - UiScale.Pixels(300), 0);
+            SizeChanged += (s, e) => note.MaximumSize = new Size(Math.Max(UiScale.Pixels(200), ClientSize.Width - UiScale.Pixels(300)), 0);
+            host.Controls.Add(b, 0, 0);
+            host.Controls.Add(note, 1, 0);
+            return host;
         }
     }
 }
