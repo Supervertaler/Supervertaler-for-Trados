@@ -101,8 +101,8 @@ namespace Supervertaler.Trados.Controls
             root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             int row = 0;
 
-            var intro = Wrap("The drawings of a patent are not in the file you translate. This panel finds them, keeps them in a folder, " +
-                             "and writes what each figure shows to figures.md in the memory bank, where every prompt reads it.");
+            var intro = Wrap("The images that belong to a document are often not in the file you translate, and what they show exists only as pixels. " +
+                             "This panel finds them, keeps them in a folder, and writes what each one shows to figures.md in the memory bank, where every prompt reads it.");
             root.Controls.Add(intro, 0, row); root.SetColumnSpan(intro, 3); row++;
 
             // Folder
