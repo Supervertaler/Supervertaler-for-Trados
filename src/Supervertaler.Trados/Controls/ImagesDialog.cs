@@ -107,7 +107,9 @@ namespace Supervertaler.Trados.Controls
 
             // Folder
             root.Controls.Add(L("Folder:"), 0, row);
-            _txtFolder = new TextBox { ReadOnly = true, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(6), 0) };
+            // TabStop off: as the first control it took focus and opened with the
+            // whole path selected, which reads as "something to edit". It is a label.
+            _txtFolder = new TextBox { ReadOnly = true, TabStop = false, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(6), 0) };
             root.Controls.Add(_txtFolder, 1, row);
             var btnBrowse = Btn("Browse\u2026"); btnBrowse.Click += (s, e) => Run(_actions.Browse);
             root.Controls.Add(btnBrowse, 2, row); row++;
@@ -155,6 +157,7 @@ namespace Supervertaler.Trados.Controls
 
             Controls.Add(root);
             CancelButton = btnClose;
+            Shown += (s, e) => btnClose.Focus();
 
             // While an analysis runs on a pool thread, the figures.md line follows it.
             _poll = new Timer { Interval = 1500 };
