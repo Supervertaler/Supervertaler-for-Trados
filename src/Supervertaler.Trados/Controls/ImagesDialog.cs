@@ -114,7 +114,7 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(_txtFolder, 1, row);
             var btnBrowse = Btn("Browse\u2026"); btnBrowse.Click += (s, e) => Run(_actions.Browse);
             var tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
-            tips.SetToolTip(btnBrowse, "Choose the folder where this project's images are kept. Remembered for this project.");
+            tips.SetToolTip(btnBrowse, "Pick a folder where the images will be put. An empty folder is fine; Extract fills it. Remembered for this project.");
             root.Controls.Add(btnBrowse, 2, row); row++;
             _lblFolderNote = Wrap(""); _lblFolderNote.ForeColor = Color.FromArgb(100, 100, 100);
             root.Controls.Add(_lblFolderNote, 1, row); root.SetColumnSpan(_lblFolderNote, 2); row++;
@@ -198,7 +198,7 @@ namespace Supervertaler.Trados.Controls
             bool folderSet = !string.IsNullOrEmpty(st.Folder);
             _txtFolder.Text = folderSet ? st.Folder : "";
             _lblFolderNote.Text = !st.ProjectOpen ? "No project open."
-                : !folderSet ? "Not set. Choose the folder holding this project's drawings; it is remembered per project."
+                : !folderSet ? "Not set. Click Browse and pick a folder where the images will be put - a new, empty folder next to the job is fine. It is remembered for this project."
                 : st.FolderImages < 0 ? "The folder no longer exists."
                 : st.FolderImages == 0 ? "Empty so far. Extract puts the document's images here, named for their figures."
                 : st.FolderImages + " image file(s) in the folder.";

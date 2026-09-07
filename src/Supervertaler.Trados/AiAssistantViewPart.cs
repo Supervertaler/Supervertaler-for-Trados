@@ -10168,7 +10168,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             try { current = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; }
             catch { }
 
-            // Start where the drawings usually are: beside the project rather
+            // Start beside the project rather
             // than inside the Studio folder.
             var start = current;
             if (string.IsNullOrEmpty(start))
@@ -10185,23 +10185,13 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             // Windows 2000-era tree with nowhere to paste a path.
             var chosen = Controls.FolderPicker.Show(
                 _control.Value.FindForm(),
-                "Choose the folder holding this project's drawings",
+                "Pick a folder where this project's images will be put",
                 start);
             if (string.IsNullOrEmpty(chosen)) return;
 
             var found = 0;
             try { found = Core.ReferenceImages.List(chosen)?.Count ?? 0; }
             catch { }
-
-            if (found == 0)
-            {
-                var go = MessageBox.Show(_control.Value.FindForm(),
-                    "No images found in" + "\n\n" + chosen + "\n\nUse it anyway?",
-                    "Reference images",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question,
-                    MessageBoxDefaultButton.Button2);
-                if (go != DialogResult.Yes) return;
-            }
 
             try
             {
