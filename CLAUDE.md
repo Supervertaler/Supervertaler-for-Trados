@@ -122,6 +122,19 @@ and displays their terms as green chips alongside Supervertaler terms.
 
 ---
 
+## Ad-hoc PowerShell tests: use `-File`, never a long inline `-Command`
+
+- **Windows Defender silently kills long inline PowerShell that reflectively loads the built plugin.** The signature is `Trojan:Win32/ClickFix.IIN!MTB`, and it is a false positive — but the process is terminated *before it runs*, so the caller gets empty output rather than an error. That reads like "the method returned nothing", i.e. a code bug, and sends you debugging the wrong thing. It killed the figures smoke test four times in 93 seconds on 2026-09-07 (23:33–23:35), and had been doing it since at least 1 September.
+  - The heuristic matches the *shape* of a ClickFix payload: `powershell -NoProfile -ExecutionPolicy Bypass -Command` plus a long inline script, `[Reflection.Assembly]::LoadFrom`, then `GetMethod(...).Invoke(...)`, launched from Git's `bash.exe` via `eval`. Every ingredient is innocent here; the silhouette is not.
+  - **Fix: write the script to a file under `.dev/` and run `powershell -NoProfile -File ".dev\<name>.ps1"`.** Verified to run clean with real-time protection fully on — the heuristic keys on the inline command-line string, and `-File` presents none. Do *not* add a Defender exclusion for the Dev tree; it needs admin and trades real protection for a cosmetic problem.
+  - `.dev/` is gitignored. These scripts hardcode real client document paths, and **this repo is public** — never move one to a tracked location. See *Confidentiality* above.
+- **Two traps when moving an inline block into a script file:**
+  - `$args` is the automatic script-argument array inside a `-File` script. The inline version assigned straight over it. Name the array something else (`$rfArgs`) — several `FiguresFile` methods write back through it and it is read again after `Invoke`.
+  - `New-Object "System.Collections.Generic.HashSet[string]"` inline in an argument array hands `Invoke` a `PSObject` wrapper that will not convert to `ISet<string>`. Build it as its own typed variable: `[System.Collections.Generic.HashSet[string]]::new()`.
+- **Loading the plugin outside Studio needs an `AssemblyResolve` hook.** `Sdl.Core.PluginFramework` and friends live in `C:\Program Files (x86)\Trados\Trados Studio\Studio18`, not next to the build output, and nothing resolves them outside Studio's own process. `.dev/figures-smoke.ps1` has a working hook to copy.
+
+---
+
 ## Release channels (GitHub vs RWS App Store)
 
 Two channels with **different semantics – do not mirror one onto the other.** `CHANGELOG.md` is the single source of truth both draw from.
