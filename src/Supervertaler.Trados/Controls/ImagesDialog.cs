@@ -20,6 +20,11 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Every Word document in the project, images or not.</summary>
         public int DocumentCount;
         public int DocumentsWithoutImages;
+        public List<string> DocumentsWithoutImagesNames = new List<string>();
+        /// <summary>True when the active bank is the shared one, which every project reads.</summary>
+        public bool BankIsShared;
+        /// <summary>The bank name the panel offers to create for this project.</summary>
+        public string SuggestedBankName;
         public int TotalImages;
         public int Labelled;
         public string BankName;
@@ -44,6 +49,8 @@ namespace Supervertaler.Trados.Controls
         public Action Analyse;
         public Action WriteFigures;
         public Action ShowReport;
+        /// <summary>Create (or reuse) a memory bank named after the project and switch to it.</summary>
+        public Action CreateProjectBank;
     }
 
     /// <summary>
@@ -60,6 +67,9 @@ namespace Supervertaler.Trados.Controls
         private ImagesState _state;
 
         private readonly Label _lblDocs;
+        private readonly ListBox _lstDocs;
+        private readonly LinkLabel _lnkCreateBank;
+        private readonly TableLayoutPanel _root;
         private readonly Button _btnExtract;
         private readonly Label _lblExtractNote;
         private readonly Label _lblFolder;
@@ -89,6 +99,8 @@ namespace Supervertaler.Trados.Controls
                 "Annex E.docx: 1 image, 1 with a figure label, paired by position and checked",
             },
             DocumentCount = 60, DocumentsWithoutImages = 53,
+            DocumentsWithoutImagesNames = new List<string> { "Annex F.docx", "Annex G.docx", "Annex H.docx" },
+            BankIsShared = true, SuggestedBankName = "acme-proj-001-application-as-filed",
             TotalImages = 31, Labelled = 29,
             BankName = "acme-proj-001",
             FiguresPath = @"D:\Supervertaler\memory-banks\acme-proj-001\figures.md",
@@ -113,6 +125,7 @@ namespace Supervertaler.Trados.Controls
 
             var tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(UiScale.Pixels(12)) };
+            _root = root;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             int row = 0;
@@ -125,6 +138,10 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(L("Your documents:"), 0, row);
             _lblDocs = Wrap("");
             root.Controls.Add(_lblDocs, 1, row); row++;
+            // A list, not a label: a project can hold sixty files, and every one of
+            // them should be findable here, the ones with images first.
+            _lstDocs = new ListBox { Dock = DockStyle.Fill, Height = UiScale.Pixels(84), IntegralHeight = false, HorizontalScrollbar = true, SelectionMode = SelectionMode.None, Margin = new Padding(0, 0, 0, UiScale.Pixels(6)) };
+            root.Controls.Add(_lstDocs, 1, row); row++;
 
             // Step 1
             root.Controls.Add(Step("Step 1"), 0, row);
@@ -161,6 +178,10 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(L("Result:"), 0, row);
             _lblResult = Wrap("");
             root.Controls.Add(_lblResult, 1, row); row++;
+            _lnkCreateBank = Lnk(""); _lnkCreateBank.Margin = new Padding(0, 0, 0, UiScale.Pixels(6));
+            _lnkCreateBank.LinkClicked += (s, e) => Run(_actions.CreateProjectBank);
+            tips.SetToolTip(_lnkCreateBank, "Makes a memory bank named after this project (or reuses one with that name) and switches to it, so the descriptions belong to this project.");
+            root.Controls.Add(_lnkCreateBank, 1, row); row++;
 
             // filler
             root.RowStyles.Clear();
@@ -213,13 +234,38 @@ namespace Supervertaler.Trados.Controls
 
         private void Render()
         {
+            RenderInner();
+            FitHeight();
+        }
+
+        /// <summary>Tall enough for everything, never taller than the screen; the probe's sixty-document state is the test.</summary>
+        private void FitHeight()
+        {
+            try
+            {
+                var pref = _root.GetPreferredSize(new Size(ClientSize.Width, 0));
+                int wanted = pref.Height + UiScale.Pixels(8);
+                int max = Screen.FromControl(this).WorkingArea.Height - UiScale.Pixels(80);
+                if (wanted > ClientSize.Height) ClientSize = new Size(ClientSize.Width, Math.Min(wanted, max));
+            }
+            catch { }
+        }
+
+        private void RenderInner()
+        {
             var st = _state;
             bool folderSet = !string.IsNullOrEmpty(st.Folder);
             bool haveImages = st.TotalImages > 0;
-            bool haveBank = !string.IsNullOrEmpty(st.BankName);
+            bool haveBank = !string.IsNullOrEmpty(st.BankName) && !st.BankIsShared;
             string n = st.TotalImages + " image" + (st.TotalImages == 1 ? "" : "s");
 
             _lblDocs.Text = DocumentsText(st);
+            _lstDocs.BeginUpdate();
+            _lstDocs.Items.Clear();
+            foreach (var d in st.Documents) _lstDocs.Items.Add(d);
+            foreach (var d in st.DocumentsWithoutImagesNames) _lstDocs.Items.Add(d + ": no images");
+            _lstDocs.EndUpdate();
+            _lstDocs.Visible = st.DocumentCount > 0;
 
             // Step 1
             _btnExtract.Enabled = st.ProjectOpen && haveImages && !st.AnalysisRunning;
@@ -237,15 +283,19 @@ namespace Supervertaler.Trados.Controls
             _lblAnalyseNote.Text = st.AnalysisRunning ? "Running\u2026"
                 : !haveImages ? "No images to describe."
                 : !folderSet ? "Do step 1 first."
-                : !haveBank ? "Needs an active memory bank to save the descriptions in."
+                : !haveBank ? "Needs a memory bank for this project to save the descriptions in \u2013 see Result."
                 : st.TotalImages + " AI request" + (st.TotalImages == 1 ? "" : "s") + " to " + (st.ProviderName ?? "the provider") + ", one per image.";
             _btnWrite.Enabled = st.ProjectOpen && haveImages && haveBank && !st.AnalysisRunning;
-            _lblWriteNote.Text = !haveBank ? "Needs an active memory bank."
+            _lblWriteNote.Text = !haveBank ? "Needs a memory bank for this project \u2013 see Result."
                 : "Free, no AI: only what the document says about each figure. The alternative to the button above, not a third step.";
 
             // Result
-            if (!haveBank)
-                _lblResult.Text = "No memory bank is active, so there is nowhere to save the descriptions. Pick one on the Chat tab.";
+            _lnkCreateBank.Visible = !haveBank && !string.IsNullOrEmpty(st.SuggestedBankName);
+            _lnkCreateBank.Text = "Create memory bank \u201c" + st.SuggestedBankName + "\u201d for this project and switch to it";
+            if (st.BankIsShared)
+                _lblResult.Text = "The active memory bank is the shared one, which every project reads. Descriptions of this project's images belong in a bank of its own:";
+            else if (!haveBank)
+                _lblResult.Text = "No memory bank is active, so there is nowhere to save the descriptions:";
             else if (st.FiguresWritten == null)
                 _lblResult.Text = "No descriptions yet. They are saved as figures.md in memory bank \u201c" + st.BankName + "\u201d, which the AI reads with every request.";
             else
@@ -266,16 +316,9 @@ namespace Supervertaler.Trados.Controls
                 return "No Word documents in this project. Images are read from the project's source documents, the files in Studio's Files view.";
             if (st.TotalImages == 0)
                 return "No images in the " + Plural(st.DocumentCount, "document") + " of this project.";
-            var sb = new System.Text.StringBuilder();
             int withImages = st.Documents.Count;
-            sb.Append(Plural(st.TotalImages, "image") + " in " + withImages + " of " + Plural(st.DocumentCount, "document") + ":");
-            const int cap = 6;
-            int shown = withImages > cap ? cap - 1 : withImages;
-            for (int i = 0; i < shown; i++) sb.Append(Environment.NewLine + "\u2022 " + st.Documents[i]);
-            if (withImages > shown) sb.Append(Environment.NewLine + "\u2022 \u2026 and " + Plural(withImages - shown, "more document") + " with images");
-            if (st.DocumentsWithoutImages > 0)
-                sb.Append(Environment.NewLine + Plural(st.DocumentsWithoutImages, "document") + (st.DocumentsWithoutImages == 1 ? " has" : " have") + " no images.");
-            return sb.ToString();
+            return Plural(st.TotalImages, "image") + " in " + withImages + " of " + Plural(st.DocumentCount, "document")
+                 + (st.DocumentsWithoutImages > 0 ? "; the rest have none." : ".");
         }
 
         private static string Plural(int n, string noun) => n + " " + noun + (n == 1 ? "" : "s");

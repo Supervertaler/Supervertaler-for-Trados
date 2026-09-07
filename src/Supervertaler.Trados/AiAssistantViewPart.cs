@@ -9320,6 +9320,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 batchControl.AppendLog("No memory bank is active.", true);
                 return;
             }
+            if (UserDataPath.IsSharedBankName(bankName))
+            {
+                batchControl.AppendLog("The shared memory bank is read by every project, so descriptions of this project's images "
+                    + "cannot go there. Create or pick a memory bank for this project first (Images panel).", true);
+                return;
+            }
 
             var anchorPath = ResolveProjectAnchorPathCore();
             if (string.IsNullOrEmpty(anchorPath))
@@ -9467,7 +9473,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 ? "\n\n\u26A0 **" + drawingsOnly.Count + " reference sign(s) appear in the "
                                   + "drawings but nowhere in the text:** " + string.Join(", ", drawingsOnly)
                                   + ". That is worth raising with the client before filing."
-                                : "\n\nEvery sign read in the drawings also appears in the text.")
+                                : "\n\nEvery sign read in the images also appears in the text.")
                             + "\n\n*This file is read into every prompt from now on. Read it first \u2014 a "
                             + "wrong caption would be invisible and everywhere.*");
                     });
@@ -9565,8 +9571,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             sb.AppendLine("*Written by Supervertaler on "
                 + DateTime.Now.ToString("yyyy-MM-dd HH:mm")
                 + " from " + (docPath == null ? "the project" : Path.GetFileName(docPath))
-                + ", with the drawings examined by AI. Regenerate from Batch Operations "
-                + "\u2192 Analyse figures.*");
+                + ", with the images examined by AI. Regenerate from Batch Operations "
+                + "\u2192 Images \u2192 Describe images with AI.*");
             sb.AppendLine();
 
             // The finding first.
@@ -9576,7 +9582,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             sb.AppendLine();
             if (drawingsOnly.Count == 0)
             {
-                sb.AppendLine("None. Every sign read in the drawings also appears in the "
+                sb.AppendLine("None. Every sign read in the images also appears in the "
                             + "description.");
             }
             else
@@ -9641,7 +9647,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             sb.AppendLine("## How to read this");
             sb.AppendLine();
             sb.AppendLine("\"What the document says\" is quoted from the source text and is exact. "
-                        + "\"What the drawing shows\" and \"Signs on the drawing\" were produced by "
+                        + "\"What the figure shows\" and \"Signs on the figure\" were produced by "
                         + "an AI looking at the image, and can be wrong. This file is read into every "
                         + "prompt, so correct anything that is wrong here rather than leaving it: a "
                         + "mistaken caption would otherwise be repeated into every request silently.");
@@ -9693,6 +9699,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     Analyse = () => OnAnalyseFiguresRequested(this, EventArgs.Empty),
                     WriteFigures = WriteFiguresFile,
                     ShowReport = ShowDocumentImagesReport,
+                    CreateProjectBank = CreateMemoryBankForProject,
                 };
                 using (var dlg = new Controls.ImagesDialog(actions, BuildImagesState()))
                     dlg.ShowDialog(_control.Value.FindForm());
@@ -9736,6 +9743,35 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
         }
 
+        /// <summary>
+        /// Images panel: make (or reuse) a memory bank named after the project and
+        /// switch to it, so figures.md lands with the project and not in the shared
+        /// bank that every project reads. Same steps as the toolbar's "+ New memory
+        /// bank", without the naming dialog: the name is the project's.
+        /// </summary>
+        private void CreateMemoryBankForProject()
+        {
+            var batchControl = _control.Value.BatchTranslateControl;
+            var projectName = TermLensEditorViewPart.GetCurrentProjectName();
+            if (string.IsNullOrWhiteSpace(projectName)) { batchControl.AppendLog("No project open.", true); return; }
+            string name = UserDataPath.SanitizeBankName(projectName);
+            if (string.IsNullOrWhiteSpace(name)) { batchControl.AppendLog("Could not make a bank name from the project name.", true); return; }
+
+            if (!UserDataPath.ListMemoryBanks().Contains(name))
+            {
+                if (!UserDataPath.TryCreateMemoryBank(projectName, out var sanitised, out var error))
+                {
+                    batchControl.AppendLog("Could not create memory bank \"" + name + "\": " + error, true);
+                    return;
+                }
+                name = sanitised;
+                batchControl.AppendLog("Memory bank \"" + name + "\" created for this project.");
+            }
+            var banks = UserDataPath.ListMemoryBanks();
+            _control.Value.SuperMemoryToolbar?.SetMemoryBanks(banks, name);
+            OnMemoryBankChanged(this, new MemoryBankChangedEventArgs(name));
+        }
+
         private Controls.ImagesState BuildImagesState()
         {
             var st = new Controls.ImagesState();
@@ -9765,7 +9801,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         var labelled = set.Images.Count(i => !string.IsNullOrEmpty(i.Label));
                         st.TotalImages += n; st.Labelled += labelled;
                         st.DocumentCount++;
-                        if (n == 0) { st.DocumentsWithoutImages++; continue; }
+                        if (n == 0) { st.DocumentsWithoutImages++; st.DocumentsWithoutImagesNames.Add(Path.GetFileName(f)); continue; }
                         // Only documents that have images are listed: a project of
                         // sixty files with pictures in three of them wants three lines.
                         var line = Path.GetFileName(f) + ": " + n + " image" + (n == 1 ? "" : "s")
@@ -9779,7 +9815,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
 
                 st.BankName = ActiveMemoryBankName;
-                if (!string.IsNullOrWhiteSpace(st.BankName))
+                // The shared bank is read by every project; a file saying what THIS
+                // document's images show must not live there.
+                st.BankIsShared = UserDataPath.IsSharedBankName(st.BankName);
+                try { st.SuggestedBankName = UserDataPath.SanitizeBankName(st.ProjectName ?? ""); } catch { st.SuggestedBankName = null; }
+                if (!string.IsNullOrWhiteSpace(st.BankName) && !st.BankIsShared)
                 {
                     var bankDir = UserDataPath.GetMemoryBankDir(st.BankName);
                     st.FiguresPath = string.IsNullOrEmpty(bankDir) ? null : Path.Combine(bankDir, "figures.md");
@@ -10022,6 +10062,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrWhiteSpace(bankName))
             {
                 batchControl.AppendLog("No memory bank is active.", true);
+                return;
+            }
+            if (UserDataPath.IsSharedBankName(bankName))
+            {
+                batchControl.AppendLog("The shared memory bank is read by every project, so descriptions of this project's images "
+                    + "cannot go there. Create or pick a memory bank for this project first (Images panel).", true);
                 return;
             }
 
