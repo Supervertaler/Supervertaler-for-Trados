@@ -9372,7 +9372,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             var figureCount = 0;
             foreach (var f in docxFiles)
             {
-                try { figureCount += Core.DocxImageExtractor.Extract(f).Images.Count; }
+                try { figureCount += Supervertaler.Core.DocxImageExtractor.Extract(f).Images.Count; }
                 catch { }
             }
             if (figureCount == 0)
@@ -9412,7 +9412,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 try
                 {
                     var visions = new List<Core.FigureVision>();
-                    Core.DocxImageSet lastSet = null;
+                    Supervertaler.Core.DocxImageSet lastSet = null;
                     string lastDoc = null;
 
                     string clientError;
@@ -9426,7 +9426,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                         foreach (var f in docxFiles)
                         {
-                            var set = Core.DocxImageExtractor.Extract(f, false, folder);
+                            var set = Supervertaler.Core.DocxImageExtractor.Extract(f, false, folder);
                             if (set.Images.Count == 0) continue;
                             lastSet = set; lastDoc = f;
 
@@ -9554,7 +9554,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// other way.</para>
         /// </summary>
         private string WriteFiguresWithVision(string bankName, string docPath,
-            Core.DocxImageSet set, List<Core.FigureVision> visions, HashSet<string> textSigns,
+            Supervertaler.Core.DocxImageSet set, List<Core.FigureVision> visions, HashSet<string> textSigns,
             string rawSourceText)
         {
             var bankDir = UserDataPath.GetMemoryBankDir(bankName);
@@ -9600,7 +9600,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             sb.AppendLine("## The " + VisualNoun(anyLabelled, true, false));
             sb.AppendLine();
-            if (set != null && set.Method == Core.LabelingMethod.Ordinal)
+            if (set != null && set.Method == Supervertaler.Core.LabelingMethod.Ordinal)
             {
                 sb.AppendLine("Image *N* carries figure *N*, checked for all "
                             + set.Images.Count + ".");
@@ -9796,7 +9796,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     try
                     {
-                        var set = Core.DocxImageExtractor.Extract(f);
+                        var set = Supervertaler.Core.DocxImageExtractor.Extract(f);
                         var n = set.Images.Count;
                         var labelled = set.Images.Count(i => !string.IsNullOrEmpty(i.Label));
                         st.TotalImages += n; st.Labelled += labelled;
@@ -9806,9 +9806,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         // sixty files with pictures in three of them wants three lines.
                         var line = Path.GetFileName(f) + ": " + n + " image" + (n == 1 ? "" : "s")
                                  + ", " + labelled + " with a figure label";
-                        if (set.Method == Core.LabelingMethod.Ordinal) line += ", paired by position and checked";
-                        else if (set.Method == Core.LabelingMethod.Refused) line += " \u2013 labels withheld: " + set.Warning;
-                        else if (set.Method == Core.LabelingMethod.Proximity) line += ", labels taken from nearby text";
+                        if (set.Method == Supervertaler.Core.LabelingMethod.Ordinal) line += ", paired by position and checked";
+                        else if (set.Method == Supervertaler.Core.LabelingMethod.Refused) line += " \u2013 labels withheld: " + set.Warning;
+                        else if (set.Method == Supervertaler.Core.LabelingMethod.Proximity) line += ", labels taken from nearby text";
                         st.Documents.Add(line);
                     }
                     catch (Exception ex) { st.DocumentCount++; st.Documents.Add(Path.GetFileName(f) + ": could not be read (" + ex.Message + ")"); }
@@ -9999,7 +9999,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             var withImages = new List<string>();
             foreach (var f in docxFiles)
             {
-                try { if (Core.DocxImageExtractor.Extract(f).Images.Count > 0) withImages.Add(f); }
+                try { if (Supervertaler.Core.DocxImageExtractor.Extract(f).Images.Count > 0) withImages.Add(f); }
                 catch { }
             }
 
@@ -10018,14 +10018,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ? folder
                     : Path.Combine(folder, Path.GetFileNameWithoutExtension(f));
 
-                var set = Core.DocxImageExtractor.Extract(f, false, target);
+                var set = Supervertaler.Core.DocxImageExtractor.Extract(f, false, target);
                 total += set.SavedFiles.Count;
 
                 lines.Add("**" + Path.GetFileName(f) + "** \u2192 "
                     + set.SavedFiles.Count + " file(s)"
                     + (withImages.Count > 1
                         ? " in `" + Path.GetFileName(target) + "`" : "")
-                    + (set.Method == Core.LabelingMethod.Refused
+                    + (set.Method == Supervertaler.Core.LabelingMethod.Refused
                         ? " \u2014 named by position, not by figure: the labels could not be checked"
                         : ""));
             }
@@ -10119,7 +10119,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 try
                 {
-                    if (Core.DocxImageExtractor.Extract(f).Images
+                    if (Supervertaler.Core.DocxImageExtractor.Extract(f).Images
                             .Any(i => !string.IsNullOrEmpty(i.Label)))
                     { anyLabelled = true; break; }
                 }
@@ -10139,13 +10139,13 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             foreach (var f in docxFiles)
             {
-                var set = Core.DocxImageExtractor.Extract(f);
+                var set = Supervertaler.Core.DocxImageExtractor.Extract(f);
                 if (set.Images.Count == 0) continue;
 
                 sb.AppendLine("## " + Path.GetFileName(f));
                 sb.AppendLine();
 
-                if (set.Method == Core.LabelingMethod.Refused)
+                if (set.Method == Supervertaler.Core.LabelingMethod.Refused)
                 {
                     refused++;
                     sb.AppendLine("**Figure labels could not be established.** " + set.Warning);
@@ -10154,7 +10154,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 + "assume image *N* is figure *N* here.");
                     sb.AppendLine();
                 }
-                else if (set.Method == Core.LabelingMethod.Ordinal)
+                else if (set.Method == Supervertaler.Core.LabelingMethod.Ordinal)
                 {
                     sb.AppendLine("Image *N* carries figure *N*, checked for all "
                                 + set.Images.Count + ".");
@@ -10337,7 +10337,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             foreach (var f in docxFiles)
             {
-                var set = Core.DocxImageExtractor.Extract(f);
+                var set = Supervertaler.Core.DocxImageExtractor.Extract(f);
                 var images = set.Images;
                 var labelled = images.Count(i => !string.IsNullOrEmpty(i.Label));
                 var anchored = images.Count(i => !string.IsNullOrWhiteSpace(i.Anchor));
@@ -10365,16 +10365,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // Say how the labels were arrived at. The old report could
                 // not, and so announced success over four figures collapsed
                 // onto FIG. 3.
-                if (set.Method == Core.LabelingMethod.Ordinal)
+                if (set.Method == Supervertaler.Core.LabelingMethod.Ordinal)
                 {
                     sb.AppendLine("Labels paired by position and checked: image *N* carries "
                                 + "figure *N*, verified for all " + images.Count + ".");
                 }
-                else if (set.Method == Core.LabelingMethod.Refused)
+                else if (set.Method == Supervertaler.Core.LabelingMethod.Refused)
                 {
                     sb.AppendLine("> \u26A0 **Labels withheld.** " + set.Warning);
                 }
-                else if (set.Method == Core.LabelingMethod.Proximity)
+                else if (set.Method == Supervertaler.Core.LabelingMethod.Proximity)
                 {
                     sb.AppendLine("*Labels taken from nearby text \u2013 right for captioned "
                                 + "inline images, a guess on a document of plates.*");
