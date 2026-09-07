@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace Supervertaler.Trados.Core
+namespace Supervertaler.Core
 {
     /// <summary>
     /// The folder of drawings a user has pointed this project at.

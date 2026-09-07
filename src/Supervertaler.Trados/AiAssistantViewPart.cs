@@ -9264,7 +9264,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         ///
         /// <para>The diff is the part worth having. A reference sign printed in
         /// the drawings with no basis in the description is an Art. 84 / Rule 42
-        /// objection - on SEDA-026 that is ST 05, in Figures 13 and 14 and in no
+        /// objection - on one real job that was ST 05, in Figures 13 and 14 and in no
         /// segment of the text. It exists only as pixels, so no amount of
         /// parsing reaches it.</para>
         ///
@@ -9347,7 +9347,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var s = TermLensEditorViewPart.GetPlainText(pair?.Source);
                     if (!string.IsNullOrWhiteSpace(s)) sources.Add(s);
                 }
-                var inv = Core.NumeralInventory.Extract(sources);
+                var inv = Supervertaler.Core.NumeralInventory.Extract(sources);
                 foreach (var n in inv.Numerals) textSigns.Add(n.ToString());
                 foreach (var k in inv.LetterPoints.Keys) textSigns.Add(k);
                 foreach (var k in inv.LabelSeries.Keys) textSigns.Add(k);
@@ -9411,7 +9411,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 try
                 {
-                    var visions = new List<Core.FigureVision>();
+                    var visions = new List<Supervertaler.Core.FigureVision>();
                     Supervertaler.Core.DocxImageSet lastSet = null;
                     string lastDoc = null;
 
@@ -9440,7 +9440,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 SafeInvoke(() => batchControl.AppendLog(
                                     "  figure " + n + " of " + of + "\u2026"));
 
-                                var v = await Core.FigureAnalyzer.AnalyseAsync(
+                                var v = await Supervertaler.Core.FigureAnalyzer.AnalyseAsync(
                                     client,
                                     Path.Combine(folder, file),
                                     img.Label ?? ("image " + img.Ordinal),
@@ -9465,7 +9465,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             + " figure(s)" + (failed > 0 ? ", " + failed + " failed" : "")
                             + ". Written to " + path);
 
-                        var drawingsOnly = DrawingsOnlySigns(visions, textSigns, rawSourceText);
+                        var drawingsOnly = Supervertaler.Core.FiguresFile.SignsNotInText(visions, textSigns, rawSourceText);
                         ShowSuperMemoryMessage(
                             "Analysed **" + visions.Count + "** figure(s) and wrote **figures.md** to "
                             + "memory bank **" + bankName + "**."
@@ -9554,130 +9554,17 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// other way.</para>
         /// </summary>
         private string WriteFiguresWithVision(string bankName, string docPath,
-            Supervertaler.Core.DocxImageSet set, List<Core.FigureVision> visions, HashSet<string> textSigns,
+            Supervertaler.Core.DocxImageSet set, List<Supervertaler.Core.FigureVision> visions, HashSet<string> textSigns,
             string rawSourceText)
         {
             var bankDir = UserDataPath.GetMemoryBankDir(bankName);
-            Directory.CreateDirectory(bankDir);
             var outPath = Path.Combine(bankDir, "figures.md");
-
-            // Did anything turn out to BE a figure? The heading follows that.
-            var anyLabelled = set != null
-                && set.Images.Any(i => !string.IsNullOrEmpty(i.Label));
-
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("# " + VisualNoun(anyLabelled, true, true));
-            sb.AppendLine();
-            sb.AppendLine("*Written by Supervertaler on "
-                + DateTime.Now.ToString("yyyy-MM-dd HH:mm")
-                + " from " + (docPath == null ? "the project" : Path.GetFileName(docPath))
-                + ", with the images examined by AI. Regenerate from Batch Operations "
-                + "\u2192 Images \u2192 Describe images with AI.*");
-            sb.AppendLine();
-
-            // The finding first.
-            var drawingsOnly = DrawingsOnlySigns(visions, textSigns, rawSourceText);
-            sb.AppendLine("## Reference signs in the "
-                        + VisualNoun(anyLabelled, true, false) + " but not in the text");
-            sb.AppendLine();
-            if (drawingsOnly.Count == 0)
-            {
-                sb.AppendLine("None. Every sign read in the images also appears in the "
-                            + "description.");
-            }
-            else
-            {
-                sb.AppendLine("**" + string.Join(", ", drawingsOnly) + "**");
-                sb.AppendLine();
-                sb.AppendLine("A reference sign carried in the drawings with no basis in the "
-                            + "description is an Art. 84 / Rule 42 point. Raise it with the "
-                            + "client rather than inventing a description for it.");
-                sb.AppendLine();
-                sb.AppendLine("*Read off the drawings by an AI. Check each one against the "
-                            + "image before relying on it.*");
-            }
-            sb.AppendLine();
-
-            sb.AppendLine("## The " + VisualNoun(anyLabelled, true, false));
-            sb.AppendLine();
-            if (set != null && set.Method == Supervertaler.Core.LabelingMethod.Ordinal)
-            {
-                sb.AppendLine("Image *N* carries figure *N*, checked for all "
-                            + set.Images.Count + ".");
-                sb.AppendLine();
-            }
-
-            var noun = VisualNoun(anyLabelled, false, false);
-            sb.AppendLine("| " + VisualNoun(anyLabelled, false, true)
-                        + " | File | What the document says | What the " + noun
-                        + " shows | Signs on the " + noun + " |");
-            sb.AppendLine("|---|---|---|---|---|");
-
-            for (int i = 0; i < visions.Count; i++)
-            {
-                var v = visions[i];
-                var img = (set != null && i < set.Images.Count) ? set.Images[i] : null;
-
-                var said = "";
-                if (img != null && img.Descriptions != null && img.Descriptions.Count > 0)
-                    said = string.Join(" ", img.Descriptions);
-                if (said.Length == 0) said = "\u2014";
-
-                var saw = !string.IsNullOrEmpty(v.Error)
-                    ? "*not analysed: " + v.Error + "*"
-                    : (string.IsNullOrWhiteSpace(v.Caption) ? "\u2014" : v.Caption);
-
-                var signs = v.SignsInDrawing.Count > 0
-                    ? string.Join(", ", v.SignsInDrawing)
-                    : "\u2014";
-
-                sb.AppendLine("| " + Cell(v.Label) + " | " + Cell(v.FileName) + " | "
-                            + Cell(said) + " | " + Cell(saw) + " | " + Cell(signs) + " |");
-            }
-            sb.AppendLine();
-
-            var failed = visions.Count(x => !string.IsNullOrEmpty(x.Error));
-            if (failed > 0)
-            {
-                sb.AppendLine("*" + failed + " figure(s) could not be analysed; their rows say why. "
-                            + "They are listed rather than dropped, so the gap is visible.*");
-                sb.AppendLine();
-            }
-
-            sb.AppendLine("## How to read this");
-            sb.AppendLine();
-            sb.AppendLine("\"What the document says\" is quoted from the source text and is exact. "
-                        + "\"What the figure shows\" and \"Signs on the figure\" were produced by "
-                        + "an AI looking at the image, and can be wrong. This file is read into every "
-                        + "prompt, so correct anything that is wrong here rather than leaving it: a "
-                        + "mistaken caption would otherwise be repeated into every request silently.");
-
-            var text = sb.ToString()
-                .Replace("\r\n", "\n")
-                .Replace("\r", "\n")
-                .Replace("\n", "\r\n");
-            File.WriteAllText(outPath, text, new System.Text.UTF8Encoding(false));
+            var signs = Supervertaler.Core.FiguresFile.SignsNotInText(visions, textSigns, rawSourceText);
+            var markdown = Supervertaler.Core.FiguresFile.RenderWithVision(
+                docPath == null ? null : Path.GetFileName(docPath), set, visions, signs,
+                "Batch Operations \u2192 Images \u2192 Describe images with AI");
+            Supervertaler.Core.FiguresFile.Save(outPath, markdown);
             return outPath;
-        }
-
-        /// <summary>Table-cell safe: pipes escaped, newlines flattened.</summary>
-        private static string Cell(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "\u2014";
-            return s.Replace("\r", " ").Replace("\n", " ").Replace("|", "\\|").Trim();
-        }
-
-        /// <summary>
-        /// "Figures" or "Images", by what was actually identified. A document
-        /// whose pictures carry no figure labels should not be handed a file
-        /// headed "Figures" listing "Image 03".
-        /// </summary>
-        private static string VisualNoun(bool anyLabelled, bool plural, bool capital)
-        {
-            var word = anyLabelled
-                ? (plural ? "figures" : "figure")
-                : (plural ? "images" : "image");
-            return capital ? char.ToUpperInvariant(word[0]) + word.Substring(1) : word;
         }
 
         /// <summary>
@@ -9786,7 +9673,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     if (!string.IsNullOrEmpty(st.Folder))
                     {
                         if (!Directory.Exists(st.Folder)) st.FolderImages = -1;
-                        else { try { st.FolderImages = Core.ReferenceImages.List(st.Folder)?.Count ?? 0; } catch { st.FolderImages = 0; } }
+                        else { try { st.FolderImages = Supervertaler.Core.ReferenceImages.List(st.Folder)?.Count ?? 0; } catch { st.FolderImages = 0; } }
                     }
                 }
 
@@ -9829,7 +9716,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         try
                         {
                             var text = File.ReadAllText(st.FiguresPath);
-                            st.FiguresWithoutVision = text.Contains("## What is not here");
+                            st.FiguresWithoutVision = Supervertaler.Core.FiguresFile.IsTextOnly(text);
                             // Table rows only: a header row is the one followed by the
                             // |---| separator, whatever its column names.
                             var lines = text.Split('\n');
@@ -9901,52 +9788,6 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 DiagnosticLog.Log("Images", "ProjectSourceDocx: " + ex.Message);
             }
             return found;
-        }
-
-        /// <summary>Signs the model read in a drawing that the text never cites.
-        /// The finding this whole feature exists to produce.</summary>
-        private static List<string> DrawingsOnlySigns(
-            List<Core.FigureVision> visions, HashSet<string> textSigns, string rawSourceText)
-        {
-            var seen = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var v in visions)
-                foreach (var s in v.SignsInDrawing)
-                {
-                    var sign = (s ?? "").Trim();
-                    if (sign.Length == 0) continue;
-                    if (textSigns.Contains(sign)) continue;
-                    if (AppearsInText(rawSourceText, sign)) continue;
-                    seen.Add(sign);
-                }
-            return seen.ToList();
-        }
-
-        /// <summary>
-        /// Does this sign appear anywhere in the source text as a whole word?
-        ///
-        /// <para>The second gate on the diff, and it exists because of a real
-        /// false positive: the model read X off Figures 12-14, the inventory had
-        /// no X because the text writes "zone X" rather than "(X)", and the
-        /// report accused the drawings of carrying an uncited sign. Sending a
-        /// translator to their client over a sign that is in the description six
-        /// times is worse than missing one.</para>
-        ///
-        /// <para>It errs towards suppressing. A sign present anywhere in the
-        /// text is not reported, which can hide a genuine case where the letter
-        /// occurs coincidentally - but a false accusation costs more than a
-        /// missed hint in a list the file already tells you to verify.</para>
-        /// </summary>
-        private static bool AppearsInText(string rawSourceText, string sign)
-        {
-            if (string.IsNullOrEmpty(rawSourceText) || string.IsNullOrEmpty(sign)) return false;
-            try
-            {
-                return System.Text.RegularExpressions.Regex.IsMatch(
-                    rawSourceText,
-                    @"(?<![\w])" + System.Text.RegularExpressions.Regex.Escape(sign) + @"(?![\w])",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            }
-            catch { return false; }
         }
 
         /// <summary>
@@ -10095,7 +9936,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (File.Exists(existingFigures))
             {
                 bool analysed = false;
-                try { analysed = !File.ReadAllText(existingFigures).Contains("## What is not here"); } catch { }
+                try { analysed = !Supervertaler.Core.FiguresFile.IsTextOnly(File.ReadAllText(existingFigures)); } catch { }
                 var answer = MessageBox.Show(_control.Value.FindForm(),
                     "figures.md already exists in memory bank \"" + bankName + "\""
                         + (analysed ? " and holds descriptions the AI wrote." : ".")
@@ -10112,106 +9953,23 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
             }
 
-            // Decided after the sweep below, so the heading can follow what
-            // the documents turned out to contain.
-            var anyLabelled = false;
+            var documents = new List<KeyValuePair<string, Supervertaler.Core.DocxImageSet>>();
             foreach (var f in docxFiles)
             {
-                try
-                {
-                    if (Supervertaler.Core.DocxImageExtractor.Extract(f).Images
-                            .Any(i => !string.IsNullOrEmpty(i.Label)))
-                    { anyLabelled = true; break; }
-                }
+                try { documents.Add(new KeyValuePair<string, Supervertaler.Core.DocxImageSet>(Path.GetFileName(f), Supervertaler.Core.DocxImageExtractor.Extract(f))); }
                 catch { }
             }
-
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("# " + VisualNoun(anyLabelled, true, true));
-            sb.AppendLine();
-            sb.AppendLine("*Written by Supervertaler on "
-                + DateTime.Now.ToString("yyyy-MM-dd HH:mm")
-                + ". Regenerate from Batch Operations \u2192 Write figures.md.*");
-            sb.AppendLine();
-
-            var wrote = 0;
-            var refused = 0;
-
-            foreach (var f in docxFiles)
+            int wrote, refused;
+            var markdown = Supervertaler.Core.FiguresFile.RenderFromText(documents,
+                "Batch Operations \u2192 Images \u2192 Describe from the text only", out wrote, out refused);
+            if (markdown == null)
             {
-                var set = Supervertaler.Core.DocxImageExtractor.Extract(f);
-                if (set.Images.Count == 0) continue;
-
-                sb.AppendLine("## " + Path.GetFileName(f));
-                sb.AppendLine();
-
-                if (set.Method == Supervertaler.Core.LabelingMethod.Refused)
-                {
-                    refused++;
-                    sb.AppendLine("**Figure labels could not be established.** " + set.Warning);
-                    sb.AppendLine();
-                    sb.AppendLine("The images are listed in document order, unlabelled. Do not "
-                                + "assume image *N* is figure *N* here.");
-                    sb.AppendLine();
-                }
-                else if (set.Method == Supervertaler.Core.LabelingMethod.Ordinal)
-                {
-                    sb.AppendLine("Image *N* carries figure *N*, checked for all "
-                                + set.Images.Count + ".");
-                    sb.AppendLine();
-                }
-
-                sb.AppendLine("| " + VisualNoun(anyLabelled, false, true)
-                            + " | Source part | What the document says it shows |");
-                sb.AppendLine("|---|---|---|");
-                foreach (var img in set.Images)
-                {
-                    // Not truncated: the chat table cuts at 110 characters
-                    // because a docked panel is narrow. This file is read by
-                    // the model and by a Markdown previewer, and both want
-                    // the whole sentence.
-                    var desc = "";
-                    if (img.Descriptions != null && img.Descriptions.Count > 0)
-                        desc = string.Join(" ", img.Descriptions);
-                    if (string.IsNullOrWhiteSpace(desc)) desc = "\u2014";
-                    desc = desc.Replace("\r", " ").Replace("\n", " ").Replace("|", "\\|").Trim();
-
-                    var part = (img.PartName ?? "").Replace("/word/", "").Replace("|", "\\|");
-
-                    sb.AppendLine("| " + (img.Label ?? ("image " + img.Ordinal))
-                        + " | " + part + " | " + desc + " |");
-                    wrote++;
-                }
-                sb.AppendLine();
-            }
-
-            if (wrote == 0)
-            {
-                batchControl.AppendLog(
-                    "No images found in this project's Word documents - nothing written.", true);
+                batchControl.AppendLog("No images found in this project's documents - nothing written.", true);
                 return;
             }
 
-            sb.AppendLine("## What is not here");
-            sb.AppendLine();
-            sb.AppendLine("What each drawing **actually shows** \u2014 the parts visible in it, and "
-                        + "any reference sign printed on the drawing but absent from the text \u2014 "
-                        + "is not in this file. Establishing that needs a pass that looks at the "
-                        + "images, which does not exist yet (issue #69). Everything above comes "
-                        + "from the document's own text.");
-
             var outPath = Path.Combine(bankDir, "figures.md");
-            try
-            {
-                // CRLF throughout: AppendLine emits CRLF but the text it wraps
-                // arrives with bare LF, and a mixed file makes Markdown editors
-                // complain. Same reasoning as the chat-save writer.
-                var text = sb.ToString()
-                    .Replace("\r\n", "\n")
-                    .Replace("\r", "\n")
-                    .Replace("\n", "\r\n");
-                File.WriteAllText(outPath, text, new System.Text.UTF8Encoding(false));
-            }
+            try { Supervertaler.Core.FiguresFile.Save(outPath, markdown); }
             catch (Exception ex)
             {
                 batchControl.AppendLog("Could not write figures.md: " + ex.Message, true);
@@ -10261,7 +10019,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 try
                 {
-                    var suggestions = Core.ReferenceImages.Suggest(projectPath);
+                    var suggestions = Supervertaler.Core.ReferenceImages.Suggest(projectPath);
                     if (suggestions != null && suggestions.Count > 0) start = suggestions[0];
                 }
                 catch { }
@@ -10276,7 +10034,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrEmpty(chosen)) return;
 
             var found = 0;
-            try { found = Core.ReferenceImages.List(chosen)?.Count ?? 0; }
+            try { found = Supervertaler.Core.ReferenceImages.List(chosen)?.Count ?? 0; }
             catch { }
 
             try
@@ -10452,7 +10210,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
             else
             {
-                var listed = Core.ReferenceImages.List(folder);
+                var listed = Supervertaler.Core.ReferenceImages.List(folder);
                 sb.AppendLine("`" + folder + "` \u2013 " + listed.Count + " image file(s).");
             }
             sb.AppendLine();
@@ -10553,8 +10311,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     if (!string.IsNullOrWhiteSpace(text)) sources.Add(text);
                 }
 
-                var report = Core.NumeralInventory.Extract(sources);
-                var markdown = Core.NumeralInventory.Format(report, null);
+                var report = Supervertaler.Core.NumeralInventory.Extract(sources);
+                var markdown = Supervertaler.Core.NumeralInventory.Format(report, null);
 
                 markdown += "\n\n*Scanned all " + sources.Count
                           + " segments of the open document. A reference numeral here means a "

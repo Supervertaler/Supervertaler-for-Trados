@@ -1,0 +1,63 @@
+Supervertaler Core — Source Available License
+
+Copyright (c) 2026 Michael Beijer (supervertaler.com)
+
+Permission is hereby granted to any person obtaining a copy of this software
+and associated documentation files (the "Software") to:
+
+  1. View, study, audit, and reference the source code;
+  2. Fork and modify the source code for private study, auditing, and
+     experimentation;
+  3. Build the Software from source in order to inspect or verify it.
+
+These grants exist so that anyone can satisfy themselves that the Software is
+safe and does what it claims. They are NOT a grant of use. Running the
+Software to carry out translation or related professional work, whether paid
+or unpaid, requires a valid licence obtained from the copyright holder. This
+applies equally to a build you made from source and to one you installed.
+
+Grants 2 and 3 are subject to the restrictions below, and in particular do not
+extend to the Licensing Mechanisms.
+
+"Licensing Mechanisms" means any part of the Software that implements or
+supports licence key entry, activation, deactivation, validation, tier or
+entitlement resolution, trial eligibility or expiry, feature gating, or the
+signing keys used to sign builds of the Software.
+
+The following restrictions apply:
+
+  1. You may NOT redistribute pre-built binaries or installer packages
+     (including .sdlplugin files) of the Software, whether modified or
+     unmodified, free of charge or commercially.
+  2. You may NOT offer the Software, or any derivative of it, as a
+     commercial product or service.
+  3. You may NOT sublicense the Software.
+  4. You may NOT modify, disable, bypass, or remove the Licensing Mechanisms,
+     nor publish or distribute any modification, patch, tool, or instructions
+     for doing so. You may NOT build, install, or use any copy of the Software
+     in which the Licensing Mechanisms have been modified, disabled, bypassed,
+     or removed. This applies whether or not the resulting build is shared
+     with anyone else.
+  5. You may NOT use any signing key belonging to the copyright holder,
+     including any key present in this repository, to sign a build of the
+     Software or of any derivative work.
+  6. You may NOT remove or alter any copyright, licence, branding, or
+     attribution notice in the Software.
+
+Any breach of the restrictions above automatically and immediately terminates
+the permissions granted by this licence. Use of the Software after termination
+is unlicensed.
+
+Pre-built binaries and installer packages are available exclusively from the
+copyright holder, via the RWS AppStore and https://supervertaler.com.
+
+Contributions submitted to this repository (e.g. via pull requests) are
+licensed under the same terms and the copyright holder retains the right to
+distribute them as part of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

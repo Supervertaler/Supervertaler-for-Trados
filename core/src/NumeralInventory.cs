@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Supervertaler.Trados.Core
+namespace Supervertaler.Core
 {
     /// <summary>
     /// Reference numerals cited in a patent's text, and how they reconcile
@@ -37,7 +37,7 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>
         /// The same part written "N°7" rather than "(7)". Not a separate class:
-        /// on SEDA-026 "Scharnierpunt tussen onderdelen N°2 en N°3" means parts 2
+        /// on one real job "Scharnierpunt tussen onderdelen N°2 en N°3" means parts 2
         /// and 3, the very ones cited as (2) and (3) elsewhere. Kept apart it
         /// would list the same part twice under two spellings.
         /// </summary>
@@ -55,7 +55,7 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>
         /// A label series such as ST 01: two or three capitals then two digits.
-        /// The separator may be an ordinary space or U+00A0 - SEDA-026 uses both
+        /// The separator may be an ordinary space or U+00A0 - real documents use both
         /// for ST 03, which a naive scan reports as two distinct signs.
         /// </summary>
         private static readonly Regex LabelSeriesRe = new Regex(
@@ -115,7 +115,7 @@ namespace Supervertaler.Trados.Core
                     foreach (var part in m.Groups[1].Value.Split(','))
                         AddSign(report.LetterPoints, part.Trim(), segment);
 
-                // Normalise the separator: SEDA-026 writes ST 03 with an
+                // Normalise the separator: one document writes ST 03 with an
                 // ordinary space in one place and U+00A0 in another, which a
                 // naive scan counts as two distinct signs.
                 foreach (Match m in LabelSeriesRe.Matches(segment))

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,9 +6,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Supervertaler.Trados.Models;
+using Supervertaler.Core.Models;
 
-namespace Supervertaler.Trados.Core
+namespace Supervertaler.Core
 {
     /// <summary>What a model saw in one drawing.</summary>
     public class FigureVision
@@ -37,7 +37,7 @@ namespace Supervertaler.Trados.Core
     /// gives it, and asks two questions: what does this show, and which
     /// reference signs are printed on it.
     ///
-    /// <para>The second question is the point. On BRANTS SEDA-026, <c>ST 05</c>
+    /// <para>The second question is the point. On one real job, <c>ST 05</c>
     /// appears in Figures 13 and 14 and in no segment of the description - an
     /// Art. 84 / Rule 42 objection waiting to happen, and one a human found only
     /// by opening the drawings. It is baked into the bitmap: no parser will ever
@@ -61,17 +61,17 @@ namespace Supervertaler.Trados.Core
         /// is exactly the kind of wrong that survives review.
         /// </summary>
         private const string SystemPrompt =
-            "You are examining a single technical drawing from a patent application.\n" +
+            "You are examining a single image from a document that is being translated - a figure, drawing, diagram or photo.\n" +
             "\n" +
             "Answer with JSON only, in this exact shape:\n" +
             "{\"caption\": \"...\", \"signs\": [\"...\", \"...\"]}\n" +
             "\n" +
-            "caption: one or two plain sentences describing what the drawing shows. " +
-            "Describe only what is visible. Do not explain how the invention works, " +
+            "caption: one or two plain sentences describing what the image shows. " +
+            "Describe only what is visible. Do not explain how anything works, " +
             "do not speculate about purpose, and do not repeat the supplied description " +
             "back verbatim.\n" +
             "\n" +
-            "signs: every reference sign you can actually READ in the drawing - part " +
+            "signs: every reference sign you can actually READ in the image - part " +
             "numerals such as 8 or 15, lettered points such as A or H, and label-series " +
             "signs such as ST 01. Transcribe them exactly as printed. Include a sign even " +
             "if it does not appear in the supplied description; that mismatch is the " +

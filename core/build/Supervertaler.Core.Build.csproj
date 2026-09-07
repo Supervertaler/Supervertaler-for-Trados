@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Not a shipping artefact. The shared sources are compiled into each plugin,
+    not referenced as a DLL, so nothing consumes this output.
+
+    It exists so the shared code can be built on its own: a compile error here is
+    a compile error in both plugins, and finding it in one line is better than
+    finding it halfway through a plugin build.
+
+        dotnet build build/Supervertaler.Core.Build.csproj
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Supervertaler.Core.Build</AssemblyName>
+    <RootNamespace>Supervertaler.Core</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <Import Project="..\Supervertaler.Core.props" />
+
+</Project>

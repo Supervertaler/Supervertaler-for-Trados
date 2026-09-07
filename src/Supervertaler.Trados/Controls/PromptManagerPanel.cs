@@ -1434,10 +1434,10 @@ namespace Supervertaler.Trados.Controls
             try { folder = ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; }
             catch { }
 
-            var resolved = Core.ReferenceImages.Resolve(folder);
+            var resolved = Supervertaler.Core.ReferenceImages.Resolve(folder);
             if (!string.IsNullOrEmpty(resolved))
             {
-                var count = Core.ReferenceImages.List(resolved).Count;
+                var count = Supervertaler.Core.ReferenceImages.List(resolved).Count;
                 _txtImagesFolder.Text = resolved + "   (" + count + " image" + (count == 1 ? "" : "s") + ")";
                 _btnImagesClear.Enabled = true;
             }
@@ -1475,7 +1475,7 @@ namespace Supervertaler.Trados.Controls
                 start = ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? "";
                 if (string.IsNullOrEmpty(start))
                 {
-                    var suggestions = Core.ReferenceImages.Suggest(projectPath);
+                    var suggestions = Supervertaler.Core.ReferenceImages.Suggest(projectPath);
                     if (suggestions.Count > 0) start = suggestions[0];
                 }
             }
@@ -1490,7 +1490,7 @@ namespace Supervertaler.Trados.Controls
                 this, "Choose the folder holding this project's drawings", start);
             if (string.IsNullOrEmpty(chosen)) return;
 
-            var images = Core.ReferenceImages.List(chosen);
+            var images = Supervertaler.Core.ReferenceImages.List(chosen);
             if (images.Count == 0)
             {
                 var go = MessageBox.Show(this,
