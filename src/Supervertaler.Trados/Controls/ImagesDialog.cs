@@ -120,8 +120,9 @@ namespace Supervertaler.Trados.Controls
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(UiScale.Pixels(660), UiScale.Pixels(470));
-            MinimumSize = new Size(UiScale.Pixels(540), UiScale.Pixels(420));
+            // Wide enough for a button and its note on one line; the height grows to the content (FitHeight).
+            ClientSize = new Size(UiScale.Pixels(880), UiScale.Pixels(380));
+            MinimumSize = new Size(UiScale.Pixels(640), UiScale.Pixels(360));
 
             var tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(UiScale.Pixels(12)) };
