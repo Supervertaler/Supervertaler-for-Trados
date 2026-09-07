@@ -797,7 +797,7 @@
     {
       "name": "list_resources",
       "access": "read",
-      "description": "List the translation resources available: the Trados TMs attached to the open project (file-based and GroupShare server TMs), the Supervertaler bridged TMs, and ALL termbases - Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before searching, and to answer 'what TMs/termbases am I using?'. Each termbase reports readEnabled and writeEnabled (the per-project Read/Write ticks) and isProjectTermbase (the Trados 'Project' flag – true for a job-specific termbase, false for a shared background one). Check isProjectTermbase before add_term/update_term/delete_term calls to see which Write-enabled termbase(s) a 'project' vs 'background' scope would resolve to, and to catch a stale project termbase left Write-enabled from a previous job.",
+      "description": "List the translation resources available: the Trados TMs attached to the open project (file-based and GroupShare server TMs), and ALL termbases - Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before searching, and to answer 'what TMs/termbases am I using?'. Each termbase reports readEnabled and writeEnabled (the per-project Read/Write ticks) and isProjectTermbase (the Trados 'Project' flag – true for a job-specific termbase, false for a shared background one). Check isProjectTermbase before add_term/update_term/delete_term calls to see which Write-enabled termbase(s) a 'project' vs 'background' scope would resolve to, and to catch a stale project termbase left Write-enabled from a previous job.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -938,7 +938,7 @@
     {
       "name": "search_studio_tm",
       "access": "read",
-      "description": "Concordance-search the native Trados translation memories attached to the open project – the .sdltm files and GroupShare server TMs the user actually translates against (the same TMs as Supervertaler's SuperSearch). Returns previous source/target pairs with match scores and the TM name. This is usually the right tool for \"how did I translate this before?\"; search_tm only covers the separate Supervertaler-bridged TMs.",
+      "description": "Concordance-search the native Trados translation memories attached to the open project – the .sdltm files and GroupShare server TMs the user actually translates against (the same TMs as Supervertaler's SuperSearch). Returns previous source/target pairs with match scores and the TM name. This is usually the right tool for \"how did I translate this before?\".",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -969,38 +969,6 @@
       "paramMap": {
         "text": "q",
         "searchIn": "in"
-      },
-      "fixedQuery": {},
-      "fixedBody": {}
-    },
-    {
-      "name": "search_tm",
-      "access": "read",
-      "description": "Search the user's *Supervertaler* translation memories (the ones bridged from Supervertaler Workbench) for matches to a text. For the native Trados TMs attached to the project – which is what most users work with – use search_studio_tm instead, or call both. Returns previous translations with scores; use before proposing a translation to ground it in the user's past work.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "description": "The text to find TM matches for (typically one segment or sentence).",
-            "type": "string"
-          },
-          "limit": {
-            "description": "Maximum number of matches to return (default 5).",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "default": null
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "method": "GET",
-      "path": "/v1/tm-search",
-      "paramMap": {
-        "text": "q"
       },
       "fixedQuery": {},
       "fixedBody": {}
@@ -1153,7 +1121,7 @@
     {
       "name": "list_prompts",
       "access": "read",
-      "description": "List the prompts in the user's Supervertaler prompt library (Markdown files, shared with the Supervertaler Workbench). Returns each prompt's name, description, folder/category, relativePath (pass it to get_prompt or save_prompt), and flags (isDefault=built-in, isQuickLauncher=appears in the editor right-click menu, isReadOnly). Use this first to see what prompts exist before reading or improving one.",
+      "description": "List the prompts in the user's Supervertaler prompt library (Markdown files, shared with Supervertaler for memoQ). Returns each prompt's name, description, folder/category, relativePath (pass it to get_prompt or save_prompt), and flags (isDefault=built-in, isQuickLauncher=appears in the editor right-click menu, isReadOnly). Use this first to see what prompts exist before reading or improving one.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1203,7 +1171,7 @@
     {
       "name": "save_prompt",
       "access": "write",
-      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with the Workbench). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten – save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
+      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with Supervertaler for memoQ). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten – save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
       "inputSchema": {
         "type": "object",
         "properties": {

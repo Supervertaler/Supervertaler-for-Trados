@@ -1104,17 +1104,17 @@ namespace Supervertaler.Trados.Settings
 
         /// <summary>
         /// Returns the default root path proposed to new users:
-        /// ~/Supervertaler/ if Workbench is already installed there,
-        /// otherwise ~/Supervertaler/ as the canonical default.
+        /// ~/Supervertaler/, the canonical default shared by every Supervertaler product.
         /// </summary>
         public static string DefaultRoot =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Supervertaler");
 
         /// <summary>
-        /// Returns the Workbench data path read from config.json, or null if not found.
-        /// Used by the first-run dialog to surface an existing installation.
+        /// Returns the shared Supervertaler data path read from config.json (written by
+        /// any Supervertaler product), or null if not found. Used by the first-run
+        /// dialog to surface an existing installation.
         /// </summary>
-        public static string DetectWorkbenchRoot()
+        public static string DetectSharedRoot()
         {
             try
             {

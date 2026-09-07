@@ -78,8 +78,7 @@ namespace Supervertaler.Trados.Settings
         /// with a rule explaining it. On by default from 18.20.189: 18.20.188 shipped
         /// it opt-in, the real runs showed no sentinel reaching a target, and the
         /// strip makes the failure mode a log line. No checkbox - this is a hidden
-        /// kill switch for support cases, edited in settings.json like
-        /// <see cref="SidekickBridgeEnabled"/>. The default is also set in the
+        /// kill switch for support cases, edited in settings.json. The default is also set in the
         /// OnDeserializing hook, so a settings file written before the property
         /// existed comes out ON rather than at the bool default.
         /// </summary>
@@ -91,25 +90,6 @@ namespace Supervertaler.Trados.Settings
 
         [DataMember(Name = "batchSize")]
         public int BatchSize { get; set; } = 20;
-
-        /// <summary>
-        /// When true (default), the plugin starts a localhost-only HTTP bridge
-        /// (<see cref="Core.SupervertalerBridge"/>) that lets Supervertaler Workbench's
-        /// floating Sidekick Chat fetch the active project context and insert
-        /// translations back into the active Trados segment. Hidden setting –
-        /// no UI checkbox; advanced users can flip it off by editing settings.json
-        /// directly. The bridge only listens on 127.0.0.1, requires a per-session
-        /// auth token, and only starts when the user has Assistant access (paid
-        /// or trial).
-        ///
-        /// NOTE: the default value (true) is set in <see cref="SetDefaultsBeforeDeserialization"/>
-        /// rather than as a property initialiser, because <c>DataContractJsonSerializer</c>
-        /// skips constructors during deserialization – without the OnDeserializing
-        /// callback, any settings.json written before this property existed would
-        /// see the field as <c>false</c> (the bool type default) instead of true.
-        /// </summary>
-        [DataMember(Name = "sidekickBridgeEnabled")]
-        public bool SidekickBridgeEnabled { get; set; } = true;
 
         /// <summary>
         /// Relative path of the selected custom prompt from the prompt library.
@@ -282,7 +262,6 @@ namespace Supervertaler.Trados.Settings
             StructureContext = true;   // #109: on unless the file says otherwise
             _quickLauncherSurroundingSegments = 5;
             ActiveMemoryBankName = UserDataPath.DefaultMemoryBankName;
-            SidekickBridgeEnabled = true;
         }
 
         /// <summary>
@@ -302,31 +281,6 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "quickLauncherFlatFolders")]
         public List<string> QuickLauncherFlatFolders { get; set; }
             = new List<string>();
-
-        /// <summary>
-        /// Where QuickLauncher prompts run. <c>"TradosAssistant"</c> (default,
-        /// preserves existing behaviour) routes the prompt + response through
-        /// the in-Trados AI Assistant chat. <c>"WorkbenchSidekick"</c> instead
-        /// posts the prompt to Supervertaler Workbench's Chat (AI tab → Chat
-        /// sub-tab) via the localhost bridge Workbench exposes (see
-        /// WorkbenchBridgeClient and the Workbench-side
-        /// modules/supervertaler_bridge_server.py).
-        ///
-        /// The setting value <c>"WorkbenchSidekick"</c> is a historical
-        /// identifier kept stable for back-compat: the Workbench-side
-        /// floating Sidekick window was retired in Workbench v1.10.4, but
-        /// the wire-protocol name (and this setting value) intentionally
-        /// did not change so existing user settings keep resolving. The
-        /// user-facing label in the AI Settings UI reads "Workbench Chat"
-        /// to reflect the current reality.
-        ///
-        /// When set to WorkbenchSidekick but Workbench isn't running /
-        /// reachable, the action falls back to the in-Trados Assistant
-        /// with a status line citing the reason – the user is never
-        /// blocked from running their prompt by an unavailable Workbench.
-        /// </summary>
-        [DataMember(Name = "quickLauncherTarget")]
-        public string QuickLauncherTarget { get; set; } = "TradosAssistant";
 
         /// <summary>
         /// Whether to include term definitions, domains, and notes alongside

@@ -1443,7 +1443,7 @@ namespace Supervertaler.Trados.Core
     ///
     /// Lifecycle:
     ///   * Started by AiAssistantViewPart on plugin init when the user has
-    ///     Assistant access (paid or trial) AND AiSettings.SidekickBridgeEnabled.
+    ///     Assistant access (paid or trial).
     ///   * Binds to <c>http://127.0.0.1:&lt;random-port&gt;/</c> – never accepts
     ///     non-loopback connections.
     ///   * Generates a fresh per-session auth token on Start; clients must
@@ -2026,12 +2026,6 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/segments")
             {
                 HandleGetSegments(context);
-                return;
-            }
-
-            if (method == "GET" && path == "/v1/tm-search")
-            {
-                HandleTmSearch(context);
                 return;
             }
 
@@ -2629,95 +2623,6 @@ namespace Supervertaler.Trados.Core
                     Available = false,
                     Note = "internal error reading segments: " + ex.Message
                 };
-            }
-
-            WriteJson(context, 200, response);
-        }
-
-        private void HandleTmSearch(HttpListenerContext context)
-        {
-            var query = QueryUtf8(context.Request)["q"];
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                WriteJson(context, 400, new BridgeTmSearchResponse { Ok = false, Error = "missing 'q'" });
-                return;
-            }
-
-            int limit;
-            if (!int.TryParse(QueryUtf8(context.Request)["limit"], out limit) || limit <= 0)
-                limit = 5;
-            limit = Math.Min(limit, 50);
-
-            var dbPath = ResolveDbPathSafe();
-            if (dbPath == null)
-            {
-                WriteJson(context, 200, new BridgeTmSearchResponse
-                {
-                    Ok = false,
-                    Error = "Supervertaler database (supervertaler.db) not found. Set the termbase/database " +
-                            "path in the Supervertaler for Trados settings."
-                });
-                return;
-            }
-
-            var response = new BridgeTmSearchResponse { Ok = true, Matches = new List<BridgeTmMatch>() };
-            try
-            {
-                using (var reader = new TmReader(dbPath))
-                {
-                    if (!reader.Open())
-                    {
-                        WriteJson(context, 200, new BridgeTmSearchResponse
-                        {
-                            Ok = false,
-                            Error = "could not open Supervertaler database: " + (reader.LastError ?? "unknown error")
-                        });
-                        return;
-                    }
-
-                    var tms = reader.GetBridgedTms();
-                    if (tms == null || tms.Count == 0)
-                    {
-                        response.Note = "No Supervertaler TMs are bridged to Trados. Enable 'Bridge to Trados' " +
-                                        "on the relevant TMs in the Supervertaler Workbench to make them searchable.";
-                        WriteJson(context, 200, response);
-                        return;
-                    }
-
-                    // Exact hits first, then phrase-concordance hits; dedupe on
-                    // (source, target) across both passes and all TMs.
-                    var seen = new HashSet<string>(StringComparer.Ordinal);
-                    foreach (var tm in tms)
-                    {
-                        var hits = new List<BridgedTu>();
-                        hits.AddRange(reader.SearchExact(tm.TmId, query, limit));
-                        hits.AddRange(reader.SearchConcordance(tm.TmId, query, limit));
-
-                        foreach (var tu in hits)
-                        {
-                            if (response.Matches.Count >= limit) break;
-                            var key = (tu.SourceText ?? "") + "" + (tu.TargetText ?? "");
-                            if (!seen.Add(key)) continue;
-                            response.Matches.Add(new BridgeTmMatch
-                            {
-                                Score = tu.Score,
-                                Source = tu.SourceText ?? "",
-                                Target = tu.TargetText ?? "",
-                                TmName = tm.Name
-                            });
-                        }
-                        if (response.Matches.Count >= limit) break;
-                    }
-
-                    if (response.Matches.Count == 0)
-                        response.Note = "No exact or phrase-concordance matches. Try a shorter, more " +
-                                        "distinctive phrase from the segment.";
-                }
-            }
-            catch (Exception ex)
-            {
-                BridgeLog.Write($"[SupervertalerBridge] tm-search threw: {ex.Message}");
-                response = new BridgeTmSearchResponse { Ok = false, Error = "tm search failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);
@@ -3749,7 +3654,6 @@ namespace Supervertaler.Trados.Core
                 case "both": return "both";
                 case "trados": return "trados";
                 case "memoq": return "memoq";
-                case "workbench": return "workbench";
                 default: return "trados";
             }
         }

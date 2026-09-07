@@ -258,7 +258,7 @@ namespace Supervertaler.Trados.Core
                         RaiseProgress(startIdx, segments.Count,
                             "✗ Stopped to protect Trados: this job is too large for 32-bit Trados " +
                             "Studio 2024 (memory limit reached). Translate the remaining segments in smaller " +
-                            "batches, split the file, or use Supervertaler Workbench / Trados Studio 2026 (64-bit). " +
+                            "batches, split the file, or use Trados Studio 2026 (64-bit). " +
                             translated + " segment(s) translated before stopping.",
                             true, sw.Elapsed);
                         break;

@@ -244,9 +244,9 @@ namespace Supervertaler.Trados.Controls
                 "Refresh termbases from disk (F5)\n" +
                 "\n" +
                 "Reloads the in-memory term index from the database.\n" +
-                "Use this after editing terms in another tool (e.g. the\n" +
-                "Supervertaler Workbench desktop app sharing the same\n" +
-                "database) – without it, TermLens may keep showing\n" +
+                "Use this after editing terms in another tool (e.g.\n" +
+                "Supervertaler for memoQ sharing the same database)\n" +
+                "– without it, TermLens may keep showing\n" +
                 "deleted entries or miss newly-added ones until the\n" +
                 "active document changes.");
             _headerPanel.Controls.Add(_btnRefresh);

@@ -83,7 +83,7 @@ namespace Supervertaler.Trados
         // Localhost HTTP bridge for the Workbench Sidekick Chat. See
         // Core/SupervertalerBridge.cs for protocol details. Started at the end of
         // InitializeFullIfNeeded when the user has Assistant access AND the
-        // hidden setting AiSettings.SidekickBridgeEnabled is true.
+        // the user has Assistant access.
         private SupervertalerBridge _supervertalerBridge;
 
         // Memory-bank reader (lazy: created once, cached for the session).
@@ -976,12 +976,7 @@ namespace Supervertaler.Trados
                     BridgeLog.Write("guard: HasAssistantAccess=false – bridge skipped");
                     return;
                 }
-                if (_settings?.AiSettings?.SidekickBridgeEnabled == false)
-                {
-                    BridgeLog.Write("guard: AiSettings.SidekickBridgeEnabled=false – bridge skipped");
-                    return;
-                }
-                BridgeLog.Write($"guards passed: tier={LicenseManager.Instance.CurrentTier}, enabled={_settings?.AiSettings?.SidekickBridgeEnabled}");
+                BridgeLog.Write($"guards passed: tier={LicenseManager.Instance.CurrentTier}");
 
                 _supervertalerBridge = new SupervertalerBridge(
                     getContext: BuildBridgeContextSnapshot,
@@ -1220,7 +1215,7 @@ namespace Supervertaler.Trados
 
             try
             {
-                _activeDocument.Selection.Target.Replace(text, "Supervertaler Workbench");
+                _activeDocument.Selection.Target.Replace(text, "Supervertaler");
                 return null;
             }
             catch (Exception ex)
@@ -3422,23 +3417,6 @@ namespace Supervertaler.Trados
             {
                 try
                 {
-                    using (var tmReader = new TmReader(dbPath))
-                    {
-                        if (tmReader.Open())
-                        {
-                            foreach (var tm in tmReader.GetBridgedTms() ?? new List<TmInfo>())
-                            {
-                                response.Tms.Add(new BridgeTmResource
-                                {
-                                    Name = tm.Name,
-                                    Kind = "supervertaler",
-                                    Languages = $"{tm.SourceLang} → {tm.TargetLang}",
-                                    Entries = (int)Math.Min(tm.EntryCount, int.MaxValue)
-                                });
-                            }
-                        }
-                    }
-
                     var settings = SettingsService.Current;
                     var write = settings.WriteTermbaseIds != null
                         ? new HashSet<long>(settings.WriteTermbaseIds) : new HashSet<long>();
@@ -4723,8 +4701,8 @@ namespace Supervertaler.Trados
                     Changed = details.Count,
                     Details = details.Count > 0 ? details : null,
                     Note = details.Count > 0
-                        ? "Changes are live in the shared Supervertaler database (also used by the Supervertaler " +
-                          "Workbench) – no save step needed." + skippedNote
+                        ? "Changes are live in the shared Supervertaler database (also used by Supervertaler " +
+                          "for memoQ) – no save step needed." + skippedNote
                         : null
                 };
             }

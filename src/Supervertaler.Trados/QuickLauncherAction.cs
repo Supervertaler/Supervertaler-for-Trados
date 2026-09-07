@@ -479,8 +479,7 @@ namespace Supervertaler.Trados
         /// then dispatch the result to the requested destination.
         ///
         /// Modes:
-        ///   "assistant"  — current behaviour: route to in-Trados AI Assistant
-        ///                  or Workbench Sidekick per the global setting.
+        ///   "assistant"  — route to the in-Trados AI Assistant.
         ///   "clipboard"  — copy the expanded prompt to the system clipboard
         ///                  and show a transient status message via the
         ///                  AI Assistant log (no chat round-trip).
@@ -589,17 +588,11 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
-        /// Route the expanded prompt to the user's configured AI Assistant
-        /// destination (in-Trados or Workbench Sidekick), with the original
-        /// silent-fallback behaviour on Sidekick failures.
+        /// Route the expanded prompt to the in-Trados AI Assistant.
         /// </summary>
         private static void DispatchToAssistant(
             string promptName, string expanded, string displayExpanded, TermLensSettings settings)
         {
-            // Always the in-Trados Assistant. The Workbench route is gone; it was
-            // already a fall-back-on-failure path, so removing it changes nothing
-            // for anyone whose Workbench was not running - which, shortly, is
-            // everyone.
             AiAssistantViewPart.RunQuickLauncherPrompt(expanded, displayExpanded, promptName);
         }
     }

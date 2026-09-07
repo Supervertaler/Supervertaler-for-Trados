@@ -40,20 +40,20 @@ namespace Supervertaler.Trados.Controls
 
         private void PopulateDefaults()
         {
-            var detected = UserDataPath.DetectWorkbenchRoot();
+            var detected = UserDataPath.DetectSharedRoot();
             if (!string.IsNullOrEmpty(detected))
             {
                 _pathBox.Text = detected;
                 _noteLabel.Text =
-                    "An existing Supervertaler Workbench data folder was detected at the path above.\r\n" +
-                    "Using it means prompts and termbases are shared between both products automatically.";
+                    "An existing Supervertaler data folder was detected at the path above.\r\n" +
+                    "Using it means prompts, termbases and API keys are shared with Supervertaler for memoQ and Sidekick automatically.";
                 _noteLabel.ForeColor = Color.FromArgb(0, 120, 60);
             }
             else
             {
                 _pathBox.Text = UserDataPath.DefaultRoot;
                 _noteLabel.Text =
-                    "No existing Supervertaler Workbench installation was detected.\r\n" +
+                    "No existing Supervertaler data folder was detected.\r\n" +
                     "The folder will be created automatically when Supervertaler for Trados first saves data.";
                 _noteLabel.ForeColor = Color.FromArgb(80, 80, 80);
             }
@@ -176,8 +176,8 @@ namespace Supervertaler.Trados.Controls
             {
                 Text =
                     "Choose a folder to store your data (prompts, settings, and licence information). " +
-                    "Pointing this to your existing Supervertaler Workbench data folder lets both " +
-                    "products share prompts and termbases automatically.",
+                    "Supervertaler for memoQ and Supervertaler Sidekick use the same folder, so prompts, " +
+                    "termbases and API keys are shared between them automatically.",
                 Location  = new Point(16, 48),
                 Size      = new Size(508, 52),
                 AutoSize  = false

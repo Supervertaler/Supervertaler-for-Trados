@@ -90,8 +90,6 @@ namespace Supervertaler.Trados.Controls
         private CheckBox _chkDemoMode;
         private Label _lblSurroundingSegments;
         private NumericUpDown _nudSurroundingSegments;
-        private Label _lblQuickLauncherTarget;
-        private ComboBox _cmbQuickLauncherTarget;
 
         private Label _lblInfo;
 
@@ -686,35 +684,6 @@ namespace Supervertaler.Trados.Controls
                 "Only applies to Chat and QuickLauncher – not to Batch Operations.");
             Pair(root, ref row, _lblSurroundingSegments, _nudSurroundingSegments);
 
-            _lblQuickLauncherTarget = FieldLabel("QuickLauncher prompts go to:", indentSteps: 1);
-            _cmbQuickLauncherTarget = new ComboBox
-            {
-                Dock = DockStyle.Fill,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3))
-            };
-            _cmbQuickLauncherTarget.Items.Add("In-Trados AI Assistant");
-            // Display string was "Workbench Sidekick" through Trados v4.19.x –
-            // renamed to "Workbench Chat" after Supervertaler Workbench v1.10.4
-            // retired the Sidekick floating window and the Chat surface was
-            // promoted into Workbench itself. The persisted setting value
-            // (settings.QuickLauncherTarget == "WorkbenchSidekick") is kept
-            // unchanged on disk so existing users' saved preferences still
-            // resolve – it's an internal identifier, never user-visible.
-            // "Workbench Chat" was the second entry. Removed with Workbench's
-            // retirement: a destination that will not exist is not a choice, and
-            // anyone left on it would have got silence. The stored value
-            // (QuickLauncherTarget) is untouched on disk and simply ignored, so
-            // nothing has to migrate.
-            _cmbQuickLauncherTarget.SelectedIndex = 0;
-            var qlTargetTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
-            qlTargetTip.SetToolTip(_cmbQuickLauncherTarget,
-                "Where QuickLauncher prompts are run.\r\n" +
-                "\r\n" +
-                "  In-Trados AI Assistant – prompt and response stay in the\r\n" +
-                "  Trados Assistant chat panel.");
-            Pair(root, ref row, _lblQuickLauncherTarget, _cmbQuickLauncherTarget);
-
             // ===== External AI assistants (MCP) =====
             var lblMcpHeader = Header("External AI assistants (MCP)");
             Span(root, ref row, lblMcpHeader);
@@ -848,7 +817,6 @@ namespace Supervertaler.Trados.Controls
                 Math.Min(_nudPromptContext.Maximum, settings.PromptContextMaxSegments));
             _nudSurroundingSegments.Value = Math.Max(_nudSurroundingSegments.Minimum,
                 Math.Min(_nudSurroundingSegments.Maximum, settings.QuickLauncherSurroundingSegments));
-            _cmbQuickLauncherTarget.SelectedIndex = 0;   // only one destination now
             _chkIncludeTermMetadata.Checked = settings.IncludeTermMetadata;
             _chkIncludeSuperMemory.Checked = settings.IncludeSuperMemoryContext;
             _chkIncludeSuperMemoryAutoPrompt.Checked = settings.IncludeSuperMemoryInAutoPrompt;
@@ -946,7 +914,6 @@ namespace Supervertaler.Trados.Controls
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;
             settings.PromptContextMaxSegments = (int)_nudPromptContext.Value;
             settings.QuickLauncherSurroundingSegments = (int)_nudSurroundingSegments.Value;
-            settings.QuickLauncherTarget = "TradosAssistant";
             settings.IncludeTermMetadata = _chkIncludeTermMetadata.Checked;
             settings.IncludeSuperMemoryContext = _chkIncludeSuperMemory.Checked;
             settings.IncludeSuperMemoryInAutoPrompt = _chkIncludeSuperMemoryAutoPrompt.Checked;
