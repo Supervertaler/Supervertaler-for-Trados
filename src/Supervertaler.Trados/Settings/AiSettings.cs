@@ -75,12 +75,16 @@ namespace Supervertaler.Trados.Settings
         /// <summary>
         /// #109: send the document's list numbering (claim numbers, lettered steps,
         /// bullets) to the AI as structure context, as a "[#e)]" prefix on the source
-        /// with a rule explaining it. Off by default for the first version that ships
-        /// it: the mechanism is trusted only once the TMX diffs across the model
-        /// line-up show no sentinel reaching a target.
+        /// with a rule explaining it. On by default from 18.20.189: 18.20.188 shipped
+        /// it opt-in, the real runs showed no sentinel reaching a target, and the
+        /// strip makes the failure mode a log line. No checkbox - this is a hidden
+        /// kill switch for support cases, edited in settings.json like
+        /// <see cref="SidekickBridgeEnabled"/>. The default is also set in the
+        /// OnDeserializing hook, so a settings file written before the property
+        /// existed comes out ON rather than at the bool default.
         /// </summary>
-        [DataMember(EmitDefaultValue = false)]
-        public bool StructureContext { get; set; }
+        [DataMember(Name = "structureContext")]
+        public bool StructureContext { get; set; } = true;
 
         [DataMember(Name = "selectedCustomProfileName")]
         public string SelectedCustomProfileName { get; set; } = "";
@@ -275,6 +279,7 @@ namespace Supervertaler.Trados.Settings
         [OnDeserializing]
         private void OnDeserializing(StreamingContext context)
         {
+            StructureContext = true;   // #109: on unless the file says otherwise
             _quickLauncherSurroundingSegments = 5;
             ActiveMemoryBankName = UserDataPath.DefaultMemoryBankName;
             SidekickBridgeEnabled = true;

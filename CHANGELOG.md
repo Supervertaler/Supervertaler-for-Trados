@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.189 / 19.20.189] – unreleased
+
+### Changed
+- **List numbering as structure context is now on for everyone, and the checkbox is gone.** 18.20.188 shipped it opt-in so the first real runs could be checked. They were: across the model line-up tried so far no sentinel reached a target, the strip never had to fire, and the phantom “steps a. to f. are unlettered” flag that started it is gone. So Batch Translate, Translate Segment, Clipboard Mode and SuperBench now send the markers without asking. A hidden `structureContext` switch stays in `settings.json` for support cases.
+
 ## [18.20.188 / 19.20.188] – 2026-09-07
 
 ### Added
