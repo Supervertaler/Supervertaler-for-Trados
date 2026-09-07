@@ -632,7 +632,7 @@ namespace Supervertaler.Trados.Controls
             // numerals simply says so.
             _lnkNumerals = new LinkLabel
             {
-                Text = "№  Reference numerals",
+                Text = "№  Reference numbers in the text",
                 AutoSize = true,
                 Font = bodyFont,
                 Location = new Point(leftMargin, y)
@@ -641,10 +641,10 @@ namespace Supervertaler.Trados.Controls
                 ReferenceNumeralsRequested?.Invoke(this, EventArgs.Empty);
             var numeralsTip = new ToolTip();
             numeralsTip.SetToolTip(_lnkNumerals,
-                "List every parenthesised reference numeral in the open document,\r\n" +
-                "with how often each is cited and the first sentence citing it.\r\n" +
-                "Scans the whole document regardless of the Scope setting, and makes\r\n" +
-                "no AI call. The report opens in the Chat tab.");
+                "Lists the numbers the text uses to point at parts of a drawing - (12), (3a) -\r\n" +
+                "with how often each is used and the sentence that first mentions it. Common in\r\n" +
+                "patents, manuals and technical specifications; a document without them just\r\n" +
+                "says so. Reads the whole document, makes no AI call, and opens in the Chat tab.");
             Controls.Add(_lnkNumerals);
             y += Px(22);
 
@@ -661,8 +661,9 @@ namespace Supervertaler.Trados.Controls
             _lnkImages.LinkClicked += (s, ev) => ImagesRequested?.Invoke(this, EventArgs.Empty);
             var imagesTip = new ToolTip();
             imagesTip.SetToolTip(_lnkImages,
-                "The project's drawings: the reference images folder, the images in the\r\n" +
-                "Word documents beside the project, and figures.md in the memory bank.");
+                "The images that go with this document - diagrams, drawings, photos - which are\r\n" +
+                "often in a separate file. Find them, keep them in a folder, and give the AI a\r\n" +
+                "description of what each one shows. Opens a panel that explains each step.");
             Controls.Add(_lnkImages);
 
             y += Px(26);

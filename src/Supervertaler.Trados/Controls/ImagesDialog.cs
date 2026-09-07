@@ -101,8 +101,9 @@ namespace Supervertaler.Trados.Controls
             root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             int row = 0;
 
-            var intro = Wrap("The images that belong to a document are often not in the file you translate, and what they show exists only as pixels. " +
-                             "This panel finds them, keeps them in a folder, and writes what each one shows to figures.md in the memory bank, where every prompt reads it.");
+            var intro = Wrap("The images that go with a document - diagrams, drawings, photos - are often in a separate file, and the AI cannot see " +
+                             "what they show. This panel finds them, keeps them in a folder, and writes a description of each one to a file called " +
+                             "figures.md in the memory bank. The AI reads that file with every request, so it knows what the images show.");
             root.Controls.Add(intro, 0, row); root.SetColumnSpan(intro, 3); row++;
 
             // Folder
@@ -112,6 +113,8 @@ namespace Supervertaler.Trados.Controls
             _txtFolder = new TextBox { ReadOnly = true, TabStop = false, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(6), 0) };
             root.Controls.Add(_txtFolder, 1, row);
             var btnBrowse = Btn("Browse\u2026"); btnBrowse.Click += (s, e) => Run(_actions.Browse);
+            var tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
+            tips.SetToolTip(btnBrowse, "Choose the folder where this project's images are kept. Remembered for this project.");
             root.Controls.Add(btnBrowse, 2, row); row++;
             _lblFolderNote = Wrap(""); _lblFolderNote.ForeColor = Color.FromArgb(100, 100, 100);
             root.Controls.Add(_lblFolderNote, 1, row); root.SetColumnSpan(_lblFolderNote, 2); row++;
@@ -126,8 +129,11 @@ namespace Supervertaler.Trados.Controls
             stages.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             stages.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             _btnExtract = Stage("Extract images to folder", out _lblExtractCost, stages, 0); _btnExtract.Click += (s, e) => Run(_actions.Extract);
+            tips.SetToolTip(_btnExtract, "Step 1. Copies the images out of the Word documents into the folder above, named after their figure numbers (Figure 01.png, Figure 02.png...). Running it again replaces them.");
             _btnAnalyse = Stage("Analyse with AI", out _lblAnalyseCost, stages, 1); _btnAnalyse.Click += (s, e) => Run(_actions.Analyse);
+            tips.SetToolTip(_btnAnalyse, "Step 2. Shows each image to the AI, together with what the text says about it, and writes the descriptions to figures.md. One paid request per image. Asks before replacing an existing figures.md.");
             _btnWrite = Stage("Write figures.md", out _lblWriteCost, stages, 2); _btnWrite.Click += (s, e) => Run(_actions.WriteFigures);
+            tips.SetToolTip(_btnWrite, "Writes figures.md from the text alone - what the document says each figure shows - without looking at the images. Free. Use it if you do not want to spend AI requests, or before you do.");
             root.Controls.Add(stages, 0, row); root.SetColumnSpan(stages, 3); row++;
 
             // figures.md state
