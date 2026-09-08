@@ -10345,9 +10345,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var markdown = Supervertaler.Core.NumeralInventory.Format(report, null);
 
                 markdown += "\n\n*Scanned all " + sources.Count
-                          + " segments of the open document. A reference numeral here means a "
-                          + "1-3 digit number in parentheses, such as (12). Nothing has examined "
-                          + "the drawings themselves, so this says what the text cites, not what "
+                          + " segments of the open document. A reference number here means a "
+                          + "1-3 digit number in brackets, such as (12). Nothing has examined "
+                          + "the images themselves, so this says what the text cites, not what "
                           + "the figures contain.*";
 
                 // Switch BEFORE adding. A bubble measured while its TabPage is

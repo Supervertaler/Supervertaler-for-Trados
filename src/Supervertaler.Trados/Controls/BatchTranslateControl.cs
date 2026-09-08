@@ -632,7 +632,7 @@ namespace Supervertaler.Trados.Controls
             // numerals simply says so.
             _lnkNumerals = new LinkLabel
             {
-                Text = "(12)  Reference numbers",
+                Text = "Reference numbers - like \"(12)\"",
                 AutoSize = true,
                 Font = bodyFont,
                 Location = new Point(leftMargin, y)
