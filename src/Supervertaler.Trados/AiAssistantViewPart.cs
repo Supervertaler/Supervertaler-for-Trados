@@ -10375,10 +10375,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 batchControl.AppendLog(
                     report.HasAny
-                        ? "Numbers in brackets: " + report.Citations.Count
+                        ? "Reference numbers: " + report.Citations.Count
                           + " distinct numerals across " + sources.Count
                           + " segments - see the Chat tab."
-                        : "Numbers in brackets: none found in this document.");
+                        : "Reference numbers: none found in this document.");
             });
         }
 
