@@ -6,6 +6,17 @@ using Supervertaler.Trados.Core;
 
 namespace Supervertaler.Trados.Controls
 {
+    /// <summary>
+    /// One document in the Images panel's table: its name in one column, what was
+    /// found in it in the other. Kept apart rather than pre-joined into a sentence,
+    /// so names line up under names on a project of several files.
+    /// </summary>
+    internal sealed class DocumentRow
+    {
+        public string Name;
+        public string Note;
+    }
+
     /// <summary>What the Images dialog shows: the state of the image pipeline for the open project (#84).</summary>
     internal sealed class ImagesState
     {
@@ -15,12 +26,14 @@ namespace Supervertaler.Trados.Controls
         public string Folder;
         /// <summary>Image files in that folder, when it is set and exists; -1 when it does not exist.</summary>
         public int FolderImages;
-        /// <summary>One line per Word document in the project that has images (or could not be read).</summary>
-        public List<string> Documents = new List<string>();
+        /// <summary>One row per Word document in the project that has images.</summary>
+        public List<DocumentRow> Documents = new List<DocumentRow>();
         /// <summary>Every Word document in the project, images or not.</summary>
         public int DocumentCount;
-        public int DocumentsWithoutImages;
-        public List<string> DocumentsWithoutImagesNames = new List<string>();
+        /// <summary>Documents with no images in them.</summary>
+        public List<DocumentRow> DocumentsWithoutImages = new List<DocumentRow>();
+        /// <summary>Documents that could not be read, with the reason.</summary>
+        public List<DocumentRow> DocumentsUnreadable = new List<DocumentRow>();
         /// <summary>True when the active bank is the shared one, which every project reads.</summary>
         public bool BankIsShared;
         /// <summary>The bank name the panel offers to create for this project.</summary>
@@ -67,7 +80,8 @@ namespace Supervertaler.Trados.Controls
         private ImagesState _state;
 
         private readonly Label _lblDocs;
-        private readonly ListBox _lstDocs;
+        private readonly ListView _lstDocs;
+        private bool _fittingColumns;
         private readonly LinkLabel _lnkCreateBank;
         private readonly TableLayoutPanel _root;
         private readonly Button _btnExtract;
@@ -88,18 +102,26 @@ namespace Supervertaler.Trados.Controls
             ProjectName = "Acme PROJ-001 (application as filed, drawings as filed, sequence listing)",
             Folder = @"D:\Google Drive\Jobs\Acme\0187\Acme PROJ-001 (application as filed)\Images folder with a long name",
             FolderImages = 14,
-            Documents = new List<string>
+            Documents = new List<DocumentRow>
             {
-                "20260713-PROJ-001 Figures as filed.docx: 14 images, 14 with a figure label, paired by position and checked",
-                "20260713-PROJ-001 Figures as filed, sheet 2 of a very long document title that wraps.docx: 9 images, 9 with a figure label, labels taken from nearby text",
-                "Annex A.docx: 2 images, 0 with a figure label",
-                "Annex B.docx: 1 image, 1 with a figure label, paired by position and checked",
-                "Annex C.docx: 1 image, 1 with a figure label, paired by position and checked",
-                "Annex D.docx: 3 images, 3 with a figure label, paired by position and checked",
-                "Annex E.docx: 1 image, 1 with a figure label, paired by position and checked",
+                new DocumentRow { Name = "20260713-PROJ-001 Figures as filed.docx", Note = "14 images, 14 with a figure label, paired by position and checked" },
+                new DocumentRow { Name = "20260713-PROJ-001 Figures as filed, sheet 2 of a very long document title that wraps.docx", Note = "9 images, 9 with a figure label, labels taken from nearby text" },
+                new DocumentRow { Name = "Annex A.docx", Note = "2 images, 0 with a figure label" },
+                new DocumentRow { Name = "Annex B.docx", Note = "1 image, 1 with a figure label, paired by position and checked" },
+                new DocumentRow { Name = "Annex C.docx", Note = "1 image, 1 with a figure label, paired by position and checked" },
+                new DocumentRow { Name = "Annex D.docx", Note = "3 images, 3 with a figure label, paired by position and checked" },
+                new DocumentRow { Name = "Annex E.docx", Note = "1 image, 1 with a figure label, paired by position and checked" },
             },
-            DocumentCount = 60, DocumentsWithoutImages = 53,
-            DocumentsWithoutImagesNames = new List<string> { "Annex F.docx", "Annex G.docx", "Annex H.docx" },
+            DocumentCount = 60,
+            DocumentsWithoutImages = new List<DocumentRow>
+            {
+                new DocumentRow { Name = "Annex F.docx", Note = "no images" },
+                new DocumentRow { Name = "Annex G.docx", Note = "no images" },
+            },
+            DocumentsUnreadable = new List<DocumentRow>
+            {
+                new DocumentRow { Name = "Annex H.docx", Note = "could not be read (the file is in use by another process)" },
+            },
             BankIsShared = true, SuggestedBankName = "acme-proj-001-application-as-filed",
             TotalImages = 31, Labelled = 29,
             BankName = "acme-proj-001",
@@ -139,9 +161,25 @@ namespace Supervertaler.Trados.Controls
             root.Controls.Add(L("Your documents:"), 0, row);
             _lblDocs = Wrap("");
             root.Controls.Add(_lblDocs, 1, row); row++;
-            // A list, not a label: a project can hold sixty files, and every one of
-            // them should be findable here, the ones with images first.
-            _lstDocs = new ListBox { Dock = DockStyle.Fill, Height = UiScale.Pixels(84), IntegralHeight = false, HorizontalScrollbar = true, SelectionMode = SelectionMode.None, Margin = new Padding(0, 0, 0, UiScale.Pixels(6)) };
+            // A table, not a sentence per row: on a project of several files the eye
+            // should find every name in one column and every finding in the other,
+            // instead of hunting for where each name ends. Every document is listed,
+            // the ones with images first.
+            _lstDocs = new ListView
+            {
+                Dock = DockStyle.Fill,
+                Height = UiScale.Pixels(96),
+                View = View.Details,
+                FullRowSelect = true,
+                MultiSelect = false,
+                HideSelection = true,
+                HeaderStyle = ColumnHeaderStyle.Nonclickable,
+                ShowItemToolTips = true,
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(6)),
+            };
+            _lstDocs.Columns.Add("Document");
+            _lstDocs.Columns.Add("Images");
+            _lstDocs.SizeChanged += (s, e) => FitColumns();
             root.Controls.Add(_lstDocs, 1, row); row++;
 
             // Step 1
@@ -263,10 +301,12 @@ namespace Supervertaler.Trados.Controls
             _lblDocs.Text = DocumentsText(st);
             _lstDocs.BeginUpdate();
             _lstDocs.Items.Clear();
-            foreach (var d in st.Documents) _lstDocs.Items.Add(d);
-            foreach (var d in st.DocumentsWithoutImagesNames) _lstDocs.Items.Add(d + ": no images");
+            foreach (var d in st.Documents) AddDocumentRow(d, _lstDocs.ForeColor);
+            foreach (var d in st.DocumentsWithoutImages) AddDocumentRow(d, SystemColors.GrayText);
+            foreach (var d in st.DocumentsUnreadable) AddDocumentRow(d, Color.Firebrick);
             _lstDocs.EndUpdate();
             _lstDocs.Visible = st.DocumentCount > 0;
+            FitColumns();
 
             // Step 1
             _btnExtract.Enabled = st.ProjectOpen && haveImages && !st.AnalysisRunning;
@@ -319,10 +359,60 @@ namespace Supervertaler.Trados.Controls
                 return "No images in the " + Plural(st.DocumentCount, "document") + " of this project.";
             int withImages = st.Documents.Count;
             return Plural(st.TotalImages, "image") + " in " + withImages + " of " + Plural(st.DocumentCount, "document")
-                 + (st.DocumentsWithoutImages > 0 ? "; the rest have none." : ".");
+                 + (st.DocumentsWithoutImages.Count > 0 || st.DocumentsUnreadable.Count > 0 ? "; the rest have none." : ".");
         }
 
         private static string Plural(int n, string noun) => n + " " + noun + (n == 1 ? "" : "s");
+
+        private void AddDocumentRow(DocumentRow row, Color colour)
+        {
+            var item = new ListViewItem(row.Name ?? "") { ForeColor = colour };
+            item.SubItems.Add(row.Note ?? "");
+            // A name wider than its column is cut off on screen; the tooltip carries
+            // the whole row, so nothing is unreadable.
+            item.ToolTipText = (row.Name ?? "") + "  \u2014  " + (row.Note ?? "");
+            _lstDocs.Items.Add(item);
+        }
+
+        /// <summary>
+        /// The name column takes what the longest name needs, capped at a share of the
+        /// width so one long file name cannot push the finding off the right edge; the
+        /// finding column takes the rest.
+        ///
+        /// <para>Guarded: setting a column width from inside the list's own
+        /// SizeChanged re-enters layout and raises it again. That does not fail a
+        /// check, it hangs - the memoQ side lost five minutes to it before killing
+        /// the run.</para>
+        /// </summary>
+        private void FitColumns()
+        {
+            if (_fittingColumns || _lstDocs == null || _lstDocs.Columns.Count < 2) return;
+            _fittingColumns = true;
+            try
+            {
+                var available = _lstDocs.ClientSize.Width - UiScale.Pixels(2);
+                if (available <= 0) return;
+
+                // Measured, not ListView's own auto-size (Width = -1): auto-size needs
+                // a window handle, and before the dialog is shown it stores the -1
+                // literally - a column of negative width, and a harness that cannot
+                // tell the difference.
+                var needed = TextRenderer.MeasureText(_lstDocs.Columns[0].Text ?? "", _lstDocs.Font).Width;
+                foreach (ListViewItem item in _lstDocs.Items)
+                {
+                    var w = TextRenderer.MeasureText(item.Text ?? "", _lstDocs.Font).Width;
+                    if (w > needed) needed = w;
+                }
+                needed += UiScale.Pixels(18);   // the cell's own padding
+
+                var cap = (int)(available * 0.42);
+                var first = Math.Max(UiScale.Pixels(80), Math.Min(needed, cap));
+                _lstDocs.Columns[0].Width = first;
+                _lstDocs.Columns[1].Width = Math.Max(UiScale.Pixels(80), available - first);
+            }
+            catch { }
+            finally { _fittingColumns = false; }
+        }
 
         private static Label L(string text) => new Label { Text = text, AutoSize = true, Margin = new Padding(0, UiScale.Pixels(6), UiScale.Pixels(10), 0) };
 

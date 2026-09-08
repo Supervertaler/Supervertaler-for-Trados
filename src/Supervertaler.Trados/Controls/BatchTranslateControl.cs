@@ -632,7 +632,7 @@ namespace Supervertaler.Trados.Controls
             // numerals simply says so.
             _lnkNumerals = new LinkLabel
             {
-                Text = "№  Reference numbers in the text",
+                Text = "#  Numbers in brackets, like (12)",
                 AutoSize = true,
                 Font = bodyFont,
                 Location = new Point(leftMargin, y)

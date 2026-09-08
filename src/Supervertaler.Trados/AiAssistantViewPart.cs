@@ -9713,17 +9713,22 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         var labelled = set.Images.Count(i => !string.IsNullOrEmpty(i.Label));
                         st.TotalImages += n; st.Labelled += labelled;
                         st.DocumentCount++;
-                        if (n == 0) { st.DocumentsWithoutImages++; st.DocumentsWithoutImagesNames.Add(Path.GetFileName(f)); continue; }
-                        // Only documents that have images are listed: a project of
-                        // sixty files with pictures in three of them wants three lines.
-                        var line = Path.GetFileName(f) + ": " + n + " image" + (n == 1 ? "" : "s")
-                                 + ", " + labelled + " with a figure label";
-                        if (set.Method == Supervertaler.Core.LabelingMethod.Ordinal) line += ", paired by position and checked";
-                        else if (set.Method == Supervertaler.Core.LabelingMethod.Refused) line += " \u2013 labels withheld: " + set.Warning;
-                        else if (set.Method == Supervertaler.Core.LabelingMethod.Proximity) line += ", labels taken from nearby text";
-                        st.Documents.Add(line);
+                        if (n == 0)
+                        {
+                            st.DocumentsWithoutImages.Add(new Controls.DocumentRow { Name = Path.GetFileName(f), Note = "no images" });
+                            continue;
+                        }
+                        var note = n + " image" + (n == 1 ? "" : "s") + ", " + labelled + " with a figure label";
+                        if (set.Method == Supervertaler.Core.LabelingMethod.Ordinal) note += ", paired by position and checked";
+                        else if (set.Method == Supervertaler.Core.LabelingMethod.Refused) note += " \u2013 labels withheld: " + set.Warning;
+                        else if (set.Method == Supervertaler.Core.LabelingMethod.Proximity) note += ", labels taken from nearby text";
+                        st.Documents.Add(new Controls.DocumentRow { Name = Path.GetFileName(f), Note = note });
                     }
-                    catch (Exception ex) { st.DocumentCount++; st.Documents.Add(Path.GetFileName(f) + ": could not be read (" + ex.Message + ")"); }
+                    catch (Exception ex)
+                    {
+                        st.DocumentCount++;
+                        st.DocumentsUnreadable.Add(new Controls.DocumentRow { Name = Path.GetFileName(f), Note = "could not be read (" + ex.Message + ")" });
+                    }
                 }
 
                 st.BankName = ActiveMemoryBankName;
@@ -10370,10 +10375,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 batchControl.AppendLog(
                     report.HasAny
-                        ? "Reference numerals: " + report.Citations.Count
+                        ? "Numbers in brackets: " + report.Citations.Count
                           + " distinct numerals across " + sources.Count
                           + " segments - see the Chat tab."
-                        : "Reference numerals: none found in this document.");
+                        : "Numbers in brackets: none found in this document.");
             });
         }
 
