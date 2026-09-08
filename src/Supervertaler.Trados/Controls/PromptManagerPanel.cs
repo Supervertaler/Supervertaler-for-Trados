@@ -1437,7 +1437,7 @@ namespace Supervertaler.Trados.Controls
             var resolved = Supervertaler.Core.ReferenceImages.Resolve(folder);
             if (!string.IsNullOrEmpty(resolved))
             {
-                var count = Supervertaler.Core.ReferenceImages.List(resolved).Count;
+                var count = Supervertaler.Core.ReferenceImages.CountImages(resolved);
                 _txtImagesFolder.Text = resolved + "   (" + count + " image" + (count == 1 ? "" : "s") + ")";
                 _btnImagesClear.Enabled = true;
             }
@@ -1487,11 +1487,13 @@ namespace Supervertaler.Trados.Controls
             // Controls/FolderPicker.cs, which uses IFileOpenDialog with
             // FOS_PICKFOLDERS and falls back only if the COM call fails.
             var chosen = FolderPicker.Show(
-                this, "Choose the folder holding this project's drawings", start);
+                this, "Choose the folder holding this project's images", start);
             if (string.IsNullOrEmpty(chosen)) return;
 
-            var images = Supervertaler.Core.ReferenceImages.List(chosen);
-            if (images.Count == 0)
+            // Counted one level deep: extraction puts one subfolder per document
+            // when a project has several, and a flat count calls that folder empty.
+            var images = Supervertaler.Core.ReferenceImages.CountImages(chosen);
+            if (images == 0)
             {
                 var go = MessageBox.Show(this,
                     "No images found in\n\n" + chosen + "\n\nUse it anyway?",

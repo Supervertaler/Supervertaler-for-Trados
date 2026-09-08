@@ -9698,7 +9698,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     if (!string.IsNullOrEmpty(st.Folder))
                     {
                         if (!Directory.Exists(st.Folder)) st.FolderImages = -1;
-                        else { try { st.FolderImages = Supervertaler.Core.ReferenceImages.List(st.Folder)?.Count ?? 0; } catch { st.FolderImages = 0; } }
+                        else { try { st.FolderImages = Supervertaler.Core.ReferenceImages.CountImages(st.Folder); } catch { st.FolderImages = 0; } }
                     }
                 }
 
@@ -10059,7 +10059,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrEmpty(chosen)) return;
 
             var found = 0;
-            try { found = Supervertaler.Core.ReferenceImages.List(chosen)?.Count ?? 0; }
+            try { found = Supervertaler.Core.ReferenceImages.CountImages(chosen); }
             catch { }
 
             try
@@ -10235,8 +10235,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
             else
             {
-                var listed = Supervertaler.Core.ReferenceImages.List(folder);
-                sb.AppendLine("`" + folder + "` \u2013 " + listed.Count + " image file(s).");
+                var listed = Supervertaler.Core.ReferenceImages.CountImages(folder);
+                sb.AppendLine("`" + folder + "` \u2013 " + listed + " image file(s).");
             }
             sb.AppendLine();
 
