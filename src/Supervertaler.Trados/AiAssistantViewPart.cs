@@ -9412,8 +9412,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 try
                 {
                     var visions = new List<Supervertaler.Core.FigureVision>();
-                    Supervertaler.Core.DocxImageSet lastSet = null;
-                    string lastDoc = null;
+                    var documents = new List<Supervertaler.Core.FiguresFile.FigureDocument>();
 
                     string clientError;
                     using (var client = CreateLlmClient(out clientError))
@@ -9424,27 +9423,52 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             return;
                         }
 
+                        // Which documents actually carry images decides where the files
+                        // go, exactly as Extract does: several documents written into one
+                        // folder means the second document's "Figure 01.png" replaces the
+                        // first's, and the first is then analysed twice.
+                        var withImages = new List<string>();
                         foreach (var f in docxFiles)
                         {
-                            var set = Supervertaler.Core.DocxImageExtractor.Extract(f, false, folder);
+                            try { if (Supervertaler.Core.DocxImageExtractor.Extract(f).Images.Count > 0) withImages.Add(f); }
+                            catch { }
+                        }
+
+                        foreach (var f in withImages)
+                        {
+                            var target = withImages.Count == 1
+                                ? folder
+                                : Path.Combine(folder, Path.GetFileNameWithoutExtension(f));
+
+                            var set = Supervertaler.Core.DocxImageExtractor.Extract(f, false, target);
                             if (set.Images.Count == 0) continue;
-                            lastSet = set; lastDoc = f;
+
+                            var doc = new Supervertaler.Core.FiguresFile.FigureDocument
+                            {
+                                Name = Path.GetFileName(f),
+                                Set = set,
+                            };
+                            documents.Add(doc);
 
                             for (int i = 0; i < set.Images.Count; i++)
                             {
                                 var img = set.Images[i];
-                                var file = i < set.SavedFiles.Count ? set.SavedFiles[i] : null;
-                                if (file == null) continue;
+                                // The file this image was written to, taken from the image
+                                // itself: indexing SavedFiles pairs every later image with
+                                // the wrong file as soon as one fails to write.
+                                if (string.IsNullOrEmpty(img.SavedFileName)) continue;
 
-                                var n = i + 1; var of = set.Images.Count;
+                                var n = i + 1; var of = set.Images.Count; var docName = doc.Name;
                                 SafeInvoke(() => batchControl.AppendLog(
-                                    "  figure " + n + " of " + of + "\u2026"));
+                                    "  " + docName + ": figure " + n + " of " + of + "\u2026"));
 
                                 var v = await Supervertaler.Core.FigureAnalyzer.AnalyseAsync(
                                     client,
-                                    Path.Combine(folder, file),
+                                    Path.Combine(target, img.SavedFileName),
                                     img.Label ?? ("image " + img.Ordinal),
                                     img.Descriptions).ConfigureAwait(false);
+                                doc.Images.Add(img);
+                                doc.Visions.Add(v);
                                 visions.Add(v);
                             }
                         }
@@ -9456,7 +9480,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         return;
                     }
 
-                    var path = WriteFiguresWithVision(bankName, lastDoc, lastSet, visions, textSigns, rawSourceText);
+                    var path = WriteFiguresWithVision(bankName, documents, visions, textSigns, rawSourceText);
 
                     SafeInvoke(() =>
                     {
@@ -9471,7 +9495,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             + "memory bank **" + bankName + "**."
                             + (drawingsOnly.Count > 0
                                 ? "\n\n\u26A0 **" + drawingsOnly.Count + " reference sign(s) appear in the "
-                                  + "drawings but nowhere in the text:** " + string.Join(", ", drawingsOnly)
+                                  + "images but nowhere in the text:** " + string.Join(", ", drawingsOnly)
                                   + ". That is worth raising with the client before filing."
                                 : "\n\nEvery sign read in the images also appears in the text.")
                             + "\n\n*This file is read into every prompt from now on. Read it first \u2014 a "
@@ -9553,15 +9577,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// Rule 42 point, and it is the one thing here a reader cannot get any
         /// other way.</para>
         /// </summary>
-        private string WriteFiguresWithVision(string bankName, string docPath,
-            Supervertaler.Core.DocxImageSet set, List<Supervertaler.Core.FigureVision> visions, HashSet<string> textSigns,
+        private string WriteFiguresWithVision(string bankName,
+            List<Supervertaler.Core.FiguresFile.FigureDocument> documents,
+            List<Supervertaler.Core.FigureVision> visions, HashSet<string> textSigns,
             string rawSourceText)
         {
             var bankDir = UserDataPath.GetMemoryBankDir(bankName);
             var outPath = Path.Combine(bankDir, "figures.md");
+            // The diff is over every document's signs; the tables are per document.
             var signs = Supervertaler.Core.FiguresFile.SignsNotInText(visions, textSigns, rawSourceText);
-            var markdown = Supervertaler.Core.FiguresFile.RenderWithVision(
-                docPath == null ? null : Path.GetFileName(docPath), set, visions, signs,
+            var markdown = Supervertaler.Core.FiguresFile.RenderWithVision(documents, signs,
                 "Batch Operations \u2192 Images \u2192 Describe images with AI");
             Supervertaler.Core.FiguresFile.Save(outPath, markdown);
             return outPath;
