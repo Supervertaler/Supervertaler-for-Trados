@@ -507,7 +507,7 @@ namespace Supervertaler.Trados.Controls
             foreach (var c in _customRows) c.Visible = false;
 
             // ===== AI context (Batch operations, Chat and QuickLauncher) =====
-            _lblAiContextHeader = Header("AI context (Batch operations, Chat and QuickLauncher)");
+            _lblAiContextHeader = Header("Context layers (Batch operations, Chat and QuickLauncher)");
             Span(root, ref row, _lblAiContextHeader);
 
             _chkIncludeDocumentContext = Check("Include full document content in AI context");
@@ -629,7 +629,7 @@ namespace Supervertaler.Trados.Controls
             Span(root, ref row, _lblAiTermbases);
 
             // ===== AI context (Chat and QuickLauncher only) =====
-            _lblChatContextHeader = Header("AI context (Chat and QuickLauncher)");
+            _lblChatContextHeader = Header("Context layers (Chat and QuickLauncher)");
             Span(root, ref row, _lblChatContextHeader);
 
             _lblChatContextNote = new Label
