@@ -137,7 +137,7 @@ namespace Supervertaler.Trados.Controls
             _state = initial ?? new ImagesState();
 
             Icon = IconHelper.AppIcon;
-            Text = "Images";
+            Text = "FigureLens";
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -153,7 +153,7 @@ namespace Supervertaler.Trados.Controls
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             int row = 0;
 
-            var intro = Wrap("The AI sees the text of your documents, not the pictures in them. Two steps give it a description of each image: " +
+            var intro = Wrap("The AI sees the text of your documents, not the pictures in them. FigureLens gives it a description of each image, in two steps: " +
                              "get the images out of the documents into a folder, then have them described.");
             root.Controls.Add(intro, 0, row); root.SetColumnSpan(intro, 2); row++;
 

@@ -9310,7 +9310,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrEmpty(folder))
             {
                 batchControl.AppendLog(
-                    "No images folder chosen yet - do step 1 in the Images panel first.", true);
+                    "No images folder chosen yet - do step 1 in FigureLens first.", true);
                 return;
             }
 
@@ -9323,7 +9323,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (UserDataPath.IsSharedBankName(bankName))
             {
                 batchControl.AppendLog("The shared memory bank is read by every project, so descriptions of this project's images "
-                    + "cannot go there. Create or pick a memory bank for this project first (Images panel).", true);
+                    + "cannot go there. Create or pick a memory bank for this project first (FigureLens).", true);
                 return;
             }
 
@@ -9587,7 +9587,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             // The diff is over every document's signs; the tables are per document.
             var signs = Supervertaler.Core.FiguresFile.SignsNotInText(visions, textSigns, rawSourceText);
             var markdown = Supervertaler.Core.FiguresFile.RenderWithVision(documents, signs,
-                "Batch Operations \u2192 Images \u2192 Describe images with AI");
+                "Batch Operations \u2192 FigureLens \u2192 Describe images with AI");
             Supervertaler.Core.FiguresFile.Save(outPath, markdown);
             return outPath;
         }
@@ -9619,12 +9619,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         }
 
         /// <summary>
-        /// Everything the Images dialog shows, read fresh: cheap enough to do on
+        /// Everything the FigureLens dialog shows, read fresh: cheap enough to do on
         /// every open and after every action (two Word files scanned for images,
         /// one folder listed, one file's date read). Never throws.
         /// </summary>
         /// <summary>
-        /// Step 1 of the Images panel: the folder is chosen inside the step the
+        /// Step 1 of FigureLens: the folder is chosen inside the step the
         /// first time, then the images are extracted into it. A new user has no
         /// folder yet and should not have to know that choosing one is separate.
         /// </summary>
@@ -9656,7 +9656,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         }
 
         /// <summary>
-        /// Images panel: make (or reuse) a memory bank named after the project and
+        /// FigureLens: make (or reuse) a memory bank named after the project and
         /// switch to it, so figures.md lands with the project and not in the shared
         /// bank that every project reads. Same steps as the toolbar's "+ New memory
         /// bank", without the naming dialog: the name is the project's.
@@ -9851,7 +9851,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (string.IsNullOrEmpty(folder))
             {
                 batchControl.AppendLog(
-                    "No images folder chosen yet - do step 1 in the Images panel first.",
+                    "No images folder chosen yet - do step 1 in FigureLens first.",
                     true);
                 return;
             }
@@ -9938,7 +9938,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             if (UserDataPath.IsSharedBankName(bankName))
             {
                 batchControl.AppendLog("The shared memory bank is read by every project, so descriptions of this project's images "
-                    + "cannot go there. Create or pick a memory bank for this project first (Images panel).", true);
+                    + "cannot go there. Create or pick a memory bank for this project first (FigureLens).", true);
                 return;
             }
 
@@ -9991,7 +9991,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
             int wrote, refused;
             var markdown = Supervertaler.Core.FiguresFile.RenderFromText(documents,
-                "Batch Operations \u2192 Images \u2192 Describe from the text only", out wrote, out refused);
+                "Batch Operations \u2192 FigureLens \u2192 Describe from the text only", out wrote, out refused);
             if (markdown == null)
             {
                 batchControl.AppendLog("No images found in this project's documents - nothing written.", true);

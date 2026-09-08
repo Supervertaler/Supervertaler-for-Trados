@@ -653,7 +653,7 @@ namespace Supervertaler.Trados.Controls
             // with their cost, so nothing here needs a tooltip to explain the order.
             _lnkImages = new LinkLabel
             {
-                Text = "\u25A3  Images\u2026",
+                Text = "FigureLens\u2026",
                 AutoSize = true,
                 Font = bodyFont,
                 Location = new Point(leftMargin, y)
@@ -661,9 +661,9 @@ namespace Supervertaler.Trados.Controls
             _lnkImages.LinkClicked += (s, ev) => ImagesRequested?.Invoke(this, EventArgs.Empty);
             var imagesTip = new ToolTip();
             imagesTip.SetToolTip(_lnkImages,
-                "The AI sees the text of your documents, not the pictures in them. Take the images\r\n" +
-                "out of the project's source documents into a folder, and give the AI a description\r\n" +
-                "of what each one shows. Opens a panel that explains each step.");
+                "FigureLens: the AI sees the text of your documents, not the pictures in them. Take\r\n" +
+                "the images out of the project's source documents into a folder, and give the AI a\r\n" +
+                "description of what each one shows. Opens a panel that explains each step.");
             Controls.Add(_lnkImages);
 
             y += Px(26);
