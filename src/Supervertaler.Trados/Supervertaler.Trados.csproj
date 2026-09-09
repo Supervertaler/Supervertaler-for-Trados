@@ -203,12 +203,40 @@
     <None Include="pluginpackage.manifest.19.xml" />
   </ItemGroup>
 
-  <!-- Plugin resources — rename to Supervertaler.Trados.plugin.resources for Trados plugin framework -->
+  <!-- Plugin resources — the bundle Trados reads for pane names and pane icons,
+       named Supervertaler.Trados.plugin.resources for the plugin framework.
+
+       It is BUILT BY A SCRIPT rather than compiled from PluginResources.resx.
+       An SDK-style project cannot compile a .resx containing images without
+       GenerateResourceUsePreserializedResources, and that format needs
+       System.Resources.Extensions.dll loadable at the moment the resource is
+       read — which Studio does during plugin discovery, possibly before
+       AppInitializer's AssemblyResolve hook exists. A miss there costs the
+       whole plugin, not just an icon. tools/make_plugin_resources.ps1 runs
+       under Windows PowerShell (.NET Framework 4.8) and writes the classic
+       format Studio has always read.
+
+       PluginResources.resx is kept as documentation of what the bundle holds;
+       it is no longer compiled. Change an icon or the plugin name in the
+       SCRIPT. -->
   <ItemGroup>
-    <EmbeddedResource Update="PluginResources.resx">
-      <ManifestResourceName>Supervertaler.Trados.plugin</ManifestResourceName>
-    </EmbeddedResource>
+    <EmbeddedResource Remove="PluginResources.resx" />
+    <None Include="PluginResources.resx" />
+    <None Include="Resources\icons\*.png" />
   </ItemGroup>
+
+  <Target Name="GeneratePluginResources" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\make_plugin_resources.ps1&quot; -Out &quot;Resources\generated\Supervertaler.Trados.plugin.resources&quot; -IconsDir &quot;$(MSBuildThisFileDirectory)Resources\icons&quot;"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
+  </Target>
+
+  <Target Name="EmbedPluginResources" BeforeTargets="PrepareForBuild" DependsOnTargets="GeneratePluginResources">
+    <ItemGroup>
+      <EmbeddedResource Include="Resources\generated\Supervertaler.Trados.plugin.resources">
+        <LogicalName>Supervertaler.Trados.plugin.resources</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
 
   <!-- Memory bank template files bundled as embedded resources. Streamed out
        into each new bank's 06_TEMPLATES/ folder by UserDataPath.WriteMemoryBankTemplates.
@@ -247,7 +275,7 @@
 
   <!-- Copy compiled .plugin.resources sidecar to output (needed by Trados plugin framework) -->
   <Target Name="CopyPluginResources" AfterTargets="Build">
-    <Copy SourceFiles="$(IntermediateOutputPath)Supervertaler.Trados.plugin.resources" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="Resources\generated\Supervertaler.Trados.plugin.resources" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
   <!-- Copy the version-appropriate manifest as pluginpackage.manifest.xml.

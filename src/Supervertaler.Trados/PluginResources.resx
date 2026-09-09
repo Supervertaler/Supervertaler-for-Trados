@@ -39,6 +39,15 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <!-- NOT COMPILED. The bundle Trados actually reads is built by
+       tools/make_plugin_resources.ps1 - see the comment in
+       Supervertaler.Trados.csproj for why. This file records what the
+       bundle holds; the script is authoritative:
+         Plugin_Name      the plugin name Studio shows
+         TermLensIcon     Resources/icons/termlens.png
+         TermPickerIcon   Resources/icons/termpicker.png
+         SuperSearchIcon  Resources/icons/supersearch.png
+         AssistantIcon    Resources/icons/assistant.png -->
   <data name="Plugin_Name" xml:space="preserve">
     <value>Supervertaler for Trados</value>
   </data>
