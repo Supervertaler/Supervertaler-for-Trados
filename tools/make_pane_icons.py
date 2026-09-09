@@ -1,11 +1,14 @@
 # Draws the four dockable-pane glyphs into src/Supervertaler.Trados/Resources/icons.
 #
-# They are drawn at 8x and downsampled so the 32 px file still reads when Studio
-# scales it to the 16 px the tab strip draws. The colour is sampled from
-# Resources/sv-icon.ico, and it is light enough to stay visible on Studio's dark
-# themes as well as the light ones.
+# They are drawn at 8x and downsampled, and written twice: a 32 px .png for
+# looking at, and a multi-resolution .ico holding 16, 24 and 32 px. The .ico is
+# the one that ships - Studio's AbstractViewPart.Icon is a System.Drawing.Icon,
+# not a Bitmap, and handing it a Bitmap takes the whole plugin down (see
+# CLAUDE.md). It also gives the tab strip a real 16 px image rather than a
+# downsample. The colour is sampled from Resources/sv-icon.ico, and it is light
+# enough to stay visible on Studio's dark themes as well as the light ones.
 #
-# The PNGs are checked in; this script only has to run when a glyph changes.
+# Both are checked in; this script only has to run when a glyph changes.
 # tools/make_plugin_resources.ps1 is what turns them into the bundle Studio reads.
 #
 #   python tools/make_pane_icons.py
@@ -62,16 +65,18 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     for name, glyph in [('termlens', termlens), ('termpicker', termpicker),
                         ('supersearch', supersearch), ('assistant', assistant)]:
-        path = os.path.join(OUT, name + '.png')
-        glyph().resize((32, 32), Image.LANCZOS).save(path)
-        print('wrote', path)
+        im = glyph().resize((32, 32), Image.LANCZOS)
+        im.save(os.path.join(OUT, name + '.png'))
+        im.save(os.path.join(OUT, name + '.ico'), sizes=[(16, 16), (24, 24), (32, 32)])
+        print('wrote', name + '.png + .ico')
 
     # The official badge, kept alongside as the one-mark-for-everything
     # alternative: point make_plugin_resources.ps1 at this stem instead.
     ico = os.path.join(HERE, 'src', 'Supervertaler.Trados', 'Resources', 'sv-icon.ico')
-    sv = os.path.join(OUT, 'supervertaler.png')
-    Image.open(ico).convert('RGBA').resize((32, 32), Image.LANCZOS).save(sv)
-    print('wrote', sv)
+    sv = Image.open(ico).convert('RGBA').resize((32, 32), Image.LANCZOS)
+    sv.save(os.path.join(OUT, 'supervertaler.png'))
+    sv.save(os.path.join(OUT, 'supervertaler.ico'), sizes=[(16, 16), (24, 24), (32, 32)])
+    print('wrote supervertaler.png + .ico')
 
 
 if __name__ == '__main__':
