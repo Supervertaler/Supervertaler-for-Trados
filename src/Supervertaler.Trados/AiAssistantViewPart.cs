@@ -30,7 +30,7 @@ namespace Supervertaler.Trados
         Id = "AiAssistantViewPart",
         Name = "Supervertaler Assistant",
         Description = "AI-powered translation assistant with chat and batch translate",
-        Icon = "AssistantIcon"
+        Icon = "TermLensIcon"
     )]
     [ViewPartLayout(typeof(EditorController), Dock = DockType.Right, Pinned = false)]
     public class AiAssistantViewPart : AbstractViewPartController

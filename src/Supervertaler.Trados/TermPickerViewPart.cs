@@ -41,7 +41,7 @@ namespace Supervertaler.Trados
         Id = "TermPickerViewPart",
         Name = "TermPicker",
         Description = "Matched terms for the current segment as a list",
-        Icon = "TermPickerIcon"
+        Icon = "TermLensIcon"
     )]
     [ViewPartLayout(typeof(EditorController), Dock = DockType.Right, Pinned = true)]
     public class TermPickerViewPart : AbstractViewPartController

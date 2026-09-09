@@ -27,7 +27,7 @@ namespace Supervertaler.Trados
         Id = "SuperSearchViewPart",
         Name = "SuperSearch",
         Description = "Cross-file search and replace for Trados projects",
-        Icon = "SuperSearchIcon"
+        Icon = "TermLensIcon"
     )]
     [ViewPartLayout(typeof(EditorController), Dock = DockType.Bottom, Pinned = false)]
     public class SuperSearchViewPart : AbstractViewPartController
