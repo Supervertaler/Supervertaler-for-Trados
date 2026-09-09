@@ -68,3 +68,6 @@ __pycache__/
 ## Build logs and GitHub release zips (transient / regenerated)
 build_*.log
 dist/*.zip
+
+# Generated plugin resource bundle (built by tools/make_plugin_resources.ps1)
+src/Supervertaler.Trados/Resources/generated/
