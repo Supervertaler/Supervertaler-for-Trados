@@ -6532,7 +6532,48 @@ namespace Supervertaler.Trados
 
                 // Try to extract the prompt from delimiters (in case the full AI response is passed)
                 var extracted = PromptGenerator.ParseGeneratedPrompt(promptContent);
+
+                // #112. A response cut off mid-generation still carries
+                // ===PROMPT_START=== but never reaches ===PROMPT_END===, so
+                // ParseGeneratedPrompt returns null and the old
+                // `extracted ?? promptContent` fallback saved the truncated text as
+                // though it were a finished prompt. That is how a prompt missing a
+                // third of its glossary, its output-format section and its
+                // previous-translations section came to translate a whole document.
+                // A response that began a prompt and did not finish it is refused.
+                var looksLikeAutoPrompt = promptContent.IndexOf(
+                    "===PROMPT_START===", StringComparison.Ordinal) >= 0;
+                if (looksLikeAutoPrompt && extracted == null)
+                {
+                    ShowPromptRefused(
+                        "The generated prompt is incomplete.",
+                        "The response began a prompt but never finished it \u2013 there is no " +
+                        "closing delimiter. Nothing has been saved.\r\n\r\n" +
+                        "This usually means generation stopped part-way: the model hit its " +
+                        "output limit, the connection dropped, or the API key ran out of " +
+                        "credit. Run AutoPrompt again.");
+                    BridgeLog.Write("[AutoPrompt] Refused to save: no closing delimiter (truncated response).");
+                    return;
+                }
+
                 var content = extracted ?? promptContent;
+
+                // A prompt that came through the delimiters is an AutoPrompt product and
+                // is checked before it can reach the library. Anything else here is a chat
+                // message the user chose to save by hand, which is theirs to shape.
+                if (extracted != null)
+                {
+                    var check = PromptValidator.Validate(content);
+                    if (!check.Ok)
+                    {
+                        ShowPromptRefused(
+                            "The generated prompt did not pass its checks.",
+                            check.Describe() + "\r\n\r\nNothing has been saved. Run AutoPrompt again.");
+                        BridgeLog.Write("[AutoPrompt] Refused to save: " +
+                            string.Join(" | ", check.Failures));
+                        return;
+                    }
+                }
 
                 // Default name = project name, with version number if it already exists
                 var defaultName = GetProjectName() ?? "Custom Translation Prompt";
@@ -6593,6 +6634,20 @@ namespace Supervertaler.Trados
                     SaveChatHistory();
                 }
             });
+        }
+
+        /// <summary>
+        /// #112: a generated prompt is refused, never written partially and never
+        /// written with a warning. The user gets one dialog naming what failed.
+        /// </summary>
+        private void ShowPromptRefused(string headline, string detail)
+        {
+            System.Windows.Forms.MessageBox.Show(
+                _control.Value.FindForm(),
+                headline + "\r\n\r\n" + detail,
+                "AutoPrompt \u2013 prompt not saved",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
         }
 
         private void OnSaveToMemoryBank(object sender, string assistantContent)
