@@ -836,13 +836,31 @@ namespace Supervertaler.Trados
                     var client = new LlmClient(capturedProvider, capturedModel, capturedKey, capturedBaseUrl,
                         ollamaTimeoutMinutes: aiSettings.OllamaTimeoutMinutes);
 
+                    // #119: AutoPrompt on a model that reasons before it writes. Its
+                    // thinking is billed as output and drawn from the same max_tokens
+                    // as the prompt it is meant to produce; on a 137k-token input
+                    // Fable 5.1 spent ~27k of 32,768 thinking and left ~5k for a
+                    // prompt that needs ~13k - five runs ended on stop_reason
+                    // max_tokens, each two-thirds written. Two levers, both applied:
+                    // ask for less reasoning (medium effort; "high" is the default),
+                    // and double the ceiling so the prompt fits even if it reasons
+                    // hard anyway. Only for prompt generation, only on the models
+                    // that take adaptive thinking; ordinary chat is untouched.
+                    var sendMaxTokens = capturedMaxTokens;
+                    if (capturedFeature == PromptLogFeature.PromptGeneration
+                        && LlmClient.SupportsAdaptiveThinking(capturedModel))
+                    {
+                        client.ReasoningEffort = "medium";
+                        sendMaxTokens = Math.Max(sendMaxTokens, 65536);
+                    }
+
                     string response;
                     if (useTools)
                     {
                         response = await client.SendChatWithToolsAsync(
                             capturedMessages, capturedSystemPrompt,
                             toolDefsJson, TradosTools.ExecuteTool,
-                            maxTokens: capturedMaxTokens, cancellationToken: ct,
+                            maxTokens: sendMaxTokens, cancellationToken: ct,
                             feature: capturedFeature, promptName: capturedPromptName,
                             toolStatusCallback: toolName =>
                                 SafeInvoke(() => _control.Value.SetThinking(true, FormatToolStatus(toolName))));
@@ -851,9 +869,14 @@ namespace Supervertaler.Trados
                     {
                         response = await client.SendChatAsync(
                             capturedMessages, capturedSystemPrompt,
-                            maxTokens: capturedMaxTokens, cancellationToken: ct,
+                            maxTokens: sendMaxTokens, cancellationToken: ct,
                             feature: capturedFeature, promptName: capturedPromptName);
                     }
+
+                    // Read now, while this client is in scope; the dialog that may
+                    // need it runs later, from the user's Save click.
+                    _lastChatFinishReason = client.LastFinishReason;
+                    _lastChatTruncated = client.WasTruncated;
 
                     var assistantMsg = new ChatMessage
                     {
@@ -6163,6 +6186,13 @@ namespace Supervertaler.Trados
         /// </summary>
         private string _lastAutoPromptDomain;
 
+        // #119: what the provider said about why the last chat reply stopped,
+        // captured right after the call. The incomplete-prompt dialog reads
+        // these so it can say "the model hit its output limit" as a fact
+        // instead of offering it as one of three guesses.
+        private string _lastChatFinishReason;
+        private bool _lastChatTruncated;
+
         private void OnGeneratePromptRequested(object sender, EventArgs e)
         {
             SafeInvoke(() =>
@@ -6650,14 +6680,34 @@ namespace Supervertaler.Trados
                     "===PROMPT_START===", StringComparison.Ordinal) >= 0;
                 if (looksLikeAutoPrompt && extracted == null)
                 {
+                    // #119: say what actually happened where the provider told us.
+                    // A stop reason is a fact; the three-guess wording below is the
+                    // fallback for a provider that gave none.
+                    string why;
+                    if (_lastChatTruncated)
+                        why = "The model stopped because it reached its output-token limit " +
+                              "(stop reason: " + _lastChatFinishReason + "). On a model that " +
+                              "reasons before it writes, that reasoning counts against the same " +
+                              "limit as the prompt itself.\r\n\r\n" +
+                              "Run AutoPrompt again. If it happens again, use a model that " +
+                              "reasons less (Claude Opus 5 completes this reliably), or reduce " +
+                              "the document context.";
+                    else if (!string.IsNullOrEmpty(_lastChatFinishReason))
+                        why = "The model reported that it had finished (stop reason: " +
+                              _lastChatFinishReason + ") but the prompt has no closing " +
+                              "delimiter \u2013 it stopped early of its own accord.\r\n\r\n" +
+                              "Run AutoPrompt again.";
+                    else
+                        why = "This usually means generation stopped part-way: the model hit its " +
+                              "output limit, the connection dropped, or the API key ran out of " +
+                              "credit. Run AutoPrompt again.";
+
                     ShowPromptRefused(
                         "The generated prompt is incomplete.",
                         "The response began a prompt but never finished it \u2013 there is no " +
-                        "closing delimiter. Nothing has been saved.\r\n\r\n" +
-                        "This usually means generation stopped part-way: the model hit its " +
-                        "output limit, the connection dropped, or the API key ran out of " +
-                        "credit. Run AutoPrompt again.");
-                    BridgeLog.Write("[AutoPrompt] Refused to save: no closing delimiter (truncated response).");
+                        "closing delimiter. Nothing has been saved.\r\n\r\n" + why);
+                    BridgeLog.Write("[AutoPrompt] Refused to save: no closing delimiter (truncated response). "
+                        + "stop_reason=" + (_lastChatFinishReason ?? "(none)"));
                     return;
                 }
 
