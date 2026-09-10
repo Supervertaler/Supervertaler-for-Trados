@@ -816,8 +816,17 @@ namespace Supervertaler.Trados
                 }
             }
 
-            // Capture tool settings – Claude, OpenAI, Gemini, Grok, Mistral all support tool use
-            var useTools = LlmClient.SupportsToolUse(capturedProvider);
+            // Capture tool settings – Claude, OpenAI, Gemini, Grok, Mistral all support tool use.
+            //
+            // AutoPrompt is the exception (#119). It generates a prompt and never
+            // calls a tool, and the tools path is the one Claude route that is still
+            // buffered: one silent request held open for the whole nine-minute
+            // generation, no usage, no stop reason, and a cut-short reply returned
+            // as if complete. Four failed runs went through it while the streamed
+            // path sat unused. Plain chat is streamed, records both, and reports a
+            // cut stream as the error it is.
+            var useTools = LlmClient.SupportsToolUse(capturedProvider)
+                && capturedFeature != PromptLogFeature.PromptGeneration;
             var toolDefsJson = useTools ? TradosTools.GetToolDefinitionsJson(capturedProvider) : null;
 
             Task.Run(async () =>
