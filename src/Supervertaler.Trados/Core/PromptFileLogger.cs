@@ -150,6 +150,7 @@ namespace Supervertaler.Trados.Core
                 DurationS = e.Duration.TotalSeconds,
                 Ok = !e.IsError,
                 Error = e.IsError ? e.ErrorMessage : null,
+                FinishReason = e.FinishReason,
                 UsageSource = e.HasActualUsage ? "actual" : "estimated",
                 InputTokens = e.HasActualUsage
                     ? (e.ActualRegularInputTokens ?? 0) + (e.ActualCacheReadTokens ?? 0) + (e.ActualCacheWriteTokens ?? 0)
@@ -251,6 +252,10 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "durationS")] public double DurationS { get; set; }
         [DataMember(Name = "ok")] public bool Ok { get; set; }
         [DataMember(Name = "error")] public string Error { get; set; }
+        // Provider's own stop reason ("end_turn", "max_tokens", "length", ...),
+        // absent when it gave none. The one field that tells a cut-short reply
+        // from a finished one (#119).
+        [DataMember(Name = "finishReason", EmitDefaultValue = false)] public string FinishReason { get; set; }
     }
 
     [DataContract]
