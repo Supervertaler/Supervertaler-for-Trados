@@ -10617,11 +10617,68 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         docSegments = docCtx.Item1;
                     }
 
-                    promptText = ClipboardRelay.FormatForTranslation(
-                        segments, sourceLang, targetLang,
-                        customPromptContent, termbaseTerms, customSystemPrompt,
-                        docSegments, maxDocSegs, includeTermMeta,
-                        structureContext: structureMode);
+                    if (batchControl.IsClipboardMode)
+                    {
+                        promptText = ClipboardRelay.FormatForTranslation(
+                            segments, sourceLang, targetLang,
+                            customPromptContent, termbaseTerms, customSystemPrompt,
+                            docSegments, maxDocSegs, includeTermMeta,
+                            structureContext: structureMode);
+                    }
+                    else
+                    {
+                        // The API path. This preview used to render the Clipboard Mode
+                        // prompt whatever the mode was, so it could not show the batch
+                        // instructions or the translation-memory block - it showed a
+                        // prompt that was never sent. Mirror BatchTranslator instead.
+                        var kbContext = LoadKbContextForPrompt(
+                            GetProjectName(), sourceLang, targetLang);
+
+                        var apiSystemPrompt = TranslationPrompt.BuildSystemPrompt(
+                            sourceLang, targetLang,
+                            customPromptContent, termbaseTerms, customSystemPrompt,
+                            includeDocContext ? docSegments : null,
+                            maxDocSegs, includeTermMeta, kbContext, structureMode);
+
+                        // One batch, as the run would send it. A longer scope is split
+                        // into several requests that differ only in which segments they
+                        // carry, so the first is what there is to look at.
+                        var batchSize = aiSettings != null && aiSettings.BatchSize > 0
+                            ? aiSettings.BatchSize : 20;
+                        var previewCount = Math.Min(batchSize, segments.Count);
+
+                        var promptSegments = new List<BatchSegmentInput>();
+                        for (int i = 0; i < previewCount; i++)
+                        {
+                            const int usefulMatch = 70;
+                            var seg = segments[i];
+                            var haveMatch = seg.TmMatchPercent >= usefulMatch
+                                && !string.IsNullOrWhiteSpace(seg.ExistingTarget);
+
+                            promptSegments.Add(new BatchSegmentInput
+                            {
+                                Number = i + 1,
+                                SourceText = BatchTranslator.PromptSource(seg, structureMode),
+                                FuzzyTargetText = haveMatch ? seg.ExistingTarget : null,
+                                FuzzyMatchPercent = haveMatch ? seg.TmMatchPercent : 0
+                            });
+                        }
+
+                        promptText = apiSystemPrompt
+                            + Environment.NewLine + Environment.NewLine
+                            + "════════ USER MESSAGE ════════"
+                            + Environment.NewLine + Environment.NewLine
+                            + TranslationPrompt.BuildBatchUserPrompt(promptSegments);
+
+                        if (segments.Count > previewCount)
+                        {
+                            promptText += Environment.NewLine + Environment.NewLine
+                                + "(" + segments.Count + " segments are in scope; this is the "
+                                + "first request of " + ((segments.Count + batchSize - 1) / batchSize)
+                                + ", carrying " + previewCount + " of them. The system prompt above "
+                                + "is identical in every request.)";
+                        }
+                    }
                 }
 
                 var modeLabel = batchControl.CurrentMode == BatchMode.Proofread

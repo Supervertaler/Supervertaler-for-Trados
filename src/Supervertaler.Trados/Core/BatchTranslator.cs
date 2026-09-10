@@ -590,7 +590,12 @@ namespace Supervertaler.Trados.Core
         /// sentinel, then the text - when markers are being sent; the text alone
         /// otherwise. BatchSegment.SourceText itself is never changed.
         /// </summary>
-        private static string PromptSource(BatchSegment segment, StructureContextMode mode)
+        /// <summary>
+        /// Internal rather than private so Preview prompt derives the source text
+        /// through the SAME function the run does. Two derivations that drift
+        /// would make the preview a plausible lie.
+        /// </summary>
+        internal static string PromptSource(BatchSegment segment, StructureContextMode mode)
         {
             return mode == StructureContextMode.Markers
                 ? StructureContext.Prefix(segment.StructureMarker, segment.SourceText)
