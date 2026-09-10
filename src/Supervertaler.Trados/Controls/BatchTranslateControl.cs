@@ -69,6 +69,7 @@ namespace Supervertaler.Trados.Controls
 
         // Clipboard Mode
         private CheckBox _chkClipboardMode;
+        private CheckBox _chkSendTmMatches;   // #110
         private Button _btnCopyToClipboard;
         private Button _btnPasteFromClipboard;
 
@@ -146,6 +147,16 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Whether Clipboard Mode is active.</summary>
         public bool IsClipboardMode => _chkClipboardMode?.Checked ?? false;
+
+        /// <summary>#110: whether 100% TM matches go to the AI with the batch.</summary>
+        public bool SendTmMatches
+        {
+            get { return _chkSendTmMatches?.Checked ?? true; }
+            set { if (_chkSendTmMatches != null) _chkSendTmMatches.Checked = value; }
+        }
+
+        /// <summary>Raised when the translator toggles the TM-match checkbox, so the setting persists.</summary>
+        public event EventHandler SendTmMatchesChanged;
 
         /// <summary>Whether "Retry segments left empty" is ticked (Translate + offload).</summary>
         public bool IsRetryEnabled => _chkRetry?.Checked ?? false;
@@ -269,6 +280,30 @@ namespace Supervertaler.Trados.Controls
                 "and context to the clipboard. Paste into any web-based AI (ChatGPT,\r\n" +
                 "Claude, Gemini, etc.), then paste translations back when done.");
             Controls.Add(_chkClipboardMode);
+            y += Px(24);
+
+            // ─── 100% TM matches (#110) ────
+            _chkSendTmMatches = new CheckBox
+            {
+                Text = "Send 100% TM matches to the AI",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor,
+                Checked = true
+            };
+            _chkSendTmMatches.CheckedChanged += (s, ev) =>
+                SendTmMatchesChanged?.Invoke(this, EventArgs.Empty);
+            var tmTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
+            tmTip.SetToolTip(_chkSendTmMatches,
+                "Where the translation memory has already supplied a segment's target as a\r\n" +
+                "100% match, send that translation to the AI as the approved wording to keep.\r\n\r\n" +
+                "Only exact matches are sent. A fuzzy match is never sent: the AI would see a\r\n" +
+                "translation of a sentence it cannot read, with no way to tell which words\r\n" +
+                "differ - and a memory stuffed with near-misses would mislead it.\r\n\r\n" +
+                "Turn this off for a job whose translation memory you do not trust.");
+            Controls.Add(_chkSendTmMatches);
+
             y += Px(24);
 
             // ─── Retry option ────

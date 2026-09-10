@@ -196,6 +196,15 @@ namespace Supervertaler.Trados.Settings
         public bool IncludeTmMatches { get; set; } = true;
 
         /// <summary>
+        /// #110: send the 100% translation-memory match Studio recorded on a
+        /// segment to the AI during Batch Translate. On by default; the checkbox
+        /// sits on the Batch Operations tab because whether a job's TM can be
+        /// trusted is a per-job judgement. Only exact matches are ever sent - see
+        /// the note on BatchSegment.TmMatchPercent.
+        /// </summary>
+        public bool SendTmMatchesInBatch { get; set; } = true;
+
+        /// <summary>
         /// Whether to include the full document content (all source segments) in the
         /// AI chat prompt. Enables the AI to assess the document type and provide
         /// context-appropriate assistance.

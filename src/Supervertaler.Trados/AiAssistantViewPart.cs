@@ -284,6 +284,17 @@ namespace Supervertaler.Trados
             batchControl.SuperBenchRequested += OnSuperBenchRequested;   // #107
             batchControl.ReferenceNumeralsRequested += OnReferenceNumeralsRequested;
             batchControl.ImagesRequested += OnImagesRequested;   // #84: the figure pipeline as one panel
+
+            // #110: the checkbox reflects the stored setting and writes it back, so a
+            // job with an untrusted memory stays off across restarts.
+            if (_settings?.AiSettings != null)
+                batchControl.SendTmMatches = _settings.AiSettings.SendTmMatchesInBatch;
+            batchControl.SendTmMatchesChanged += (s, ev) =>
+            {
+                if (_settings?.AiSettings == null) return;
+                _settings.AiSettings.SendTmMatchesInBatch = batchControl.SendTmMatches;
+                _settings.Save();
+            };
             batchControl.ModelChangeRequested += OnModelChangeRequested;
             batchControl.CustomProfilesSource = GetCustomProfileMenuItems;
 
@@ -10650,9 +10661,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = 0; i < previewCount; i++)
                         {
-                            const int usefulMatch = 70;
                             var seg = segments[i];
-                            var haveMatch = seg.TmMatchPercent >= usefulMatch
+                            var haveMatch = seg.TmMatchPercent >= BatchTranslator.ExactMatch
                                 && !string.IsNullOrWhiteSpace(seg.ExistingTarget);
 
                             promptSegments.Add(new BatchSegmentInput
@@ -11525,7 +11535,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             SourceText = sourceText,
                             ExistingTarget = targetText,
                             SegmentPairRef = new[] { paragraphUnitId, segmentId },
-                            TmMatchPercent = TmMatchPercentOf(pair)
+
+                            // #110: gated here, so the run and the preview both see
+                            // zero when the translator has turned it off.
+                            TmMatchPercent = (_settings?.AiSettings?.SendTmMatchesInBatch ?? true)
+                                ? TmMatchPercentOf(pair) : 0
                         });
                     }
 

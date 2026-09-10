@@ -29,10 +29,16 @@ namespace Supervertaler.Trados.Core
         /// <summary>
         /// #110: how close the TM match is that Studio already put in this
         /// segment (its TranslationOrigin), 0-100, or 0 when the target did not
-        /// come from a TM. ExistingTarget holds the translation it inserted.
-        /// Batch Translate sent nothing from the user's TMs before this: a run
-        /// over pre-translated or auto-propagated segments overwrote work the
-        /// TM had supplied without the model ever seeing it.
+        /// come from a TM, or when the translator has turned the feature off.
+        /// ExistingTarget holds the translation it inserted.
+        ///
+        /// Only 100 is ever acted on. Studio records how close a match is but
+        /// NOT the source it was made for, so a fuzzy could only be sent as a
+        /// translation of a sentence the model cannot read - it could not tell
+        /// which words differ, and a memory padded with near-misses is exactly
+        /// where that misleads. At 100% the match's source is this segment's
+        /// source, so nothing is hidden. Sending fuzzies safely needs the TM
+        /// searched for its source text: issue #116.
         /// </summary>
         public int TmMatchPercent { get; set; }
 
@@ -289,13 +295,8 @@ namespace Supervertaler.Trados.Core
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = startIdx; i < endIdx; i++)
                         {
-                            // #110: a match Studio already recorded is worth more to the
-                            // model than nothing, but only where it is close enough to be
-                            // worth following. Below this it is noise competing with the
-                            // termbase and SuperMemory.
-                            const int usefulMatch = 70;
                             var seg = segments[i];
-                            var haveMatch = seg.TmMatchPercent >= usefulMatch
+                            var haveMatch = seg.TmMatchPercent >= ExactMatch
                                 && !string.IsNullOrWhiteSpace(seg.ExistingTarget);
 
                             promptSegments.Add(new BatchSegmentInput
@@ -595,6 +596,9 @@ namespace Supervertaler.Trados.Core
         /// through the SAME function the run does. Two derivations that drift
         /// would make the preview a plausible lie.
         /// </summary>
+        /// <summary>#110: only an exact match is ever shown to the model.</summary>
+        internal const int ExactMatch = 100;
+
         internal static string PromptSource(BatchSegment segment, StructureContextMode mode)
         {
             return mode == StructureContextMode.Markers
