@@ -7,7 +7,7 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
-## [18.20.189 / 19.20.189] – unreleased
+## [18.20.189 / 19.20.189] – 2026-09-10
 
 ### Added
 - **Batch Translate now sends the 100% translation memory match Studio already put in a segment, and a checkbox turns it off.** It sent nothing at all from your TMs before: a run over pre-translated segments rewrote what the memory had supplied without the model ever seeing it. Any segment in scope whose target came from a TM as an exact match now goes to the model with that translation, under an instruction to keep it. **Only exact matches are ever sent.** Studio records how close a match is but not the source it was made for, so a fuzzy could only be offered as a translation of a sentence the model cannot read - unable to tell which words differ, and most misleading exactly where a memory has been padded with near-misses to manufacture matches. At 100% the match's source is the segment's source, so nothing is hidden. **Send 100% TM matches to the AI** on the Batch Operations tab turns the whole thing off for a job whose memory you do not trust. Issue #110; sending fuzzies safely needs the memory searched for its source text, which is #116.
