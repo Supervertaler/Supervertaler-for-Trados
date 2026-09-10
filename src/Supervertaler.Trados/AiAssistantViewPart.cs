@@ -1488,7 +1488,10 @@ namespace Supervertaler.Trados
                         FileName = string.IsNullOrEmpty(segFileName) ? null : segFileName,
                         Number = segNumber,
                         Match = matchPercent,
-                        Origin = originType
+                        Origin = originType,
+                        // Hashed from the same 'source' string being sent, so the
+                        // write side can verify against exactly what was read.
+                        Fp = SourceFingerprint.Of(source)
                     });
                 }
 
@@ -1551,6 +1554,7 @@ namespace Supervertaler.Trados
             var pairIndex = BuildSegmentPairIndex(null);
             int processed = 0;
             int tagMismatches = 0;
+            int staleFingerprints = 0;
 
             foreach (var u in req.Updates)
             {
@@ -1592,6 +1596,40 @@ namespace Supervertaler.Trados
                     item.Error = "segment is locked";
                     response.Failed++;
                     continue;
+                }
+
+                // Does this segment still hold the source the caller translated?
+                // Only asked when the caller sent an 'fp'; see Core/SourceFingerprint
+                // for the three ways a correct translation reaches the wrong row.
+                if (!string.IsNullOrWhiteSpace(u.Fp))
+                {
+                    string currentSource;
+                    try
+                    {
+                        var fpSer = SegmentTagHandler.Serialize(pair.Source);
+                        currentSource = Core.Export.BilingualTagNamer.ApplySemanticNames(
+                            fpSer.SerializedText ?? "", fpSer.TagMap);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Unverifiable, so not written. A segment whose source will
+                        // not serialise is precisely the one to leave alone, and one
+                        // bad segment must not take the rest of the batch with it.
+                        item.Error = "could not read this segment's source to check fp – nothing written: " + ex.Message;
+                        response.Failed++;
+                        continue;
+                    }
+
+                    if (!SourceFingerprint.Matches(u.Fp, currentSource))
+                    {
+                        item.Error = "stale fp – this segment's source is not the one that was read. Nothing was " +
+                                     "written. Either the document changed, or this id came from a different " +
+                                     "get_segments call (a different document, or ids that drifted out of step " +
+                                     "with the translations). Re-read the segments and redo this one.";
+                        response.Failed++;
+                        staleFingerprints++;
+                        continue;
+                    }
                 }
 
                 // Resolve the requested status up front so an unknown name fails
@@ -1798,6 +1836,17 @@ namespace Supervertaler.Trados
                         "shown in the segment's SOURCE field.";
                 _bridgeUnsavedWritesDoc = _activeDocument;
             }
+
+            // Outside the Applied>0 block on purpose: the case worth shouting about
+            // is the one where EVERY item was refused, and that leaves Applied at 0.
+            if (staleFingerprints > 0)
+                response.Note = $"STOP: {staleFingerprints} of {req.Updates.Count} segment(s) were refused because " +
+                    "their source no longer matches the fp read from get_segments, and nothing was written for " +
+                    "them. Do not retry by dropping the fp – that would write the translations into segments they " +
+                    "were not made for. Call get_segments again, check whether the ids or the document changed, " +
+                    "and tell the user what happened before rewriting anything. "
+                    + (response.Note ?? "");
+
             return response;
         }
 

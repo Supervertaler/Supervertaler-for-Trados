@@ -523,6 +523,11 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "match", Order = 7, EmitDefaultValue = false)] public int? Match { get; set; }
         /// <summary>Translation origin type: tm, mt, interactive, auto-propagated, source…</summary>
         [DataMember(Name = "origin", Order = 8, EmitDefaultValue = false)] public string Origin { get; set; }
+        /// <summary>Short hash of <see cref="Source"/> – pass it back on the
+        /// matching update_segments item and the write is refused if this
+        /// segment no longer holds this source. See
+        /// <see cref="SourceFingerprint"/> for what that protects against.</summary>
+        [DataMember(Name = "fp", Order = 9, EmitDefaultValue = false)] public string Fp { get; set; }
     }
 
     [DataContract]
@@ -1198,6 +1203,12 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "target", EmitDefaultValue = false)] public string Target { get; set; }
         /// <summary>ConfirmationLevel name. Null with a target write defaults to Draft.</summary>
         [DataMember(Name = "status", EmitDefaultValue = false)] public string Status { get; set; }
+        /// <summary>The 'fp' this segment carried in the get_segments response
+        /// the target was written from. Optional: omitted, the write proceeds
+        /// unchecked as it always has; supplied, the write is refused unless
+        /// the segment still holds that same source. See
+        /// <see cref="SourceFingerprint"/>.</summary>
+        [DataMember(Name = "fp", EmitDefaultValue = false)] public string Fp { get; set; }
     }
 
     [DataContract]
