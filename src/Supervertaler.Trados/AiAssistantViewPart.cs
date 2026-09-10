@@ -11704,7 +11704,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             ExistingTarget = targetText,
                             SegmentPairRef = pair,
                             HasTags = serialization.HasTags,
-                            TagMap = serialization.HasTags ? serialization.TagMap : null
+                            TagMap = serialization.HasTags ? serialization.TagMap : null,
+
+                            // #110: gated here, so the run and the preview both see
+                            // zero when the translator has turned it off.
+                            TmMatchPercent = (_settings?.AiSettings?.SendTmMatchesInBatch ?? true)
+                                ? TmMatchPercentOf(pair) : 0
                         });
                     }
 
