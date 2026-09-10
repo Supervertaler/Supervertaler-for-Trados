@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -64,7 +64,10 @@ builder.Services
         {
             Name = d.Name,
             Description = d.Description,
-            InputSchema = d.InputSchema,
+            // #121: writes (and conditional tools, which may write) take an
+            // optional `instance` so a chat can say which Studio it means on
+            // every call. Reads do not: they already report where they came from.
+            InputSchema = d.Access == ToolAccess.Read ? d.InputSchema : WithInstanceParam(d.InputSchema),
         }).ToList();
 
         // The instance tools are the exe's own – no bridge can answer "which
@@ -113,14 +116,56 @@ builder.Services
             // isError:false to match the bridge-unavailable path below: the whole
             // value of this refusal is the AI reading it and asking the user which
             // Studio they meant, so it goes back as ordinary tool output.
-            if (selection.IsAmbiguous && def.IsWrite(args))
+            // #121. The selection above is one setting shared by every chat on this
+            // machine - the MCP protocol gives a server no idea which conversation
+            // is calling - so two chats that each selected a different Studio are
+            // both pointed at whichever was selected LAST, and a stale choice is
+            // not caught by the ambiguity refusal, because a choice exists.
+            //
+            // So a call may carry its own `instance`. It is resolved against the
+            // Studios actually RUNNING, not against the shared selection: exactly
+            // one match is the target for this call and nothing else changes; no
+            // match is refused by name; more than one falls through to the
+            // ambiguity rules below. A chat that always passes its own Studio can
+            // therefore never write into another chat's project, whatever the
+            // shared selection says, and never needs select_trados_instance.
+            //
+            // Decided on the original args - `instance` never affects whether a
+            // tool writes - then stripped, so the bridge never sees a parameter it
+            // does not know.
+            var isWrite = def.IsWrite(args);
+            args = StripInstanceArg(args, out var wantedInstance);
+
+            var target = selection.Chosen;
+            var ambiguous = selection.IsAmbiguous;
+            if (wantedInstance != null)
+            {
+                var matching = selection.Live.Where(i => BridgeClient.Matches(i, wantedInstance)).ToList();
+                if (matching.Count == 1)
+                {
+                    target = matching[0];
+                    ambiguous = false;
+                }
+                else if (matching.Count == 0)
+                {
+                    return TextResult(RefuseNoSuchInstance(def.Name, wantedInstance, selection), isError: false);
+                }
+                // >1: two Studios answer to the same name (e.g. one project open
+                // twice). Ambiguous in the ordinary sense; handled below.
+            }
+
+            if (ambiguous && isWrite)
                 return TextResult(RefuseAmbiguousWrite(def.Name, selection), isError: false);
 
             string result = def.Method == "POST"
-                ? await bridge.PostAsync(selection.Chosen, def.Path, BuildBody(def, args), ct)
-                : await bridge.GetAsync(selection.Chosen, def.Path + BuildQuery(def, args), ct);
+                ? await bridge.PostAsync(target, def.Path, BuildBody(def, args), ct)
+                : await bridge.GetAsync(target, def.Path + BuildQuery(def, args), ct);
 
-            return selection.IsAmbiguous
+            // Every write says where it went, so a wrong-target write is visible
+            // in the reply rather than discovered later in the wrong document.
+            if (isWrite) result = LabelTarget(result, target);
+
+            return ambiguous
                 ? WarnedResult(AmbiguousReadWarning(selection), result)
                 : TextResult(result);
         }
@@ -231,6 +276,101 @@ static string RefuseAmbiguousWrite(string toolName, BridgeSelection sel)
         instances,
         note = "Read-only tools still work and report which instance answered.",
     });
+}
+
+// ── #121: per-call instance guard and target labelling ───────────────────────
+
+/// <summary>
+/// Adds an optional string property `instance` to a tool's input schema, so
+/// clients advertise it and models pass it. Returns the schema unchanged if it
+/// is not an object, already has the property, or cannot be parsed - a tool
+/// with a slightly poorer schema beats a server that fails to list its tools.
+/// </summary>
+static JsonElement WithInstanceParam(JsonElement schema)
+{
+    try
+    {
+        if (JsonNode.Parse(schema.GetRawText()) is not JsonObject node) return schema;
+        if (node["properties"] is not JsonObject props)
+        {
+            props = new JsonObject();
+            node["properties"] = props;
+        }
+        if (props.ContainsKey("instance")) return schema;
+        props["instance"] = new JsonObject
+        {
+            ["type"] = "string",
+            ["description"] =
+                "Which Trados Studio this call is for: \"2024\", \"2026\", or part of the project name. "
+                + "It is checked against the Studio the call would actually go to, and the call is refused "
+                + "if they differ. The choice made with select_trados_instance is shared by every chat on "
+                + "this machine, so a chat that always passes its own Studio here can never write into "
+                + "another chat's project. Optional: omit to trust the current selection.",
+        };
+        return JsonSerializer.SerializeToElement(node);
+    }
+    catch
+    {
+        return schema;
+    }
+}
+
+/// <summary>
+/// Takes `instance` out of the call arguments - the bridge does not know it -
+/// and reports the value it carried, trimmed, or null when absent or blank.
+/// </summary>
+static IReadOnlyDictionary<string, JsonElement> StripInstanceArg(
+    IReadOnlyDictionary<string, JsonElement> args, out string? wanted)
+{
+    wanted = null;
+    if (!args.TryGetValue("instance", out var v)) return args;
+    if (v.ValueKind == JsonValueKind.String)
+    {
+        var raw = v.GetString();
+        if (!string.IsNullOrWhiteSpace(raw)) wanted = raw.Trim();
+    }
+    var copy = new Dictionary<string, JsonElement>(args.Count);
+    foreach (var kv in args)
+        if (kv.Key != "instance") copy[kv.Key] = kv.Value;
+    return copy;
+}
+
+static string RefuseNoSuchInstance(string toolName, string wanted, BridgeSelection sel)
+{
+    return JsonSerializer.Serialize(new
+    {
+        ok = false,
+        error = $"Refusing to run '{toolName}': this call says it is for \"{wanted}\", but no running Trados "
+              + "Studio matches that. Nothing was written. Check which Studios are open (list_trados_instances) "
+              + "and that the one meant is running with its project open; \"2024\", \"2026\" or part of the "
+              + "project name all work as the instance.",
+        running = sel.Live
+            .Select(i => new { studioVersion = i.StudioVersion, project = i.ProjectName, activeFile = i.ActiveFile })
+            .ToList(),
+    });
+}
+
+/// <summary>
+/// Adds <c>target: {studioVersion, project, activeFile}</c> to a write's JSON
+/// result. A result that is not a JSON object is returned as it was.
+/// </summary>
+static string LabelTarget(string json, BridgeInstance inst)
+{
+    try
+    {
+        if (JsonNode.Parse(json) is not JsonObject obj) return json;
+        obj["target"] = new JsonObject
+        {
+            ["studioVersion"] = inst.StudioVersion,
+            ["project"] = inst.ProjectName,
+            ["activeFile"] = inst.ActiveFile,
+        };
+        return obj.ToJsonString();
+    }
+    catch
+    {
+        return json;
+    }
 }
 
 // Stable fingerprint of the advertised tool set (names + descriptions), so the
