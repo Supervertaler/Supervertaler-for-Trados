@@ -64,10 +64,15 @@ builder.Services
         {
             Name = d.Name,
             Description = d.Description,
-            // #121: writes (and conditional tools, which may write) take an
-            // optional `instance` so a chat can say which Studio it means on
-            // every call. Reads do not: they already report where they came from.
-            InputSchema = d.Access == ToolAccess.Read ? d.InputSchema : WithInstanceParam(d.InputSchema),
+            // #121: EVERY tool takes an optional `instance` so a chat can say
+            // which Studio it means on every call - reads too. Reads were left out
+            // at first, on the reasoning that a read "reports where it came from";
+            // but a read with no instance follows the ONE selection shared by every
+            // chat, so a chat that has declared its Studio still got the other
+            // chat's project back, and models then fought over select_trados_instance
+            // to fix it. With instance on every call the shared selection is never
+            // needed and never touched.
+            InputSchema = WithInstanceParam(d.InputSchema),
         }).ToList();
 
         // The instance tools are the exe's own – no bridge can answer "which
@@ -161,9 +166,10 @@ builder.Services
                 ? await bridge.PostAsync(target, def.Path, BuildBody(def, args), ct)
                 : await bridge.GetAsync(target, def.Path + BuildQuery(def, args), ct);
 
-            // Every write says where it went, so a wrong-target write is visible
-            // in the reply rather than discovered later in the wrong document.
-            if (isWrite) result = LabelTarget(result, target);
+            // Every write says where it went, and so does any call that named an
+            // instance, so a chat's own reads confirm the Studio they came from
+            // rather than leaving it to be inferred.
+            if (isWrite || wantedInstance != null) result = LabelTarget(result, target);
 
             return ambiguous
                 ? WarnedResult(AmbiguousReadWarning(selection), result)
