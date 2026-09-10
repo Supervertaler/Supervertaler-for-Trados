@@ -1,4 +1,4 @@
-using System.Runtime.Serialization;
+﻿using System.Runtime.Serialization;
 
 namespace Supervertaler.Trados.Settings
 {
@@ -7,7 +7,7 @@ namespace Supervertaler.Trados.Settings
     /// server-based (GroupShare) translation memories (issue #35). Studio does
     /// not expose its own credential store to plugin code, so the user enters
     /// the server login once here. The password is DPAPI-encrypted (CurrentUser)
-    /// via <see cref="Core.DpapiSecret"/> and is never stored in clear text.
+    /// via <see cref="Supervertaler.Core.DpapiSecret"/> and is never stored in clear text.
     /// </summary>
     [DataContract]
     public class GroupShareServerCredential

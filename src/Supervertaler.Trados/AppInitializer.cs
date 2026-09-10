@@ -66,6 +66,27 @@ namespace Supervertaler.Trados
             // Enable TLS 1.2+ for HTTPS API calls (OpenAI, Anthropic, Google)
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
 
+            // #115: encrypt any API key still sitting in settings.json as plain
+            // text. One-way and idempotent, and UpdateIf saves only when it
+            // actually changed something - so this is a no-op on every startup
+            // after the first.
+            //
+            // Deliberately non-fatal. If DPAPI is unavailable the keys keep
+            // working from the plaintext field and we try again next time; a
+            // failure here must never stop the plugin loading.
+            try
+            {
+                if (SettingsService.UpdateIf(s =>
+                        s.AiSettings != null
+                        && s.AiSettings.ApiKeys != null
+                        && s.AiSettings.ApiKeys.MigrateToProtected()))
+                {
+                    Core.DiagnosticLog.WriteAlways("Startup",
+                        "API keys migrated to encrypted storage (DPAPI, issue #115).");
+                }
+            }
+            catch { }
+
             // Record token usage for EVERY AI call, independent of the Assistant
             // pane. The pane's own handler only updates the Reports-tab UI now, so
             // usage logging works even if the pane is never opened this session.

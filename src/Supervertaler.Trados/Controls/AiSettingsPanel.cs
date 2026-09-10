@@ -758,6 +758,40 @@ namespace Supervertaler.Trados.Controls
 
         // ─── Settings Population ─────────────────────────────────────
 
+        /// <summary>
+        /// Once per session: if a stored key cannot be decrypted on this machine,
+        /// say so plainly.
+        ///
+        /// <para>#115. DPAPI ciphertext is bound to the Windows user and the
+        /// machine that wrote it, so a settings file restored from a backup,
+        /// synced from another PC, or written under a different Windows account
+        /// yields nothing. Without this the field simply looks empty, the user
+        /// assumes the key is still there, and the first thing they see is an
+        /// authentication failure from the provider - sending them to check their
+        /// billing rather than to paste the key again.</para>
+        ///
+        /// <para>Warn once, not per panel construction: the settings dialog is
+        /// opened repeatedly in a session and a repeated modal would be worse
+        /// than the problem.</para>
+        /// </summary>
+        private static bool _warnedUnreadableKeys;
+        private static void WarnIfKeysUnreadable(AiApiKeys keys)
+        {
+            if (_warnedUnreadableKeys || keys == null || !keys.HasUnreadableKeys) return;
+            _warnedUnreadableKeys = true;
+            try
+            {
+                MessageBox.Show(
+                    "One or more of your saved API keys could not be read on this computer.\n\n" +
+                    "API keys are encrypted for the Windows account that entered them, so they " +
+                    "do not travel with a settings file copied from a backup or another PC.\n\n" +
+                    "Please paste the affected key(s) in again below. Nothing else is affected.",
+                    "Supervertaler - please re-enter your API key",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch { /* a warning must never take the settings dialog down with it */ }
+        }
+
         public void PopulateFromSettings(AiSettings settings)
         {
             // #106: the cached provider lists, so the dropdown shows them from the start.
@@ -771,6 +805,9 @@ namespace Supervertaler.Trados.Controls
 
             // Load ALL provider API keys into the dictionary so switching preserves them
             var keys = settings.ApiKeys ?? new AiApiKeys();
+            // #115: keys are DPAPI-encrypted and bound to this Windows user on this
+            // machine, so a settings file from a backup or another PC decrypts to
+            // nothing. Say so, once - see WarnIfKeysUnreadable below.
             // #108: the shared key file wins; the plugin's own key is the fallback.
             string Shared(string provider, string own) => Supervertaler.Core.ApiKeyStore.Get(provider) ?? own ?? "";
             _providerApiKeys[LlmModels.ProviderOpenAi] = Shared(LlmModels.ProviderOpenAi, keys.OpenAi);
@@ -782,6 +819,8 @@ namespace Supervertaler.Trados.Controls
             _providerApiKeys[LlmModels.ProviderOpenRouter] = Shared(LlmModels.ProviderOpenRouter, keys.OpenRouter);
             _providerApiKeys[LlmModels.ProviderCustomOpenAi] = keys.CustomOpenAi ?? "";
             _providerApiKeys[LlmModels.ProviderOllama] = ""; // Ollama doesn't use API keys
+
+            WarnIfKeysUnreadable(keys);
 
             // Select provider (this triggers OnProviderChanged which loads the right key)
             _lastProviderKey = null; // reset so first switch doesn't save empty string

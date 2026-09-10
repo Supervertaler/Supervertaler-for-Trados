@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [Unreleased]
+
+### Changed
+- **API keys are now encrypted at rest.** Every provider key was stored as plain text in `settings.json`. It is now encrypted with Windows DPAPI, bound to the Windows account that entered it, so a settings file carried anywhere else – synced to a cloud folder, zipped into a support request, left on a shared or disposed machine – carries nothing usable. Nothing changes in the dialog: you paste the key into the same field and it is encrypted on save. An existing file is converted once, on the first start after updating, and the old plain-text values are removed. What DPAPI does not do is protect a key from a program running under your own Windows account – nothing that stores a secret locally does – so this is about the file moving, which is how keys actually leak. Because the encryption is tied to the account and the machine, a settings file restored from a backup or moved to a new PC will not decrypt: the AI Settings tab says so and asks you to paste the key in again, instead of showing an empty field that would surface later as an authentication error from the provider. The GroupShare server password has been encrypted this way since #35; the helper now lives in the shared core, so Supervertaler for memoQ uses the same one. Issue #115.
+
 ## [18.20.189 / 19.20.189] – 2026-09-10
 
 ### Added

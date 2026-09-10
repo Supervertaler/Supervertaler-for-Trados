@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Sdl.LanguagePlatform.TranslationMemory;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
+using Supervertaler.Core;
 using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Core
