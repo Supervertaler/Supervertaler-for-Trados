@@ -6135,6 +6135,14 @@ namespace Supervertaler.Trados
         /// </summary>
         private bool _lastAutoPromptGlossaryDerived;
 
+        /// <summary>
+        /// #112: the domain the last AutoPrompt run used, so the saved result can
+        /// be checked against the section list that run asked for. The section
+        /// list is what catches a response cut off inside its final section, which
+        /// every other check passes.
+        /// </summary>
+        private string _lastAutoPromptDomain;
+
         private void OnGeneratePromptRequested(object sender, EventArgs e)
         {
             SafeInvoke(() =>
@@ -6390,6 +6398,7 @@ namespace Supervertaler.Trados
                 // body: that is shipped verbatim to the translating AI, where a caveat
                 // beside a LOCKED glossary would undermine it. See BuildTerminologySection.
                 _lastAutoPromptGlossaryDerived = termbaseTerms.Count == 0;
+                _lastAutoPromptDomain = ctx.DetectedDomain;
 
                 var metaPrompt = PromptGenerator.BuildMetaPrompt(ctx);
                 var displayText = PromptGenerator.BuildDisplayMessage(ctx);
@@ -6639,7 +6648,8 @@ namespace Supervertaler.Trados
                 // message the user chose to save by hand, which is theirs to shape.
                 if (extracted != null)
                 {
-                    var check = PromptValidator.Validate(content);
+                    var check = PromptValidator.Validate(
+                        content, PromptGenerator.SectionsFor(_lastAutoPromptDomain));
                     if (!check.Ok)
                     {
                         ShowPromptRefused(
