@@ -27,6 +27,16 @@ namespace Supervertaler.Trados.Core
         public object SegmentPairRef { get; set; }
 
         /// <summary>
+        /// #110: how close the TM match is that Studio already put in this
+        /// segment (its TranslationOrigin), 0-100, or 0 when the target did not
+        /// come from a TM. ExistingTarget holds the translation it inserted.
+        /// Batch Translate sent nothing from the user's TMs before this: a run
+        /// over pre-translated or auto-propagated segments overwrote work the
+        /// TM had supplied without the model ever seeing it.
+        /// </summary>
+        public int TmMatchPercent { get; set; }
+
+        /// <summary>
         /// Whether the source segment contains inline tags (formatting, field codes, etc.).
         /// When true, SourceText contains numbered tag placeholders and TagMap is populated.
         /// </summary>
@@ -279,10 +289,26 @@ namespace Supervertaler.Trados.Core
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = startIdx; i < endIdx; i++)
                         {
+                            // #110: a match Studio already recorded is worth more to the
+                            // model than nothing, but only where it is close enough to be
+                            // worth following. Below this it is noise competing with the
+                            // termbase and SuperMemory.
+                            const int usefulMatch = 70;
+                            var seg = segments[i];
+                            var haveMatch = seg.TmMatchPercent >= usefulMatch
+                                && !string.IsNullOrWhiteSpace(seg.ExistingTarget);
+
                             promptSegments.Add(new BatchSegmentInput
                             {
                                 Number = i + 1, // 1-based numbering
-                                SourceText = PromptSource(segments[i], structureContext)
+                                SourceText = PromptSource(seg, structureContext),
+
+                                // No FuzzySourceText: Studio records the percentage but not
+                                // the source the match was made for, and writing this
+                                // segment's own source there would tell the model the match
+                                // is exact when it may be 72%.
+                                FuzzyTargetText = haveMatch ? seg.ExistingTarget : null,
+                                FuzzyMatchPercent = haveMatch ? seg.TmMatchPercent : 0
                             });
                         }
 

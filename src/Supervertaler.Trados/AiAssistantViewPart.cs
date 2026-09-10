@@ -6572,6 +6572,33 @@ namespace Supervertaler.Trados
             return pairs;
         }
 
+        /// <summary>
+        /// #110: the TM match percentage Studio recorded on a segment, or 0.
+        /// Only a target that came from a translation memory counts - an
+        /// auto-propagated one originates from a TM too. Anything else (machine
+        /// translation, a hand-typed draft, a fuzzy the user has since rewritten)
+        /// is not the memory's word and is not offered to the model as such.
+        /// </summary>
+        private static int TmMatchPercentOf(ISegmentPair pair)
+        {
+            try
+            {
+                var origin = pair?.Properties?.TranslationOrigin;
+                if (origin == null) return 0;
+
+                var type = origin.OriginType;
+                if (type != "tm" && type != "auto-propagated") return 0;
+
+                var percent = origin.MatchPercent;
+                return percent > 0 && percent <= 100 ? percent : 0;
+            }
+            catch
+            {
+                // Segment properties are not always reachable during transitions.
+                return 0;
+            }
+        }
+
         private void OnSaveAsPromptRequested(object sender, string promptContent)
         {
             SafeInvoke(() =>
@@ -11430,7 +11457,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             Index = actualSegNum - 1, // 0-based for BatchSegment.Index
                             SourceText = sourceText,
                             ExistingTarget = targetText,
-                            SegmentPairRef = new[] { paragraphUnitId, segmentId }
+                            SegmentPairRef = new[] { paragraphUnitId, segmentId },
+                            TmMatchPercent = TmMatchPercentOf(pair)
                         });
                     }
 
