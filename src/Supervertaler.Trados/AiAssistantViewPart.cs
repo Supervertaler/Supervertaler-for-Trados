@@ -6471,7 +6471,8 @@ namespace Supervertaler.Trados
                 string glossRegister = null;
                 try
                 {
-                    glossRegister = await BuildGlossRegisterAsync(sourceSegments, sourceLang, aiSettings);
+                    if (GlossRegisterEnabled)
+                        glossRegister = await BuildGlossRegisterAsync(sourceSegments, sourceLang, aiSettings);
                 }
                 catch (Exception ex)
                 {
@@ -11890,6 +11891,27 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 return StructureContextMode.Unavailable;
             }
         }
+
+        /// <summary>
+        /// #113: OFF. The register is built and tested but not used - flip this to
+        /// true to switch it back on, and nothing else.
+        ///
+        /// <para>Parked on the evidence of its only real-world run. AutoPrompt, given
+        /// the register, did not carry it through: it wrote a gloss section of its
+        /// own, from the rule rather than from the table, and in doing so CORRECTED
+        /// two verdicts the register had wrong. So on the one measurement available,
+        /// the standing instruction this feature exists to replace outperformed the
+        /// feature. The issue's premise - that a rule stated once is misapplied under
+        /// load - is plausible and remains untested, because it is a claim about the
+        /// TRANSLATING model and that run exercised the generating one.</para>
+        ///
+        /// <para>What would settle it: translate a document with a prompt carrying
+        /// only the rule, then count the glosses dropped that should have been kept.
+        /// See issue #113.</para>
+        /// </summary>
+        /// <remarks>static readonly, not const: a const false makes the call
+        /// below unreachable code and the build warns about it every time.</remarks>
+        private static readonly bool GlossRegisterEnabled = false;
 
         /// <summary>
         /// #113: builds the gloss register, or returns null when there is nothing to
