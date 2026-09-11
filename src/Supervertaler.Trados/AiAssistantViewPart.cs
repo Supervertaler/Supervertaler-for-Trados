@@ -10907,10 +10907,26 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var modeLabel = batchControl.CurrentMode == BatchMode.Proofread
                     ? "proofreading" : "translation";
                 var title = $"Prompt preview \u2013 {modeLabel} ({segments.Count} segments)";
-                var headerText = "This is exactly what will be sent to the AI for this batch: " +
-                    "the assembled system prompt (including the active custom prompt, termbase entries, " +
-                    "language-specific checks, and the full bilingual document context for proofread), " +
-                    "followed by the numbered segment list. No LLM call is made by this preview.";
+                // The scope is split into several requests, and this shows ONE of
+                // them. Saying so at the top matters: the request carries ~50 of the
+                // segments while the system prompt above it carries all of them, so
+                // a reader looking for a particular segment in the numbered list can
+                // easily conclude it was dropped when it is simply in request 12.
+                var previewBatchSize = aiSettings != null && aiSettings.BatchSize > 0
+                    ? aiSettings.BatchSize : 20;
+                var requestCount = (segments.Count + previewBatchSize - 1) / previewBatchSize;
+                var scopeNote = requestCount > 1
+                    ? "This is request 1 of " + requestCount + ", carrying "
+                      + Math.Min(previewBatchSize, segments.Count) + " of the "
+                      + segments.Count + " segments in scope. The system prompt is identical in "
+                      + "every request; only the numbered list at the end changes. "
+                    : "";
+
+                var headerText = scopeNote +
+                    "This is exactly what will be sent to the AI: the assembled system prompt " +
+                    "(including the active custom prompt, termbase entries, language-specific " +
+                    "checks, and the full bilingual document context for proofread), followed by " +
+                    "the numbered segment list. No LLM call is made by this preview.";
 
                 using (var dlg = new Controls.PromptPreviewDialog(title, headerText, promptText))
                 {

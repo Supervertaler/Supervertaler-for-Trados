@@ -51,7 +51,11 @@ namespace Supervertaler.Trados.Controls
             _lblHeader = new Label
             {
                 Dock = DockStyle.Top,
-                Height = 44,
+                // Three lines: the banner now carries which request this is out of
+                // how many, and that the document context is repeated in each. That
+                // used to be a footnote 90,000 characters below, where it was read
+                // by nobody.
+                Height = 64,
                 Padding = new Padding(12, 10, 12, 0),
                 Text = contentLabel ?? "This is exactly what will be sent to the AI for this batch.",
                 Font = new Font("Segoe UI", 9f, FontStyle.Italic),
@@ -68,8 +72,13 @@ namespace Supervertaler.Trados.Controls
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 Multiline = true,
-                ScrollBars = ScrollBars.Both,
-                WordWrap = false, // keep prompt structure readable; scroll horizontally
+                ScrollBars = ScrollBars.Vertical,
+                // Wrapped. Without it every long paragraph - and a prompt is mostly
+                // long paragraphs - runs off the right edge, so reading one means
+                // scrolling horizontally, line by line. On a 90,000-character
+                // preview that is how a reader concludes something is missing when
+                // it is only past the edge, or further down than they scrolled.
+                WordWrap = true,
                 Font = new Font("Consolas", 9.5f),
                 BackColor = Color.White,
                 Margin = new Padding(8),
