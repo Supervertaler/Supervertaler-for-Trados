@@ -330,6 +330,81 @@ namespace Supervertaler.Trados.Controls
             };
             root.Controls.Add(btnChatGpt);
 
+            // ── Google Antigravity / Gemini CLI ───────────────────────────
+            root.Controls.Add(SectionHeader("Google Antigravity"));
+
+            var agHint = new Label
+            {
+                Text = "Antigravity connects like any other MCP app, but it also has a shell and a "
+                     + "file browser – and left to itself it answers Trados questions by digging "
+                     + "through your project folder instead of asking Studio, which is slow and gives "
+                     + "stale answers. This installs a short instruction file that tells it to use the "
+                     + "Supervertaler tools and read the document. The Gemini CLI reads the same file.",
+                AutoSize = true,
+                MaximumSize = new Size(UiScale.Pixels(520), 0),
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(6))
+            };
+            root.Controls.Add(agHint);
+
+            var agStatus = new Label
+            {
+                AutoSize = true,
+                ForeColor = Color.FromArgb(110, 110, 110),
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(6))
+            };
+            root.Controls.Add(agStatus);
+
+            var btnAntigravity = new Button
+            {
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, UiScale.Pixels(10))
+            };
+
+            // Same reasoning as the ChatGPT button above: the label and the status
+            // line are written together, so the button never reads as an
+            // instruction the user has somehow failed to follow.
+            Action refreshAgState = () =>
+            {
+                if (!Core.AntigravitySkillSetup.IsInstalled())
+                {
+                    agStatus.Text = Core.AntigravitySkillSetup.IsAntigravityInstalled()
+                        ? "Not installed yet."
+                        : "Not installed yet. Antigravity does not appear to be on this PC – "
+                          + "installing the file now is fine, it will be found later.";
+                    btnAntigravity.Text = "Install Antigravity skill";
+                }
+                else if (Core.AntigravitySkillSetup.IsOutdated())
+                {
+                    agStatus.Text = "Installed, but it differs from this plugin version – either older, "
+                                  + "or edited by you. Your copy is backed up before it is replaced.";
+                    btnAntigravity.Text = "Update Antigravity skill";
+                }
+                else
+                {
+                    agStatus.Text = "Installed and up to date.";
+                    btnAntigravity.Text = "Reinstall Antigravity skill";
+                }
+            };
+            refreshAgState();
+            btnAntigravity.Click += (s, e) =>
+            {
+                btnAntigravity.Enabled = false;
+                try
+                {
+                    var result = Core.AntigravitySkillSetup.Install();
+                    refreshAgState();
+
+                    var body = result.Message;
+                    if (result.Success && result.BackupPath != null)
+                        body += "\r\n\r\nYour previous version was backed up to:\r\n" + result.BackupPath;
+
+                    MessageBox.Show(this, body, "Supervertaler", MessageBoxButtons.OK,
+                        result.Success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                }
+                finally { btnAntigravity.Enabled = true; }
+            };
+            root.Controls.Add(btnAntigravity);
+
             // ── Other MCP-capable AI apps ─────────────────────────────────
             root.Controls.Add(SectionHeader("Other AI apps (Claude Code, …)"));
 

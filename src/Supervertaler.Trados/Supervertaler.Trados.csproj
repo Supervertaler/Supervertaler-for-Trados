@@ -249,6 +249,17 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!-- Standing instructions for agentic AI apps (Google Antigravity and the
+       Gemini CLI), written out by Core\AntigravitySkillSetup. Shipped with the
+       plugin rather than pasted from the docs because the skill names specific
+       tools and rules that change as the plugin does: a copy pasted once is
+       frozen and slowly starts describing a toolset that no longer exists. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\agent-skills\*.md">
+      <LogicalName>AgentSkill.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- MCP tool registry: the single source of truth for the tools the
        Supervertaler MCP Server exposes. The bridge serves it at /v1/tools;
        the external exe fetches it and registers tools dynamically, so adding
