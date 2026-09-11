@@ -87,6 +87,8 @@ namespace Supervertaler.Trados.Controls
         private Label _lblChatContextHeader;
         private Label _lblChatContextNote;
         private CheckBox _chkIncludeTmMatches;
+        private Label _lblTmFuzzyMinScore;            // #116
+        private NumericUpDown _nudTmFuzzyMinScore;    // #116
         private CheckBox _chkDemoMode;
         private Label _lblSurroundingSegments;
         private NumericUpDown _nudSurroundingSegments;
@@ -606,6 +608,27 @@ namespace Supervertaler.Trados.Controls
                 "dismiss. Advisory only – it never blocks. 0 disables the budget.");
             Pair(root, ref row, lblMonthlyBudget, _nudMonthlyBudget);
 
+            // #116: the floor for the TM search that Batch Translate runs. The
+            // on/off switch stays on the Batch Operations tab, where the
+            // per-job judgement about a memory is made; this is the number
+            // behind it and belongs with the other context knobs.
+            _lblTmFuzzyMinScore = FieldLabel("Lowest TM match to send (%):");
+            _nudTmFuzzyMinScore = SmallNud(50, 100, 70, 5);
+            var fuzzyTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
+            fuzzyTip.SetToolTip(_nudTmFuzzyMinScore,
+                "Batch Translate searches the project's translation memories and sends\r\n" +
+                "each segment's closest approved translation to the AI. This is the\r\n" +
+                "lowest match percentage worth sending.\r\n\r\n" +
+                "A match is always sent together with the source it was made for, so\r\n" +
+                "the AI can see which words differ rather than assuming the wording\r\n" +
+                "fits. That is what makes a fuzzy safe to send at all.\r\n\r\n" +
+                "70% is where Studio's own fuzzy band starts. Below that a “match”\r\n" +
+                "agrees with the segment largely by accident and competes with your\r\n" +
+                "termbase for the AI's attention. Set it to 100 for exact matches only.\r\n\r\n" +
+                "Turned on and off with “Send TM matches to the AI” on the Batch\r\n" +
+                "Operations tab.");
+            Pair(root, ref row, _lblTmFuzzyMinScore, _nudTmFuzzyMinScore);
+
             _lblBatchSize = FieldLabel("Batch size:");
             _nudBatchSize = SmallNud(5, 100, 20, 1);
             var batchTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
@@ -658,9 +681,9 @@ namespace Supervertaler.Trados.Controls
                 "    segments, and segments translated from scratch – anything with a\r\n" +
                 "    Translated / ApprovedTranslation / ApprovedSignOff confirmation level.\r\n" +
                 "\r\n" +
-                "Other Batch Operations (Translate, Proofread) are unaffected by this\r\n" +
-                "checkbox – they always work segment-by-segment without TM reference\r\n" +
-                "pairs.");
+                "Batch Translate has its own TM setting – “Send TM matches to the AI”\r\n" +
+                "on the Batch Operations tab – and is not affected by this checkbox.\r\n" +
+                "Batch Proofread works segment-by-segment without TM reference pairs.");
             Span(root, ref row, _chkIncludeTmMatches);
 
             _chkDemoMode = Check("Incognito mode — anonymise project names, paths, and personal data in AI responses");
@@ -846,6 +869,7 @@ namespace Supervertaler.Trados.Controls
 
             // AI Context
             _chkIncludeTmMatches.Checked = settings.IncludeTmMatches;
+            _nudTmFuzzyMinScore.Value = Math.Min(100, Math.Max(50, settings.TmFuzzyMinScore));
             _chkDemoMode.Checked = settings.DemoMode;
             _chkIncludeDocumentContext.Checked = settings.IncludeDocumentContext;
             _nudMaxSegments.Value = Math.Max(_nudMaxSegments.Minimum,
@@ -948,6 +972,7 @@ namespace Supervertaler.Trados.Controls
 
             // AI Context
             settings.IncludeTmMatches = _chkIncludeTmMatches.Checked;
+            settings.TmFuzzyMinScore = (int)_nudTmFuzzyMinScore.Value;
             settings.DemoMode = _chkDemoMode.Checked;
             settings.IncludeDocumentContext = _chkIncludeDocumentContext.Checked;
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;

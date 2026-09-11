@@ -196,13 +196,36 @@ namespace Supervertaler.Trados.Settings
         public bool IncludeTmMatches { get; set; } = true;
 
         /// <summary>
-        /// #110: send the 100% translation-memory match Studio recorded on a
-        /// segment to the AI during Batch Translate. On by default; the checkbox
-        /// sits on the Batch Operations tab because whether a job's TM can be
-        /// trusted is a per-job judgement. Only exact matches are ever sent - see
-        /// the note on BatchSegment.TmMatchPercent.
+        /// Send translation-memory matches to the AI during Batch Translate. On by
+        /// default; the checkbox sits on the Batch Operations tab because whether a
+        /// job's TM can be trusted is a per-job judgement.
+        ///
+        /// <para>#116 searches the project's memories, so a match arrives with the
+        /// source it was made for and a fuzzy can be shown honestly. #110 is the
+        /// fallback where no memory can be searched, and sends only 100% matches.
+        /// See the note on BatchSegment.TmMatchPercent.</para>
+        ///
+        /// <para>This carried no [DataMember] until 18.20.190, so it did not
+        /// persist: DataContractJsonSerializer writes only marked members, and the
+        /// checkbox silently returned to on at every restart.</para>
         /// </summary>
+        [DataMember(Name = "sendTmMatchesInBatch")]
         public bool SendTmMatchesInBatch { get; set; } = true;
+
+        /// <summary>
+        /// #116: the lowest match percentage worth sending. The settings spinner
+        /// offers 50-100; a lower number in the file is honoured but clamped to 50
+        /// the next time the panel is opened. 70 is where
+        /// Studio's own fuzzy band starts; below it the "match" competes with the
+        /// termbase and SuperMemory for the model's attention while agreeing with
+        /// the segment mostly by accident. Set it to 100 to send exact matches only.
+        ///
+        /// <para>A fuzzy is only safe because its own source travels with it, so
+        /// the model can see which words differ - which is why this can be lowered
+        /// at all. Never send a target without that source.</para>
+        /// </summary>
+        [DataMember(Name = "tmFuzzyMinScore")]
+        public int TmFuzzyMinScore { get; set; } = 70;
 
         /// <summary>
         /// Whether to include the full document content (all source segments) in the
@@ -271,6 +294,8 @@ namespace Supervertaler.Trados.Settings
             StructureContext = true;   // #109: on unless the file says otherwise
             _quickLauncherSurroundingSegments = 5;
             ActiveMemoryBankName = UserDataPath.DefaultMemoryBankName;
+            SendTmMatchesInBatch = true;
+            TmFuzzyMinScore = 70;      // #116: a 0 here would search for anything at all
         }
 
         /// <summary>

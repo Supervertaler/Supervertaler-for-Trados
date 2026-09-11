@@ -148,7 +148,7 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Whether Clipboard Mode is active.</summary>
         public bool IsClipboardMode => _chkClipboardMode?.Checked ?? false;
 
-        /// <summary>#110: whether 100% TM matches go to the AI with the batch.</summary>
+        /// <summary>#110/#116: whether TM matches go to the AI with the batch.</summary>
         public bool SendTmMatches
         {
             get { return _chkSendTmMatches?.Checked ?? true; }
@@ -282,10 +282,10 @@ namespace Supervertaler.Trados.Controls
             Controls.Add(_chkClipboardMode);
             y += Px(24);
 
-            // ─── 100% TM matches (#110) ────
+            // ─── TM matches (#110, #116) ────
             _chkSendTmMatches = new CheckBox
             {
-                Text = "Send 100% TM matches to the AI",
+                Text = "Send TM matches to the AI",
                 Location = new Point(leftMargin, y),
                 AutoSize = true,
                 Font = bodyFont,
@@ -296,11 +296,13 @@ namespace Supervertaler.Trados.Controls
                 SendTmMatchesChanged?.Invoke(this, EventArgs.Empty);
             var tmTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
             tmTip.SetToolTip(_chkSendTmMatches,
-                "Where the translation memory has already supplied a segment's target as a\r\n" +
-                "100% match, send that translation to the AI as the approved wording to keep.\r\n\r\n" +
-                "Only exact matches are sent. A fuzzy match is never sent: the AI would see a\r\n" +
-                "translation of a sentence it cannot read, with no way to tell which words\r\n" +
-                "differ - and a memory stuffed with near-misses would mislead it.\r\n\r\n" +
+                "Search the project's translation memories for each segment and send the\r\n" +
+                "closest approved translation to the AI as the wording to follow.\r\n\r\n" +
+                "A fuzzy match is sent together with the source it was made for, so the AI\r\n" +
+                "can see exactly which words differ instead of assuming the wording fits.\r\n" +
+                "It is never sent on its own. The lowest percentage worth sending is set in\r\n" +
+                "AI Settings; below that a match competes with your termbase for attention.\r\n\r\n" +
+                "Works on empty segments too, not only ones Studio pre-translated.\r\n\r\n" +
                 "Turn this off for a job whose translation memory you do not trust.");
             Controls.Add(_chkSendTmMatches);
 

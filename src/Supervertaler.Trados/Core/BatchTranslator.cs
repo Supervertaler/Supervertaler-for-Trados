@@ -27,20 +27,34 @@ namespace Supervertaler.Trados.Core
         public object SegmentPairRef { get; set; }
 
         /// <summary>
-        /// #110: how close the TM match is that Studio already put in this
-        /// segment (its TranslationOrigin), 0-100, or 0 when the target did not
-        /// come from a TM, or when the translator has turned the feature off.
-        /// ExistingTarget holds the translation it inserted.
+        /// How close the TM match for this segment is, 0-100, or 0 when there is
+        /// none or the translator has turned the feature off.
         ///
-        /// Only 100 is ever acted on. Studio records how close a match is but
-        /// NOT the source it was made for, so a fuzzy could only be sent as a
-        /// translation of a sentence the model cannot read - it could not tell
-        /// which words differ, and a memory padded with near-misses is exactly
-        /// where that misleads. At 100% the match's source is this segment's
-        /// source, so nothing is hidden. Sending fuzzies safely needs the TM
-        /// searched for its source text: issue #116.
+        /// <para>Two paths fill this. #116 searches the project's memories, and
+        /// sets <see cref="TmSourceText"/> and <see cref="TmTargetText"/> with it -
+        /// a fuzzy is then safe to send at any score, because the model can read
+        /// the source it was made for and see which words differ. #110 is the
+        /// fallback when no memory can be searched: it reads what Studio left on
+        /// the segment (its TranslationOrigin, with <see cref="ExistingTarget"/>
+        /// as the target) and is acted on ONLY at 100, because that origin records
+        /// how close the match was but not the source - and a fuzzy with no source
+        /// is a translation of a sentence the model cannot read.</para>
         /// </summary>
         public int TmMatchPercent { get; set; }
+
+        /// <summary>
+        /// #116: the SOURCE the TM match was made for, as the memory holds it.
+        /// Non-null only on the searched path. Its presence is what makes a
+        /// sub-100% match sendable - never set this to the segment's own source,
+        /// which would tell the model a 72% match is exact.
+        /// </summary>
+        public string TmSourceText { get; set; }
+
+        /// <summary>
+        /// #116: the approved translation of <see cref="TmSourceText"/>. Set
+        /// together with it, and never one without the other.
+        /// </summary>
+        public string TmTargetText { get; set; }
 
         /// <summary>
         /// Whether the source segment contains inline tags (formatting, field codes, etc.).
@@ -295,22 +309,7 @@ namespace Supervertaler.Trados.Core
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = startIdx; i < endIdx; i++)
                         {
-                            var seg = segments[i];
-                            var haveMatch = seg.TmMatchPercent >= ExactMatch
-                                && !string.IsNullOrWhiteSpace(seg.ExistingTarget);
-
-                            promptSegments.Add(new BatchSegmentInput
-                            {
-                                Number = i + 1, // 1-based numbering
-                                SourceText = PromptSource(seg, structureContext),
-
-                                // No FuzzySourceText: Studio records the percentage but not
-                                // the source the match was made for, and writing this
-                                // segment's own source there would tell the model the match
-                                // is exact when it may be 72%.
-                                FuzzyTargetText = haveMatch ? seg.ExistingTarget : null,
-                                FuzzyMatchPercent = haveMatch ? seg.TmMatchPercent : 0
-                            });
+                            promptSegments.Add(ToPromptInput(segments[i], i + 1, structureContext));
                         }
 
                         // Build user prompt
@@ -587,23 +586,66 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// #110: without the match's source, only an exact match is safe to show.
+        /// </summary>
+        internal const int ExactMatch = 100;
+
+        /// <summary>
         /// #109: the source as the model sees it - the document's list marker in a
         /// sentinel, then the text - when markers are being sent; the text alone
         /// otherwise. BatchSegment.SourceText itself is never changed.
+        ///
+        /// <para>Internal rather than private so Preview prompt derives the source
+        /// text through the SAME function the run does. Two derivations that
+        /// drift would make the preview a plausible lie.</para>
         /// </summary>
-        /// <summary>
-        /// Internal rather than private so Preview prompt derives the source text
-        /// through the SAME function the run does. Two derivations that drift
-        /// would make the preview a plausible lie.
-        /// </summary>
-        /// <summary>#110: only an exact match is ever shown to the model.</summary>
-        internal const int ExactMatch = 100;
-
         internal static string PromptSource(BatchSegment segment, StructureContextMode mode)
         {
             return mode == StructureContextMode.Markers
                 ? StructureContext.Prefix(segment.StructureMarker, segment.SourceText)
                 : segment.SourceText;
+        }
+
+        /// <summary>
+        /// One segment as the prompt carries it. Internal for the same reason as
+        /// <see cref="PromptSource"/>: Preview prompt must show exactly what the run
+        /// sends, and the memory block is the part most worth being able to check.
+        ///
+        /// <para>Two ways a match reaches the model, and the difference is whether
+        /// its source came with it. A searched match (#116) is sent at whatever
+        /// score it scored, source and target together, because the model can then
+        /// see which words differ. A match read off the segment's TranslationOrigin
+        /// (#110) has no source, so it is sent only at 100% - where the match's
+        /// source IS this segment's source and nothing is hidden.</para>
+        /// </summary>
+        internal static BatchSegmentInput ToPromptInput(
+            BatchSegment segment, int number, StructureContextMode mode)
+        {
+            var input = new BatchSegmentInput
+            {
+                Number = number,
+                SourceText = PromptSource(segment, mode)
+            };
+
+            if (!string.IsNullOrWhiteSpace(segment.TmSourceText)
+                && !string.IsNullOrWhiteSpace(segment.TmTargetText))
+            {
+                input.FuzzySourceText = segment.TmSourceText;
+                input.FuzzyTargetText = segment.TmTargetText;
+                input.FuzzyMatchPercent = segment.TmMatchPercent;
+            }
+            else if (segment.TmMatchPercent >= ExactMatch
+                     && !string.IsNullOrWhiteSpace(segment.ExistingTarget))
+            {
+                // No FuzzySourceText: Studio records the percentage but not the
+                // source the match was made for, and writing this segment's own
+                // source there would tell the model the match is exact when it
+                // may be 72%. Only reached at 100%, where it genuinely is.
+                input.FuzzyTargetText = segment.ExistingTarget;
+                input.FuzzyMatchPercent = segment.TmMatchPercent;
+            }
+
+            return input;
         }
 
         /// <summary>

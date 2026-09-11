@@ -6682,6 +6682,101 @@ namespace Supervertaler.Trados
             }
         }
 
+        /// <summary>
+        /// #116: everything the TM search needs, gathered on the UI thread so the
+        /// search itself can run off it. Null when there is nothing to search -
+        /// the feature is off, the project declares no memories, or the document's
+        /// source language cannot be resolved.
+        /// </summary>
+        private class TmLookupPlan
+        {
+            public List<string> Tms;
+            public System.Globalization.CultureInfo SourceCulture;
+            public int MinScore;
+        }
+
+        /// <summary>MUST be called on the UI thread - it reads the Trados model.</summary>
+        private TmLookupPlan PrepareTmLookup(AiSettings aiSettings)
+        {
+            try
+            {
+                if (aiSettings == null || !aiSettings.SendTmMatchesInBatch) return null;
+
+                var tms = Core.TmSearcher.FindProjectTms(ResolveProjectAnchorPathCore());
+                if (tms == null || tms.Count == 0) return null;
+
+                var culture = GetDocumentSourceCulture();
+                if (culture == null) return null;
+
+                var min = aiSettings.TmFuzzyMinScore;
+                if (min < 1 || min > 100) min = 70;
+
+                return new TmLookupPlan { Tms = tms, SourceCulture = culture, MinScore = min };
+            }
+            catch (Exception ex)
+            {
+                Core.DiagnosticLog.Log("TmFuzzy", "Could not prepare the lookup: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// #116: fills each segment's TM match from a search of the project's
+        /// memories. Safe to call off the UI thread - it touches no Trados model
+        /// object, only the strings collected earlier. Returns how many segments
+        /// got a match.
+        ///
+        /// <para>A searched match replaces what Studio left on the segment, because
+        /// it carries the source and that origin does not - except where the origin
+        /// already says 100% with a target: nothing found by searching can improve
+        /// on an exact match, and taking a lower-scoring one would be a downgrade.</para>
+        /// </summary>
+        private static int ApplyTmMatches(
+            TmLookupPlan plan, List<BatchSegment> segments, CancellationToken ct)
+        {
+            if (plan == null || segments == null || segments.Count == 0) return 0;
+
+            var texts = new List<string>(segments.Count);
+            foreach (var s in segments) texts.Add(s.SourceText);
+
+            var matches = Core.TmFuzzyLookup.FindBest(
+                plan.Tms, texts, plan.SourceCulture, plan.MinScore, null, ct);
+
+            int applied = 0;
+            for (int i = 0; i < segments.Count && i < matches.Length; i++)
+            {
+                var m = matches[i];
+                if (m == null) continue;
+
+                var seg = segments[i];
+                if (seg.TmMatchPercent >= BatchTranslator.ExactMatch
+                    && !string.IsNullOrWhiteSpace(seg.ExistingTarget)
+                    && m.Score < BatchTranslator.ExactMatch)
+                    continue;
+
+                seg.TmSourceText = m.SourceText;
+                seg.TmTargetText = m.TargetText;
+                seg.TmMatchPercent = m.Score;
+                applied++;
+            }
+            return applied;
+        }
+
+        /// <summary>
+        /// The document's source language as a CultureInfo, which is what the TM
+        /// API needs to build a Segment. GetDocumentSourceLanguage returns a
+        /// display name, which it does not.
+        /// </summary>
+        private System.Globalization.CultureInfo GetDocumentSourceCulture()
+        {
+            try
+            {
+                var lang = _activeDocument?.ActiveFile?.SourceFile?.Language;
+                return lang?.CultureInfo;
+            }
+            catch { return null; }
+        }
+
         private void OnSaveAsPromptRequested(object sender, string promptContent)
         {
             SafeInvoke(() =>
@@ -9099,10 +9194,26 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // cached snapshot instead of touching the Trados model off-thread.
                 try { TermLensEditorViewPart.GetCurrentUsageContext(); } catch { }
 
+                // #116: what the TM search needs, read here on the UI thread; the
+                // search itself runs inside the background task below.
+                var tmPlan = PrepareTmLookup(aiSettings);
+
                 Task.Run(async () =>
                 {
                     try
                     {
+                        if (tmPlan != null)
+                        {
+                            SafeInvoke(() => batchControl.AppendLog(
+                                "Searching the project's translation memories for matches..."));
+                            var sw = System.Diagnostics.Stopwatch.StartNew();
+                            var found = ApplyTmMatches(tmPlan, segments, ct);
+                            sw.Stop();
+                            SafeInvoke(() => batchControl.AppendLog(
+                                found + " of " + segments.Count + " segment(s) have a TM match at "
+                                + tmPlan.MinScore + "% or better (" + sw.ElapsedMilliseconds + " ms)."));
+                        }
+
                         await _batchTranslator.TranslateAsync(
                             segments, sourceLang, targetLang,
                             aiSettings, termbaseTerms, batchSize, ct,
@@ -9110,6 +9221,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             docSegments, kbContext,
                             retryUntilComplete: batchControl.IsRetryEnabled,
                             structureContext: structureMode);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // #116: Cancel pressed during the TM search, before
+                        // TranslateAsync could take over reporting. Its own
+                        // cancellation path raises Completed and resets the button;
+                        // this one has to.
+                        SafeInvoke(() =>
+                        {
+                            batchControl.AppendLog("Cancelled.");
+                            batchControl.SetRunning(false);
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -10741,21 +10864,28 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             ? aiSettings.BatchSize : 20;
                         var previewCount = Math.Min(batchSize, segments.Count);
 
+                        // #116: the memory block is the part of this prompt most
+                        // worth checking, so the preview has to search too - but only
+                        // for the segments it actually renders, not the whole scope.
+                        var previewSegments = segments.GetRange(0, previewCount);
+                        var previewPlan = PrepareTmLookup(aiSettings);
+                        if (previewPlan != null)
+                        {
+                            var prevCursor = Cursor.Current;
+                            Cursor.Current = Cursors.WaitCursor;
+                            try { ApplyTmMatches(previewPlan, previewSegments, CancellationToken.None); }
+                            catch (Exception ex)
+                            {
+                                Core.DiagnosticLog.Log("TmFuzzy",
+                                    "Preview lookup failed: " + ex.Message);
+                            }
+                            finally { Cursor.Current = prevCursor; }
+                        }
+
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = 0; i < previewCount; i++)
-                        {
-                            var seg = segments[i];
-                            var haveMatch = seg.TmMatchPercent >= BatchTranslator.ExactMatch
-                                && !string.IsNullOrWhiteSpace(seg.ExistingTarget);
-
-                            promptSegments.Add(new BatchSegmentInput
-                            {
-                                Number = i + 1,
-                                SourceText = BatchTranslator.PromptSource(seg, structureMode),
-                                FuzzyTargetText = haveMatch ? seg.ExistingTarget : null,
-                                FuzzyMatchPercent = haveMatch ? seg.TmMatchPercent : 0
-                            });
-                        }
+                            promptSegments.Add(
+                                BatchTranslator.ToPromptInput(previewSegments[i], i + 1, structureMode));
 
                         promptText = apiSystemPrompt
                             + Environment.NewLine + Environment.NewLine
