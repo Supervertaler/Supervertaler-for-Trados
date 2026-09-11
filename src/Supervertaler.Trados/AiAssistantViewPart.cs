@@ -6277,8 +6277,14 @@ namespace Supervertaler.Trados
                     return;
                 }
 
-                // Phase 1: Collect all source segments
-                var docCtx = CollectDocumentContext();
+                // Phase 1: Collect all source segments.
+                // #122: with the document's list markers when this file can supply
+                // them. AutoPrompt is asked to look at the document and write
+                // instructions for translating it, so it should see the structure the
+                // translating model will see - and BuildMetaPrompt ships a paragraph
+                // explaining the markers whenever they are present.
+                var autoPromptStructure = DocumentContextStructureMode(aiSettings);
+                var docCtx = CollectDocumentContext(autoPromptStructure);
                 var sourceSegments = docCtx.Item1;
                 if (sourceSegments == null || sourceSegments.Count == 0)
                 {
@@ -6459,6 +6465,8 @@ namespace Supervertaler.Trados
                     AnalysisSummary = analysisSummary,
                     SegmentCount = sourceSegments.Count,
                     SourceSegments = sourceSegments,
+                    // #122: so the meta-prompt explains the markers it can see.
+                    HasStructureMarkers = autoPromptStructure == StructureContextMode.Markers,
                     TermbaseTerms = termbaseTerms,
                     TotalTermCount = totalTermCount,
                     TmPairs = tmPairs,
@@ -9110,7 +9118,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 List<string> docSegments = null;
                 if (aiSettings.IncludeDocumentContext)
                 {
-                    var docCtx = CollectDocumentContext();
+                    // #122: markers in the context too - this request ships the
+                    // "# DOCUMENT STRUCTURE" preamble that explains them.
+                    var docCtx = CollectDocumentContext(structureMode);
                     docSegments = docCtx.Item1;
                 }
 
@@ -9575,7 +9585,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     List<string> docSegments = null;
                     if (includeDocContext)
                     {
-                        var docCtx = CollectDocumentContext();
+                        var docCtx = CollectDocumentContext(structureMode);   // #122
                         docSegments = docCtx.Item1;
                     }
 
@@ -10830,7 +10840,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     List<string> docSegments = null;
                     if (includeDocContext)
                     {
-                        var docCtx = CollectDocumentContext();
+                        var docCtx = CollectDocumentContext(structureMode);   // #122
                         docSegments = docCtx.Item1;
                     }
 
@@ -11464,7 +11474,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), null);   // #102
 
             var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
-            List<string> docSegments = aiSettings.IncludeDocumentContext ? CollectDocumentContext().Item1 : null;
+            List<string> docSegments = aiSettings.IncludeDocumentContext ? CollectDocumentContext(structureMode).Item1 : null;   // #122
             var projectName = GetProjectName();
             var kbContext = LoadKbContextForPrompt(projectName, sourceLang, targetLang);
             var promptName = batchControl.GetSelectedPrompt()?.Name ?? "(default prompt)";
@@ -11846,6 +11856,27 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 note = "Structure context: not available (" + ex.Message + ").";
                 return StructureContextMode.Unavailable;
             }
+        }
+
+        /// <summary>
+        /// #122: whether the document context should carry list markers - the setting
+        /// is on AND this file can actually supply them. For callers that build no
+        /// BatchSegment list of their own and so never call
+        /// <see cref="ApplyStructureMarkers"/>. Resolve caches by path and write time,
+        /// so asking twice in one request costs nothing.
+        /// </summary>
+        private StructureContextMode DocumentContextStructureMode(AiSettings settings)
+        {
+            if (settings == null || !settings.StructureContext || _activeDocument == null)
+                return StructureContextMode.Off;
+            try
+            {
+                var map = StructureContextResolver.Resolve(_activeDocument);
+                return map != null && map.Available
+                    ? StructureContextMode.Markers
+                    : StructureContextMode.Off;
+            }
+            catch { return StructureContextMode.Off; }
         }
 
         private static bool IsFirstSegmentOfParagraph(IParagraphUnit pu, ISegmentPair pair)
@@ -13091,7 +13122,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     // consistency anchor. (Reported by a user.)
                     List<string> docSegments = null;
                     if (aiSettings.IncludeDocumentContext)
-                        docSegments = instance.CollectDocumentContext().Item1;
+                        docSegments = instance.CollectDocumentContext(structureMode).Item1;   // #122
                     var kbContext = instance.LoadKbContextForPrompt(
                         instance.GetProjectName(), sourceLang, targetLang);
 
@@ -13798,13 +13829,41 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return segments;
         }
 
-        private Tuple<List<string>, int> CollectDocumentContext()
+        /// <param name="structureMode">
+        /// #122: when <c>Markers</c>, each paragraph's list marker is prefixed to its
+        /// first segment here too, exactly as <see cref="ApplyStructureMarkers"/> does
+        /// for the segments being translated - same resolved map, so the two cannot
+        /// disagree.
+        ///
+        /// <para>Without this the claims appear numbered in the segment list and
+        /// unnumbered in the context, which is the larger loss: the numbering is what
+        /// says a paragraph IS claim 2, so "volgens conclusie 1" has something to
+        /// resolve against. Costs about 210 characters in a 76,000-character context
+        /// on a real patent - 35 markers of 793 paragraphs.</para>
+        ///
+        /// <para>MUST stay Off wherever the "# DOCUMENT STRUCTURE" preamble does not
+        /// ship, which is everything except the translation prompt. Markers with
+        /// nothing to explain them are litter a model may well echo back.</para>
+        /// </param>
+        private Tuple<List<string>, int> CollectDocumentContext(
+            StructureContextMode structureMode = StructureContextMode.Off)
         {
             var segments = new List<string>();
             int activeIndex = -1;
 
             if (_activeDocument == null)
                 return Tuple.Create(segments, activeIndex);
+
+            StructureMap markerMap = null;
+            if (structureMode == StructureContextMode.Markers)
+            {
+                try
+                {
+                    var resolved = StructureContextResolver.Resolve(_activeDocument);
+                    if (resolved != null && resolved.Available) markerMap = resolved;
+                }
+                catch { /* context without markers beats no context */ }
+            }
 
             try
             {
@@ -13828,6 +13887,24 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     // #97: placeholders, as the batch segments - never <cf ...>.
                     var sourceText = SegmentTagHandler.ToModelText(pair.Source);
+
+                    // #122: the paragraph's list marker, on its first segment only -
+                    // the same rule the segment list uses, so a paragraph reads the
+                    // same in both places.
+                    if (markerMap != null)
+                    {
+                        try
+                        {
+                            var pu = _activeDocument.GetParentParagraphUnit(pair);
+                            var puId = pu?.Properties?.ParagraphUnitId.Id;
+                            if (puId != null
+                                && markerMap.MarkerByParagraphUnit.TryGetValue(puId, out var marker)
+                                && IsFirstSegmentOfParagraph(pu, pair))
+                                sourceText = StructureContext.Prefix(marker, sourceText);
+                        }
+                        catch { /* a segment without a reachable paragraph keeps its text */ }
+                    }
+
                     segments.Add(sourceText);
 
                     // Match against active segment
