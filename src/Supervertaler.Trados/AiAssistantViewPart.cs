@@ -702,6 +702,30 @@ namespace Supervertaler.Trados
             };
             var systemPrompt = ChatPrompt.BuildSystemPrompt(chatCtx);
 
+            // #120: AutoPrompt does not take the Assistant's chat system prompt.
+            //
+            // The meta-prompt is self-contained - it carries its own termbase
+            // terms, TM pairs, source segments and SuperMemory, and opens by
+            // telling the model it is a prompt engineering specialist. The chat
+            // system prompt then arrived alongside it carrying a SECOND copy of
+            // the document, SuperMemory and the project context, and a
+            // contradictory role ("translation assistant"). Measured on a real
+            // run: 126,432 characters of system prompt, ~31,600 tokens, of which
+            // 70% appeared verbatim in the meta-prompt - about 30% of the whole
+            // request, paid for and reasoned over twice.
+            //
+            // That is not only cost. Input size drives how much a reasoning model
+            // thinks, and thinking is drawn from the same output budget as the
+            // prompt it is supposed to write - which is what made AutoPrompt fail
+            // five times running on Fable 5.1 (#119). Dropping this is the
+            // cheapest reduction in that pressure available.
+            //
+            // Sent as null rather than a short replacement: LlmClient omits the
+            // system field entirely when it is empty, and anything written here
+            // would only compete with the role the meta-prompt already sets.
+            if (args.Feature == PromptLogFeature.PromptGeneration)
+                systemPrompt = null;
+
             // 4. Build message window
             // QuickLauncher prompts are standalone – send only the current message,
             // not the chat history. This prevents accumulated history from inflating
