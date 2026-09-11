@@ -6219,8 +6219,15 @@ namespace Supervertaler.Trados
 
         private void OnGeneratePromptRequested(object sender, EventArgs e)
         {
-            SafeInvoke(() =>
+            // #113: async because the gloss register asks the model one question
+            // per candidate bracket before the meta-prompt is assembled. SafeInvoke
+            // takes an Action, so this is an async void lambda - which means an
+            // escaping exception would take Studio down with it. Hence the try that
+            // wraps the whole body.
+            SafeInvoke(async () =>
             {
+                try
+                {
                 if (_activeDocument == null)
                 {
                     AddErrorMessage("No document open. Open a document in Trados first.");
@@ -6456,6 +6463,24 @@ namespace Supervertaler.Trados
                     kbContext = LoadKbContextForPrompt(projectName, sourceLang, targetLang)?.Trim();
                 }
 
+                // Phase 4b (#113): decide the gloss register. One small model call per
+                // candidate, before the meta-prompt is assembled, so a judgement the
+                // translating model would otherwise re-make on every segment arrives
+                // as a settled lookup. Costs nothing on a document with no glosses,
+                // which is most of them.
+                string glossRegister = null;
+                try
+                {
+                    glossRegister = await BuildGlossRegisterAsync(sourceSegments, sourceLang, aiSettings);
+                }
+                catch (Exception ex)
+                {
+                    // Every failure path here ends in "no register", never in a failed
+                    // generation: the register is an improvement to the prompt, not a
+                    // precondition for one.
+                    Core.DiagnosticLog.Log("Gloss", "Register abandoned: " + ex.Message);
+                }
+
                 // Phase 5: Build meta-prompt
                 var ctx = new PromptGenerationContext
                 {
@@ -6467,6 +6492,7 @@ namespace Supervertaler.Trados
                     SourceSegments = sourceSegments,
                     // #122: so the meta-prompt explains the markers it can see.
                     HasStructureMarkers = autoPromptStructure == StructureContextMode.Markers,
+                    GlossRegister = glossRegister,   // #113
                     TermbaseTerms = termbaseTerms,
                     TotalTermCount = totalTermCount,
                     TmPairs = tmPairs,
@@ -6492,6 +6518,13 @@ namespace Supervertaler.Trados
                 // user clicked a button, not typed this message themselves
                 _control.Value.SubmitMessage(metaPrompt, displayText, maxTokens: 32768, feature: PromptLogFeature.PromptGeneration,
                     showAsStatus: true);
+                }
+                catch (Exception ex)
+                {
+                    // Nothing may escape an async void lambda.
+                    try { Core.DiagnosticLog.WriteAlways("AutoPrompt", "Generation failed: " + ex); } catch { }
+                    AddErrorMessage("Prompt generation failed: " + ex.Message);
+                }
             });
         }
 
@@ -11856,6 +11889,101 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 note = "Structure context: not available (" + ex.Message + ").";
                 return StructureContextMode.Unavailable;
             }
+        }
+
+        /// <summary>
+        /// #113: builds the gloss register, or returns null when there is nothing to
+        /// put in one. Asks the model once per candidate bracket: translate the term
+        /// in front of it, and is that translation the same wording as the bracket?
+        ///
+        /// <para>Asked in isolation, one candidate per call, because it is a small
+        /// well-posed question and should be answered as one - not as instruction
+        /// number three hundred in a translation prompt.</para>
+        ///
+        /// <para>Scale: a real 880-segment patent nominated four candidates out of
+        /// 103 parentheticals, so four calls. <see cref="GlossDetector.MaxCandidates"/>
+        /// is the ceiling, and a document above it gets no register at all - that
+        /// many nominations means the filters are not discriminating, and it is not
+        /// worth that many calls in front of a prompt generation.</para>
+        ///
+        /// <para>Every failure defaults to KEEP, which is the status quo: a bracket
+        /// KEPT is a bracket translated as written. A bracket wrongly DROPPED deletes
+        /// the applicant's text silently.</para>
+        /// </summary>
+        private async Task<string> BuildGlossRegisterAsync(
+            List<string> sourceSegments, string sourceLang, AiSettings aiSettings)
+        {
+            var candidates = GlossDetector.FindCandidates(sourceSegments, sourceLang);
+            if (candidates.Count == 0) return null;
+
+            if (candidates.Count > GlossDetector.MaxCandidates)
+            {
+                Core.DiagnosticLog.WriteAlways("Gloss", string.Format(
+                    "{0} candidate bracket(s) - above the ceiling of {1}, so no register was built. "
+                    + "That many nominations means the detector's filters are letting Dutch through.",
+                    candidates.Count, GlossDetector.MaxCandidates));
+                return null;
+            }
+
+            var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
+            var model = aiSettings.GetSelectedModel();
+            var apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+            string baseUrl = null;
+            if (provider == LlmModels.ProviderOllama)
+                baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+
+            var rows = new List<GlossRegister.Row>();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int asked = 0, failed = 0;
+
+            // The answer is one line, but the ceiling cannot be one line's worth.
+            // On a reasoning model the thinking is billed against the SAME budget as
+            // the visible reply (#119), so a 200-token ceiling would be spent
+            // thinking and every candidate would come back empty - defaulting to
+            // KEEP, correctly but uselessly, at full price. 2,048 with effort turned
+            // down to low: this is a lookup, not a puzzle.
+            using (var client = new LlmClient(provider, model, apiKey, baseUrl, maxTokens: 2048,
+                       ollamaTimeoutMinutes: aiSettings.OllamaTimeoutMinutes))
+            {
+                if (LlmClient.SupportsAdaptiveThinking(model)) client.ReasoningEffort = "low";
+
+                foreach (var candidate in candidates)
+                {
+                    string answer = null;
+                    try
+                    {
+                        asked++;
+                        answer = await client.SendPromptAsync(
+                            GlossRegister.BuildQuestion(candidate), null, 2048,
+                            CancellationToken.None,
+                            feature: PromptLogFeature.PromptGeneration,
+                            suppressLog: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        Core.DiagnosticLog.Log("Gloss", "Call failed for "
+                            + candidate.Parenthetical + ": " + ex.Message);
+                    }
+
+                    // A null answer parses to KEEP, which is what a failure should mean.
+                    rows.Add(GlossRegister.ParseAnswer(candidate, answer));
+                }
+            }
+
+            var consolidated = GlossRegister.Consolidate(rows);
+            sw.Stop();
+
+            Core.DiagnosticLog.WriteAlways("Gloss", string.Format(
+                "{0} candidate(s) in {1} bracket(s), {2} call(s) ({3} failed) in {4} ms: "
+                + "{5} DROP, {6} KEEP.",
+                candidates.Count, consolidated.Count, asked, failed, sw.ElapsedMilliseconds,
+                consolidated.Count(r => r.Drop), consolidated.Count(r => !r.Drop)));
+            foreach (var r in consolidated)
+                Core.DiagnosticLog.Log("Gloss", (r.Drop ? "DROP " : "KEEP ") + r.Parenthetical
+                    + (r.HeadTerm != null ? "  after: " + r.HeadTerm : ""));
+
+            return GlossRegister.Render(consolidated);
         }
 
         /// <summary>
