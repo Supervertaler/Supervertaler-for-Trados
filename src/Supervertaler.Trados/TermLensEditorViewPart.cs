@@ -2061,37 +2061,31 @@ namespace Supervertaler.Trados
                 if (sel.Target == null || sel.Target.IsEmpty) return;
 
                 var hadSource = sel.Source != null && !sel.Source.IsEmpty;
-                if (!hadSource) return;   // already the working case
 
-                var doc = _currentInstance?._activeDocument;
-                var pair = doc?.ActiveSegmentPair;
-                if (doc == null || pair == null) return;
-
-                // Capture the selected target text BEFORE collapsing anything.
-                var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
-                var from = (int)(sel.Target.From?.CursorPosition ?? -1);
-                var upto = (int)(sel.Target.UpTo?.CursorPosition ?? -1);
-                var start = Math.Min(from, upto);
-                var length = Math.Abs(upto - from);
-                string text = null;
-                if (start >= 0 && length > 0 && start + length <= plain.Length)
-                    text = plain.Substring(start, length);
-
-                try { sel.Source.Collapse(false); } catch { }
-
-                var reasserted = "not attempted";
-                if (text != null && VoiceControl.PhraseMatcher.CountOccurrences(plain, text) == 1)
-                {
-                    var ok = doc.FindTextInSegment(pair.Properties.Id.Id, text, true, false);
-                    reasserted = ok ? "re-selected \"" + text + "\"" : "re-select FAILED";
-                }
-                else if (text != null)
-                {
-                    reasserted = "left alone, \"" + text + "\" occurs more than once";
-                }
+                // The selected words are deleted here rather than left for the
+                // dictation tool to overwrite.
+                //
+                // Measured 2026-09-12, in this order. With only the target selected,
+                // the tool pasted and the stop marker came back. With the source ALSO
+                // selected, nothing was pasted at all. Collapsing the source first
+                // made it worse, not better - the marker stopped appearing entirely -
+                // which fits Collapse leaving a caret in the SOURCE cell: focus moves
+                // there, a target re-select only highlights, and the tool ends up
+                // typing into a read-only cell.
+                //
+                // Influencing focus through selection state was guesswork. Deleting
+                // the target selection is not: it necessarily leaves the caret in the
+                // target, which is where the text has to go. It also reduces the job
+                // to inserting at a caret, which is the case already known to work.
+                //
+                // The words vanish when "dictate" is said rather than when the
+                // replacement arrives. That is a visible change and an honest one -
+                // and "undo that" brings them back.
+                VoiceDeleteSelection();
 
                 Core.DiagnosticLog.WriteAlways("Dictation",
-                    "prepared the target for dictation: collapsed the source selection, " + reasserted);
+                    "prepared the target for dictation: deleted the selection so the caret is in the target"
+                    + (hadSource ? " (a source selection was also present)" : ""));
             }
             catch (Exception ex)
             {
