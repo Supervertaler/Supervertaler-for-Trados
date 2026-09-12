@@ -339,15 +339,38 @@ namespace Supervertaler.Trados.VoiceControl
 
             if (string.IsNullOrWhiteSpace(second))
             {
-                // NOT falling back to the first reading. That reading came from the
-                // English command model, which can only return English words, so its
-                // tail is whatever English the Dutch sounded most like - "genest" came
-                // back as "next". Handing that to the matcher produced "no next in the
-                // source": a complaint about a word the translator never said, hiding
-                // the real cause, which is that the source word was never heard.
+                // The first reading came from the English command model and its tail
+                // is whatever English the Dutch sounded most like - "genest" came back
+                // as "next". Handing that straight to the matcher produced "no next in
+                // the source": a complaint about a word never spoken, in a language
+                // not being spoken, hiding the real cause.
                 //
-                // The prefix alone is returned so the slot command finds no argument
-                // and does nothing. The message below is the whole response.
+                // But it is not always nonsense. An English loanword in Dutch text is
+                // unknown to the DUTCH model and known to the English one, because the
+                // English pass carries the target segment's words - "emitters" is
+                // missing from the Dutch lexicon (measured) and sits in the target as
+                // "infrared emitters", while the source has "infrarood-emitters". For
+                // those, the English reading is the only reading there will ever be.
+                //
+                // So the test is whether the English words are actually IN the source.
+                // If they are, it is a loanword and the reading stands; if not, it is
+                // a mishearing and saying so is the whole response.
+                var tail = text.Substring(text.IndexOf(prefix, StringComparison.OrdinalIgnoreCase)
+                                          + prefix.Length).Trim();
+                var tailWords = tail.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var inSource = tailWords.Length > 0
+                    && tailWords.All(w => words.Any(sw => string.Equals(sw, w, StringComparison.OrdinalIgnoreCase)));
+
+                if (inSource)
+                {
+                    Core.DiagnosticLog.WriteAlways("VoiceHeard",
+                        "the source pass heard nothing, but \"" + tail + "\" is in the source - "
+                        + "keeping the English reading (loanword)");
+                    return text;
+                }
+
+                Core.DiagnosticLog.WriteAlways("VoiceHeard",
+                    "the source pass heard nothing and \"" + tail + "\" is not in the source - refused");
                 Announce("did not catch that word - try one next to it");
                 return prefix;
             }
