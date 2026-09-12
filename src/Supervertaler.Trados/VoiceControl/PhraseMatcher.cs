@@ -114,8 +114,33 @@ namespace Supervertaler.Trados.VoiceControl
             // Exact words first, then near ones. Tried in that order so a sentence
             // containing both "for" and "four" resolves to whichever was actually
             // said, and only falls back to sounding-alike when nothing else fits.
-            return Subsequence(plainTarget, targetWords, spokenWords, false)
-                ?? Subsequence(plainTarget, targetWords, spokenWords, true);
+            var whole = Subsequence(plainTarget, targetWords, spokenWords, false)
+                     ?? Subsequence(plainTarget, targetWords, spokenWords, true);
+            if (whole != null) return whole;
+
+            // 5. The same, ignoring stray words at the EDGES. The recogniser adds
+            // them: "niet-conform licht" came back as "licht niet conform licht",
+            // with a stray "licht" at each end, and requiring every spoken word to
+            // line up threw away a three-word run that matched perfectly.
+            //
+            // Only the edges, and never down to a single word. That floor is what
+            // keeps this from re-opening the question settled by reverting the
+            // stray-function-word tier: "in further" and "to the" are two words, so
+            // trimming either would leave one, and they still widen as before.
+            // Trimming an edge discards a word that was heard; doing so to reach a
+            // lone word would be a guess with nothing left to corroborate it.
+            for (int length = spokenWords.Count - 1; length >= 2; length--)
+            {
+                for (int start = 0; start + length <= spokenWords.Count; start++)
+                {
+                    var window = spokenWords.GetRange(start, length);
+                    var match = Subsequence(plainTarget, targetWords, window, false)
+                             ?? Subsequence(plainTarget, targetWords, window, true);
+                    if (match != null) return match;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
