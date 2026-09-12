@@ -1653,6 +1653,71 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
+        /// #125: deletes whatever is selected in the target.
+        ///
+        /// <para>"select the duty cycle", "delete that" - the pair that makes voice
+        /// selection worth having on its own, before any dictation is involved.</para>
+        ///
+        /// <para><b>The spacing problem.</b> Deleting "foo" from "a foo b" leaves
+        /// "a  b", and from "a foo, b" leaves "a , b". Both want the space before the
+        /// deleted words to go as well. The selection cannot be widened - there is no
+        /// API for it - so where the selected text occurs exactly once, the space and
+        /// the words are deleted together as one span, found by text.</para>
+        ///
+        /// <para>Where it occurs more than once that is not safe: FindTextInSegment
+        /// takes the first match, which may not be the one selected, and deleting the
+        /// wrong words is far worse than leaving a double space. There the live
+        /// selection is deleted exactly as it stands and the spacing is left to the
+        /// translator, who can see it.</para>
+        /// </summary>
+        internal static void VoiceDeleteSelection()
+        {
+            var inst = _currentInstance;
+            var doc = inst?._activeDocument;
+            var pair = doc?.ActiveSegmentPair;
+            if (doc == null || pair == null) return;
+
+            try
+            {
+                var sel = doc.Selection?.Target;
+                if (sel == null || sel.IsEmpty)
+                {
+                    VoiceControl.VoiceControlManager.Instance?.Announce("nothing selected");
+                    Core.DiagnosticLog.WriteAlways("VoiceSelect", "delete: nothing was selected");
+                    return;
+                }
+
+                var selected = sel.ToString() ?? "";
+                var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
+                var start = (int)sel.From.CursorPosition;
+
+                var widened = false;
+                if (selected.Length > 0
+                    && start > 0 && start + selected.Length <= plain.Length
+                    && plain[start - 1] == ' '
+                    && string.Equals(plain.Substring(start, selected.Length), selected,
+                                     StringComparison.Ordinal))
+                {
+                    var withSpace = plain.Substring(start - 1, selected.Length + 1);
+                    if (VoiceControl.PhraseMatcher.CountOccurrences(plain, withSpace) == 1)
+                    {
+                        var segNo = pair.Properties.Id.Id;
+                        widened = doc.FindTextInSegment(segNo, withSpace, true, false);
+                    }
+                }
+
+                doc.Selection.Target.Replace("", "Voice: delete");
+                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                    "deleted \"" + selected + "\""
+                    + (widened ? " and the space before it" : " (spacing left alone - the words repeat)"));
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.WriteAlways("VoiceSelect", "delete failed: " + ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>
         /// #125: waits for the dictation tool's paste to land, then removes the stop
         /// marker it carried.
         ///

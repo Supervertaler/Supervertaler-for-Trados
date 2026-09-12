@@ -78,6 +78,7 @@ namespace Supervertaler.Trados.VoiceControl
             // means a failure here is unambiguous - either the words were heard or
             // they were not, with no matcher in between to blame.
             _slotHandlers["select_phrase"] = TermLensEditorViewPart.VoiceSelectPhrase;
+            _internalHandlers["delete_selection"] = TermLensEditorViewPart.VoiceDeleteSelection;
         }
 
         /// <summary>
