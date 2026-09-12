@@ -249,10 +249,23 @@ namespace Supervertaler.Trados.VoiceControl
                 var engine = _engine;
                 if (engine == null || string.IsNullOrWhiteSpace(text)) return text;
 
-                var prefixes = _commands.Where(c => c.Enabled)
-                                        .SelectMany(c => c.SlotPrefixes())
-                                        .Distinct()
-                                        .ToList();
+                // #127: source prefixes are checked FIRST and are longer ("select
+                // source" contains "select"), so the target path must not claim them.
+                var sourcePrefixes = _commands
+                    .Where(c => c.Enabled && (c.Action ?? "").StartsWith("select_source_phrase", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(c => c.SlotPrefixes())
+                    .Distinct()
+                    .OrderByDescending(p => p.Length)
+                    .ToList();
+
+                var sourceHit = sourcePrefixes.FirstOrDefault(p => ContainsWord(text, p));
+                if (sourceHit != null) return ReconsiderSourceSelection(text, sourceHit);
+
+                var prefixes = _commands
+                    .Where(c => c.Enabled && !(c.Action ?? "").StartsWith("select_source_phrase", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(c => c.SlotPrefixes())
+                    .Distinct()
+                    .ToList();
                 if (prefixes.Count == 0) return text;
                 if (!prefixes.Any(p => ContainsWord(text, p))) return text;
 
@@ -281,6 +294,98 @@ namespace Supervertaler.Trados.VoiceControl
                 return second;
             }
             catch { return text; }
+        }
+
+        /// <summary>
+        /// #127: the phrase after "select source" is re-heard against the SOURCE
+        /// language's model, because the command model cannot pronounce those words -
+        /// it drops them from the grammar without a word to anyone.
+        ///
+        /// <para>The two paths accept their second reading on different grounds. The
+        /// target path keeps the prefix in the grammar and only trusts a reading that
+        /// still names the command. Here that check is impossible: "select" and
+        /// "source" are English and the Dutch model drops THEM. So the first pass
+        /// supplies the routing and the second supplies the phrase, whole.</para>
+        /// </summary>
+        private string ReconsiderSourceSelection(string text, string prefix)
+        {
+            var culture = TermLensEditorViewPart.VoiceSourceCultureName();
+            var dir = VoiceRuntimeInstaller.SourceModelDir(culture);
+            if (dir == null)
+            {
+                Announce("no source voice model for " + (culture ?? "this language"));
+                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                    "source selection asked for, but no model is listed for \"" + (culture ?? "(unknown)") + "\"");
+                return text;
+            }
+
+            if (!VoiceRuntimeInstaller.IsSourceModelInstalled(culture))
+            {
+                BeginSourceModelDownload(culture);
+                return text;
+            }
+
+            List<string> words;
+            lock (_segmentWordLock) { words = new List<string>(_sourceWords); }
+            if (words.Count == 0) return text;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var second = _engine.RecognizeLastUtteranceWith(dir, words);
+            sw.Stop();
+
+            Core.DiagnosticLog.WriteAlways("VoiceHeard",
+                "source pass (" + sw.ElapsedMilliseconds + " ms, " + words.Count + " source words): \""
+                + text + "\" -> \"" + (second ?? "(nothing)") + "\"");
+
+            if (string.IsNullOrWhiteSpace(second))
+            {
+                Announce("did not catch that in the source");
+                return text;
+            }
+
+            // Rebuilt so the executor's slot matcher sees the command it already knows.
+            return prefix + " " + second;
+        }
+
+        /// <summary>
+        /// Downloads a source model once, in the background. 40 MB is not something to
+        /// take on spec at startup, and it must never run on the audio thread - that
+        /// thread has to keep consuming buffers or recognition stalls.
+        /// </summary>
+        private int _sourceModelDownloading;
+
+        private void BeginSourceModelDownload(string culture)
+        {
+            if (System.Threading.Interlocked.CompareExchange(ref _sourceModelDownloading, 1, 0) != 0)
+            {
+                Announce("still downloading the source voice model…");
+                return;
+            }
+
+            Announce("downloading the source voice model (~40 MB, once)…");
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    var dir = VoiceRuntimeInstaller.EnsureSourceModel(culture, s => Announce(s));
+                    Announce(dir != null
+                        ? "source voice model ready - say it again"
+                        : "the source voice model could not be installed");
+                    Core.DiagnosticLog.WriteAlways("Voice",
+                        "source model install for " + culture + ": " + (dir ?? "FAILED"));
+                }
+                catch (Exception ex)
+                {
+                    Announce("source voice model download failed");
+                    Core.DiagnosticLog.WriteAlways("Voice", "source model install failed: " + ex.Message);
+                }
+                finally
+                {
+                    // Reset on EVERY path: a failed download that never cleared this
+                    // would make every later attempt report "still downloading".
+                    System.Threading.Interlocked.Exchange(ref _sourceModelDownloading, 0);
+                }
+            });
         }
 
         private static bool ContainsWord(string utterance, string word)
@@ -317,6 +422,25 @@ namespace Supervertaler.Trados.VoiceControl
         /// lock is held just long enough to take a copy.
         /// </summary>
         private readonly object _segmentWordLock = new object();
+
+        /// <summary>
+        /// #127: the SOURCE segment's words. Kept apart from <see cref="_segmentWords"/>
+        /// because they never join the command grammar - the command model cannot
+        /// pronounce them and drops them silently. They are used only as the grammar
+        /// for a second pass against the source-language model.
+        /// </summary>
+        private List<string> _sourceWords = new List<string>();
+
+        /// <summary>The source segment's words, for source-side recognition only.</summary>
+        public void SetSourceWords(IEnumerable<string> words)
+        {
+            var fresh = (words ?? Enumerable.Empty<string>())
+                .Where(w => !string.IsNullOrWhiteSpace(w))
+                .Select(w => w.Trim().ToLowerInvariant())
+                .Distinct()
+                .ToList();
+            lock (_segmentWordLock) { _sourceWords = fresh; }
+        }
 
         /// <summary>
         /// Replaces the per-segment vocabulary and rebuilds the live grammar. Cheap

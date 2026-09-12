@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -36,6 +37,90 @@ namespace Supervertaler.Trados.VoiceControl
         public static bool IsInstalled =>
             File.Exists(LibVoskPath) && Directory.Exists(ModelDir) &&
             Directory.EnumerateFiles(ModelDir, "*", SearchOption.AllDirectories).Any();
+
+        /// <summary>
+        /// #127: models for SOURCE-side recognition, keyed by two-letter language.
+        ///
+        /// <para>Grammar mode can only use words in the model's own lexicon, so the
+        /// English model cannot hear Dutch source text at all - it drops the words and
+        /// says nothing (measured, .dev/oov-grammar-probe.ps1). Selecting in the
+        /// source therefore needs a model for the source language.</para>
+        ///
+        /// <para>Downloaded only when "select source" is first used, because most
+        /// installations never will and 40 MB is not worth taking on spec.</para>
+        /// </summary>
+        private static readonly Dictionary<string, string> SourceModelUrls =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "nl", "https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip" },
+            };
+
+        /// <summary>Two-letter code from a culture name ("nl-NL" - "nl"), or null.</summary>
+        public static string LanguageKey(string cultureName)
+        {
+            if (string.IsNullOrWhiteSpace(cultureName)) return null;
+            var key = cultureName.Trim();
+            var dash = key.IndexOfAny(new[] { '-', '_' });
+            if (dash > 0) key = key.Substring(0, dash);
+            return key.Length == 0 ? null : key.ToLowerInvariant();
+        }
+
+        public static bool HasSourceModelFor(string cultureName)
+        {
+            var key = LanguageKey(cultureName);
+            return key != null && SourceModelUrls.ContainsKey(key);
+        }
+
+        /// <summary>Where a source-language model lives, or null for a language we have no model for.</summary>
+        public static string SourceModelDir(string cultureName)
+        {
+            var key = LanguageKey(cultureName);
+            if (key == null) return null;
+            string url;
+            if (!SourceModelUrls.TryGetValue(key, out url)) return null;
+            // The zip's own folder name, which is what it extracts to.
+            var name = Path.GetFileNameWithoutExtension(new Uri(url).AbsolutePath);
+            return Path.Combine(VoiceDir, "models", name);
+        }
+
+        public static bool IsSourceModelInstalled(string cultureName)
+        {
+            var dir = SourceModelDir(cultureName);
+            return dir != null && Directory.Exists(dir)
+                && Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Any();
+        }
+
+        /// <summary>
+        /// Downloads the source-language model if it is missing. Blocking - call from
+        /// a background thread. Returns the model directory, or null when there is no
+        /// model for that language.
+        /// </summary>
+        public static string EnsureSourceModel(string cultureName, Action<string> status)
+        {
+            var key = LanguageKey(cultureName);
+            if (key == null) return null;
+            string url;
+            if (!SourceModelUrls.TryGetValue(key, out url)) return null;
+
+            var dir = SourceModelDir(cultureName);
+            if (IsSourceModelInstalled(cultureName)) return dir;
+
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            status?.Invoke("Downloading " + key + " voice model (one-time, ~40 MB)…");
+            var zipPath = DownloadToTemp(url, status, "source voice model");
+            try
+            {
+                var modelsRoot = Path.Combine(VoiceDir, "models");
+                Directory.CreateDirectory(modelsRoot);
+                if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+                ZipFile.ExtractToDirectory(zipPath, modelsRoot);
+            }
+            finally
+            {
+                try { File.Delete(zipPath); } catch { }
+            }
+            return Directory.Exists(dir) ? dir : null;
+        }
 
         /// <summary>
         /// Ensures libvosk + model are present, downloading whatever is

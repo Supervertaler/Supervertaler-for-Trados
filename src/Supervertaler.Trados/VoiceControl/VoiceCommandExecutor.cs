@@ -78,6 +78,7 @@ namespace Supervertaler.Trados.VoiceControl
             // means a failure here is unambiguous - either the words were heard or
             // they were not, with no matcher in between to blame.
             _slotHandlers["select_phrase"] = TermLensEditorViewPart.VoiceSelectPhrase;
+            _slotHandlers["select_source_phrase"] = TermLensEditorViewPart.VoiceSelectSourcePhrase;
             _internalHandlers["delete_selection"] = TermLensEditorViewPart.VoiceDeleteSelection;
         }
 
@@ -237,6 +238,18 @@ namespace Supervertaler.Trados.VoiceControl
 
             try
             {
+                // #127: dictation types over the selection, so it must not start on a
+                // source one - the same reason "delete that" refuses. Only blocked
+                // when turning dictation ON; the way out must always work, or the
+                // gate below would trap the translator.
+                if (isDictateToggle && !DictationMode.Active
+                    && TermLensEditorViewPart.VoiceLastSelectionWasSource)
+                {
+                    VoiceControlManager.Instance?.Announce(
+                        "that is source text - select in the target first");
+                    return;
+                }
+
                 if (isDictateToggle)
                 {
                     // "dictate_toggle:<trigger>:<marker>" - the marker is optional and

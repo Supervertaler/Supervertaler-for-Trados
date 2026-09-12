@@ -23,6 +23,13 @@ namespace Supervertaler.Trados.VoiceControl
         /// See <see cref="VoskVoiceEngine.RecognizeLastUtterance"/> for why.
         /// </summary>
         string RecognizeLastUtterance(List<string> grammarPhrases);
+
+        /// <summary>
+        /// #127: the same, against a model for another language - the source side,
+        /// whose words the command model cannot pronounce. <paramref name="modelDir"/>
+        /// is loaded once and kept for the session. Null when it cannot be loaded.
+        /// </summary>
+        string RecognizeLastUtteranceWith(string modelDir, List<string> grammarPhrases);
     }
 
     /// <summary>
@@ -192,13 +199,47 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         public string RecognizeLastUtterance(List<string> grammarPhrases)
         {
-            byte[] audio;
+            IntPtr model;
+            lock (_lock) { model = _model; }
+            return RecognizeWith(model, grammarPhrases);
+        }
+
+        /// <summary>
+        /// #127: a second model, for the source language, loaded on first use and kept
+        /// for the session.
+        ///
+        /// <para>Loading is the expensive part - a model is tens of megabytes of FST -
+        /// so it is cached by directory. Two models is the realistic ceiling: one
+        /// project has one source language.</para>
+        /// </summary>
+        private readonly Dictionary<string, IntPtr> _extraModels =
+            new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
+
+        public string RecognizeLastUtteranceWith(string modelDir, List<string> grammarPhrases)
+        {
+            if (string.IsNullOrWhiteSpace(modelDir)) return null;
+
             IntPtr model;
             lock (_lock)
             {
-                audio = _lastUtterance;
-                model = _model;
+                if (!_extraModels.TryGetValue(modelDir, out model))
+                {
+                    model = VoskNative.vosk_model_new(VoskNative.Utf8(modelDir));
+                    // Cached even when it failed, so a broken model is not retried on
+                    // every utterance - each attempt would stall the audio thread.
+                    _extraModels[modelDir] = model;
+                    Core.DiagnosticLog.WriteAlways("Voice",
+                        "source model " + (model == IntPtr.Zero ? "FAILED to load" : "loaded") + ": " + modelDir);
+                }
             }
+            if (model == IntPtr.Zero) return null;
+            return RecognizeWith(model, grammarPhrases);
+        }
+
+        private string RecognizeWith(IntPtr model, List<string> grammarPhrases)
+        {
+            byte[] audio;
+            lock (_lock) { audio = _lastUtterance; }
             if (audio == null || audio.Length == 0 || model == IntPtr.Zero) return null;
             if (grammarPhrases == null || grammarPhrases.Count == 0) return null;
 
@@ -246,6 +287,11 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 if (_recognizer != IntPtr.Zero) { VoskNative.vosk_recognizer_free(_recognizer); _recognizer = IntPtr.Zero; }
                 if (_model != IntPtr.Zero) { VoskNative.vosk_model_free(_model); _model = IntPtr.Zero; }
+                // #127: source-language models too - tens of megabytes each, and a
+                // failed load is stored as Zero, which must not be freed.
+                foreach (var m in _extraModels.Values)
+                    if (m != IntPtr.Zero) VoskNative.vosk_model_free(m);
+                _extraModels.Clear();
                 // Recorded speech must not outlive the session that captured it.
                 _utterance.Clear();
                 _utteranceBytes = 0;

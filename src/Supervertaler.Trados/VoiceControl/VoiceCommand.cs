@@ -118,9 +118,10 @@ namespace Supervertaler.Trados.VoiceControl
         /// with customised command sets still receive new defaults.
         /// History: 1 = initial set (20.126), 2 = match 1–9 / escape /
         /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128),
-        /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191).
+        /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191),
+        /// 6 = select source (20.191).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 5;
+        internal const int CurrentDefaultsVersion = 6;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -143,6 +144,14 @@ namespace Supervertaler.Trados.VoiceControl
                 // recogniser's grammar is built from while that segment is open.
                 new VoiceCommand { Phrase = "select {phrase}", Aliases = new List<string> { "choose {phrase}" }, ActionType = "internal", Action = "select_phrase", Description = "Select words in the target: say \"select\" and the words", Category = "editing" },
                 new VoiceCommand { Phrase = "delete that", Aliases = new List<string> { "delete this", "remove that" }, ActionType = "internal", Action = "delete_selection", Description = "Delete whatever is selected in the target", Category = "editing" },
+
+                // #127. The words after "select source" are in the SOURCE language,
+                // which the command model cannot pronounce - they are re-heard against
+                // a model for that language, downloaded on first use. Off by default
+                // for the same reason "dictate" is: it costs a 40 MB download, and an
+                // installation whose source language has no model would only find out
+                // by trying.
+                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "Select words in the SOURCE segment. Downloads a voice model for the source language on first use. Read-only: \"delete that\" will refuse a source selection.", Category = "editing", Enabled = false },
 
                 // Off by default: it drives an EXTERNAL dictation tool, which most
                 // installations will not have. Enabled on a machine without one, it
