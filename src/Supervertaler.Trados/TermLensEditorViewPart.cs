@@ -1697,7 +1697,7 @@ namespace Supervertaler.Trados
             // match and the document's alignment - for what sounded like an ordinary
             // editing command. Everything worth doing to a source selection is
             // read-only, so refusing costs nothing.
-            if (_lastSelectionWasSource)
+            if (VoiceSelectionIsSourceOnly())
             {
                 VoiceControl.VoiceControlManager.Instance?.Announce(
                     "that is source text - not deleting it");
@@ -1894,9 +1894,6 @@ namespace Supervertaler.Trados
             _lastSelectSegment = null;
             _lastSelectStart = -1;
             _lastSelectText = null;
-            // #127: the write guards must not keep refusing on the strength of a
-            // source selection made in a segment the translator has already left.
-            _lastSelectionWasSource = false;
         }
 
         /// <summary>
@@ -2017,9 +2014,35 @@ namespace Supervertaler.Trados
         /// deleting source text damages the segment, its TM match and the document's
         /// alignment, for what felt like an ordinary editing command.</para>
         /// </summary>
-        private static bool _lastSelectionWasSource;
+        /// <summary>
+        /// Whether the ONLY thing selected right now is source text.
+        ///
+        /// <para>This asks the document rather than remembering. A remembered flag was
+        /// tried first and was wrong within the hour: it recorded the last SUCCESSFUL
+        /// selection, so a source selection made minutes earlier went on blocking
+        /// dictation after a later target select had silently failed. The translator
+        /// saw a refusal that made no sense, because by then they had asked for a
+        /// target selection and believed they had one.</para>
+        ///
+        /// <para>An empty target selection with nothing in the source is NOT source-
+        /// only: dictating at the caret with nothing selected is ordinary use and must
+        /// not be blocked.</para>
+        /// </summary>
+        internal static bool VoiceSelectionIsSourceOnly()
+        {
+            try
+            {
+                var sel = _currentInstance?._activeDocument?.Selection;
+                if (sel == null) return false;
 
-        internal static bool VoiceLastSelectionWasSource { get { return _lastSelectionWasSource; } }
+                var target = sel.Target;
+                var source = sel.Source;
+                var targetEmpty = target == null || target.IsEmpty;
+                var sourceActive = source != null && !source.IsEmpty;
+                return targetEmpty && sourceActive;
+            }
+            catch { return false; }
+        }
 
         private static void VoiceSelectCore(string heard, bool inSource)
         {
@@ -2182,10 +2205,6 @@ namespace Supervertaler.Trados
                     + " in segment " + segNo + ": " + (ok ? "selected" : "FindTextInSegment said no")
                     + " (landed " + landed
                     + (padded > 0 ? ", via +" + padded + " chars of padding" : "") + ")");
-
-                // Recorded only on success: a refused selection leaves whatever was
-                // selected before, and the write guards must judge THAT, not this.
-                if (ok) _lastSelectionWasSource = inSource;
 
                 // An ambiguous phrase says WHICH occurrence it took, not just that
                 // there were several. "2 of 4" tells the translator both that the
