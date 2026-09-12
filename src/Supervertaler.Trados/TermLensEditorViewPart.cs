@@ -2081,16 +2081,50 @@ namespace Supervertaler.Trados
                 // The words vanish when "dictate" is said rather than when the
                 // replacement arrives. That is a visible change and an honest one -
                 // and "undo that" brings them back.
+                var before = FocusedContentName();
+
                 VoiceDeleteSelection();
 
+                // The dictation tool pastes through the CLIPBOARD into whatever has
+                // keyboard focus. Measured 2026-09-12: the dictated text reached the
+                // clipboard and never reached the segment, which means focus was not
+                // in the target cell. Changing the document through the API does not
+                // move keyboard focus - nothing in IStudioDocument does.
+                //
+                // EditorController.Activate(document) is the one lever the API offers.
+                // Whether it reaches the target CELL rather than the editor in general
+                // is what the logged focus tells us.
+                try
+                {
+                    var ec = SdlTradosStudio.Application
+                        ?.GetController<Sdl.TranslationStudioAutomation.IntegrationApi.EditorController>();
+                    if (ec != null) ec.Activate(_currentInstance._activeDocument);
+                }
+                catch (Exception ex)
+                {
+                    Core.DiagnosticLog.WriteAlways("Dictation", "Activate failed: " + ex.Message);
+                }
+
                 Core.DiagnosticLog.WriteAlways("Dictation",
-                    "prepared the target for dictation: deleted the selection so the caret is in the target"
+                    "prepared the target: deleted the selection, focus was " + before
+                    + " and is now " + FocusedContentName()
                     + (hadSource ? " (a source selection was also present)" : ""));
             }
             catch (Exception ex)
             {
                 try { Core.DiagnosticLog.WriteAlways("Dictation", "preparing the target failed: " + ex.Message); } catch { }
             }
+        }
+
+        /// <summary>
+        /// Which cell the editor thinks has focus - None, Source or Target. The one
+        /// direct answer the API gives to the question that has cost the most guessing
+        /// today.
+        /// </summary>
+        private static string FocusedContentName()
+        {
+            try { return (_currentInstance?._activeDocument?.FocusedDocumentContent)?.ToString() ?? "(unknown)"; }
+            catch { return "(unreadable)"; }
         }
 
         internal static bool VoiceSelectionIsSourceOnly()
