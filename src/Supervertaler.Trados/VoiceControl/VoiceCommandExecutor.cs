@@ -223,6 +223,18 @@ namespace Supervertaler.Trados.VoiceControl
             }
             if (!isStop && !IsStudioForeground()) return;
 
+            // Echoed BEFORE the handler runs, not after, so that a handler which has
+            // something of its own to say gets the last word. A refusal ("'the' is
+            // inside another word") or an ambiguity warning is written by the
+            // handler; echoing afterwards overwrote it within the same tick, and the
+            // translator saw only the command name - which is why every such message
+            // built for #125 was invisible in testing.
+            //
+            // Slot commands echo what was HEARD, not their phrase: "select {phrase}"
+            // is a template, and a placeholder tells the translator nothing about
+            // whether the words they said arrived intact.
+            CommandExecuted?.Invoke(cmd.HasSlot() ? spoken : cmd.Phrase, cmd.Description);
+
             try
             {
                 if (isDictateToggle)
@@ -266,7 +278,6 @@ namespace Supervertaler.Trados.VoiceControl
                         LastSyntheticKeystrokeUtc = DateTime.UtcNow;
                     }
                 }
-                CommandExecuted?.Invoke(cmd.Phrase, cmd.Description);
             }
             catch
             {

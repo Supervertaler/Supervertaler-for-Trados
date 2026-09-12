@@ -1864,6 +1864,11 @@ namespace Supervertaler.Trados
                 {
                     Core.DiagnosticLog.WriteAlways("VoiceSelect",
                         "no match for \"" + spoken + "\" in: " + plain);
+                    // Say so. Silence here is indistinguishable from the voice
+                    // control having died, and the translator's next move is to
+                    // repeat themselves rather than to say something else.
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "no \"" + spoken + "\" in this segment");
                     return;
                 }
 
@@ -1905,9 +1910,16 @@ namespace Supervertaler.Trados
                 // route needs Studio-internal types. Rather than silently picking,
                 // say so: every word of the segment is already in the grammar, so
                 // the translator can name it more precisely in one more utterance.
-                if (ok && found.Occurrences > 1)
+                if (!ok)
+                {
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "could not select \"" + found.Text + "\"");
+                }
+                else if (found.Occurrences > 1)
+                {
                     VoiceControl.VoiceControlManager.Instance?.Announce(
                         found.Occurrences + " matches - say more words");
+                }
             }
             catch (Exception ex)
             {
