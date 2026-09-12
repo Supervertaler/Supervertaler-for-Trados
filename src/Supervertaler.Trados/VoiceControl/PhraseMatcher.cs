@@ -84,34 +84,7 @@ namespace Supervertaler.Trados.VoiceControl
                 };
             }
 
-            // 2. A stray leading function word, dropped. The recogniser inserts these:
-            // "select the" came back as "select to the", and the subsequence tier
-            // below then matched "to ... the" and widened across the unspoken
-            // "adjusting" to select three words instead of one (measured 2026-09-12).
-            //
-            // Only when the whole phrase has no literal match, so a genuine "to the"
-            // that IS in the segment is matched as itself by tier 1 and never reaches
-            // here. And only when what remains matches literally - trading one
-            // guessed reading for another would be no improvement.
-            var firstSpace = phrase.IndexOf(' ');
-            if (firstSpace > 0 && IsStrayCandidate(phrase.Substring(0, firstSpace)))
-            {
-                var rest = phrase.Substring(firstSpace + 1).Trim();
-                var restAt = rest.Length > 0 ? IndexOfWord(plainTarget, rest, 0) : -1;
-                if (restAt >= 0)
-                {
-                    var restText = plainTarget.Substring(restAt, rest.Length);
-                    return new Match
-                    {
-                        Text = restText,
-                        Start = restAt,
-                        Exact = true,
-                        Occurrences = CountOccurrences(plainTarget, restText)
-                    };
-                }
-            }
-
-            // 3. Ordered subsequence, for the words the recogniser swallowed.
+            // 2. Ordered subsequence, for the words the recogniser swallowed.
             var targetWords = Tokenise(plainTarget);
             var spokenWords = Tokenise(phrase).Select(w => w.Text).ToList();
             if (targetWords.Count == 0 || spokenWords.Count == 0) return null;
@@ -222,21 +195,6 @@ namespace Supervertaler.Trados.VoiceControl
                 if (startOk && endOk) return at;
                 i = at + 1;
             }
-        }
-
-        /// <summary>
-        /// Short, unstressed words the recogniser inserts in front of what was
-        /// actually said. Deliberately a short closed list: every word here is one a
-        /// translator would rarely open a selection with on purpose, and the phrase
-        /// still has to match literally without it.
-        /// </summary>
-        private static readonly HashSet<string> StrayWords =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "to", "a", "an", "of", "in", "and", "at", "it", "is", "that", "for", "on" };
-
-        private static bool IsStrayCandidate(string word)
-        {
-            return StrayWords.Contains(word.Trim());
         }
 
         private static bool Same(string a, string b, bool allowNear = false)
