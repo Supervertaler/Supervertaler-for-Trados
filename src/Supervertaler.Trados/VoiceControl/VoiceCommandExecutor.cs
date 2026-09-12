@@ -276,6 +276,14 @@ namespace Supervertaler.Trados.VoiceControl
                     // twice, must do nothing rather than flip the state the other way.
                     if (isDictateOn && DictationMode.Active) return;
                     if (isDictateOff && !DictationMode.Active) return;
+
+                    // #127: going IN, make the target the only selection. The external
+                    // tool overwrites a target selection when it is the only one, and
+                    // does nothing when the source is selected too - which is exactly
+                    // the state the termbase workflow leaves behind.
+                    if (!DictationMode.Active)
+                        TermLensEditorViewPart.VoicePrepareTargetForDictation();
+
                     DictationMode.Toggle(trigger, marker);
                 }
                 else if (string.Equals(cmd.ActionType, "internal", StringComparison.OrdinalIgnoreCase))

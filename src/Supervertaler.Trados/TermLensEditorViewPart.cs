@@ -2028,6 +2028,77 @@ namespace Supervertaler.Trados
         /// only: dictating at the caret with nothing selected is ordinary use and must
         /// not be blocked.</para>
         /// </summary>
+        /// <summary>
+        /// #127: makes the target the only selection, just before dictation starts.
+        ///
+        /// <para>Measured 2026-09-12: dictation overwrites a target selection when
+        /// that is the ONLY selection, and does nothing when the source is also
+        /// selected - which is the state left by the termbase workflow, "select source
+        /// X" then "select Y". The external tool types into whatever Studio considers
+        /// active, and with both cells selected that is evidently not the target.</para>
+        ///
+        /// <para>There is no focus or activate method on IStudioDocument - checked -
+        /// and DocumentSelection.Current has a non-public setter, so it cannot be
+        /// pointed at the target either. What is left is the selection itself:
+        /// collapse the source, then re-assert the target selection by searching for
+        /// it again, which is exactly the path that works when the source was never
+        /// selected.</para>
+        ///
+        /// <para>Re-asserting only when the text occurs once. Studio's search takes
+        /// the first hit, so on a repeated phrase a second search could land somewhere
+        /// else and hand dictation the wrong words to overwrite - worse than the
+        /// problem being solved.</para>
+        /// </summary>
+        internal static void VoicePrepareTargetForDictation()
+        {
+            try
+            {
+                var sel = _currentInstance?._activeDocument?.Selection;
+                if (sel == null) return;
+
+                // Nothing selected in the target: dictating at the caret is ordinary
+                // use, and there is nothing to protect.
+                if (sel.Target == null || sel.Target.IsEmpty) return;
+
+                var hadSource = sel.Source != null && !sel.Source.IsEmpty;
+                if (!hadSource) return;   // already the working case
+
+                var doc = _currentInstance?._activeDocument;
+                var pair = doc?.ActiveSegmentPair;
+                if (doc == null || pair == null) return;
+
+                // Capture the selected target text BEFORE collapsing anything.
+                var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
+                var from = (int)(sel.Target.From?.CursorPosition ?? -1);
+                var upto = (int)(sel.Target.UpTo?.CursorPosition ?? -1);
+                var start = Math.Min(from, upto);
+                var length = Math.Abs(upto - from);
+                string text = null;
+                if (start >= 0 && length > 0 && start + length <= plain.Length)
+                    text = plain.Substring(start, length);
+
+                try { sel.Source.Collapse(false); } catch { }
+
+                var reasserted = "not attempted";
+                if (text != null && VoiceControl.PhraseMatcher.CountOccurrences(plain, text) == 1)
+                {
+                    var ok = doc.FindTextInSegment(pair.Properties.Id.Id, text, true, false);
+                    reasserted = ok ? "re-selected \"" + text + "\"" : "re-select FAILED";
+                }
+                else if (text != null)
+                {
+                    reasserted = "left alone, \"" + text + "\" occurs more than once";
+                }
+
+                Core.DiagnosticLog.WriteAlways("Dictation",
+                    "prepared the target for dictation: collapsed the source selection, " + reasserted);
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.WriteAlways("Dictation", "preparing the target failed: " + ex.Message); } catch { }
+            }
+        }
+
         internal static bool VoiceSelectionIsSourceOnly()
         {
             try
