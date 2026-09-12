@@ -151,7 +151,7 @@ namespace Supervertaler.Trados.VoiceControl
                 // for the same reason "dictate" is: it costs a 40 MB download, and an
                 // installation whose source language has no model would only find out
                 // by trying.
-                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source select {phrase}", "source {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "Select words in the SOURCE segment. Downloads a voice model for the source language on first use. Read-only: \"delete that\" will refuse a source selection.", Category = "editing", Enabled = false },
+                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source select {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "Select words in the SOURCE segment. Downloads a voice model for the source language on first use. Read-only: \"delete that\" will refuse a source selection.", Category = "editing", Enabled = false },
 
                 // Off by default: it drives an EXTERNAL dictation tool, which most
                 // installations will not have. Enabled on a machine without one, it
