@@ -118,9 +118,9 @@ namespace Supervertaler.Trados.VoiceControl
         /// with customised command sets still receive new defaults.
         /// History: 1 = initial set (20.126), 2 = match 1–9 / escape /
         /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128),
-        /// 4 = undo (20.191).
+        /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 4;
+        internal const int CurrentDefaultsVersion = 5;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -138,6 +138,19 @@ namespace Supervertaler.Trados.VoiceControl
                 // Segment flow
                 // "scratch that" is Dragon's, and decades of dictation users' fingers
                 // and mouths are trained on it. "undo that" for everyone else.
+                // #125. "select" carries an open slot: the words after it are matched
+                // against the segment's own target text, which is also what the
+                // recogniser's grammar is built from while that segment is open.
+                new VoiceCommand { Phrase = "select {phrase}", Aliases = new List<string> { "choose {phrase}" }, ActionType = "internal", Action = "select_phrase", Description = "Select words in the target: say \"select\" and the words", Category = "editing" },
+                new VoiceCommand { Phrase = "delete that", Aliases = new List<string> { "delete this", "remove that" }, ActionType = "internal", Action = "delete_selection", Description = "Delete whatever is selected in the target", Category = "editing" },
+
+                // Off by default: it drives an EXTERNAL dictation tool, which most
+                // installations will not have. Enabled on a machine without one, it
+                // would send a chord nobody is listening for and then gate every
+                // other command until it was said again - a trap for anyone who
+                // tried it out of curiosity. Shipped visible and off, so it can be
+                // found and read before it is switched on.
+                new VoiceCommand { Phrase = "dictate", Aliases = new List<string> { "stop now" }, ActionType = "internal", Action = "dictate_toggle:ctrl+win+space:ZZEND", Description = "Hand over to an external dictation tool and take it back. Needs that tool set to start/stop on Ctrl+Win+Space, and to write ZZEND for the spoken stop phrase, which is then removed automatically.", Category = "editing", Enabled = false },
                 new VoiceCommand { Phrase = "undo that", Aliases = new List<string> { "scratch that", "undo" }, ActionType = "keystroke", Action = "ctrl+z", Description = "Undo the last change (Ctrl+Z)", Category = "editing" },
                 new VoiceCommand { Phrase = "confirm", Aliases = new List<string> { "confirm segment" }, ActionType = "keystroke", Action = "ctrl+enter", Description = "Confirm segment and move to next unconfirmed", Category = "editing" },
                 new VoiceCommand { Phrase = "next segment", Aliases = new List<string> { "go down" }, ActionType = "internal", Action = "navigate_next", Description = "Move to the next segment (without confirming)", Category = "navigation" },
