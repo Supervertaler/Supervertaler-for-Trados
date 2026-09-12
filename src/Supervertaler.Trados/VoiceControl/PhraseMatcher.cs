@@ -98,7 +98,33 @@ namespace Supervertaler.Trados.VoiceControl
             var joined = LongestJoinedRun(plainTarget, spokenWords);
             if (joined != null) return joined;
 
-            // 3. Part of a compound, naming the whole of it. The recogniser often
+            // 3. Spoken parts that are ONE word of the segment, collapsed before any
+            // of the tiers below look at the sequence. "timing en toestandssignalen"
+            // came back as "timing en toestand signalen": the compound arrives as two
+            // words in the middle of a phrase, and every tier below compares one
+            // spoken word to one token, so the phrase could only ever match the
+            // compound alone - which is what the translator saw.
+            spokenWords = CollapseCompounds(targetWords, spokenWords);
+
+            // Collapsing can leave ONE word, and that word is a word of the segment -
+            // so it is a literal match, which the tier above has already been past.
+            if (spokenWords.Count == 1)
+            {
+                var only = IndexOfWord(plainTarget, spokenWords[0], 0);
+                if (only >= 0)
+                {
+                    var text = plainTarget.Substring(only, spokenWords[0].Length);
+                    return new Match
+                    {
+                        Text = text,
+                        Start = only,
+                        Exact = false,
+                        Occurrences = CountOccurrences(plainTarget, text)
+                    };
+                }
+            }
+
+            // 4. Part of a compound, naming the whole of it. The recogniser often
             // returns only ONE part - measured: saying "beschermingsperiode" came back
             // as "beschermings", three times running - because the rest was swallowed
             // or is not in its lexicon. A part is unambiguous enough to act on: it is
@@ -194,6 +220,75 @@ namespace Supervertaler.Trados.VoiceControl
         /// right and would start claiming longer ones.</para>
         /// </summary>
         private const int MinPartLength = 4;
+
+        /// <summary>
+        /// Rewrites consecutive spoken words that are really ONE word of the segment
+        /// into that word.
+        ///
+        /// <para>The recogniser returns a compound as its parts, because the compound
+        /// itself is not in its lexicon. On its own that is handled; inside a longer
+        /// phrase it was not, because every tier compares one spoken word to one
+        /// token. "timing en toestandssignalen" came back as "timing en toestand
+        /// signalen" and could only ever match the compound alone - which is what the
+        /// translator saw.</para>
+        ///
+        /// <para>Compared with <see cref="Same"/> allowing near matches, which is what
+        /// bridges the joining letter Dutch and German insert: "toestand" + "signalen"
+        /// makes "toestandsignalen", one letter short of "toestandssignalen".</para>
+        /// </summary>
+        /// <summary>
+        /// Whether a target word IS the spoken parts joined - allowing for the single
+        /// joining letter Dutch and German insert ("toestand" + "signalen" makes
+        /// "toestandsignalen", one letter short of "toestandssignalen").
+        ///
+        /// <para>Much stricter than <see cref="Near"/>, which was tried here first and
+        /// was wrong: it accepted "four" + "the" as "further", because "fourthe" is
+        /// two edits from it, and broke a case that had worked all afternoon. One edit,
+        /// one letter of length difference, same first letter - a joining letter, not
+        /// a resemblance.</para>
+        /// </summary>
+        private static bool CompoundEquivalent(string token, string joined)
+        {
+            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(joined)) return false;
+            if (string.Equals(token, joined, StringComparison.OrdinalIgnoreCase)) return true;
+            if (char.ToLowerInvariant(token[0]) != char.ToLowerInvariant(joined[0])) return false;
+            if (Math.Abs(token.Length - joined.Length) > 1) return false;
+            return Distance(token, joined) <= 1;
+        }
+
+        private static List<string> CollapseCompounds(List<Token> targetWords, List<string> spokenWords)
+        {
+            if (spokenWords.Count < 2) return spokenWords;
+
+            var result = new List<string>();
+            for (int i = 0; i < spokenWords.Count; )
+            {
+                string collapsed = null;
+                var take = 0;
+
+                // Longest run first, so a three-part compound is not settled by two.
+                for (int n = Math.Min(3, spokenWords.Count - i); n >= 2; n--)
+                {
+                    var joined = string.Concat(spokenWords.GetRange(i, n));
+                    if (joined.Length < 6) continue;   // too short to be a compound
+
+                    foreach (var token in targetWords)
+                    {
+                        // It must be a COMPOUND: longer than the first part spoken.
+                        if (token.Text.Length <= spokenWords[i].Length) continue;
+                        if (!CompoundEquivalent(token.Text, joined)) continue;
+                        collapsed = token.Text;
+                        take = n;
+                        break;
+                    }
+                    if (collapsed != null) break;
+                }
+
+                if (collapsed != null) { result.Add(collapsed); i += take; }
+                else { result.Add(spokenWords[i]); i++; }
+            }
+            return result;
+        }
 
         /// <summary>
         /// A spoken run that is the START or END of a longer word in the segment,
