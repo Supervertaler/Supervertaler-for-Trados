@@ -84,10 +84,19 @@ namespace Supervertaler.Trados.VoiceControl
                 };
             }
 
-            // 2. Ordered subsequence, for the words the recogniser swallowed.
             var targetWords = Tokenise(plainTarget);
             var spokenWords = Tokenise(phrase).Select(w => w.Text).ToList();
             if (targetWords.Count == 0 || spokenWords.Count == 0) return null;
+
+            // 2. Spoken parts that reassemble into ONE written word. A Dutch or German
+            // compound is said as its parts run together, and the recogniser returns
+            // them separately because the compound itself is not in its lexicon -
+            // measured: "beschermingsperiode" is unknown to the small Dutch model
+            // while "beschermings" and "periode" are both known. Joining the run and
+            // looking for it as a whole word turns two heard words back into the one
+            // written word the translator named.
+            var joined = LongestJoinedRun(plainTarget, spokenWords);
+            if (joined != null) return joined;
 
             // A single word that is not literally present is not a match. Widening a
             // one-word utterance into a span would be guesswork with nothing to
@@ -99,6 +108,44 @@ namespace Supervertaler.Trados.VoiceControl
             // said, and only falls back to sounding-alike when nothing else fits.
             return Subsequence(plainTarget, targetWords, spokenWords, false)
                 ?? Subsequence(plainTarget, targetWords, spokenWords, true);
+        }
+
+        /// <summary>
+        /// The longest run of consecutive spoken words that, joined without spaces, is
+        /// a whole word of the target. Null when none is.
+        ///
+        /// <para>Longest wins so that a three-part compound is not settled by its first
+        /// two parts. Runs of two or more only: a single word joins to itself, which
+        /// the literal tier has already tried.</para>
+        /// </summary>
+        private static Match LongestJoinedRun(string plainTarget, List<string> spokenWords)
+        {
+            Match best = null;
+            for (int start = 0; start < spokenWords.Count; start++)
+            {
+                var sb = new System.Text.StringBuilder(spokenWords[start]);
+                for (int end = start + 1; end < spokenWords.Count; end++)
+                {
+                    sb.Append(spokenWords[end]);
+                    var candidate = sb.ToString();
+                    var at = IndexOfWord(plainTarget, candidate, 0);
+                    if (at < 0) continue;
+
+                    if (best == null || candidate.Length > best.Text.Length)
+                    {
+                        var text = plainTarget.Substring(at, candidate.Length);
+                        best = new Match
+                        {
+                            Text = text,
+                            Start = at,
+                            // Not exact: the words were re-joined, not heard as one.
+                            Exact = false,
+                            Occurrences = CountOccurrences(plainTarget, text)
+                        };
+                    }
+                }
+            }
+            return best;
         }
 
         private static Match Subsequence(string plainTarget, List<Token> targetWords,

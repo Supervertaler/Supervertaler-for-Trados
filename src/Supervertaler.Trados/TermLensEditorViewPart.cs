@@ -2223,6 +2223,50 @@ namespace Supervertaler.Trados
                 .ToList();
         }
 
+        /// <summary>
+        /// #127: the halves of a long word, offered to the recogniser so a compound
+        /// can be heard even though the compound itself is unknown to it.
+        ///
+        /// <para><b>Why.</b> Dutch and German build words on demand, so no fixed
+        /// lexicon can hold them. Measured against the small Dutch model on
+        /// 2026-09-12: "beschermingsperiode", "nachtzichttoestel" and
+        /// "werkingsvolgorde" were all dropped from the grammar - while
+        /// "beschermings", "periode", "nacht", "zicht", "toestel", "werking" and
+        /// "volgorde" were every one of them accepted. In patent Dutch the compound is
+        /// exactly the word a translator wants to select, so this is not an edge
+        /// case.</para>
+        ///
+        /// <para><b>Why every split rather than a clever one.</b> Finding the real
+        /// boundary needs a morphology the plugin has no business carrying. It does not
+        /// need one: Vosk silently drops the parts that are not words, so offering
+        /// every split and letting the lexicon decide is both simpler and more accurate
+        /// than guessing. The parts are 4 characters or more, which keeps the short
+        /// fragments that would compete with real speech out of the grammar.</para>
+        ///
+        /// <para><b>Source only.</b> These parts are fragments, and the target grammar
+        /// is shared with the command phrases - anything added there competes for every
+        /// sound in every segment, which is the collision problem that cost an
+        /// afternoon. The source grammar carries no commands, so fragments there can
+        /// only compete with source words.</para>
+        /// </summary>
+        private const int CompoundMinLength = 10;
+        private const int CompoundMinPart = 4;
+
+        internal static List<string> CompoundParts(IEnumerable<string> words)
+        {
+            var parts = new List<string>();
+            foreach (var w in words ?? Enumerable.Empty<string>())
+            {
+                if (w == null || w.Length < CompoundMinLength) continue;
+                for (int k = CompoundMinPart; k <= w.Length - CompoundMinPart; k++)
+                {
+                    parts.Add(w.Substring(0, k));
+                    parts.Add(w.Substring(k));
+                }
+            }
+            return parts.Distinct().ToList();
+        }
+
         private void PushVoiceSegmentWords()
         {
             try
@@ -2233,10 +2277,11 @@ namespace Supervertaler.Trados
                 var pair = _activeDocument?.ActiveSegmentPair;
 
                 mgr.SetSegmentWords(VoiceWordsOf(pair?.Target?.ToString()));
+                var sourceWords = VoiceWordsOf(pair?.Source?.ToString());
                 // #127: the source's words go to a different grammar, used only by the
                 // source-language model. They must NOT join the command grammar - the
                 // command model cannot pronounce them, and Vosk drops them silently.
-                mgr.SetSourceWords(VoiceWordsOf(pair?.Source?.ToString()));
+                mgr.SetSourceWords(sourceWords.Concat(CompoundParts(sourceWords)).Distinct().ToList());
             }
             catch { /* never break segment navigation over a voice feature */ }
         }
