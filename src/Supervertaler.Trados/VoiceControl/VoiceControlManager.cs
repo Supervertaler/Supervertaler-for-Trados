@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using Supervertaler.Trados.Controls;
@@ -72,11 +73,22 @@ namespace Supervertaler.Trados.VoiceControl
 
                     var engine = new VoskVoiceEngine();
                     engine.Recognized += OnRecognized;
-                    engine.Start(VoiceCommandSet.GrammarPhrases(_commands));
+                    engine.Start(VoiceCommandSet.GrammarPhrases(_commands)
+                        .Concat(_segmentWords).Distinct().ToList());
                     _engine = engine;
 
                     _running = true;
                     SetStatus("Listening…", state: 2);
+
+                    // #125: seed the grammar with the segment the translator is
+                    // already in - otherwise its words are absent until they move.
+                    try
+                    {
+                        var marshalCtl = MarshalControl();
+                        if (marshalCtl != null && !marshalCtl.IsDisposed)
+                            marshalCtl.BeginInvoke((Action)TermLensEditorViewPart.PushVoiceSegmentWordsNow);
+                    }
+                    catch { }
                 }
                 catch (Exception ex)
                 {
@@ -174,7 +186,54 @@ namespace Supervertaler.Trados.VoiceControl
         {
             _commands = VoiceCommandSet.Load();
             _executor?.LoadCommands(_commands);
-            _engine?.UpdateGrammar(VoiceCommandSet.GrammarPhrases(_commands));
+            RefreshGrammar();
+        }
+
+        /// <summary>
+        /// #125: the words of the segment the translator is in, added to the
+        /// recogniser's vocabulary so a slot command can name them.
+        ///
+        /// <para>Vosk runs in grammar mode: it can only ever hear what is in this
+        /// list. "select sealing ring" is therefore not a matter of recognising open
+        /// speech and matching it afterwards - the words have to be in the grammar
+        /// before they can be heard at all. That is the whole reason this is fast and
+        /// accurate, and the reason it has to be rebuilt as the translator moves.</para>
+        /// </summary>
+        private List<string> _segmentWords = new List<string>();
+
+        /// <summary>
+        /// Replaces the per-segment vocabulary and rebuilds the live grammar. Cheap
+        /// to call on every segment change: it no-ops when the words are unchanged,
+        /// which they are for the many segments that share wording in a patent.
+        /// </summary>
+        public void SetSegmentWords(IEnumerable<string> words)
+        {
+            var fresh = (words ?? Enumerable.Empty<string>())
+                .Where(w => !string.IsNullOrWhiteSpace(w))
+                .Select(w => w.Trim().ToLowerInvariant())
+                .Distinct()
+                .ToList();
+
+            if (fresh.Count == _segmentWords.Count
+                && !fresh.Except(_segmentWords).Any()) return;
+
+            _segmentWords = fresh;
+            RefreshGrammar();
+        }
+
+        /// <summary>Command phrases plus the current segment's words.</summary>
+        private void RefreshGrammar()
+        {
+            if (_engine == null || _commands == null) return;
+            var phrases = VoiceCommandSet.GrammarPhrases(_commands)
+                .Concat(_segmentWords)
+                .Distinct()
+                .ToList();
+            try { _engine.UpdateGrammar(phrases); }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.Log("Voice", "Grammar refresh failed: " + ex.Message); } catch { }
+            }
         }
 
         /// <summary>Opens the Advanced command editor (gear / header right-click).</summary>

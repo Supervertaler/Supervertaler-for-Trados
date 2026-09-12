@@ -68,6 +68,13 @@ namespace Supervertaler.Trados.VoiceControl
             _internalHandlers["navigate_next"] = () => TermLensEditorViewPart.VoiceNavigateSegment(true);
             _internalHandlers["navigate_previous"] = () => TermLensEditorViewPart.VoiceNavigateSegment(false);
             _internalHandlers["stop_listening"] = () => VoiceControlManager.Instance.Stop();
+
+            // #125, step 2 of the voice-selection work: recognition only. Reports
+            // what Vosk heard after the prefix and what the segment actually
+            // contains, and selects nothing. Isolating recognition from matching
+            // means a failure here is unambiguous - either the words were heard or
+            // they were not, with no matcher in between to blame.
+            _slotHandlers["select_phrase"] = TermLensEditorViewPart.VoiceSelectPhrase;
         }
 
         /// <summary>

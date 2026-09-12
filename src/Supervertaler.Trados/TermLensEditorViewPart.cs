@@ -1649,6 +1649,104 @@ namespace Supervertaler.Trados
                 LoadMultiTermTermbases();
 
             UpdateFromActiveSegment();
+            PushVoiceSegmentWords();   // #125
+        }
+
+        /// <summary>
+        /// #125: hands the voice recogniser the words of this segment's TARGET, so a
+        /// slot command can name them. Vosk runs in grammar mode and can only hear
+        /// what is in its vocabulary, so the words have to be there before they can
+        /// be spoken - which is also what makes recognition of them fast and exact.
+        ///
+        /// <para>The target, not the source: selection acts on the target cell, and
+        /// on an untranslated segment there is nothing to select yet. Cheap on every
+        /// segment change - SetSegmentWords no-ops when the words have not changed,
+        /// which in a repetitive document is most of the time.</para>
+        /// </summary>
+        /// <summary>
+        /// #125: selects the spoken phrase in the active segment's target.
+        ///
+        /// <para>Almost nothing happens here, and that is the finding. Vosk runs on a
+        /// grammar built from this segment's own words, so what comes back is already
+        /// a literal run of them - "the duty cycle", "the cockpit", "display", all
+        /// heard exactly. The design brief expected to need phonetic matching
+        /// (Metaphone plus Levenshtein) because it assumed open-vocabulary
+        /// recognition that would mishear "sealing ring" as "seal the ring".
+        /// Constrained decoding removes that problem rather than solving it.</para>
+        ///
+        /// <para>The one adjustment is case. The recogniser returns lower case; the
+        /// target has "Most preferably". So the phrase is located case-insensitively
+        /// in the plain target and the segment's OWN spelling is what gets searched
+        /// for, because FindTextInSegment matches text values.</para>
+        /// </summary>
+        internal static void VoiceSelectPhrase(string heard)
+        {
+            try
+            {
+                var inst = _currentInstance;
+                var doc = inst?._activeDocument;
+                var pair = doc?.ActiveSegmentPair;
+                if (doc == null || pair == null) return;
+
+                var spoken = (heard ?? "").Trim();
+                if (spoken.Length == 0) return;
+
+                var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
+                var found = VoiceControl.PhraseMatcher.Find(plain, spoken);
+                if (found == null)
+                {
+                    Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                        "no match for \"" + spoken + "\" in: " + plain);
+                    return;
+                }
+
+                var segNo = pair.Properties.Id.Id;
+                var ok = doc.FindTextInSegment(segNo, found.Text, true, false);
+
+                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                    "heard \"" + spoken + "\" -> selecting \"" + found.Text + "\" at " + found.Start
+                    + (found.Exact ? "" : " (words were dropped; span widened)")
+                    + " in segment " + segNo + ": " + (ok ? "selected" : "FindTextInSegment said no"));
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.Log("VoiceSelect", "select failed: " + ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// #125: the same push, callable when voice STARTS. Without it the grammar
+        /// holds no segment words until the translator moves to another segment,
+        /// which looks exactly like the feature not working.
+        /// </summary>
+        internal static void PushVoiceSegmentWordsNow()
+        {
+            try { _currentInstance?.PushVoiceSegmentWords(); } catch { }
+        }
+
+        private void PushVoiceSegmentWords()
+        {
+            try
+            {
+                var mgr = VoiceControl.VoiceControlManager.Instance;
+                if (mgr == null || !mgr.IsRunning) return;
+
+                var pair = _activeDocument?.ActiveSegmentPair;
+                var target = pair?.Target?.ToString() ?? "";
+
+                var words = SegmentTagHandler.StripTagPlaceholders(target)
+                    .Split(new[] { ' ', '\t', '\r', '\n', '\u00A0' },
+                           StringSplitOptions.RemoveEmptyEntries)
+                    .Select(w => w.Trim('.', ',', ';', ':', '(', ')', '"', '\'', '!', '?'))
+                    // Vosk's vocabulary is words, not punctuation or figures. A token
+                    // with a digit in it is a reference numeral or a measurement and
+                    // is not something anyone selects by saying it.
+                    .Where(w => w.Length > 1 && w.All(char.IsLetter))
+                    .ToList();
+
+                mgr.SetSegmentWords(words);
+            }
+            catch { /* never break segment navigation over a voice feature */ }
         }
 
         // --- Editor-selection → TermLens highlight ---------------------------
