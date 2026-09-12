@@ -2083,7 +2083,56 @@ namespace Supervertaler.Trados
                 // and "undo that" brings them back.
                 var before = FocusedContentName();
 
-                VoiceDeleteSelection();
+                var doc = _currentInstance?._activeDocument;
+                var pair = doc?.ActiveSegmentPair;
+                if (doc == null || pair == null) return;
+
+                // Capture the selected words BEFORE anything moves, so the selection
+                // can be put back once focus is where it belongs.
+                var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
+                var f = (int)(sel.Target.From?.CursorPosition ?? -1);
+                var u = (int)(sel.Target.UpTo?.CursorPosition ?? -1);
+                var selStart = Math.Min(f, u);
+                var selLen = Math.Abs(u - f);
+                string text = null;
+                if (selStart >= 0 && selLen > 0 && selStart + selLen <= plain.Length)
+                    text = plain.Substring(selStart, selLen);
+
+                // THE fix, rather than another way round it. FindTextInSegment
+                // highlights without moving the caret - the translator confirmed it by
+                // pressing an arrow key after a target select and finding the cursor
+                // still in the source - so focus stayed wherever the last SOURCE find
+                // had put it, and the dictation tool pasted into a read-only cell.
+                // Its text reached the clipboard and nothing else.
+                //
+                // SetActiveSegmentPair takes setFocusOnSegment, which is a focus call
+                // rather than a side effect of one.
+                try
+                {
+                    var puId = doc.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? "";
+                    var segId = pair.Properties?.Id.Id ?? "";
+                    if (puId.Length > 0 && segId.Length > 0)
+                        doc.SetActiveSegmentPair(puId, segId, true);
+                }
+                catch (Exception ex)
+                {
+                    Core.DiagnosticLog.WriteAlways("Dictation", "SetActiveSegmentPair failed: " + ex.Message);
+                }
+
+                // Now that focus is in the target, put the selection back so the tool
+                // overwrites the words rather than inserting beside them. Only when
+                // the text occurs once: Studio's search takes the first hit, and on a
+                // repeated phrase this would hand dictation the wrong words.
+                var restored = "no selection to restore";
+                if (text != null)
+                {
+                    if (VoiceControl.PhraseMatcher.CountOccurrences(plain, text) == 1)
+                    {
+                        var ok = doc.FindTextInSegment(pair.Properties.Id.Id, text, true, false);
+                        restored = ok ? "re-selected \"" + text + "\"" : "re-select FAILED";
+                    }
+                    else restored = "\"" + text + "\" occurs more than once - left to the caret";
+                }
 
                 // The dictation tool pastes through the CLIPBOARD into whatever has
                 // keyboard focus. Measured 2026-09-12: the dictated text reached the
@@ -2106,9 +2155,9 @@ namespace Supervertaler.Trados
                 }
 
                 Core.DiagnosticLog.WriteAlways("Dictation",
-                    "prepared the target: deleted the selection, focus was " + before
-                    + " and is now " + FocusedContentName()
-                    + (hadSource ? " (a source selection was also present)" : ""));
+                    "prepared the target: focus was " + before + ", now " + FocusedContentName()
+                    + "; " + restored
+                    + (hadSource ? "; a source selection was also present" : ""));
             }
             catch (Exception ex)
             {
