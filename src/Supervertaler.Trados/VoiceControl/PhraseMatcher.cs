@@ -98,6 +98,14 @@ namespace Supervertaler.Trados.VoiceControl
             var joined = LongestJoinedRun(plainTarget, spokenWords);
             if (joined != null) return joined;
 
+            // 3. Part of a compound, naming the whole of it. The recogniser often
+            // returns only ONE part - measured: saying "beschermingsperiode" came back
+            // as "beschermings", three times running - because the rest was swallowed
+            // or is not in its lexicon. A part is unambiguous enough to act on: it is
+            // long, and it names a word the translator can see.
+            var partial = CompoundPart(plainTarget, targetWords, spokenWords);
+            if (partial != null) return partial;
+
             // A single word that is not literally present is not a match. Widening a
             // one-word utterance into a span would be guesswork with nothing to
             // anchor it.
@@ -145,6 +153,64 @@ namespace Supervertaler.Trados.VoiceControl
                     }
                 }
             }
+            return best;
+        }
+
+        /// <summary>How much of a compound has to be heard before it names it.</summary>
+        private const int MinPartLength = 5;
+
+        /// <summary>
+        /// A spoken run that is the START or END of a longer word in the segment,
+        /// naming that whole word.
+        ///
+        /// <para>This is what makes an unknown compound reachable. "beschermingsperiode"
+        /// is missing from the small Dutch model's lexicon and can never be returned;
+        /// "beschermings" is in it and is what comes back. Requiring a whole-word match
+        /// then rejected the only thing the recogniser was able to say.</para>
+        ///
+        /// <para>Deliberately mean, because a prefix match is a guess about intent.
+        /// Five characters at least, so "the" cannot claim "therefore"; and the word
+        /// must be meaningfully longer than the part, so an ordinary word is not
+        /// swallowed by a neighbour that merely starts the same way.</para>
+        /// </summary>
+        private static Match CompoundPart(string plainTarget, List<Token> targetWords,
+                                          List<string> spokenWords)
+        {
+            Match best = null;
+            var bestPart = 0;   // the PART's length, not the matched word's
+
+            for (int start = 0; start < spokenWords.Count; start++)
+            {
+                var sb = new System.Text.StringBuilder();
+                for (int end = start; end < spokenWords.Count; end++)
+                {
+                    sb.Append(spokenWords[end]);
+                    var part = sb.ToString();
+                    if (part.Length < MinPartLength) continue;
+
+                    foreach (var token in targetWords)
+                    {
+                        // The whole word must be longer than the part by a real margin;
+                        // equal lengths are the literal tier's business.
+                        if (token.Text.Length < part.Length + 3) continue;
+                        if (!token.Text.StartsWith(part, StringComparison.OrdinalIgnoreCase)
+                            && !token.Text.EndsWith(part, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        // Longest part wins: it is the most evidence, and on a
+                        // three-part compound it picks the more specific reading.
+                        if (best != null && part.Length <= bestPart) continue;
+                        bestPart = part.Length;
+                        best = new Match
+                        {
+                            Text = token.Text,
+                            Start = token.Start,
+                            Exact = false,
+                            Occurrences = CountOccurrences(plainTarget, token.Text)
+                        };
+                    }
+                }
+            }
+
             return best;
         }
 
