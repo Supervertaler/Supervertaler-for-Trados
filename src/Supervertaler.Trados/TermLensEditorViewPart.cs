@@ -2433,8 +2433,22 @@ namespace Supervertaler.Trados
         /// afternoon. The source grammar carries no commands, so fragments there can
         /// only compete with source words.</para>
         /// </summary>
-        private const int CompoundMinLength = 10;
+        /// <summary>
+        /// 8 rather than 10, so an ordinary long word contributes its own beginnings:
+        /// "valideert" is 9 and offered none, which left the recogniser reaching for a
+        /// fragment of a different word entirely.
+        /// </summary>
+        private const int CompoundMinLength = 8;
         private const int CompoundMinPart = 4;
+
+        /// <summary>
+        /// A word's END is only offered when it is long enough to identify a word.
+        /// Shorter endings are inflections - "eert" is the tail of "genereert",
+        /// "valideert" AND "distribueert" - and offering one lets the recogniser
+        /// return something that names three words at once and therefore none.
+        /// Matches PhraseMatcher's own suffix minimum; change either and change both.
+        /// </summary>
+        private const int CompoundMinEnd = 6;
 
         internal static List<string> CompoundParts(IEnumerable<string> words)
         {
@@ -2445,7 +2459,7 @@ namespace Supervertaler.Trados
                 for (int k = CompoundMinPart; k <= w.Length - CompoundMinPart; k++)
                 {
                     parts.Add(w.Substring(0, k));
-                    parts.Add(w.Substring(k));
+                    if (w.Length - k >= CompoundMinEnd) parts.Add(w.Substring(k));
                 }
             }
             return parts.Distinct().ToList();

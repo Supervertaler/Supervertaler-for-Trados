@@ -222,6 +222,13 @@ namespace Supervertaler.Trados.VoiceControl
         private const int MinPartLength = 4;
 
         /// <summary>
+        /// How much of a word's END has to be heard before it names that word. Higher
+        /// than the beginning's minimum because an ending is often an inflection every
+        /// verb in the sentence shares, where a beginning is the word itself.
+        /// </summary>
+        private const int MinSuffixLength = 6;
+
+        /// <summary>
         /// Rewrites consecutive spoken words that are really ONE word of the segment
         /// into that word.
         ///
@@ -324,8 +331,16 @@ namespace Supervertaler.Trados.VoiceControl
                         // The whole word must be longer than the part by a real margin;
                         // equal lengths are the literal tier's business.
                         if (token.Text.Length < part.Length + 3) continue;
-                        if (!token.Text.StartsWith(part, StringComparison.OrdinalIgnoreCase)
-                            && !token.Text.EndsWith(part, StringComparison.OrdinalIgnoreCase)) continue;
+                        // A beginning identifies a word; an ENDING often does not,
+                        // because it may be an inflection shared by several words.
+                        // Measured 2026-09-12: "eert" came back for "valideert" and
+                        // named "genereert" instead - "genereert", "valideert" and
+                        // "distribueert" all end that way.
+                        var isPrefix = token.Text.StartsWith(part, StringComparison.OrdinalIgnoreCase);
+                        var isSuffix = !isPrefix
+                            && part.Length >= MinSuffixLength
+                            && token.Text.EndsWith(part, StringComparison.OrdinalIgnoreCase);
+                        if (!isPrefix && !isSuffix) continue;
 
                         // Longest part wins: it is the most evidence, and on a
                         // three-part compound it picks the more specific reading.
