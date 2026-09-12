@@ -436,6 +436,45 @@ namespace Supervertaler.Trados.VoiceControl
         }
 
         /// <summary>
+        /// Every word of the segment a single spoken word could mean, in document
+        /// order: the word itself wherever it stands alone, and every longer word it
+        /// is a recognisable part of.
+        ///
+        /// <para>Saying "periode" in a segment holding "periode", "aftastperiode" and
+        /// "weergaveperiode" means one of three things, and which one cannot be known
+        /// from the audio - the compounds are not in the recogniser's lexicon, so only
+        /// the shared part ever comes back. Repeating the phrase walks this list.</para>
+        ///
+        /// <para>Before this there were two separate cycles - repeated text, and rival
+        /// compounds - and neither knew about the other, so a standalone word won and
+        /// the compounds could not be reached at all.</para>
+        /// </summary>
+        public static List<Match> Candidates(string plainTarget, string spokenWord)
+        {
+            var all = new List<Match>();
+            if (string.IsNullOrWhiteSpace(plainTarget) || string.IsNullOrWhiteSpace(spokenWord))
+                return all;
+
+            var word = spokenWord.Trim();
+
+            foreach (var at in Occurrences(plainTarget, word))
+                all.Add(new Match
+                {
+                    Text = plainTarget.Substring(at, word.Length),
+                    Start = at,
+                    Exact = true,
+                    Occurrences = 1
+                });
+
+            var part = CompoundPart(plainTarget, Tokenise(plainTarget), new List<string> { word });
+            if (part != null)
+                all.AddRange(part.Alternatives ?? new List<Match> { part });
+
+            return all.GroupBy(m => m.Start).Select(g => g.First())
+                      .OrderBy(m => m.Start).ToList();
+        }
+
+        /// <summary>
         /// The whole hyphenated compound containing a span, or null when the span is
         /// not part of one.
         ///

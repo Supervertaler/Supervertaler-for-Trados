@@ -2245,18 +2245,28 @@ namespace Supervertaler.Trados
                 // "periode" ends both "weergaveperiode" and "aftastperiode", and
                 // neither compound can be said whole. Repeating steps between them,
                 // the same gesture that steps between repeated text.
-                var rivals = found.Alternatives;
+                // ONE cycle, not two. Repeated text and rival compounds used to have
+                // separate ones that knew nothing of each other, so in a segment
+                // holding "periode", "aftastperiode" and "weergaveperiode" the
+                // standalone word won every time and the compounds could not be
+                // reached at all. Saying a single word now walks every word it could
+                // mean, in document order.
                 var rivalNote = (string)null;
-                if (rivals != null && rivals.Count > 1)
+                if (spoken.IndexOf(' ') < 0)
                 {
-                    var at = repeated ? rivals.FindIndex(r => r.Start == _lastSelectStart) : -1;
-                    found = rivals[at < 0 ? 0 : (at + 1) % rivals.Count];
-                    var which = rivals.FindIndex(r => r.Start == found.Start) + 1;
-                    rivalNote = which + " of " + rivals.Count + " - say again for the next";
+                    var cands = VoiceControl.PhraseMatcher.Candidates(plain, spoken);
+                    if (cands.Count > 1)
+                    {
+                        var prev = repeated ? cands.FindIndex(c => c.Start == _lastSelectStart) : -1;
+                        var pick = prev >= 0 ? (prev + 1) % cands.Count
+                                             : Math.Max(0, cands.FindIndex(c => c.Start == found.Start));
+                        found = cands[pick];
+                        rivalNote = (pick + 1) + " of " + cands.Count + " - say again for the next";
 
-                    Core.DiagnosticLog.WriteAlways("VoiceSelect",
-                        "\"" + spoken + "\" names " + rivals.Count + " words equally well; taking "
-                        + which + ", \"" + found.Text + "\"");
+                        Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                            "\"" + spoken + "\" could mean " + cands.Count + " words; taking "
+                            + (pick + 1) + ", \"" + found.Text + "\"");
+                    }
                 }
 
                 var spots0 = VoiceControl.PhraseMatcher.Occurrences(plain, found.Text);
@@ -2269,7 +2279,8 @@ namespace Supervertaler.Trados
 
                 var spots = VoiceControl.PhraseMatcher.Occurrences(plain, found.Text);
                 var index = spots.IndexOf(found.Start);
-                if (spots.Count > 1 && index >= 0 && repeated)
+                // The unified cycle above has already chosen, for a single word.
+                if (rivalNote == null && spots.Count > 1 && index >= 0 && repeated)
                 {
                     // Wraps, so a repeat never dead-ends on the last occurrence.
                     var next = spots.IndexOf(_lastSelectStart);
