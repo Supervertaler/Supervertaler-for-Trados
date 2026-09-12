@@ -1901,10 +1901,62 @@ namespace Supervertaler.Trados
         /// Where the target selection currently starts, or -1 when that cannot be
         /// read. Plain-text offset: inline tags cost zero characters, measured.
         /// </summary>
-        private static int SelectionStart(Sdl.TranslationStudioAutomation.IntegrationApi.IStudioDocument doc)
+        /// <summary>
+        /// #127: the SIDE matters. Reading Target after a source search compares the
+        /// new source offset against a stale target one, so every source selection was
+        /// refused - and, because the offset check gates it, the Shift+Left that trims
+        /// the search padding never ran, leaving the trailing full stop selected.
+        /// Measured 2026-09-12: three different source words all "stopped at 108",
+        /// which was where the previous TARGET selection had been.
+        /// </summary>
+        private static int SelectionStart(Sdl.TranslationStudioAutomation.IntegrationApi.IStudioDocument doc,
+                                          bool inSource)
         {
-            try { return (int)(doc.Selection?.Target?.From?.CursorPosition ?? -1); }
+            try
+            {
+                var sel = doc.Selection;
+                if (sel == null) return -1;
+                var side = inSource
+                    ? (Sdl.TranslationStudioAutomation.IntegrationApi.AbstractContentSelection)sel.Source
+                    : sel.Target;
+                return (int)(side?.From?.CursorPosition ?? -1);
+            }
             catch { return -1; }
+        }
+
+        /// <summary>
+        /// How many characters the current selection spans on that side, or -1 when it
+        /// cannot be read. Used to check that trimming the search padding worked.
+        /// </summary>
+        private static int SelectionLength(Sdl.TranslationStudioAutomation.IntegrationApi.IStudioDocument doc,
+                                           bool inSource)
+        {
+            try
+            {
+                var sel = doc.Selection;
+                if (sel == null) return -1;
+                var side = inSource
+                    ? (Sdl.TranslationStudioAutomation.IntegrationApi.AbstractContentSelection)sel.Source
+                    : sel.Target;
+                if (side == null || side.IsEmpty) return -1;
+                var from = (int)(side.From?.CursorPosition ?? -1);
+                var upto = (int)(side.UpTo?.CursorPosition ?? -1);
+                if (from < 0 || upto < 0) return -1;
+                return Math.Abs(upto - from);
+            }
+            catch { return -1; }
+        }
+
+        /// <summary>Collapses whichever side was searched, not always the target.</summary>
+        private static void CollapseSelection(Sdl.TranslationStudioAutomation.IntegrationApi.IStudioDocument doc,
+                                              bool inSource)
+        {
+            try
+            {
+                if (inSource) doc.Selection.Source.Collapse(false);
+                else doc.Selection.Target.Collapse(false);
+            }
+            catch { }
         }
 
         /// <summary>
@@ -2048,7 +2100,7 @@ namespace Supervertaler.Trados
                 // is why only a SUFFIX will do - a prefix would need the anchor moved,
                 // and only the moving end of a selection can be shrunk.
                 var ok = doc.FindTextInSegment(segNo, found.Text, true, inSource);
-                var landed = ok ? SelectionStart(doc) : -1;
+                var landed = ok ? SelectionStart(doc, inSource) : -1;
                 var padded = 0;
 
                 if (ok && landed >= 0 && landed != found.Start)
@@ -2058,15 +2110,36 @@ namespace Supervertaler.Trados
                     {
                         padded = pad.Length - found.Text.Length;
                         ok = doc.FindTextInSegment(segNo, pad, true, inSource);
-                        landed = ok ? SelectionStart(doc) : -1;
+                        landed = ok ? SelectionStart(doc, inSource) : -1;
 
                         // Shrink the padding back off. Only after the offset is
                         // confirmed: shrinking a selection that landed somewhere
                         // unexpected would leave a wrong selection one character
                         // shorter rather than no selection at all.
                         if (ok && landed == found.Start)
+                        {
                             for (int i = 0; i < padded; i++)
                                 System.Windows.Forms.SendKeys.SendWait("+{LEFT}");
+
+                            // Did it actually shrink? Keyboard selection in the SOURCE
+                            // cell is not something to take on trust - the cell is
+                            // read-only by default and may not accept it. An unshrunk
+                            // selection carries the padding, which for a word at the
+                            // end of a segment is the full stop - and that would go
+                            // into the termbase with a quick-add.
+                            var length = SelectionLength(doc, inSource);
+                            if (length >= 0 && length != found.Text.Length)
+                            {
+                                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                                    "padding not trimmed: selected " + length + " chars, wanted "
+                                    + found.Text.Length + " (Shift+Left did not shrink"
+                                    + (inSource ? " the source cell)" : ")"));
+                                CollapseSelection(doc, inSource);
+                                VoiceControl.VoiceControlManager.Instance?.Announce(
+                                    "could not select \"" + found.Text + "\" cleanly");
+                                return;
+                            }
+                        }
                     }
                 }
 
@@ -2074,7 +2147,7 @@ namespace Supervertaler.Trados
                 // not name is worse than none, because "delete that" would act on it.
                 if (ok && landed >= 0 && landed != found.Start)
                 {
-                    try { doc.Selection.Target.Collapse(false); } catch { }
+                    CollapseSelection(doc, inSource);
                     Core.DiagnosticLog.WriteAlways("VoiceSelect",
                         "heard \"" + spoken + "\" -> wanted \"" + found.Text + "\" at " + found.Start
                         + " but Studio's search stopped at " + landed
