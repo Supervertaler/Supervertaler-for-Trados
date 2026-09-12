@@ -156,8 +156,19 @@ namespace Supervertaler.Trados.VoiceControl
             return best;
         }
 
-        /// <summary>How much of a compound has to be heard before it names it.</summary>
-        private const int MinPartLength = 5;
+        /// <summary>
+        /// How much of a compound has to be heard before it names it.
+        ///
+        /// <para>Four, to agree with the shortest part the grammar offers
+        /// (TermLensEditorViewPart.CompoundMinPart). The two have to match: offering
+        /// "rest" to the recogniser and then refusing to accept it - which is what a
+        /// minimum of five did to "restluminantie" - means the one word it could say
+        /// is the one word we throw away. Change either and change both.</para>
+        ///
+        /// <para>Three would be too few: "the", "and", "for" are words in their own
+        /// right and would start claiming longer ones.</para>
+        /// </summary>
+        private const int MinPartLength = 4;
 
         /// <summary>
         /// A spoken run that is the START or END of a longer word in the segment,
