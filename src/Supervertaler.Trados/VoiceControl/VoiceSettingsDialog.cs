@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -58,12 +58,15 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 Dock = DockStyle.Top,
                 AutoSize = false,
-                Height = UiScale.Pixels(58),
+                Height = UiScale.Pixels(74),
                 Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(6), UiScale.Pixels(8), 0),
                 Text = "Keystroke actions send a chord to Studio (e.g. \"ctrl+enter\", \"alt+up\", \"f3\") – any Studio or " +
                        "Supervertaler shortcut works. Internal actions call the plugin directly: insert_term_1…insert_term_9, " +
-                       "term_picker, termlens_popup, navigate_next, navigate_previous, stop_listening. " +
-                       "The recogniser only listens for the phrases below, so keep them short and distinct."
+                       "term_picker, termlens_popup, navigate_next, navigate_previous, stop_listening, select_phrase, " +
+                       "select_source_phrase, delete_selection, dictate_on, dictate_off, dictate_toggle. " +
+                       "A phrase ending in {phrase} takes the words spoken after it as its argument. " +
+                       "The recogniser only listens for the words below, so prefer distinctive ones: every word here " +
+                       "competes with your own text in every segment."
             };
 
             var buttons = new FlowLayoutPanel
