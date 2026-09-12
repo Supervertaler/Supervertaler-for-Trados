@@ -2241,6 +2241,24 @@ namespace Supervertaler.Trados
                 // hyphen, so "infrarood" selects that half - and the other half,
                 // "emitters", is an English loan the Dutch model does not know, so no
                 // phrasing reaches the compound. Saying it again is the way in.
+                // #127: rival WORDS that the same spoken part names equally well -
+                // "periode" ends both "weergaveperiode" and "aftastperiode", and
+                // neither compound can be said whole. Repeating steps between them,
+                // the same gesture that steps between repeated text.
+                var rivals = found.Alternatives;
+                var rivalNote = (string)null;
+                if (rivals != null && rivals.Count > 1)
+                {
+                    var at = repeated ? rivals.FindIndex(r => r.Start == _lastSelectStart) : -1;
+                    found = rivals[at < 0 ? 0 : (at + 1) % rivals.Count];
+                    var which = rivals.FindIndex(r => r.Start == found.Start) + 1;
+                    rivalNote = which + " of " + rivals.Count + " - say again for the next";
+
+                    Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                        "\"" + spoken + "\" names " + rivals.Count + " words equally well; taking "
+                        + which + ", \"" + found.Text + "\"");
+                }
+
                 var spots0 = VoiceControl.PhraseMatcher.Occurrences(plain, found.Text);
                 if (repeated && spots0.Count <= 1)
                 {
@@ -2362,6 +2380,12 @@ namespace Supervertaler.Trados
                 {
                     VoiceControl.VoiceControlManager.Instance?.Announce(
                         "could not select \"" + found.Text + "\"");
+                }
+                else if (rivalNote != null)
+                {
+                    // Rival WORDS take precedence over repeated text: the translator
+                    // is choosing between candidates, not between copies.
+                    VoiceControl.VoiceControlManager.Instance?.Announce(rivalNote);
                 }
                 else if (spots.Count > 1)
                 {

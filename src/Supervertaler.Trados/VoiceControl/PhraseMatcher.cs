@@ -51,6 +51,19 @@ namespace Supervertaler.Trados.VoiceControl
             /// honest response is to say so and let them speak more words.
             /// </summary>
             public int Occurrences = 1;
+
+            /// <summary>
+            /// #127: other words the same spoken part names equally well, this one
+            /// included, in document order.
+            ///
+            /// <para>A compound's ending is often shared: "periode" ends both
+            /// "weergaveperiode" and "aftastperiode", and the recogniser returns only
+            /// "periode" because neither compound is in its lexicon. Saying more words
+            /// cannot help when the rest of the compound is unsayable too - so the
+            /// candidates are carried here, and the translator steps through them by
+            /// repeating the phrase, exactly as they step through repeated text.</para>
+            /// </summary>
+            public List<Match> Alternatives;
         }
 
         /// <summary>
@@ -322,6 +335,7 @@ namespace Supervertaler.Trados.VoiceControl
         {
             Match best = null;
             var bestPart = 0;   // the PART's length, not the matched word's
+            var rivals = new List<Match>();
 
             for (int start = 0; start < spokenWords.Count; start++)
             {
@@ -350,19 +364,35 @@ namespace Supervertaler.Trados.VoiceControl
 
                         // Longest part wins: it is the most evidence, and on a
                         // three-part compound it picks the more specific reading.
-                        if (best != null && part.Length <= bestPart) continue;
-                        bestPart = part.Length;
-                        best = new Match
+                        if (best != null && part.Length < bestPart) continue;
+
+                        var candidate = new Match
                         {
                             Text = token.Text,
                             Start = token.Start,
                             Exact = false,
                             Occurrences = CountOccurrences(plainTarget, token.Text)
                         };
+
+                        // A longer part is better evidence and discards what came
+                        // before; an equally long one is a rival reading and joins it.
+                        if (best == null || part.Length > bestPart)
+                        {
+                            bestPart = part.Length;
+                            best = candidate;
+                            rivals.Clear();
+                            rivals.Add(candidate);
+                        }
+                        else if (!rivals.Any(r => r.Start == candidate.Start))
+                        {
+                            rivals.Add(candidate);
+                        }
                     }
                 }
             }
 
+            if (best != null && rivals.Count > 1)
+                best.Alternatives = rivals.OrderBy(r => r.Start).ToList();
             return best;
         }
 
