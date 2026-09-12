@@ -119,9 +119,9 @@ namespace Supervertaler.Trados.VoiceControl
         /// History: 1 = initial set (20.126), 2 = match 1–9 / escape /
         /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128),
         /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191),
-        /// 6 = select source (20.191).
+        /// 6 = select source (20.191), 7 = dictate split into start/stop (20.191).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 6;
+        internal const int CurrentDefaultsVersion = 7;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -159,7 +159,13 @@ namespace Supervertaler.Trados.VoiceControl
                 // other command until it was said again - a trap for anyone who
                 // tried it out of curiosity. Shipped visible and off, so it can be
                 // found and read before it is switched on.
-                new VoiceCommand { Phrase = "dictate", Aliases = new List<string> { "stop now" }, ActionType = "internal", Action = "dictate_toggle:ctrl+win+space:ZZEND", Description = "Hand over to an external dictation tool and take it back. Needs that tool set to start/stop on Ctrl+Win+Space, and to write ZZEND for the spoken stop phrase, which is then removed automatically.", Category = "editing", Enabled = false },
+                // Two commands, not one toggle with a "stop" alias. The toggle was a
+                // trap: "stop now" toggled, so saying it when dictation was already
+                // off STARTED it, and every command after that was silently
+                // suppressed by the dictation gate. Saying either of these twice is
+                // now harmless.
+                new VoiceCommand { Phrase = "dictate", Aliases = new List<string> { "start dictating" }, ActionType = "internal", Action = "dictate_on:ctrl+win+space:ZZEND", Description = "Hand over to an external dictation tool. Needs that tool set to start/stop on Ctrl+Win+Space.", Category = "editing", Enabled = false },
+                new VoiceCommand { Phrase = "stop now", Aliases = new List<string> { "stop dictating" }, ActionType = "internal", Action = "dictate_off:ctrl+win+space:ZZEND", Description = "Take dictation back from the external tool. Map this spoken phrase to ZZEND in that tool's dictionary and the marker is removed automatically.", Category = "editing", Enabled = false },
                 new VoiceCommand { Phrase = "undo that", Aliases = new List<string> { "scratch that", "undo" }, ActionType = "keystroke", Action = "ctrl+z", Description = "Undo the last change (Ctrl+Z)", Category = "editing" },
                 new VoiceCommand { Phrase = "confirm", Aliases = new List<string> { "confirm segment" }, ActionType = "keystroke", Action = "ctrl+enter", Description = "Confirm segment and move to next unconfirmed", Category = "editing" },
                 new VoiceCommand { Phrase = "next segment", Aliases = new List<string> { "go down" }, ActionType = "internal", Action = "navigate_next", Description = "Move to the next segment (without confirming)", Category = "navigation" },

@@ -207,7 +207,18 @@ namespace Supervertaler.Trados.VoiceControl
                 action = action.Substring(0, colon).Trim();
             }
 
+            // #125: three dictate actions, not one. A single toggle looked tidy and
+            // was a trap: "stop now" was an ALIAS of "dictate", so saying it when
+            // dictation was already off started it again - and from then on every
+            // command was silently suppressed by the gate below, for a state the
+            // translator had no reason to think they were in. Measured 2026-09-12.
+            //
+            // Directional actions match how people actually speak: one phrase starts,
+            // another stops, and saying either one twice is harmless.
             var isDictateToggle = string.Equals(action, "dictate_toggle", StringComparison.OrdinalIgnoreCase);
+            var isDictateOn = string.Equals(action, "dictate_on", StringComparison.OrdinalIgnoreCase);
+            var isDictateOff = string.Equals(action, "dictate_off", StringComparison.OrdinalIgnoreCase);
+            var isDictateAction = isDictateToggle || isDictateOn || isDictateOff;
 
             // While dictating, every word reaches this recogniser as well as the
             // dictation tool. The grammar is closed, so only our own phrases can be
@@ -217,7 +228,7 @@ namespace Supervertaler.Trados.VoiceControl
             // Studio is the active window.
             var isStop = string.Equals(action, "stop_listening", StringComparison.OrdinalIgnoreCase);
 
-            if (DictationMode.Active && !isDictateToggle && !isStop)
+            if (DictationMode.Active && !isDictateAction && !isStop)
             {
                 CommandSuppressed?.Invoke(cmd.Phrase);
                 return;
@@ -242,7 +253,7 @@ namespace Supervertaler.Trados.VoiceControl
                 // source one - the same reason "delete that" refuses. Only blocked
                 // when turning dictation ON; the way out must always work, or the
                 // gate below would trap the translator.
-                if (isDictateToggle && !DictationMode.Active
+                if ((isDictateToggle || isDictateOn) && !DictationMode.Active
                     && TermLensEditorViewPart.VoiceLastSelectionWasSource)
                 {
                     VoiceControlManager.Instance?.Announce(
@@ -250,7 +261,7 @@ namespace Supervertaler.Trados.VoiceControl
                     return;
                 }
 
-                if (isDictateToggle)
+                if (isDictateAction)
                 {
                     // "dictate_toggle:<trigger>:<marker>" - the marker is optional and
                     // is whatever the dictation tool writes for the spoken stop phrase.
@@ -261,6 +272,10 @@ namespace Supervertaler.Trados.VoiceControl
                         marker = actionArg.Substring(second + 1).Trim();
                         trigger = actionArg.Substring(0, second).Trim();
                     }
+                    // Saying "stop now" when nothing is being dictated, or "dictate"
+                    // twice, must do nothing rather than flip the state the other way.
+                    if (isDictateOn && DictationMode.Active) return;
+                    if (isDictateOff && !DictationMode.Active) return;
                     DictationMode.Toggle(trigger, marker);
                 }
                 else if (string.Equals(cmd.ActionType, "internal", StringComparison.OrdinalIgnoreCase))
