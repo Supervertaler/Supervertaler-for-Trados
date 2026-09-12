@@ -1846,6 +1846,47 @@ namespace Supervertaler.Trados
         /// in the plain target and the segment's OWN spelling is what gets searched
         /// for, because FindTextInSegment matches text values.</para>
         /// </summary>
+        /// <summary>
+        /// Where the target selection currently starts, or -1 when that cannot be
+        /// read. Plain-text offset: inline tags cost zero characters, measured.
+        /// </summary>
+        private static int SelectionStart(Sdl.TranslationStudioAutomation.IntegrationApi.IStudioDocument doc)
+        {
+            try { return (int)(doc.Selection?.Target?.From?.CursorPosition ?? -1); }
+            catch { return -1; }
+        }
+
+        /// <summary>
+        /// The shortest extension of <paramref name="text"/> with the characters that
+        /// follow it in the segment whose first SUBSTRING hit is <paramref name="at"/>
+        /// - or null when no extension disambiguates it.
+        ///
+        /// <para>This is what makes a word that is buried in an earlier word
+        /// selectable at all. Studio's search takes the first substring hit and cannot
+        /// be told to skip one, so the only lever left is the needle itself: "the"
+        /// finds the letters inside "further", "the " does not.</para>
+        ///
+        /// <para>Null happens when the word is buried earlier AND sits at the very end
+        /// of the segment, leaving nothing to extend into. Refusing is then correct:
+        /// there is no string that selects it.</para>
+        /// </summary>
+        private static string DisambiguatingSuffix(string plain, string text, int at)
+        {
+            if (string.IsNullOrEmpty(plain) || string.IsNullOrEmpty(text)) return null;
+
+            // Bounded because the payment is a Shift+Left per character, and a word
+            // needing more than this is one the translator can name more precisely in
+            // a single further utterance.
+            var max = Math.Min(12, plain.Length - (at + text.Length));
+            for (int k = 1; k <= max; k++)
+            {
+                var candidate = plain.Substring(at, text.Length + k);
+                if (plain.IndexOf(candidate, StringComparison.OrdinalIgnoreCase) == at)
+                    return candidate;
+            }
+            return null;
+        }
+
         internal static void VoiceSelectPhrase(string heard)
         {
             try
@@ -1873,37 +1914,68 @@ namespace Supervertaler.Trados
                 }
 
                 var segNo = pair.Properties.Id.Id;
-                var ok = doc.FindTextInSegment(segNo, found.Text, true, false);
 
                 // Studio selects by TEXT, not by offset, and its search is a plain
-                // substring one that takes the first hit. So "the" lands inside
-                // "further" however carefully we resolved it to the standalone word
-                // further along. There is no offset-based selection to fall back on,
-                // so the only honest thing is to notice and say so: a selection in
-                // the wrong place is worse than none, because "delete that" would
-                // act on it.
-                if (ok)
+                // substring one: "the" lands inside "further" however carefully the
+                // matcher resolved it to the standalone word further along. There is
+                // no offset-based selection to fall back on.
+                //
+                // The search does NOT resume from the current selection - measured on
+                // 2026-09-12, two consecutive searches for "the" both landed at 8,
+                // inside "further" - so the hits cannot be walked.
+                //
+                // What works instead is to hand the substring search a string whose
+                // FIRST hit is already the right one. The word plus the character
+                // following it in the segment is usually enough: "the " skips the one
+                // inside "further", because that one is followed by "r". The extra
+                // characters are then shrunk off the selection with Shift+Left, which
+                // is why only a SUFFIX will do - a prefix would need the anchor moved,
+                // and only the moving end of a selection can be shrunk.
+                var ok = doc.FindTextInSegment(segNo, found.Text, true, false);
+                var landed = ok ? SelectionStart(doc) : -1;
+                var padded = 0;
+
+                if (ok && landed >= 0 && landed != found.Start)
                 {
-                    var landed = -1;
-                    try { landed = (int)(doc.Selection?.Target?.From?.CursorPosition ?? -1); } catch { }
-                    if (landed >= 0 && landed != found.Start)
+                    var pad = DisambiguatingSuffix(plain, found.Text, found.Start);
+                    if (pad != null)
                     {
-                        try { doc.Selection.Target.Collapse(false); } catch { }
-                        Core.DiagnosticLog.WriteAlways("VoiceSelect",
-                            "heard \"" + spoken + "\" -> wanted \"" + found.Text + "\" at " + found.Start
-                            + " but Studio selected at " + landed
-                            + " (its search is substring-based and takes the first hit) - refused");
-                        VoiceControl.VoiceControlManager.Instance?.Announce(
-                            "\"" + found.Text + "\" is inside another word - say more words");
-                        return;
+                        padded = pad.Length - found.Text.Length;
+                        ok = doc.FindTextInSegment(segNo, pad, true, false);
+                        landed = ok ? SelectionStart(doc) : -1;
+
+                        // Shrink the padding back off. Only after the offset is
+                        // confirmed: shrinking a selection that landed somewhere
+                        // unexpected would leave a wrong selection one character
+                        // shorter rather than no selection at all.
+                        if (ok && landed == found.Start)
+                            for (int i = 0; i < padded; i++)
+                                System.Windows.Forms.SendKeys.SendWait("+{LEFT}");
                     }
+                }
+
+                // Still in the wrong place. A selection somewhere the translator did
+                // not name is worse than none, because "delete that" would act on it.
+                if (ok && landed >= 0 && landed != found.Start)
+                {
+                    try { doc.Selection.Target.Collapse(false); } catch { }
+                    Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                        "heard \"" + spoken + "\" -> wanted \"" + found.Text + "\" at " + found.Start
+                        + " but Studio's search stopped at " + landed
+                        + " (padding " + (padded > 0 ? "+" + padded + " chars did not help" : "found none")
+                        + ") - refused");
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "\"" + found.Text + "\" is inside another word - say more words");
+                    return;
                 }
 
                 Core.DiagnosticLog.WriteAlways("VoiceSelect",
                     "heard \"" + spoken + "\" -> selecting \"" + found.Text + "\" at " + found.Start
                     + (found.Exact ? "" : " (words were dropped; span widened)")
                     + (found.Occurrences > 1 ? " [" + found.Occurrences + " occurrences]" : "")
-                    + " in segment " + segNo + ": " + (ok ? "selected" : "FindTextInSegment said no"));
+                    + " in segment " + segNo + ": " + (ok ? "selected" : "FindTextInSegment said no")
+                    + " (landed " + landed
+                    + (padded > 0 ? ", via +" + padded + " chars of padding" : "") + ")");
 
                 // #125: an ambiguous phrase takes the FIRST occurrence, because
                 // FindTextInSegment has no way to reach a later one and the offset
