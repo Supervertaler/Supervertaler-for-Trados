@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -37,6 +37,18 @@ namespace Supervertaler.Trados.VoiceControl
 
         private readonly Dictionary<string, VoiceCommand> _byPhrase =
             new Dictionary<string, VoiceCommand>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// #125: internal actions that take an argument - the words the translator
+        /// spoke after a slot command's prefix. "select sealing ring" reaches
+        /// _slotHandlers["select_phrase"]("sealing ring").
+        /// </summary>
+        private readonly Dictionary<string, Action<string>> _slotHandlers =
+            new Dictionary<string, Action<string>>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Slot commands by their spoken prefix, longest prefix first.</summary>
+        private readonly List<KeyValuePair<string, VoiceCommand>> _bySlotPrefix =
+            new List<KeyValuePair<string, VoiceCommand>>();
+
         private readonly Dictionary<string, Action> _internalHandlers =
             new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
 
@@ -58,17 +70,54 @@ namespace Supervertaler.Trados.VoiceControl
             _internalHandlers["stop_listening"] = () => VoiceControlManager.Instance.Stop();
         }
 
+        /// <summary>
+        /// #125: matches "select sealing ring" against a command whose spoken form is
+        /// "select {phrase}", returning the command and putting "sealing ring" in
+        /// <paramref name="argument"/>. Null when nothing matches.
+        ///
+        /// <para>Longest prefix wins, so a command "select again" is not swallowed by
+        /// "select" with "again" as its argument. An utterance that is only the
+        /// prefix, with nothing after it, does NOT match - "select" on its own names
+        /// no phrase, and firing on it would select whatever the matcher liked
+        /// least-badly.</para>
+        /// </summary>
+        private VoiceCommand MatchSlot(string spoken, out string argument)
+        {
+            argument = null;
+            if (string.IsNullOrWhiteSpace(spoken)) return null;
+
+            foreach (var entry in _bySlotPrefix)
+            {
+                var prefix = entry.Key;
+                if (spoken.Length <= prefix.Length + 1) continue;
+                if (!spoken.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                if (spoken[prefix.Length] != ' ') continue;
+
+                var tail = spoken.Substring(prefix.Length + 1).Trim();
+                if (tail.Length == 0) continue;
+
+                argument = tail;
+                return entry.Value;
+            }
+            return null;
+        }
+
         /// <summary>Rebuilds the phrase lookup from the (enabled) command list.</summary>
         public void LoadCommands(List<VoiceCommand> commands)
         {
             _byPhrase.Clear();
+            _bySlotPrefix.Clear();
             foreach (var cmd in commands)
             {
                 if (!cmd.Enabled) continue;
                 foreach (var phrase in cmd.AllPhrases())
                     if (!_byPhrase.ContainsKey(phrase))
                         _byPhrase[phrase] = cmd;
+                foreach (var prefix in cmd.SlotPrefixes())
+                    _bySlotPrefix.Add(new KeyValuePair<string, VoiceCommand>(prefix, cmd));
             }
+            // Longest prefix first, so "select again" is not swallowed by "select".
+            _bySlotPrefix.Sort((x, y) => y.Key.Length.CompareTo(x.Key.Length));
         }
 
         /// <summary>
@@ -79,14 +128,25 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         public void Execute(string recognizedText)
         {
+            var spoken = (recognizedText ?? "").Trim();
+            string slotArgument = null;
+
+            // Three ways to match, in decreasing strictness. Exact first, so an
+            // ordinary command can never be read as the argument of a slot one.
+            // Then slot: "select sealing ring" -> prefix "select", argument
+            // "sealing ring". Containment last, because it is the loosest and would
+            // happily find "select" inside a dictated sentence.
             VoiceCommand cmd;
-            if (!_byPhrase.TryGetValue(recognizedText.Trim(), out cmd))
+            if (!_byPhrase.TryGetValue(spoken, out cmd))
+                cmd = MatchSlot(spoken, out slotArgument);
+
+            if (cmd == null)
             {
                 // Fallback: longest known phrase contained in the utterance
                 string best = null;
                 foreach (var phrase in _byPhrase.Keys)
                 {
-                    if ((" " + recognizedText + " ").IndexOf(" " + phrase + " ", StringComparison.OrdinalIgnoreCase) >= 0
+                    if ((" " + spoken + " ").IndexOf(" " + phrase + " ", StringComparison.OrdinalIgnoreCase) >= 0
                         && (best == null || phrase.Length > best.Length))
                         best = phrase;
                 }
@@ -103,9 +163,18 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 if (string.Equals(cmd.ActionType, "internal", StringComparison.OrdinalIgnoreCase))
                 {
-                    Action handler;
-                    if (_internalHandlers.TryGetValue(cmd.Action ?? "", out handler))
-                        handler();
+                    Action<string> slotHandler;
+                    if (slotArgument != null
+                        && _slotHandlers.TryGetValue(cmd.Action ?? "", out slotHandler))
+                    {
+                        slotHandler(slotArgument);
+                    }
+                    else
+                    {
+                        Action handler;
+                        if (_internalHandlers.TryGetValue(cmd.Action ?? "", out handler))
+                            handler();
+                    }
                 }
                 else if (string.Equals(cmd.ActionType, "keystroke", StringComparison.OrdinalIgnoreCase))
                 {

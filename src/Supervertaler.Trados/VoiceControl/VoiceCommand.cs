@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -31,8 +31,42 @@ namespace Supervertaler.Trados.VoiceControl
         [DataMember(Name = "category")] public string Category { get; set; } = "general";
         [DataMember(Name = "enabled")] public bool Enabled { get; set; } = true;
 
-        /// <summary>All spoken forms (phrase + aliases), lower-cased and trimmed.</summary>
-        public IEnumerable<string> AllPhrases()
+        /// <summary>
+        /// The placeholder that marks an open slot in a spoken form: "select {phrase}".
+        /// Everything before it is what the recogniser must hear; everything after it
+        /// in the utterance is the argument handed to the action.
+        ///
+        /// <para>Until #125 every command was an exact phrase, which is why
+        /// "select &lt;whatever the translator said&gt;" could not be expressed at all.
+        /// A slot is deliberately only allowed at the END of a phrase: the words that
+        /// fill it come from the document and can be anything, so a literal tail after
+        /// them could not be told apart from the argument itself.</para>
+        /// </summary>
+        public const string Slot = "{phrase}";
+
+        /// <summary>Whether any spoken form of this command ends in an open slot.</summary>
+        public bool HasSlot()
+        {
+            return AllForms().Any(p => p.EndsWith(Slot, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// The literal words in front of the slot, for every spoken form that has one -
+        /// "select" for "select {phrase}". These are what go into the recogniser's
+        /// grammar; the words that can fill the slot are added separately, per segment.
+        /// </summary>
+        public IEnumerable<string> SlotPrefixes()
+        {
+            foreach (var form in AllForms())
+            {
+                if (!form.EndsWith(Slot, StringComparison.Ordinal)) continue;
+                var prefix = form.Substring(0, form.Length - Slot.Length).Trim();
+                if (prefix.Length > 0) yield return prefix;
+            }
+        }
+
+        /// <summary>Spoken forms with the slot placeholder still in them.</summary>
+        private IEnumerable<string> AllForms()
         {
             if (!string.IsNullOrWhiteSpace(Phrase))
                 yield return Phrase.Trim().ToLowerInvariant();
@@ -40,6 +74,19 @@ namespace Supervertaler.Trados.VoiceControl
             foreach (var a in Aliases)
                 if (!string.IsNullOrWhiteSpace(a))
                     yield return a.Trim().ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// All spoken forms (phrase + aliases), lower-cased and trimmed. Forms with an
+        /// open slot are excluded - they never match literally, and putting
+        /// "select {phrase}" in the exact-match table would mean the recogniser had to
+        /// hear those braces.
+        /// </summary>
+        public IEnumerable<string> AllPhrases()
+        {
+            foreach (var form in AllForms())
+                if (!form.EndsWith(Slot, StringComparison.Ordinal))
+                    yield return form;
         }
     }
 
@@ -211,8 +258,12 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         public static List<string> GrammarPhrases(List<VoiceCommand> commands)
         {
+            // #125: a slot command contributes its PREFIX ("select"), not its
+            // spoken form - the words that fill the slot come from the open
+            // segment and are added by the caller, because they change as the
+            // translator moves through the document.
             return commands.Where(c => c.Enabled)
-                           .SelectMany(c => c.AllPhrases())
+                           .SelectMany(c => c.AllPhrases().Concat(c.SlotPrefixes()))
                            .Distinct()
                            .ToList();
         }
