@@ -143,6 +143,8 @@ namespace Supervertaler.Trados.VoiceControl
                     _lastUtterance = Flatten(_utterance, _utteranceBytes);
                     _utterance.Clear();
                     _utteranceBytes = 0;
+
+                    DumpUtteranceIfAsked(_lastUtterance);
                 }
             }
             if (resultJson == null) return;
@@ -155,6 +157,45 @@ namespace Supervertaler.Trados.VoiceControl
             if (text.Length == 0) return;
 
             try { Recognized?.Invoke(text); } catch { }
+        }
+
+        /// <summary>
+        /// Writes each finished utterance to disk as a WAV, but only when the
+        /// SUPERVERTALER_VOICE_DUMP environment variable is set. For measuring other
+        /// recognisers against the translator's real voice and microphone - the
+        /// question of whether a different engine can hear the words Vosk cannot is
+        /// not answerable with synthesised audio.
+        ///
+        /// <para>Off by default and gated by an env var rather than a setting, so it
+        /// cannot be left on by accident: recorded speech is not something to keep
+        /// without meaning to.</para>
+        /// </summary>
+        private static readonly string DumpDir = Environment.GetEnvironmentVariable("SUPERVERTALER_VOICE_DUMP");
+
+        private static void DumpUtteranceIfAsked(byte[] pcm16k)
+        {
+            if (string.IsNullOrWhiteSpace(DumpDir) || pcm16k == null || pcm16k.Length == 0) return;
+            try
+            {
+                System.IO.Directory.CreateDirectory(DumpDir);
+                var path = System.IO.Path.Combine(DumpDir,
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".wav");
+                using (var fs = new System.IO.FileStream(path, System.IO.FileMode.Create))
+                using (var w = new System.IO.BinaryWriter(fs))
+                {
+                    // Minimal RIFF/WAVE header: 16 kHz, mono, 16-bit PCM.
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+                    w.Write(36 + pcm16k.Length);
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+                    w.Write(16); w.Write((short)1); w.Write((short)1);
+                    w.Write(16000); w.Write(32000); w.Write((short)2); w.Write((short)16);
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+                    w.Write(pcm16k.Length);
+                    w.Write(pcm16k);
+                }
+            }
+            catch { /* a failed dump must never touch recognition */ }
         }
 
         private static byte[] Flatten(List<byte[]> chunks, int total)
