@@ -201,7 +201,50 @@ namespace Supervertaler.Trados.VoiceControl
         {
             if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return true;
             if (!allowNear) return false;
-            return Near(a, b);
+            return Homophone(a, b) || Near(a, b);
+        }
+
+        /// <summary>
+        /// Words that sound identical but share no spelling - so <see cref="Near"/>,
+        /// which needs a common first letter, cannot see them.
+        ///
+        /// <para><b>This exists because of our own command list.</b> The grammar is
+        /// closed, so the recogniser must return SOMETHING from it, and "term eight"
+        /// and "match eight" put "eight" in the vocabulary of every segment. Say the
+        /// article "a" - which is /eɪ/ - and "eight" is the nearest thing available.
+        /// Measured 2026-09-12: "select a further" came back as "select eight further"
+        /// six times running, and "select in addition to" as "in addition two". The
+        /// number words we ship are quietly stealing short words out of the
+        /// translator's own text.</para>
+        ///
+        /// <para>Only the number words that have a common English homophone are
+        /// listed; three, five, six, seven and nine have none worth the risk. Like
+        /// <see cref="Near"/>, this is consulted only after exact matching has failed
+        /// everywhere, so a segment that really does contain "eight" resolves it to
+        /// itself.</para>
+        /// </summary>
+        private static readonly string[][] Homophones =
+        {
+            new[] { "a", "eight", "ate" },
+            new[] { "to", "two", "too" },
+            new[] { "for", "four", "fore" },
+            new[] { "one", "won" },
+        };
+
+        private static bool Homophone(string a, string b)
+        {
+            foreach (var set in Homophones)
+            {
+                var hasA = false;
+                var hasB = false;
+                foreach (var w in set)
+                {
+                    if (string.Equals(w, a, StringComparison.OrdinalIgnoreCase)) hasA = true;
+                    if (string.Equals(w, b, StringComparison.OrdinalIgnoreCase)) hasB = true;
+                }
+                if (hasA && hasB) return true;
+            }
+            return false;
         }
 
         /// <summary>
