@@ -124,25 +124,31 @@ namespace Supervertaler.Trados.VoiceControl
                 }
             }
 
-            // 4. Part of a compound, naming the whole of it. The recogniser often
-            // returns only ONE part - measured: saying "beschermingsperiode" came back
-            // as "beschermings", three times running - because the rest was swallowed
-            // or is not in its lexicon. A part is unambiguous enough to act on: it is
-            // long, and it names a word the translator can see.
+            // 4. One spoken word naming a whole compound. The recogniser often returns
+            // only ONE part - measured: "beschermingsperiode" came back as
+            // "beschermings" three times running - because the rest was swallowed or
+            // is not in its lexicon.
+            //
+            // Only for a ONE-WORD utterance. Tried before the span below, it answered
+            // "timing toestand" with "toestandssignalen" alone: the compound reading
+            // ended the search before the span "timing- en toestandssignalen" could be
+            // built. A phrase names a span; a single word names a word.
+            if (spokenWords.Count < 2)
+                return CompoundPart(plainTarget, targetWords, spokenWords);
+
+            // Exact words first, then near ones, then allowing a spoken word to name a
+            // longer word it begins. Tried in that order so a sentence containing both
+            // "for" and "four" resolves to whichever was actually said, and a part is
+            // only reached for when nothing whole fits.
+            var whole = Subsequence(plainTarget, targetWords, spokenWords, false)
+                     ?? Subsequence(plainTarget, targetWords, spokenWords, true)
+                     ?? Subsequence(plainTarget, targetWords, spokenWords, true, allowPart: true);
+            if (whole != null) return whole;
+
+            // Still nothing: fall back to the single-compound reading, which at least
+            // names something the translator said.
             var partial = CompoundPart(plainTarget, targetWords, spokenWords);
             if (partial != null) return partial;
-
-            // A single word that is not literally present is not a match. Widening a
-            // one-word utterance into a span would be guesswork with nothing to
-            // anchor it.
-            if (spokenWords.Count < 2) return null;
-
-            // Exact words first, then near ones. Tried in that order so a sentence
-            // containing both "for" and "four" resolves to whichever was actually
-            // said, and only falls back to sounding-alike when nothing else fits.
-            var whole = Subsequence(plainTarget, targetWords, spokenWords, false)
-                     ?? Subsequence(plainTarget, targetWords, spokenWords, true);
-            if (whole != null) return whole;
 
             // 5. The same, ignoring stray words at the EDGES. The recogniser adds
             // them: "niet-conform licht" came back as "licht niet conform licht",
@@ -361,11 +367,12 @@ namespace Supervertaler.Trados.VoiceControl
         }
 
         private static Match Subsequence(string plainTarget, List<Token> targetWords,
-                                         List<string> spokenWords, bool allowNear)
+                                         List<string> spokenWords, bool allowNear,
+                                         bool allowPart = false)
         {
             for (int start = 0; start < targetWords.Count; start++)
             {
-                if (!Same(targetWords[start].Text, spokenWords[0], allowNear)) continue;
+                if (!Matches(targetWords[start].Text, spokenWords[0], allowNear, allowPart)) continue;
 
                 int ti = start, si = 1, last = start;
                 while (si < spokenWords.Count)
@@ -373,7 +380,7 @@ namespace Supervertaler.Trados.VoiceControl
                     int gap = 0, probe = ti + 1;
                     while (probe < targetWords.Count && gap <= MaxGap)
                     {
-                        if (Same(targetWords[probe].Text, spokenWords[si], allowNear)) break;
+                        if (Matches(targetWords[probe].Text, spokenWords[si], allowNear, allowPart)) break;
                         probe++; gap++;
                     }
                     if (probe >= targetWords.Count || gap > MaxGap) break;
@@ -499,6 +506,27 @@ namespace Supervertaler.Trados.VoiceControl
                 if (startOk && endOk) return at;
                 i = at + 1;
             }
+        }
+
+        /// <summary>
+        /// Whether a target word is what was spoken - optionally allowing the spoken
+        /// word to be the BEGINNING of it.
+        ///
+        /// <para>That last is what lets "timing toestand" reach "timing- en
+        /// toestandssignalen" when the recogniser drops the compound's second half. It
+        /// runs only after exact and near have failed everywhere, so a word that is
+        /// really there always wins over a word it merely starts.</para>
+        ///
+        /// <para>Beginnings only. An ending is often an inflection the whole sentence
+        /// shares, and inside a span there is nothing to tell the two apart.</para>
+        /// </summary>
+        private static bool Matches(string token, string spoken, bool allowNear, bool allowPart)
+        {
+            if (Same(token, spoken, allowNear)) return true;
+            if (!allowPart) return false;
+            return spoken.Length >= MinPartLength
+                && token.Length >= spoken.Length + 3
+                && token.StartsWith(spoken, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool Same(string a, string b, bool allowNear = false)
