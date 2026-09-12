@@ -207,6 +207,8 @@ namespace Supervertaler.Trados.VoiceControl
             }
             catch { }
 
+            text = ReconsiderSelection(text);
+
             // Engine thread → UI thread
             var marshal = MarshalControl();
             if (marshal == null) return;
@@ -215,6 +217,76 @@ namespace Supervertaler.Trados.VoiceControl
                 marshal.BeginInvoke((Action)(() => _executor?.Execute(text)));
             }
             catch { /* host torn down mid-recognition */ }
+        }
+
+        /// <summary>
+        /// #125: hears a "select …" utterance again, against the segment's words
+        /// alone.
+        ///
+        /// <para><b>The problem this solves.</b> The grammar is closed and the
+        /// recogniser cannot return nothing, so every command phrase competes for
+        /// every sound. Our own "term eight" and "match eight" put "eight" into the
+        /// vocabulary of every segment; the article "a" is the same sound; and
+        /// "select a further" could not be said at all. Resolving known homophones
+        /// treats three symptoms, and any command a user adds can create a new
+        /// one.</para>
+        ///
+        /// <para>The grammar cannot be switched when "select" is heard - by then the
+        /// utterance is already recognised. So the audio is kept and recognised a
+        /// second time against a grammar of the segment's own words plus the slot
+        /// prefixes. A command word that is not in the segment cannot come back at
+        /// all, which removes the whole class rather than the known members of
+        /// it.</para>
+        ///
+        /// <para>The first reading is kept if the second returns nothing, or returns
+        /// nothing after the prefix: a second opinion is only worth having when it
+        /// has something to say.</para>
+        /// </summary>
+        private string ReconsiderSelection(string text)
+        {
+            try
+            {
+                var engine = _engine;
+                if (engine == null || string.IsNullOrWhiteSpace(text)) return text;
+
+                var prefixes = _commands.Where(c => c.Enabled)
+                                        .SelectMany(c => c.SlotPrefixes())
+                                        .Distinct()
+                                        .ToList();
+                if (prefixes.Count == 0) return text;
+                if (!prefixes.Any(p => ContainsWord(text, p))) return text;
+
+                List<string> words;
+                lock (_segmentWordLock) { words = new List<string>(_segmentWords); }
+                if (words.Count == 0) return text;
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var second = engine.RecognizeLastUtterance(words.Concat(prefixes).Distinct().ToList());
+                sw.Stop();
+                if (string.IsNullOrWhiteSpace(second))
+                {
+                    Core.DiagnosticLog.WriteAlways("VoiceHeard",
+                        "second pass returned nothing in " + sw.ElapsedMilliseconds + " ms - keeping \"" + text + "\"");
+                    return text;
+                }
+
+                // Only accept a second reading that still names the command and still
+                // has words after it. Anything else is a worse answer than the first.
+                if (!prefixes.Any(p => ContainsWord(second, p))) return text;
+
+                Core.DiagnosticLog.WriteAlways("VoiceHeard",
+                    "second pass (" + sw.ElapsedMilliseconds + " ms, " + words.Count + " segment words): \""
+                    + text + "\" -> \"" + second + "\""
+                    + (string.Equals(second, text, StringComparison.OrdinalIgnoreCase) ? " (unchanged)" : ""));
+                return second;
+            }
+            catch { return text; }
+        }
+
+        private static bool ContainsWord(string utterance, string word)
+        {
+            return (" " + utterance + " ").IndexOf(" " + word + " ",
+                StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>Reloads commands (after the Advanced dialog saves) into the live engine.</summary>
@@ -238,6 +310,15 @@ namespace Supervertaler.Trados.VoiceControl
         private List<string> _segmentWords = new List<string>();
 
         /// <summary>
+        /// Guards <see cref="_segmentWords"/>. It is written on the UI thread as the
+        /// translator moves between segments, and read on the AUDIO thread by
+        /// <see cref="ReconsiderSelection"/> - a list being replaced under an
+        /// enumeration. The list is only ever swapped whole, never mutated, so the
+        /// lock is held just long enough to take a copy.
+        /// </summary>
+        private readonly object _segmentWordLock = new object();
+
+        /// <summary>
         /// Replaces the per-segment vocabulary and rebuilds the live grammar. Cheap
         /// to call on every segment change: it no-ops when the words are unchanged,
         /// which they are for the many segments that share wording in a patent.
@@ -250,10 +331,12 @@ namespace Supervertaler.Trados.VoiceControl
                 .Distinct()
                 .ToList();
 
-            if (fresh.Count == _segmentWords.Count
-                && !fresh.Except(_segmentWords).Any()) return;
-
-            _segmentWords = fresh;
+            lock (_segmentWordLock)
+            {
+                if (fresh.Count == _segmentWords.Count
+                    && !fresh.Except(_segmentWords).Any()) return;
+                _segmentWords = fresh;
+            }
             RefreshGrammar();
         }
 
