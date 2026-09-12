@@ -181,6 +181,14 @@ namespace Supervertaler.Trados.VoiceControl
         /// <para>A fresh recogniser is cheap: <c>vosk_recognizer_new_grm</c> takes the
         /// model as a parameter, and the model - the expensive part - is already
         /// loaded and shared.</para>
+        ///
+        /// <para><b>What it costs</b> (.dev/second-pass-scaling.ps1, 2026-09-12):
+        /// building the recogniser is 0-2 ms and does NOT scale with the number of
+        /// segment words - 10 words and 50 words measure the same. The whole cost is
+        /// decoding, and that scales only with how long the translator spoke: about
+        /// 40-55 ms per second of silence, and roughly double that for speech, which
+        /// matches the 97-390 ms seen live. So a long SEGMENT is free and only a long
+        /// UTTERANCE is not - and a "select ..." phrase is a few words by nature.</para>
         /// </summary>
         public string RecognizeLastUtterance(List<string> grammarPhrases)
         {
