@@ -51,6 +51,11 @@ namespace Supervertaler.Trados.VoiceControl
             _executor = new VoiceCommandExecutor();
             _executor.LoadCommands(_commands);
             _executor.CommandExecuted += (phrase, desc) => FlashCommand(phrase);
+            // #125: a command heard and deliberately ignored is not the same as one
+            // not heard. Say which, or dictation mode looks like a broken recogniser.
+            _executor.CommandSuppressed += phrase => FlashCommand("(dictating) " + phrase);
+            DictationMode.Changed += on => SetStatus(on ? "Dictating - say the word again to stop" : "Listening…",
+                                                     state: 2);
 
             // Preferred: the TermLens header hosts the indicator. Fallback:
             // the floating strip (draggable, position remembered).
@@ -117,6 +122,10 @@ namespace Supervertaler.Trados.VoiceControl
         public void Stop()
         {
             _running = false;
+            // #125: never leave the dictation gate up. It suppresses every command
+            // but the way out, and the way out is a voice command - so a gate that
+            // survived a stop would make the next session look completely deaf.
+            DictationMode.Reset();
             try { _engine?.Dispose(); } catch { }
             _engine = null;
 

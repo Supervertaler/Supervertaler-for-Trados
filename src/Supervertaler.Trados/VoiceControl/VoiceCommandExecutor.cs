@@ -55,6 +55,9 @@ namespace Supervertaler.Trados.VoiceControl
         /// <summary>Raised after a command executes (phrase, description) – for status display.</summary>
         public event Action<string, string> CommandExecuted;
 
+        /// <summary>#125: a command was heard but ignored because dictation is on.</summary>
+        public event Action<string> CommandSuppressed;
+
         public VoiceCommandExecutor()
         {
             // Internal action registry – direct plugin calls
@@ -161,31 +164,61 @@ namespace Supervertaler.Trados.VoiceControl
                 cmd = _byPhrase[best];
             }
 
+            var action = cmd.Action ?? "";
+
+            // #125: an action id may carry its own argument after a colon -
+            // "dictate_toggle:ctrl+alt+w". Dictation triggers differ per tool and
+            // per installation, so the trigger lives in the command the translator
+            // can edit rather than in a settings screen of its own.
+            string actionArg = null;
+            var colon = action.IndexOf(':');
+            if (colon > 0)
+            {
+                actionArg = action.Substring(colon + 1).Trim();
+                action = action.Substring(0, colon).Trim();
+            }
+
+            var isDictateToggle = string.Equals(action, "dictate_toggle", StringComparison.OrdinalIgnoreCase);
+
+            // While dictating, every word reaches this recogniser as well as the
+            // dictation tool. The grammar is closed, so only our own phrases can be
+            // heard - but a replacement containing "confirm" would fire one into the
+            // document mid sentence. Nothing runs except the way out.
+            if (DictationMode.Active && !isDictateToggle)
+            {
+                CommandSuppressed?.Invoke(cmd.Phrase);
+                return;
+            }
+
             // "stop listening" must always work; everything else only when
             // Studio is the active window.
-            var isStop = string.Equals(cmd.Action, "stop_listening", StringComparison.OrdinalIgnoreCase);
+            var isStop = string.Equals(action, "stop_listening", StringComparison.OrdinalIgnoreCase);
             if (!isStop && !IsStudioForeground()) return;
 
             try
             {
-                if (string.Equals(cmd.ActionType, "internal", StringComparison.OrdinalIgnoreCase))
+                if (isDictateToggle)
+                {
+                    DictationMode.Toggle(actionArg);
+                }
+                else if (string.Equals(cmd.ActionType, "internal", StringComparison.OrdinalIgnoreCase))
                 {
                     Action<string> slotHandler;
                     if (slotArgument != null
-                        && _slotHandlers.TryGetValue(cmd.Action ?? "", out slotHandler))
+                        && _slotHandlers.TryGetValue(action, out slotHandler))
                     {
                         slotHandler(slotArgument);
                     }
                     else
                     {
                         Action handler;
-                        if (_internalHandlers.TryGetValue(cmd.Action ?? "", out handler))
+                        if (_internalHandlers.TryGetValue(action, out handler))
                             handler();
                     }
                 }
                 else if (string.Equals(cmd.ActionType, "keystroke", StringComparison.OrdinalIgnoreCase))
                 {
-                    var keys = ChordToSendKeys(cmd.Action);
+                    var keys = ChordToSendKeys(cmd.Action);   // chords keep their colons? no - chords have none
                     if (keys != null)
                     {
                         // Bracket the send so CtrlTapFilter can ignore the
