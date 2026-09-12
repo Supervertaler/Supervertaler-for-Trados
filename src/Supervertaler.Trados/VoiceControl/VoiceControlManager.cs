@@ -316,18 +316,18 @@ namespace Supervertaler.Trados.VoiceControl
                 Announce("no source voice model for " + (culture ?? "this language"));
                 Core.DiagnosticLog.WriteAlways("VoiceSelect",
                     "source selection asked for, but no model is listed for \"" + (culture ?? "(unknown)") + "\"");
-                return text;
+                return prefix;   // never the English reading
             }
 
             if (!VoiceRuntimeInstaller.IsSourceModelInstalled(culture))
             {
                 BeginSourceModelDownload(culture);
-                return text;
+                return prefix;
             }
 
             List<string> words;
             lock (_segmentWordLock) { words = new List<string>(_sourceWords); }
-            if (words.Count == 0) return text;
+            if (words.Count == 0) return prefix;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var second = _engine.RecognizeLastUtteranceWith(dir, words);
@@ -339,8 +339,17 @@ namespace Supervertaler.Trados.VoiceControl
 
             if (string.IsNullOrWhiteSpace(second))
             {
-                Announce("did not catch that in the source");
-                return text;
+                // NOT falling back to the first reading. That reading came from the
+                // English command model, which can only return English words, so its
+                // tail is whatever English the Dutch sounded most like - "genest" came
+                // back as "next". Handing that to the matcher produced "no next in the
+                // source": a complaint about a word the translator never said, hiding
+                // the real cause, which is that the source word was never heard.
+                //
+                // The prefix alone is returned so the slot command finds no argument
+                // and does nothing. The message below is the whole response.
+                Announce("did not catch that word - try one next to it");
+                return prefix;
             }
 
             // Rebuilt so the executor's slot matcher sees the command it already knows.
