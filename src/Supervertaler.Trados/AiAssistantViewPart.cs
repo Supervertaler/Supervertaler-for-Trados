@@ -6200,6 +6200,14 @@ namespace Supervertaler.Trados
         /// approved terminology. Surfaced only in the saved prompt's YAML description –
         /// never in the prompt body, which goes verbatim to the translating AI.
         /// </summary>
+        /// <summary>
+        /// #124: the termbase rows handed to the generating model, kept so the saved
+        /// prompt's glossary can be checked against them. Generation and saving are
+        /// separate user actions - the prompt arrives in the chat and is saved later,
+        /// or not at all - so the supplied rows have to survive in between.
+        /// </summary>
+        private List<TermEntry> _lastAutoPromptTerms;
+
         private bool _lastAutoPromptGlossaryDerived;
 
         /// <summary>
@@ -6507,6 +6515,7 @@ namespace Supervertaler.Trados
                 // body: that is shipped verbatim to the translating AI, where a caveat
                 // beside a LOCKED glossary would undermine it. See BuildTerminologySection.
                 _lastAutoPromptGlossaryDerived = termbaseTerms.Count == 0;
+                _lastAutoPromptTerms = termbaseTerms;   // #124
                 _lastAutoPromptDomain = ctx.DetectedDomain;
 
                 var metaPrompt = PromptGenerator.BuildMetaPrompt(ctx);
@@ -6889,6 +6898,23 @@ namespace Supervertaler.Trados
                         BridgeLog.Write("[AutoPrompt] Refused to save: " +
                             string.Join(" | ", check.Failures));
                         return;
+                    }
+
+                    // #124: the glossary is put back to the termbase it was built
+                    // from. Measured on a real 279-term run: one row dropped, one
+                    // invented, and two targets rewritten into variants - "to grind"
+                    // became "grinding / ground" - in a table the same prompt had
+                    // just declared MANDATORY and LOCKED, three paragraphs under its
+                    // own rule against exactly that. About 1% of rows, silently. The
+                    // instruction is already there in capitals; what was missing was
+                    // a check, and we supplied the rows, so we can put them back.
+                    var fix = GlossaryRepair.Apply(content, _lastAutoPromptTerms);
+                    content = fix.Prompt;
+                    if (fix.Changed || fix.TableNotFound)
+                    {
+                        BridgeLog.Write("[AutoPrompt] Glossary repair: " + fix.Summary());
+                        Core.DiagnosticLog.WriteAlways("Glossary", fix.Summary());
+                        AddNoticeMessage(fix.Summary());
                     }
                 }
 
@@ -13772,6 +13798,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 case "studio_list_project_templates": return "Listing project templates\u2026";
                 default: return "Querying Trados Studio\u2026";
             }
+        }
+
+        /// <summary>
+        /// An assistant bubble that is not an error - a notice the translator should
+        /// see in the conversation rather than only in a log. Same mechanism as
+        /// AddErrorMessage, named for what it is so the call sites read honestly.
+        /// </summary>
+        private void AddNoticeMessage(string text)
+        {
+            AddErrorMessage(text);
         }
 
         private void AddErrorMessage(string text)
