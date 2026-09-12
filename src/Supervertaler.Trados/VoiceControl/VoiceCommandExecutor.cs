@@ -100,17 +100,44 @@ namespace Supervertaler.Trados.VoiceControl
             foreach (var entry in _bySlotPrefix)
             {
                 var prefix = entry.Key;
-                if (spoken.Length <= prefix.Length + 1) continue;
-                if (!spoken.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                if (spoken[prefix.Length] != ' ') continue;
 
-                var tail = spoken.Substring(prefix.Length + 1).Trim();
+                // The prefix need not open the utterance. The recogniser prepends a
+                // stray word often enough to matter - "to select the" was heard twice
+                // in one session - and an exact command already tolerates that
+                // through the containment fallback below. Anything before the prefix
+                // is discarded; everything after it is the argument.
+                var at = IndexOfPhrase(spoken, prefix);
+                if (at < 0) continue;
+
+                var after = at + prefix.Length;
+                if (after >= spoken.Length || spoken[after] != ' ') continue;
+
+                var tail = spoken.Substring(after + 1).Trim();
                 if (tail.Length == 0) continue;
 
                 argument = tail;
                 return entry.Value;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Where a phrase starts in an utterance, on word boundaries, or -1. Bounded
+        /// so that a prefix "select" is not found inside a longer word.
+        /// </summary>
+        private static int IndexOfPhrase(string utterance, string phrase)
+        {
+            if (string.IsNullOrEmpty(phrase)) return -1;
+            for (int i = 0; ; )
+            {
+                var at = utterance.IndexOf(phrase, i, StringComparison.OrdinalIgnoreCase);
+                if (at < 0) return -1;
+                var startOk = at == 0 || utterance[at - 1] == ' ';
+                var end = at + phrase.Length;
+                var endOk = end >= utterance.Length || utterance[end] == ' ';
+                if (startOk && endOk) return at;
+                i = at + 1;
+            }
         }
 
         /// <summary>Rebuilds the phrase lookup from the (enabled) command list.</summary>

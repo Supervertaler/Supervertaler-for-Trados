@@ -1870,6 +1870,30 @@ namespace Supervertaler.Trados
                 var segNo = pair.Properties.Id.Id;
                 var ok = doc.FindTextInSegment(segNo, found.Text, true, false);
 
+                // Studio selects by TEXT, not by offset, and its search is a plain
+                // substring one that takes the first hit. So "the" lands inside
+                // "further" however carefully we resolved it to the standalone word
+                // further along. There is no offset-based selection to fall back on,
+                // so the only honest thing is to notice and say so: a selection in
+                // the wrong place is worse than none, because "delete that" would
+                // act on it.
+                if (ok)
+                {
+                    var landed = -1;
+                    try { landed = (int)(doc.Selection?.Target?.From?.CursorPosition ?? -1); } catch { }
+                    if (landed >= 0 && landed != found.Start)
+                    {
+                        try { doc.Selection.Target.Collapse(false); } catch { }
+                        Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                            "heard \"" + spoken + "\" -> wanted \"" + found.Text + "\" at " + found.Start
+                            + " but Studio selected at " + landed
+                            + " (its search is substring-based and takes the first hit) - refused");
+                        VoiceControl.VoiceControlManager.Instance?.Announce(
+                            "\"" + found.Text + "\" is inside another word - say more words");
+                        return;
+                    }
+                }
+
                 Core.DiagnosticLog.WriteAlways("VoiceSelect",
                     "heard \"" + spoken + "\" -> selecting \"" + found.Text + "\" at " + found.Start
                     + (found.Exact ? "" : " (words were dropped; span widened)")

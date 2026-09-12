@@ -173,15 +173,16 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         public void Announce(string text)
         {
-            try { FlashCommand(text); } catch { }
+            // Longer than a command echo. This is the only sign anything happened.
+            try { FlashCommand(text, 5000); } catch { }
         }
 
-        private void FlashCommand(string phrase)
+        private void FlashCommand(string phrase, int milliseconds = 2000)
         {
             var host = _hostControl;
             if (host != null && !host.IsDisposed)
             {
-                host.FlashVoiceCommand(phrase);
+                host.FlashVoiceCommand(phrase, milliseconds);
                 return;
             }
             var window = _statusWindow;
@@ -191,6 +192,18 @@ namespace Supervertaler.Trados.VoiceControl
 
         private void OnRecognized(string text)
         {
+            // #125: every utterance the recogniser returns, matched or not. An
+            // attempt that fires no command leaves no other trace, and "nothing
+            // happened" covers two very different faults: the words were not heard,
+            // or they were heard and no command wanted them. Without this the two
+            // are indistinguishable from the outside.
+            try
+            {
+                Core.DiagnosticLog.WriteAlways("VoiceHeard",
+                    string.IsNullOrWhiteSpace(text) ? "(nothing)" : "\"" + text + "\"");
+            }
+            catch { }
+
             // Engine thread → UI thread
             var marshal = MarshalControl();
             if (marshal == null) return;

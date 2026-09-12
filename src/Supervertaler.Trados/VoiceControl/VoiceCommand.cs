@@ -117,9 +117,10 @@ namespace Supervertaler.Trados.VoiceControl
         /// older generation get the new commands merged in on load, so users
         /// with customised command sets still receive new defaults.
         /// History: 1 = initial set (20.126), 2 = match 1–9 / escape /
-        /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128).
+        /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128),
+        /// 4 = undo (20.191).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 3;
+        internal const int CurrentDefaultsVersion = 4;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -135,6 +136,9 @@ namespace Supervertaler.Trados.VoiceControl
             return new List<VoiceCommand>
             {
                 // Segment flow
+                // "scratch that" is Dragon's, and decades of dictation users' fingers
+                // and mouths are trained on it. "undo that" for everyone else.
+                new VoiceCommand { Phrase = "undo that", Aliases = new List<string> { "scratch that", "undo" }, ActionType = "keystroke", Action = "ctrl+z", Description = "Undo the last change (Ctrl+Z)", Category = "editing" },
                 new VoiceCommand { Phrase = "confirm", Aliases = new List<string> { "confirm segment" }, ActionType = "keystroke", Action = "ctrl+enter", Description = "Confirm segment and move to next unconfirmed", Category = "editing" },
                 new VoiceCommand { Phrase = "next segment", Aliases = new List<string> { "go down" }, ActionType = "internal", Action = "navigate_next", Description = "Move to the next segment (without confirming)", Category = "navigation" },
                 new VoiceCommand { Phrase = "previous segment", Aliases = new List<string> { "go up" }, ActionType = "internal", Action = "navigate_previous", Description = "Move to the previous segment", Category = "navigation" },

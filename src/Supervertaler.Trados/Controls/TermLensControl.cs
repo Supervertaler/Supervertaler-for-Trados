@@ -405,12 +405,18 @@ namespace Supervertaler.Trados.Controls
         /// Flashes a heard voice command in the status label for two seconds,
         /// then restores whatever the label showed before. Thread-safe.
         /// </summary>
-        public void FlashVoiceCommand(string phrase)
+        /// <param name="milliseconds">
+        /// How long it stays up. Two seconds is right for echoing a command that just
+        /// ran - the effect is visible in the document anyway. It is not enough for a
+        /// message that is the ONLY thing that happened, such as a selection being
+        /// refused: that has to survive the moment the translator looks up.
+        /// </param>
+        public void FlashVoiceCommand(string phrase, int milliseconds = 2000)
         {
             if (_statusLabel == null) return;
             if (_statusLabel.InvokeRequired)
             {
-                try { _statusLabel.BeginInvoke(new Action<string>(FlashVoiceCommand), phrase); } catch { }
+                try { _statusLabel.BeginInvoke(new Action<string, int>(FlashVoiceCommand), phrase, milliseconds); } catch { }
                 return;
             }
 
@@ -428,6 +434,7 @@ namespace Supervertaler.Trados.Controls
                 _statusBeforeVoiceFlash = _statusLabel.Text; // don't capture a previous flash
             _statusLabel.Text = "🎤 “" + phrase + "”";
             _voiceFlashTimer.Stop();
+            _voiceFlashTimer.Interval = Math.Max(500, milliseconds);
             _voiceFlashTimer.Start();
         }
 
