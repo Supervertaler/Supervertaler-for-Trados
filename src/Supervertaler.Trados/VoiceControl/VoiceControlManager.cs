@@ -126,6 +126,9 @@ namespace Supervertaler.Trados.VoiceControl
             // but the way out, and the way out is a voice command - so a gate that
             // survived a stop would make the next session look completely deaf.
             DictationMode.Reset();
+            // Likewise the remembered selection: a stale offset would make the first
+            // "select the" of the next session land on the second occurrence.
+            try { TermLensEditorViewPart.VoiceForgetLastSelection(); } catch { }
             try { _engine?.Dispose(); } catch { }
             _engine = null;
 

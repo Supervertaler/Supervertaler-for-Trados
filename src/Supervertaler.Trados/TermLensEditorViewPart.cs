@@ -1650,6 +1650,7 @@ namespace Supervertaler.Trados
 
             UpdateFromActiveSegment();
             PushVoiceSegmentWords();   // #125
+            VoiceForgetLastSelection();
         }
 
         /// <summary>
@@ -1847,6 +1848,25 @@ namespace Supervertaler.Trados
         /// for, because FindTextInSegment matches text values.</para>
         /// </summary>
         /// <summary>
+        /// #125: the last phrase selected, and where. Repeating a phrase steps to the
+        /// next occurrence of it, so this is what "again" means.
+        ///
+        /// <para>Cleared whenever the active segment changes or voice stops. Without
+        /// that, a stale offset from a previous segment would make the FIRST "select
+        /// the" in a new one land on the second occurrence.</para>
+        /// </summary>
+        private static string _lastSelectPhrase;
+        private static string _lastSelectSegment;
+        private static int _lastSelectStart = -1;
+
+        internal static void VoiceForgetLastSelection()
+        {
+            _lastSelectPhrase = null;
+            _lastSelectSegment = null;
+            _lastSelectStart = -1;
+        }
+
+        /// <summary>
         /// Where the target selection currently starts, or -1 when that cannot be
         /// read. Plain-text offset: inline tags cost zero characters, measured.
         /// </summary>
@@ -1915,6 +1935,35 @@ namespace Supervertaler.Trados
 
                 var segNo = pair.Properties.Id.Id;
 
+                // #125: saying the same phrase again steps to the next occurrence.
+                // A phrase occurring more than once used to select the first and warn,
+                // leaving the translator to name more words - which is fine when there
+                // are more words to name and useless when the two occurrences read
+                // identically. Repeating is the cheapest possible way to say "not that
+                // one, the next one", and it needs no new command.
+                var spots = VoiceControl.PhraseMatcher.Occurrences(plain, found.Text);
+                var index = spots.IndexOf(found.Start);
+                if (spots.Count > 1 && index >= 0
+                    && string.Equals(spoken, _lastSelectPhrase, StringComparison.OrdinalIgnoreCase)
+                    && segNo == _lastSelectSegment)
+                {
+                    // Wraps, so a repeat never dead-ends on the last occurrence.
+                    var next = spots.IndexOf(_lastSelectStart);
+                    index = next < 0 ? 0 : (next + 1) % spots.Count;
+                    found.Start = spots[index];
+                }
+                else if (index < 0)
+                {
+                    index = 0;
+                }
+
+                // Remembered even when the selection below fails, so that a repeat
+                // after a refusal still advances rather than retrying the occurrence
+                // that just refused.
+                _lastSelectPhrase = spoken;
+                _lastSelectSegment = segNo;
+                _lastSelectStart = found.Start;
+
                 // Studio selects by TEXT, not by offset, and its search is a plain
                 // substring one: "the" lands inside "further" however carefully the
                 // matcher resolved it to the standalone word further along. There is
@@ -1977,20 +2026,19 @@ namespace Supervertaler.Trados
                     + " (landed " + landed
                     + (padded > 0 ? ", via +" + padded + " chars of padding" : "") + ")");
 
-                // #125: an ambiguous phrase takes the FIRST occurrence, because
-                // FindTextInSegment has no way to reach a later one and the offset
-                // route needs Studio-internal types. Rather than silently picking,
-                // say so: every word of the segment is already in the grammar, so
-                // the translator can name it more precisely in one more utterance.
+                // An ambiguous phrase says WHICH occurrence it took, not just that
+                // there were several. "2 of 4" tells the translator both that the
+                // repeat worked and where they are in the cycle; "4 matches" told them
+                // neither, and gave no hint that saying it again would move.
                 if (!ok)
                 {
                     VoiceControl.VoiceControlManager.Instance?.Announce(
                         "could not select \"" + found.Text + "\"");
                 }
-                else if (found.Occurrences > 1)
+                else if (spots.Count > 1)
                 {
                     VoiceControl.VoiceControlManager.Instance?.Announce(
-                        found.Occurrences + " matches - say more words");
+                        (index + 1) + " of " + spots.Count + " - say again for the next");
                 }
             }
             catch (Exception ex)

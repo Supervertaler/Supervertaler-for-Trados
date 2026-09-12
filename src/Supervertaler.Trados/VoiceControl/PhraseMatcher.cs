@@ -147,15 +147,26 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         public static int CountOccurrences(string haystack, string needle)
         {
-            if (string.IsNullOrEmpty(haystack) || string.IsNullOrEmpty(needle)) return 0;
-            int n = 0, i = 0;
+            return Occurrences(haystack, needle).Count;
+        }
+
+        /// <summary>
+        /// Where a piece of text occurs as whole words, in order. Saying the same
+        /// phrase twice steps to the next of these, so the translator can reach an
+        /// occurrence other than the first without naming more words.
+        /// </summary>
+        public static List<int> Occurrences(string haystack, string needle)
+        {
+            var list = new List<int>();
+            if (string.IsNullOrEmpty(haystack) || string.IsNullOrEmpty(needle)) return list;
+            int i = 0;
             while (true)
             {
                 var at = IndexOfWord(haystack, needle, i);
                 if (at < 0) break;
-                n++; i = at + 1;
+                list.Add(at); i = at + 1;
             }
-            return n;
+            return list;
         }
 
         /// <summary>
