@@ -1496,6 +1496,20 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
+        /// #127: the source language as a culture name ("nl-NL"), which is what picks
+        /// a Vosk model. The display-name version above is for showing to people.
+        /// </summary>
+        internal static string VoiceSourceCultureName()
+        {
+            try
+            {
+                var lang = _currentInstance?._activeDocument?.ActiveFile?.SourceFile?.Language;
+                return lang?.CultureInfo?.Name;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
         /// Returns the active document's target-language display name (e.g.
         /// "Chinese (Simplified)"), or null when no document is open. Used by the
         /// Add / Quick-Add term actions to decide whether a target selection may
@@ -1677,6 +1691,20 @@ namespace Supervertaler.Trados
             var doc = inst?._activeDocument;
             var pair = doc?.ActiveSegmentPair;
             if (doc == null || pair == null) return;
+
+            // #127: never delete from the source. Source editing is off by default but
+            // can be switched on, and deleting source text damages the segment, its TM
+            // match and the document's alignment - for what sounded like an ordinary
+            // editing command. Everything worth doing to a source selection is
+            // read-only, so refusing costs nothing.
+            if (_lastSelectionWasSource)
+            {
+                VoiceControl.VoiceControlManager.Instance?.Announce(
+                    "that is source text - not deleting it");
+                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                    "delete refused: the current selection was made in the source");
+                return;
+            }
 
             try
             {
@@ -1864,6 +1892,9 @@ namespace Supervertaler.Trados
             _lastSelectPhrase = null;
             _lastSelectSegment = null;
             _lastSelectStart = -1;
+            // #127: the write guards must not keep refusing on the strength of a
+            // source selection made in a segment the translator has already left.
+            _lastSelectionWasSource = false;
         }
 
         /// <summary>
@@ -1909,6 +1940,35 @@ namespace Supervertaler.Trados
 
         internal static void VoiceSelectPhrase(string heard)
         {
+            VoiceSelectCore(heard, inSource: false);
+        }
+
+        /// <summary>
+        /// #127: the same, in the SOURCE segment. Reached by "select source …", whose
+        /// phrase has already been re-recognised against the source-language model -
+        /// the command model cannot pronounce those words at all.
+        /// </summary>
+        internal static void VoiceSelectSourcePhrase(string heard)
+        {
+            VoiceSelectCore(heard, inSource: true);
+        }
+
+        /// <summary>
+        /// #127: which side the last voice selection was made on.
+        ///
+        /// <para>Everything worth doing to a source selection is read-only - look a
+        /// term up, run a concordance, add the pair to a termbase. Nothing writes. So
+        /// "delete that" and the dictation hand-off refuse while a source selection is
+        /// current: source editing is off by default but CAN be switched on, and
+        /// deleting source text damages the segment, its TM match and the document's
+        /// alignment, for what felt like an ordinary editing command.</para>
+        /// </summary>
+        private static bool _lastSelectionWasSource;
+
+        internal static bool VoiceLastSelectionWasSource { get { return _lastSelectionWasSource; } }
+
+        private static void VoiceSelectCore(string heard, bool inSource)
+        {
             try
             {
                 var inst = _currentInstance;
@@ -1919,21 +1979,28 @@ namespace Supervertaler.Trados
                 var spoken = (heard ?? "").Trim();
                 if (spoken.Length == 0) return;
 
-                var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
+                var side = inSource ? "source" : "target";
+                var plain = SegmentTagHandler.StripTagPlaceholders(
+                    (inSource ? pair.Source?.ToString() : pair.Target?.ToString()) ?? "");
                 var found = VoiceControl.PhraseMatcher.Find(plain, spoken);
                 if (found == null)
                 {
                     Core.DiagnosticLog.WriteAlways("VoiceSelect",
-                        "no match for \"" + spoken + "\" in: " + plain);
+                        "no match for \"" + spoken + "\" in the " + side + ": " + plain);
                     // Say so. Silence here is indistinguishable from the voice
                     // control having died, and the translator's next move is to
                     // repeat themselves rather than to say something else.
                     VoiceControl.VoiceControlManager.Instance?.Announce(
-                        "no \"" + spoken + "\" in this segment");
+                        "no \"" + spoken + "\" in the " + side);
                     return;
                 }
 
                 var segNo = pair.Properties.Id.Id;
+
+                // The occurrence cycle is per segment AND per side: "select the" in
+                // the target and "select source the" name different text, and must not
+                // step each other along.
+                var cycleKey = segNo + (inSource ? ":src" : "");
 
                 // #125: saying the same phrase again steps to the next occurrence.
                 // A phrase occurring more than once used to select the first and warn,
@@ -1945,7 +2012,7 @@ namespace Supervertaler.Trados
                 var index = spots.IndexOf(found.Start);
                 if (spots.Count > 1 && index >= 0
                     && string.Equals(spoken, _lastSelectPhrase, StringComparison.OrdinalIgnoreCase)
-                    && segNo == _lastSelectSegment)
+                    && cycleKey == _lastSelectSegment)
                 {
                     // Wraps, so a repeat never dead-ends on the last occurrence.
                     var next = spots.IndexOf(_lastSelectStart);
@@ -1961,7 +2028,7 @@ namespace Supervertaler.Trados
                 // after a refusal still advances rather than retrying the occurrence
                 // that just refused.
                 _lastSelectPhrase = spoken;
-                _lastSelectSegment = segNo;
+                _lastSelectSegment = cycleKey;
                 _lastSelectStart = found.Start;
 
                 // Studio selects by TEXT, not by offset, and its search is a plain
@@ -1980,7 +2047,7 @@ namespace Supervertaler.Trados
                 // characters are then shrunk off the selection with Shift+Left, which
                 // is why only a SUFFIX will do - a prefix would need the anchor moved,
                 // and only the moving end of a selection can be shrunk.
-                var ok = doc.FindTextInSegment(segNo, found.Text, true, false);
+                var ok = doc.FindTextInSegment(segNo, found.Text, true, inSource);
                 var landed = ok ? SelectionStart(doc) : -1;
                 var padded = 0;
 
@@ -1990,7 +2057,7 @@ namespace Supervertaler.Trados
                     if (pad != null)
                     {
                         padded = pad.Length - found.Text.Length;
-                        ok = doc.FindTextInSegment(segNo, pad, true, false);
+                        ok = doc.FindTextInSegment(segNo, pad, true, inSource);
                         landed = ok ? SelectionStart(doc) : -1;
 
                         // Shrink the padding back off. Only after the offset is
@@ -2026,6 +2093,10 @@ namespace Supervertaler.Trados
                     + " (landed " + landed
                     + (padded > 0 ? ", via +" + padded + " chars of padding" : "") + ")");
 
+                // Recorded only on success: a refused selection leaves whatever was
+                // selected before, and the write guards must judge THAT, not this.
+                if (ok) _lastSelectionWasSource = inSource;
+
                 // An ambiguous phrase says WHICH occurrence it took, not just that
                 // there were several. "2 of 4" tells the translator both that the
                 // repeat worked and where they are in the cycle; "4 matches" told them
@@ -2057,6 +2128,28 @@ namespace Supervertaler.Trados
             try { _currentInstance?.PushVoiceSegmentWords(); } catch { }
         }
 
+        /// <summary>
+        /// The words of a segment that are worth putting in a recogniser's grammar.
+        /// Vosk's vocabulary is words, not punctuation or figures: a token with a digit
+        /// in it is a reference numeral or a measurement, and nobody selects one by
+        /// saying it.
+        /// </summary>
+        private static List<string> VoiceWordsOf(string segmentText)
+        {
+            return SegmentTagHandler.StripTagPlaceholders(segmentText ?? "")
+                // Hyphens and slashes SPLIT. A compound is spoken as its parts -
+                // "night-vision device" is said "night vision device" - and the
+                // recogniser has no way to return a hyphen. Before this, the
+                // all-letters test below rejected "night-vision" whole, so neither
+                // half reached the vocabulary and the phrase could not be heard at
+                // all, with no clue as to why.
+                .Split(new[] { ' ', '\t', '\r', '\n', ' ', '-', '‑', '–', '/' },
+                       StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => w.Trim('.', ',', ';', ':', '(', ')', '"', '\'', '!', '?'))
+                .Where(w => w.Length > 1 && w.All(char.IsLetter))
+                .ToList();
+        }
+
         private void PushVoiceSegmentWords()
         {
             try
@@ -2065,19 +2158,12 @@ namespace Supervertaler.Trados
                 if (mgr == null || !mgr.IsRunning) return;
 
                 var pair = _activeDocument?.ActiveSegmentPair;
-                var target = pair?.Target?.ToString() ?? "";
 
-                var words = SegmentTagHandler.StripTagPlaceholders(target)
-                    .Split(new[] { ' ', '\t', '\r', '\n', '\u00A0' },
-                           StringSplitOptions.RemoveEmptyEntries)
-                    .Select(w => w.Trim('.', ',', ';', ':', '(', ')', '"', '\'', '!', '?'))
-                    // Vosk's vocabulary is words, not punctuation or figures. A token
-                    // with a digit in it is a reference numeral or a measurement and
-                    // is not something anyone selects by saying it.
-                    .Where(w => w.Length > 1 && w.All(char.IsLetter))
-                    .ToList();
-
-                mgr.SetSegmentWords(words);
+                mgr.SetSegmentWords(VoiceWordsOf(pair?.Target?.ToString()));
+                // #127: the source's words go to a different grammar, used only by the
+                // source-language model. They must NOT join the command grammar - the
+                // command model cannot pronounce them, and Vosk drops them silently.
+                mgr.SetSourceWords(VoiceWordsOf(pair?.Source?.ToString()));
             }
             catch { /* never break segment navigation over a voice feature */ }
         }

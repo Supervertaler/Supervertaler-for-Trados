@@ -315,7 +315,12 @@ namespace Supervertaler.Trados.VoiceControl
                 while (i < text.Length && !char.IsLetterOrDigit(text[i])) i++;
                 if (i >= text.Length) break;
                 int start = i;
-                while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '\'' || text[i] == '-')) i++;
+                // A hyphen ENDS a word; an apostrophe does not. The recogniser cannot
+                // return a hyphen, and a compound is spoken as its parts - "night
+                // vision device" for "night-vision device" - so treating the compound
+                // as one token meant the spoken words could never line up with it.
+                // "don't" stays whole, because that IS how it is said.
+                while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '\'')) i++;
                 list.Add(new Token { Text = text.Substring(start, i - start), Start = start });
             }
             return list;
