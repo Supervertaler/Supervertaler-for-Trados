@@ -1886,12 +1886,14 @@ namespace Supervertaler.Trados
         private static string _lastSelectPhrase;
         private static string _lastSelectSegment;
         private static int _lastSelectStart = -1;
+        private static string _lastSelectText;
 
         internal static void VoiceForgetLastSelection()
         {
             _lastSelectPhrase = null;
             _lastSelectSegment = null;
             _lastSelectStart = -1;
+            _lastSelectText = null;
             // #127: the write guards must not keep refusing on the strength of a
             // source selection made in a segment the translator has already left.
             _lastSelectionWasSource = false;
@@ -2060,11 +2062,25 @@ namespace Supervertaler.Trados
                 // are more words to name and useless when the two occurrences read
                 // identically. Repeating is the cheapest possible way to say "not that
                 // one, the next one", and it needs no new command.
+                var repeated = string.Equals(spoken, _lastSelectPhrase, StringComparison.OrdinalIgnoreCase)
+                               && cycleKey == _lastSelectSegment;
+
+                // #127: repeating when there is no other occurrence widens to the
+                // whole hyphenated compound. "infrarood-emitters" splits on the
+                // hyphen, so "infrarood" selects that half - and the other half,
+                // "emitters", is an English loan the Dutch model does not know, so no
+                // phrasing reaches the compound. Saying it again is the way in.
+                var spots0 = VoiceControl.PhraseMatcher.Occurrences(plain, found.Text);
+                if (repeated && spots0.Count <= 1)
+                {
+                    var wider = VoiceControl.PhraseMatcher.Enclosing(plain, found.Start, found.Text.Length);
+                    if (wider != null && !string.Equals(wider.Text, _lastSelectText, StringComparison.Ordinal))
+                        found = wider;
+                }
+
                 var spots = VoiceControl.PhraseMatcher.Occurrences(plain, found.Text);
                 var index = spots.IndexOf(found.Start);
-                if (spots.Count > 1 && index >= 0
-                    && string.Equals(spoken, _lastSelectPhrase, StringComparison.OrdinalIgnoreCase)
-                    && cycleKey == _lastSelectSegment)
+                if (spots.Count > 1 && index >= 0 && repeated)
                 {
                     // Wraps, so a repeat never dead-ends on the last occurrence.
                     var next = spots.IndexOf(_lastSelectStart);
@@ -2082,6 +2098,7 @@ namespace Supervertaler.Trados
                 _lastSelectPhrase = spoken;
                 _lastSelectSegment = cycleKey;
                 _lastSelectStart = found.Start;
+                _lastSelectText = found.Text;
 
                 // Studio selects by TEXT, not by offset, and its search is a plain
                 // substring one: "the" lands inside "further" however carefully the

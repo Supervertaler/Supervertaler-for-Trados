@@ -289,6 +289,51 @@ namespace Supervertaler.Trados.VoiceControl
         }
 
         /// <summary>
+        /// The whole hyphenated compound containing a span, or null when the span is
+        /// not part of one.
+        ///
+        /// <para>Hyphens split, so "infrarood-emitters" is two tokens and saying
+        /// "infrarood" selects just that half - correctly, because it IS a word there.
+        /// But the other half can be unsayable: "emitters" is an English loan the Dutch
+        /// model does not know, so no phrasing reaches the whole compound. Repeating
+        /// the phrase widens to it, which is the same "say it again" the occurrence
+        /// cycle already uses.</para>
+        /// </summary>
+        public static Match Enclosing(string plainTarget, int start, int length)
+        {
+            if (string.IsNullOrEmpty(plainTarget)) return null;
+            if (start < 0 || length <= 0 || start + length > plainTarget.Length) return null;
+
+            var from = start;
+            var to = start + length;
+
+            // A hyphen only JOINS when there is a letter or digit on both sides of it.
+            // A dash used as punctuation has spaces around it and must not pull the
+            // selection across a clause.
+            while (from >= 2 && plainTarget[from - 1] == '-' && char.IsLetterOrDigit(plainTarget[from - 2]))
+            {
+                from -= 2;
+                while (from > 0 && char.IsLetterOrDigit(plainTarget[from - 1])) from--;
+            }
+            while (to + 1 < plainTarget.Length && plainTarget[to] == '-' && char.IsLetterOrDigit(plainTarget[to + 1]))
+            {
+                to += 2;
+                while (to < plainTarget.Length && char.IsLetterOrDigit(plainTarget[to])) to++;
+            }
+
+            if (from == start && to == start + length) return null;
+
+            var text = plainTarget.Substring(from, to - from);
+            return new Match
+            {
+                Text = text,
+                Start = from,
+                Exact = false,
+                Occurrences = CountOccurrences(plainTarget, text)
+            };
+        }
+
+        /// <summary>
         /// How many times a piece of text occurs as whole words. Counting substring
         /// hits would report "the" three times in a sentence holding one "the" and
         /// two words that merely contain it, and the ambiguity warning would be
