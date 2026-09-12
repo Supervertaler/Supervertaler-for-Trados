@@ -184,22 +184,31 @@ namespace Supervertaler.Trados.VoiceControl
             // dictation tool. The grammar is closed, so only our own phrases can be
             // heard - but a replacement containing "confirm" would fire one into the
             // document mid sentence. Nothing runs except the way out.
-            if (DictationMode.Active && !isDictateToggle)
+            // "stop listening" must always work; everything else only when
+            // Studio is the active window.
+            var isStop = string.Equals(action, "stop_listening", StringComparison.OrdinalIgnoreCase);
+
+            if (DictationMode.Active && !isDictateToggle && !isStop)
             {
                 CommandSuppressed?.Invoke(cmd.Phrase);
                 return;
             }
-
-            // "stop listening" must always work; everything else only when
-            // Studio is the active window.
-            var isStop = string.Equals(action, "stop_listening", StringComparison.OrdinalIgnoreCase);
             if (!isStop && !IsStudioForeground()) return;
 
             try
             {
                 if (isDictateToggle)
                 {
-                    DictationMode.Toggle(actionArg);
+                    // "dictate_toggle:<trigger>:<marker>" - the marker is optional and
+                    // is whatever the dictation tool writes for the spoken stop phrase.
+                    string trigger = actionArg, marker = null;
+                    var second = (actionArg ?? "").IndexOf(':');
+                    if (second > 0)
+                    {
+                        marker = actionArg.Substring(second + 1).Trim();
+                        trigger = actionArg.Substring(0, second).Trim();
+                    }
+                    DictationMode.Toggle(trigger, marker);
                 }
                 else if (string.Equals(cmd.ActionType, "internal", StringComparison.OrdinalIgnoreCase))
                 {

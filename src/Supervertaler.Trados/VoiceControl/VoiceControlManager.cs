@@ -165,6 +165,17 @@ namespace Supervertaler.Trados.VoiceControl
                 window.SetStatus(text, listening: state == 2);
         }
 
+        /// <summary>
+        /// #125: says something on the voice strip. For telling the translator what
+        /// a command did when the document itself does not show it - "3 matches, say
+        /// more words" after an ambiguous selection, which otherwise just looks like
+        /// the wrong word being picked.
+        /// </summary>
+        public void Announce(string text)
+        {
+            try { FlashCommand(text); } catch { }
+        }
+
         private void FlashCommand(string phrase)
         {
             var host = _hostControl;

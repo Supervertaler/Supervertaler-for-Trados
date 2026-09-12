@@ -24,6 +24,12 @@ namespace Supervertaler.Trados.VoiceControl
     /// out. A macro tool driving the same hotkey has no idea what state the
     /// dictation tool is in.</para>
     ///
+    /// <para>"Stop listening" is exempt from that gate as well. If the recogniser
+    /// ever mishears the way out, the gate would otherwise leave voice with no
+    /// spoken exit at all - the keyboard toggle still works, but a mode you can
+    /// only leave by reaching for the keyboard is a poor one in a feature whose
+    /// point is not having to.</para>
+    ///
     /// <para><b>The trigger is per-installation.</b> Dictation tools differ, and one
     /// tool offers several. It is therefore carried in the command itself -
     /// <c>dictate_toggle:ctrl+win+space</c> - editable in the same grid as every
@@ -61,8 +67,22 @@ namespace Supervertaler.Trados.VoiceControl
         /// listening for. <paramref name="trigger"/> is the part of the action id
         /// after the colon: a chord like "ctrl+alt+w", or "middleclick".
         /// </summary>
-        public static void Toggle(string trigger)
+        /// <summary>
+        /// #125: the fixed string the dictation tool is configured to write in place
+        /// of the spoken stop phrase, or null when it writes the words themselves.
+        ///
+        /// <para>The tool's own dictionary will not map a phrase to nothing, but it
+        /// will map it to a marker - and that is better than nothing would have been.
+        /// Spoken, the stop phrase arrives formatted: sentence-cased, with a full
+        /// stop, as ". Dictate". A marker collapses every such variant into one fixed
+        /// string, so removing it is a search for a known literal rather than a guess
+        /// about punctuation.</para>
+        /// </summary>
+        public static string StopMarker { get; private set; }
+
+        public static void Toggle(string trigger, string stopMarker = null)
         {
+            if (!string.IsNullOrWhiteSpace(stopMarker)) StopMarker = stopMarker.Trim();
             var going = !Active;
 
             // Flip BEFORE sending, so the recogniser is already gated when the tool
@@ -74,6 +94,14 @@ namespace Supervertaler.Trados.VoiceControl
             DiagnosticLog.WriteAlways(LogCategory,
                 (going ? "ON" : "OFF") + " via \"" + (trigger ?? "(none)") + "\""
                 + (sent ? "" : " - TRIGGER NOT SENT, the dictation tool was not told"));
+
+            // Coming out of dictation, the marker has not been pasted yet - the tool
+            // transcribes and pastes after it stops. So the removal waits for the
+            // text to arrive rather than guessing a delay: a fixed sleep would
+            // sometimes fire before the paste and do nothing, and sometimes after a
+            // slow paste and still do nothing.
+            if (!going && !string.IsNullOrWhiteSpace(StopMarker))
+                TermLensEditorViewPart.VoiceAwaitAndRemoveMarker(StopMarker);
         }
 
         /// <summary>

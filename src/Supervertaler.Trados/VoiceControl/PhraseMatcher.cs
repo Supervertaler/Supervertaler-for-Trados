@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -44,6 +44,13 @@ namespace Supervertaler.Trados.VoiceControl
             public int Start;
             /// <summary>True when the heard words matched with nothing skipped.</summary>
             public bool Exact;
+            /// <summary>
+            /// How many times this text occurs in the target. More than one means the
+            /// translator named something ambiguous, and FindTextInSegment will take
+            /// the first - there is no supported way to reach a later one, so the
+            /// honest response is to say so and let them speak more words.
+            /// </summary>
+            public int Occurrences = 1;
         }
 
         /// <summary>
@@ -63,7 +70,16 @@ namespace Supervertaler.Trados.VoiceControl
             // 1. Literal. What happens when nothing was dropped.
             var at = plainTarget.IndexOf(phrase, StringComparison.OrdinalIgnoreCase);
             if (at >= 0)
-                return new Match { Text = plainTarget.Substring(at, phrase.Length), Start = at, Exact = true };
+            {
+                var text = plainTarget.Substring(at, phrase.Length);
+                return new Match
+                {
+                    Text = text,
+                    Start = at,
+                    Exact = true,
+                    Occurrences = CountOccurrences(plainTarget, text)
+                };
+            }
 
             // 2. Ordered subsequence, for the words the recogniser swallowed.
             var targetWords = Tokenise(plainTarget);
@@ -96,16 +112,32 @@ namespace Supervertaler.Trados.VoiceControl
                 {
                     var from = targetWords[start].Start;
                     var to = targetWords[last].Start + targetWords[last].Text.Length;
+                    var span = plainTarget.Substring(from, to - from);
                     return new Match
                     {
-                        Text = plainTarget.Substring(from, to - from),
+                        Text = span,
                         Start = from,
-                        Exact = false
+                        Exact = false,
+                        Occurrences = CountOccurrences(plainTarget, span)
                     };
                 }
             }
 
             return null;
+        }
+
+        /// <summary>How many times a piece of text occurs, case-insensitively.</summary>
+        public static int CountOccurrences(string haystack, string needle)
+        {
+            if (string.IsNullOrEmpty(haystack) || string.IsNullOrEmpty(needle)) return 0;
+            int n = 0, i = 0;
+            while (true)
+            {
+                var at = haystack.IndexOf(needle, i, StringComparison.OrdinalIgnoreCase);
+                if (at < 0) break;
+                n++; i = at + 1;
+            }
+            return n;
         }
 
         private static bool Same(string a, string b)

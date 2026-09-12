@@ -1653,6 +1653,108 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
+        /// #125: waits for the dictation tool's paste to land, then removes the stop
+        /// marker it carried.
+        ///
+        /// <para>Polls rather than sleeps. The tool transcribes and pastes AFTER it
+        /// stops listening, and how long that takes depends on how much was said and
+        /// on the network - a fixed delay would fire early and do nothing, or late
+        /// and still do nothing. Polling stops the moment the marker appears, and
+        /// gives up quietly after a few seconds: a marker left in the text is
+        /// visible and can be removed by hand, so the failure is obvious rather than
+        /// silent.</para>
+        ///
+        /// <para>Whitespace before the marker goes with it, so "words ZZEND" does not
+        /// become "words ". Punctuation is left alone deliberately - a full stop
+        /// before the marker may well belong to the dictated sentence, and deleting
+        /// the translator's punctuation to tidy our own artefact is the wrong
+        /// trade.</para>
+        /// </summary>
+        internal static void VoiceAwaitAndRemoveMarker(string marker)
+        {
+            var inst = _currentInstance;
+            var ctrl = _control?.Value;
+            if (inst == null || ctrl == null || string.IsNullOrWhiteSpace(marker)) return;
+
+            Action attempt = () =>
+            {
+                var ticks = 0;
+                var timer = new System.Windows.Forms.Timer { Interval = 200 };
+                timer.Tick += (s2, e2) =>
+                {
+                    ticks++;
+                    bool done = false;
+                    try { done = inst.TryRemoveMarkerOnce(marker); } catch { }
+
+                    if (done || ticks >= 25)   // five seconds
+                    {
+                        timer.Stop();
+                        timer.Dispose();
+                        if (!done)
+                            Core.DiagnosticLog.WriteAlways("Dictation",
+                                "stop marker \"" + marker + "\" never appeared - nothing removed");
+                    }
+                };
+                timer.Start();
+            };
+
+            if (ctrl.InvokeRequired) ctrl.BeginInvoke(attempt); else attempt();
+        }
+
+        /// <summary>One look for the marker. True when it was found and removed.</summary>
+        private bool TryRemoveMarkerOnce(string marker)
+        {
+            var doc = _activeDocument;
+            var pair = doc?.ActiveSegmentPair;
+            if (doc == null || pair == null) return false;
+
+            var plain = SegmentTagHandler.StripTagPlaceholders(pair.Target?.ToString() ?? "");
+            var at = plain.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return false;
+
+            // Take the whitespace immediately before it as well.
+            var from = at;
+            while (from > 0 && char.IsWhiteSpace(plain[from - 1])) from--;
+
+            // And the sentence-final punctuation the dictation tool put there. It
+            // punctuates the end of an utterance, and the utterance ended at the stop
+            // phrase - so that full stop exists BECAUSE of our marker, not because
+            // the translator dictated one. Measured: "the birthday. ZZEND".
+            //
+            // Except at the very end of the segment, where a closing full stop is
+            // just as likely to be wanted. Mid-segment there is text after the
+            // marker, and a stop in the middle of a sentence is ours to clean up;
+            // with nothing after it, it may be the translator's and is left alone.
+            var after = at + marker.Length;
+            var midSentence = plain.Skip(after).Any(ch => !char.IsWhiteSpace(ch));
+            if (midSentence && from > 0 && ".,;:!?".IndexOf(plain[from - 1]) >= 0)
+            {
+                from--;
+                while (from > 0 && char.IsWhiteSpace(plain[from - 1])) from--;
+            }
+
+            var span = plain.Substring(from, (at - from) + marker.Length);
+
+            var segNo = pair.Properties.Id.Id;
+            if (!doc.FindTextInSegment(segNo, span, true, false))
+            {
+                Core.DiagnosticLog.WriteAlways("Dictation",
+                    "marker \"" + marker + "\" is in the text but FindTextInSegment would not select it");
+                return true;   // stop polling: looking again will not help
+            }
+
+            try { doc.Selection.Target.Replace("", "Voice: remove dictation marker"); }
+            catch (Exception ex)
+            {
+                Core.DiagnosticLog.WriteAlways("Dictation", "removing the marker threw: " + ex.Message);
+                return true;
+            }
+
+            Core.DiagnosticLog.WriteAlways("Dictation", "stop marker removed");
+            return true;
+        }
+
+        /// <summary>
         /// #125: hands the voice recogniser the words of this segment's TARGET, so a
         /// slot command can name them. Vosk runs in grammar mode and can only hear
         /// what is in its vocabulary, so the words have to be there before they can
@@ -1706,7 +1808,17 @@ namespace Supervertaler.Trados
                 Core.DiagnosticLog.WriteAlways("VoiceSelect",
                     "heard \"" + spoken + "\" -> selecting \"" + found.Text + "\" at " + found.Start
                     + (found.Exact ? "" : " (words were dropped; span widened)")
+                    + (found.Occurrences > 1 ? " [" + found.Occurrences + " occurrences]" : "")
                     + " in segment " + segNo + ": " + (ok ? "selected" : "FindTextInSegment said no"));
+
+                // #125: an ambiguous phrase takes the FIRST occurrence, because
+                // FindTextInSegment has no way to reach a later one and the offset
+                // route needs Studio-internal types. Rather than silently picking,
+                // say so: every word of the segment is already in the grammar, so
+                // the translator can name it more precisely in one more utterance.
+                if (ok && found.Occurrences > 1)
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        found.Occurrences + " matches - say more words");
             }
             catch (Exception ex)
             {
