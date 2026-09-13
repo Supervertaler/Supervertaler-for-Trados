@@ -7,6 +7,15 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.191 / 19.20.191] – Unreleased
+
+### Added
+- **`add_comment` can now put a Trados comment on a range of words inside the target, not only on the whole segment.** Give `on: "the words"` (and `occurrence` when they repeat) and the note lands exactly where it belongs – the same as the editor's Add Comment on a selection. The caller names the words rather than character positions, because an AI reasons in words and a position is wrong the moment anything else touches the segment; it is the convention `find_and_replace` already uses. A range that would cut across an inline tag is refused with a reason, as the editor refuses the same selection. Without `on` nothing changes. Issue #132.
+- **`get_comments` now says where each comment sits**: which side (`source`/`target`), whether it covers the whole segment or a range (`scope`), and for a range the exact words (`on`). Until now a comment on three words and a comment on the whole segment came back indistinguishable. Issue #132.
+
+### Fixed
+- **Adding, editing or deleting a comment through the MCP server no longer turns a Translated segment into a Draft.** Writing through Studio's edit path marks the segment as edited, which is right for a translation change and wrong for a review note; the segment's confirmation level is now put back afterwards, the way `update_segments` already does. Found on the first live check of the new range comments – and the first fix missed, because it restored only when the level read back as changed, which at that moment it never has. Issue #132.
+
 ## [18.20.190 / 19.20.190] – 2026-09-12
 
 ### Added

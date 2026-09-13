@@ -5047,29 +5047,38 @@ namespace Supervertaler.Trados
                 failure = WrapRangeInCommentMarker(sp.Target, on, occurrence, text, severity);
             });
 
-            // ProcessSegmentPair marks the segment as edited - Translated became Draft
-            // in the live test. Right for a translation change, wrong for a comment:
-            // a reviewer's note must not un-confirm the segment it is on. Put the
-            // level back, the way update_segments does after its own writes.
-            //
-            // Unconditionally. The first version restored only when the level read
-            // back as changed, and it never did at this point - the editor applies
-            // the Draft afterwards - so nothing was restored and the segment still
-            // went to Draft (measured, segment 1, 2026-09-13). update_segments sets
-            // the level without looking first, and that sticks.
-            if (failure == null && levelBefore.HasValue && pair.Properties != null)
-            {
-                try
-                {
-                    pair.Properties.ConfirmationLevel = levelBefore.Value;
-                    _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
-                }
-                catch (Exception ex)
-                {
-                    try { Core.DiagnosticLog.WriteAlways("Comments", "could not restore confirmation level: " + ex.Message); } catch { }
-                }
-            }
+            if (failure == null) RestoreConfirmationLevel(pair, levelBefore);
             return failure;
+        }
+
+        /// <summary>
+        /// Puts a segment's confirmation level back after a comment edit.
+        ///
+        /// <para>ProcessSegmentPair marks the segment as edited - Translated became
+        /// Draft in the live test. Right for a translation change, wrong for a
+        /// comment: a reviewer's note must not un-confirm the segment it is on.
+        /// Applies to adding, updating AND deleting - the delete path was found to
+        /// demote the segment the same way, on the very check that confirmed the add
+        /// path was fixed.</para>
+        ///
+        /// <para>Set unconditionally, the way update_segments does. A first version
+        /// restored only when the level read back as changed right after the edit,
+        /// and at that point it never has - the editor applies the Draft afterwards -
+        /// so nothing was restored (measured, segment 1, 2026-09-13).</para>
+        /// </summary>
+        private void RestoreConfirmationLevel(ISegmentPair pair,
+            Sdl.Core.Globalization.ConfirmationLevel? levelBefore)
+        {
+            if (!levelBefore.HasValue || pair?.Properties == null) return;
+            try
+            {
+                pair.Properties.ConfirmationLevel = levelBefore.Value;
+                _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.WriteAlways("Comments", "could not restore confirmation level: " + ex.Message); } catch { }
+            }
         }
 
         /// <summary>An IText run and where its text starts in the container's plain text.</summary>
@@ -5416,6 +5425,7 @@ namespace Supervertaler.Trados
 
                 string failure = null;
                 bool updated = false;
+                var levelBefore = pair.Properties?.ConfirmationLevel;
                 _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP",
                     (sp, cancel) =>
                     {
@@ -5430,6 +5440,7 @@ namespace Supervertaler.Trados
                         if (hasSeverity) comments[req.CommentIndex].Severity = newSeverity;
                         updated = true;
                     });
+                if (updated) RestoreConfirmationLevel(pair, levelBefore);   // #132
 
                 if (!updated)
                     return new BridgeResultResponse { Ok = false, Error = failure ?? "comment not updated" };
@@ -5487,6 +5498,7 @@ namespace Supervertaler.Trados
 
                 string failure = null;
                 int removed = 0;
+                var levelBefore = pair.Properties?.ConfirmationLevel;
                 _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP",
                     (sp, cancel) =>
                     {
@@ -5509,6 +5521,7 @@ namespace Supervertaler.Trados
                         removed = RemoveCommentObjects(sp.Source, target)
                                 + RemoveCommentObjects(sp.Target, target);
                     });
+                if (removed > 0) RestoreConfirmationLevel(pair, levelBefore);   // #132
 
                 if (removed == 0)
                     return new BridgeResultResponse { Ok = false, Error = failure ?? "comment not removed" };
