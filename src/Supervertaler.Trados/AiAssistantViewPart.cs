@@ -5040,10 +5040,30 @@ namespace Supervertaler.Trados
                                        Sdl.FileTypeSupport.Framework.NativeApi.Severity severity)
         {
             string failure = "the segment could not be edited";
+            var levelBefore = pair.Properties?.ConfirmationLevel;
+
             _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP", (sp, cancel) =>
             {
                 failure = WrapRangeInCommentMarker(sp.Target, on, occurrence, text, severity);
             });
+
+            // ProcessSegmentPair marks the segment as edited - Translated became Draft
+            // in the live test. Right for a translation change, wrong for a comment:
+            // a reviewer's note must not un-confirm the segment it is on. Put the
+            // level back, the way update_segments does after its own writes.
+            if (failure == null && levelBefore.HasValue && pair.Properties != null
+                && pair.Properties.ConfirmationLevel != levelBefore.Value)
+            {
+                try
+                {
+                    pair.Properties.ConfirmationLevel = levelBefore.Value;
+                    _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
+                }
+                catch (Exception ex)
+                {
+                    try { Core.DiagnosticLog.WriteAlways("Comments", "could not restore confirmation level: " + ex.Message); } catch { }
+                }
+            }
             return failure;
         }
 
