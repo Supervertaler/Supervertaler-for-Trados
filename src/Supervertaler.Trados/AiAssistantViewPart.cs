@@ -5051,8 +5051,13 @@ namespace Supervertaler.Trados
             // in the live test. Right for a translation change, wrong for a comment:
             // a reviewer's note must not un-confirm the segment it is on. Put the
             // level back, the way update_segments does after its own writes.
-            if (failure == null && levelBefore.HasValue && pair.Properties != null
-                && pair.Properties.ConfirmationLevel != levelBefore.Value)
+            //
+            // Unconditionally. The first version restored only when the level read
+            // back as changed, and it never did at this point - the editor applies
+            // the Draft afterwards - so nothing was restored and the segment still
+            // went to Draft (measured, segment 1, 2026-09-13). update_segments sets
+            // the level without looking first, and that sticks.
+            if (failure == null && levelBefore.HasValue && pair.Properties != null)
             {
                 try
                 {
