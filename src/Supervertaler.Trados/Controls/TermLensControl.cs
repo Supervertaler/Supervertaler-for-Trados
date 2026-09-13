@@ -280,7 +280,7 @@ namespace Supervertaler.Trados.Controls
             // fix as the other header buttons (see Core/ClickThrough).
             Core.ClickThrough.Attach(_btnVoice, () => VoiceControl.VoiceControlManager.Instance.Toggle());
             var voiceMenu = new ContextMenuStrip();
-            var advancedItem = new ToolStripMenuItem("Voice command settings…");
+            var advancedItem = new ToolStripMenuItem("SuperVoice settings…");
             advancedItem.Click += (s, e) => VoiceControl.VoiceControlManager.Instance.ShowAdvancedDialog();
             voiceMenu.Items.Add(advancedItem);
             _btnVoice.ContextMenuStrip = voiceMenu;

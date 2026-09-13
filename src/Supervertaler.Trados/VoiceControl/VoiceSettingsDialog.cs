@@ -8,7 +8,7 @@ using Supervertaler.Trados.Core;
 namespace Supervertaler.Trados.VoiceControl
 {
     /// <summary>
-    /// The "Voice command settings" dialog – deliberately the ONLY place
+    /// The "SuperVoice settings" dialog – deliberately the ONLY place
     /// where the voice system shows its depth. A grid of commands (enable/disable, edit
     /// phrases and aliases, change actions, add your own), plus restore-
     /// defaults. Command files are JSON-compatible with Supervertaler
@@ -21,7 +21,7 @@ namespace Supervertaler.Trados.VoiceControl
 
         public VoiceSettingsDialog()
         {
-            Text = "Voice command settings";
+            Text = "SuperVoice settings";
             Icon = IconHelper.AppIcon;
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(UiScale.Pixels(760), UiScale.Pixels(520));
@@ -84,7 +84,7 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 if (MessageBox.Show(
                         "Replace all commands with the built-in defaults?",
-                        "Voice commands", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                        "SuperVoice", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                 {
                     _commands = VoiceCommandSet.Defaults();
                     FillGrid();
@@ -154,7 +154,7 @@ namespace Supervertaler.Trados.VoiceControl
 
             if (result.Count == 0)
             {
-                MessageBox.Show("At least one command is required.", "Voice commands",
+                MessageBox.Show("At least one command is required.", "SuperVoice",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }

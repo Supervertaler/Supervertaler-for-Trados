@@ -54,7 +54,7 @@ namespace Supervertaler.Trados.VoiceControl
             // #125: a command heard and deliberately ignored is not the same as one
             // not heard. Say which, or dictation mode looks like a broken recogniser.
             _executor.CommandSuppressed += phrase => FlashCommand("(dictating) " + phrase);
-            DictationMode.Changed += on => SetStatus(on ? "Dictating - say the word again to stop" : "Listening…",
+            DictationMode.Changed += on => SetStatus(on ? "Dictating - say \"stop now\" to take over again" : "Listening…",
                                                      state: 2);
 
             // Preferred: the TermLens header hosts the indicator. Fallback:
@@ -105,7 +105,7 @@ namespace Supervertaler.Trados.VoiceControl
                             Stop();
                             MessageBox.Show(
                                 "Voice commands could not start:\n\n" + ex.Message,
-                                "Supervertaler – Voice commands",
+                                "Supervertaler – SuperVoice",
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         }));
                     }
