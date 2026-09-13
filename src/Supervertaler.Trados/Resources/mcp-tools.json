@@ -18,7 +18,7 @@
     {
       "name": "add_comment",
       "access": "write",
-      "description": "Add a Trados Studio comment to a segment (same as the editor's Add Comment command) – e.g. to flag a source issue for the client or leave a review note. Becomes part of the document's unsaved changes. Only add comments the user asked for or agreed to.",
+      "description": "Add a Trados Studio comment to a segment, or to a RANGE of words inside its target (same as the editor's Add Comment on a selection) - e.g. to flag a source issue for the client or leave a review note on the exact words it concerns. Give 'on' to attach it to those words; omit it for the whole segment. Becomes part of the document's unsaved changes. Only add comments the user asked for or agreed to.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -33,6 +33,16 @@
           "severity": {
             "description": "Severity: Low (informational, default), Medium (warning), or High (error).",
             "type": "string",
+            "default": null
+          },
+          "on": {
+            "description": "The exact words in the TARGET to attach the comment to, as they appear (case-sensitive). Omit to comment the whole segment. Must not cut across an inline tag pair.",
+            "type": "string",
+            "default": null
+          },
+          "occurrence": {
+            "description": "When 'on' occurs more than once in the target, which one (1 = first). Default 1.",
+            "type": "number",
             "default": null
           }
         },

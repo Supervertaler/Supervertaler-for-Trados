@@ -85,6 +85,11 @@
       <HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- #132: DocumentItemFactory / PropertiesFactory, to create a comment marker. -->
+    <Reference Include="Sdl.FileTypeSupport.Framework.Implementation">
+      <HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Framework.Implementation.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Sdl.FileTypeSupport.Framework.Core">
       <HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Framework.Core.dll</HintPath>
       <Private>false</Private>

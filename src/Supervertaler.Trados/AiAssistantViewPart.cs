@@ -5019,6 +5019,146 @@ namespace Supervertaler.Trados
             }
         }
 
+        /// <summary>
+        /// #132: attaches a comment to a range of words in the target - what the
+        /// editor does for Add Comment on a selection. Returns null on success, or
+        /// the reason it could not be done.
+        ///
+        /// <para>A Studio comment is a marker in the segment's markup wrapping the
+        /// commented content. So: find the words in the target's plain text, cut the
+        /// text runs at the range's two ends, lift the items between into a new
+        /// marker, and put the marker where the first of them was. All inside
+        /// ProcessSegmentPair, which is the edit path update_segments uses, so undo
+        /// and the editor's own view come for free.</para>
+        ///
+        /// <para>The range must lie within ONE container. A marker has to nest cleanly
+        /// in the markup, and a range that starts outside a tag pair and ends inside
+        /// it cannot; Studio's own UI refuses the same selection. Refused rather than
+        /// guessed at, because a comment on the wrong words is worse than none.</para>
+        /// </summary>
+        private string AddRangeComment(ISegmentPair pair, string on, int occurrence, string text,
+                                       Sdl.FileTypeSupport.Framework.NativeApi.Severity severity)
+        {
+            string failure = "the segment could not be edited";
+            _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP", (sp, cancel) =>
+            {
+                failure = WrapRangeInCommentMarker(sp.Target, on, occurrence, text, severity);
+            });
+            return failure;
+        }
+
+        /// <summary>An IText run and where its text starts in the container's plain text.</summary>
+        private struct TextRun
+        {
+            public IText Item;
+            public int Start;
+            public int Length => Item.Properties?.Text?.Length ?? 0;
+        }
+
+        private static void CollectTextRuns(IAbstractMarkupDataContainer container, List<TextRun> runs, ref int offset)
+        {
+            if (container == null) return;
+            foreach (var item in container)
+            {
+                if (item is IText t)
+                {
+                    runs.Add(new TextRun { Item = t, Start = offset });
+                    offset += t.Properties?.Text?.Length ?? 0;
+                }
+                else if (item is IAbstractMarkupDataContainer nested)
+                {
+                    CollectTextRuns(nested, runs, ref offset);
+                }
+            }
+        }
+
+        private static string WrapRangeInCommentMarker(IAbstractMarkupDataContainer target, string on,
+            int occurrence, string text, Sdl.FileTypeSupport.Framework.NativeApi.Severity severity)
+        {
+            var runs = new List<TextRun>();
+            int total = 0;
+            CollectTextRuns(target, runs, ref total);
+            var plain = PlainTextOf(target);
+
+            // Locate the nth occurrence, case-sensitively: the caller quotes the
+            // target's own words, and "Interaction" and "interaction" may both be
+            // there.
+            int start = -1, from = 0;
+            for (int n = 0; n < occurrence; n++)
+            {
+                start = plain.IndexOf(on, from, StringComparison.Ordinal);
+                if (start < 0) break;
+                from = start + 1;
+            }
+            if (start < 0)
+                return occurrence > 1
+                    ? "\"" + on + "\" does not occur " + occurrence + " times in the target"
+                    : "\"" + on + "\" is not in the target text: " + plain;
+            int end = start + on.Length;
+
+            // The runs holding the two ends.
+            TextRun? startRun = null, endRun = null;
+            foreach (var r in runs)
+            {
+                if (startRun == null && start >= r.Start && start < r.Start + r.Length) startRun = r;
+                if (end > r.Start && end <= r.Start + r.Length) endRun = r;
+            }
+            if (startRun == null || endRun == null)
+                return "could not map \"" + on + "\" onto the segment's text runs";
+
+            var parent = startRun.Value.Item.Parent;
+            if (parent == null || !ReferenceEquals(parent, endRun.Value.Item.Parent))
+                return "\"" + on + "\" cuts across an inline tag - choose words that sit inside or outside it";
+
+            // Cut the END first, so the start offset within its run is unaffected.
+            var endItem = endRun.Value.Item;
+            var cutEnd = end - endRun.Value.Start;
+            if (cutEnd < endRun.Value.Length)
+            {
+                var tail = endItem.Split(cutEnd);
+                if (tail != null && tail.Parent == null)
+                    parent.Insert(endItem.IndexInParent + 1, tail);
+            }
+
+            var startItem = startRun.Value.Item;
+            var cutStart = start - startRun.Value.Start;
+            IAbstractMarkupData firstInRange = startItem;
+            if (cutStart > 0)
+            {
+                var tail = startItem.Split(cutStart);
+                if (tail == null) return "could not split the text run at the start of \"" + on + "\"";
+                if (tail.Parent == null) parent.Insert(startItem.IndexInParent + 1, tail);
+                firstInRange = tail;
+            }
+
+            // Everything from the first item of the range up to and including the
+            // run that now ends exactly at the range's end.
+            var lastInRange = ReferenceEquals(startItem, endItem) && cutStart > 0 ? firstInRange : (IAbstractMarkupData)endItem;
+            int firstIndex = firstInRange.IndexInParent;
+            int lastIndex = lastInRange.IndexInParent;
+            if (lastIndex < firstIndex)
+                return "internal error: range items out of order";
+
+            var items = new List<IAbstractMarkupData>();
+            for (int i = firstIndex; i <= lastIndex; i++) items.Add(parent[i]);
+
+            // The comment itself, then the marker that carries it.
+            var factory = new Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory();
+            var propsFactory = factory.PropertiesFactory
+                               ?? new Sdl.FileTypeSupport.Framework.Native.PropertiesFactory();
+            var comment = propsFactory.CreateComment(text, Environment.UserName, severity);
+            comment.Date = DateTime.Now;
+            comment.DateSpecified = true;
+            var props = propsFactory.CreateCommentProperties();
+            props.Add(comment);
+            var marker = factory.CreateCommentMarker(props);
+
+            foreach (var item in items) item.RemoveFromParent();
+            foreach (var item in items) marker.Add(item);
+            parent.Insert(firstIndex, marker);
+            return null;
+        }
+
         /// <summary>Comments on a segment pair in stable order: source-side
         /// markers first, then target-side, walking nested markup depth-first.
         /// The same order every time, so an index addresses one comment.</summary>
@@ -5134,6 +5274,20 @@ namespace Supervertaler.Trados
                         Ok = false,
                         Error = $"unknown severity '{req.Severity}' – use Low, Medium, or High"
                     };
+
+                // #132: on a RANGE of the target when the caller names the words;
+                // on the whole segment otherwise, exactly as before.
+                if (!string.IsNullOrWhiteSpace(req.On))
+                {
+                    var failure = AddRangeComment(pair, req.On, req.Occurrence < 1 ? 1 : req.Occurrence, req.Text, severity);
+                    if (failure != null)
+                        return new BridgeResultResponse { Ok = false, Error = failure };
+                    return new BridgeResultResponse
+                    {
+                        Ok = true,
+                        Note = "Comment added on \"" + req.On + "\". It is part of the document's unsaved changes until the user saves in Studio."
+                    };
+                }
 
                 _activeDocument.AddCommentOnSegment(pair, req.Text, severity);
                 return new BridgeResultResponse

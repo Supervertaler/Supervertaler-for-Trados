@@ -1045,6 +1045,10 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "text", IsRequired = true)] public string Text { get; set; }
         /// <summary>"Low" (informational, default), "Medium" (warning), or "High" (error).</summary>
         [DataMember(Name = "severity", EmitDefaultValue = false)] public string Severity { get; set; }
+        /// <summary>#132: the exact target words to attach the comment to. Absent: the whole segment.</summary>
+        [DataMember(Name = "on", EmitDefaultValue = false)] public string On { get; set; }
+        /// <summary>#132: which occurrence of "on" when it repeats in the target. 1-based; default 1.</summary>
+        [DataMember(Name = "occurrence", EmitDefaultValue = false)] public int Occurrence { get; set; }
     }
 
     [DataContract]
