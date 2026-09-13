@@ -5072,6 +5072,49 @@ namespace Supervertaler.Trados
             }
         }
 
+        /// <summary>
+        /// The concrete factory lives in Sdl.FileTypeSupport.Framework.Implementation,
+        /// which Studio does NOT allow a third-party plugin to reference: a
+        /// compile-time reference made the whole plugin fail validation on load
+        /// ("Assembly reference is not public", 2026-09-13). The assembly is loaded in
+        /// Studio's process regardless, and the validator checks the manifest's
+        /// references, not what runs - so it is reached by name at runtime. Null when
+        /// a future Studio moves or renames it, in which case range comments refuse
+        /// cleanly rather than the plugin failing to load.
+        /// </summary>
+        private static IDocumentItemFactory CreateDocumentItemFactory()
+        {
+            try
+            {
+                const string asmName = "Sdl.FileTypeSupport.Framework.Implementation";
+                Type type = null;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (!asm.GetName().Name.Equals(asmName, StringComparison.OrdinalIgnoreCase)) continue;
+                    type = asm.GetType("Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory", false);
+                    if (type != null) break;
+                }
+                if (type == null)
+                    type = Type.GetType("Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory, " + asmName, false);
+                if (type == null) return null;
+
+                var factory = Activator.CreateInstance(type) as IDocumentItemFactory;
+                if (factory != null && factory.PropertiesFactory == null)
+                {
+                    var pfType = type.Assembly.GetType("Sdl.FileTypeSupport.Framework.Native.PropertiesFactory", false);
+                    if (pfType != null)
+                        factory.PropertiesFactory = Activator.CreateInstance(pfType)
+                            as Sdl.FileTypeSupport.Framework.NativeApi.IPropertiesFactory;
+                }
+                return factory;
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.WriteAlways("Comments", "document item factory: " + ex.Message); } catch { }
+                return null;
+            }
+        }
+
         private static string WrapRangeInCommentMarker(IAbstractMarkupDataContainer target, string on,
             int occurrence, string text, Sdl.FileTypeSupport.Framework.NativeApi.Severity severity)
         {
@@ -5143,9 +5186,12 @@ namespace Supervertaler.Trados
             for (int i = firstIndex; i <= lastIndex; i++) items.Add(parent[i]);
 
             // The comment itself, then the marker that carries it.
-            var factory = new Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory();
-            var propsFactory = factory.PropertiesFactory
-                               ?? new Sdl.FileTypeSupport.Framework.Native.PropertiesFactory();
+            var factory = CreateDocumentItemFactory();
+            if (factory == null)
+                return "Studio's document item factory could not be created";
+            var propsFactory = factory.PropertiesFactory;
+            if (propsFactory == null)
+                return "Studio's properties factory could not be created";
             var comment = propsFactory.CreateComment(text, Environment.UserName, severity);
             comment.Date = DateTime.Now;
             comment.DateSpecified = true;
