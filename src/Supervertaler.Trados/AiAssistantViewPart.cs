@@ -4981,15 +4981,32 @@ namespace Supervertaler.Trados
 
                 var response = new BridgeCommentsResponse { Ok = true, Comments = new List<BridgeCommentInfo>() };
                 int index = 0;
-                foreach (var c in EnumerateSegmentComments(pair))
+                var sourcePlain = PlainTextOf(pair.Source).Trim();
+                var targetPlain = PlainTextOf(pair.Target).Trim();
+                foreach (var e in EnumerateSegmentCommentsWithMarkers(pair))
                 {
+                    var c = e.Comment;
+
+                    // #132: what the comment is ON. The marker's content is the
+                    // commented words; when that is the whole side, the comment is a
+                    // segment comment and naming the words would only repeat the
+                    // segment. Two range comments on the same words share one marker,
+                    // so they report the same "on" - correct, that is what they share.
+                    var markerPlain = PlainTextOf(e.Marker).Trim();
+                    var whole = e.OnSource ? sourcePlain : targetPlain;
+                    var isRange = markerPlain.Length > 0
+                                  && !string.Equals(markerPlain, whole, StringComparison.Ordinal);
+
                     response.Comments.Add(new BridgeCommentInfo
                     {
                         Index = index++,
                         Author = c.Author,
                         Date = c.Date != DateTime.MinValue ? c.Date.ToString("yyyy-MM-dd HH:mm") : null,
                         Severity = c.Severity.ToString(),
-                        Text = c.Text ?? ""
+                        Text = c.Text ?? "",
+                        Side = e.OnSource ? "source" : "target",
+                        Scope = isRange ? "range" : "segment",
+                        On = isRange ? markerPlain : null
                     });
                 }
                 if (response.Comments.Count == 0)
@@ -5007,14 +5024,34 @@ namespace Supervertaler.Trados
         /// The same order every time, so an index addresses one comment.</summary>
         private static List<Sdl.FileTypeSupport.Framework.NativeApi.IComment> EnumerateSegmentComments(ISegmentPair pair)
         {
-            var list = new List<Sdl.FileTypeSupport.Framework.NativeApi.IComment>();
-            CollectCommentObjects(pair?.Source, list);
-            CollectCommentObjects(pair?.Target, list);
+            return EnumerateSegmentCommentsWithMarkers(pair).ConvertAll(e => e.Comment);
+        }
+
+        /// <summary>
+        /// #132: a comment together with the marker that carries it and the side it
+        /// is on. The marker is what tells a caller WHAT the comment is on: its
+        /// content is the commented words. A whole-segment comment is a marker
+        /// wrapping everything; a range comment is a marker wrapping part.
+        /// Same order as <see cref="EnumerateSegmentComments"/>, so the indices
+        /// update_comment and delete_comment use are unchanged.
+        /// </summary>
+        private struct CommentEntry
+        {
+            public Sdl.FileTypeSupport.Framework.NativeApi.IComment Comment;
+            public ICommentMarker Marker;
+            public bool OnSource;
+        }
+
+        private static List<CommentEntry> EnumerateSegmentCommentsWithMarkers(ISegmentPair pair)
+        {
+            var list = new List<CommentEntry>();
+            CollectCommentObjects(pair?.Source, list, true);
+            CollectCommentObjects(pair?.Target, list, false);
             return list;
         }
 
         private static void CollectCommentObjects(IAbstractMarkupDataContainer container,
-            List<Sdl.FileTypeSupport.Framework.NativeApi.IComment> list)
+            List<CommentEntry> list, bool onSource)
         {
             if (container == null) return;
             foreach (var item in container)
@@ -5027,16 +5064,35 @@ namespace Supervertaler.Trados
                         for (int i = 0; i < (props?.Count ?? 0); i++)
                         {
                             var c = props.GetItem(i);
-                            if (c != null) list.Add(c);
+                            if (c != null) list.Add(new CommentEntry { Comment = c, Marker = marker, OnSource = onSource });
                         }
                     }
                     catch { }
-                    CollectCommentObjects(marker, list);
+                    CollectCommentObjects(marker, list, onSource);
                 }
                 else if (item is IAbstractMarkupDataContainer nested)
                 {
-                    CollectCommentObjects(nested, list);
+                    CollectCommentObjects(nested, list, onSource);
                 }
+            }
+        }
+
+        /// <summary>The visible text inside a markup container - the IText runs
+        /// concatenated, tags contributing nothing, the way the editor shows it.</summary>
+        private static string PlainTextOf(IAbstractMarkupDataContainer container)
+        {
+            var sb = new System.Text.StringBuilder();
+            AppendPlainText(container, sb);
+            return sb.ToString();
+        }
+
+        private static void AppendPlainText(IAbstractMarkupDataContainer container, System.Text.StringBuilder sb)
+        {
+            if (container == null) return;
+            foreach (var item in container)
+            {
+                if (item is IText t) sb.Append(t.Properties?.Text);
+                else if (item is IAbstractMarkupDataContainer nested) AppendPlainText(nested, sb);
             }
         }
 

@@ -1018,6 +1018,14 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "date", Order = 2, EmitDefaultValue = false)] public string Date { get; set; }
         [DataMember(Name = "severity", Order = 3, EmitDefaultValue = false)] public string Severity { get; set; }
         [DataMember(Name = "text", Order = 4)] public string Text { get; set; }
+        /// <summary>#132: "source" or "target" - which side the comment is on.</summary>
+        [DataMember(Name = "side", Order = 5, EmitDefaultValue = false)] public string Side { get; set; }
+        /// <summary>#132: "segment" when the comment covers the whole side, "range" when
+        /// it sits on part of it. Studio's own Comments pane calls these the same.</summary>
+        [DataMember(Name = "scope", Order = 6, EmitDefaultValue = false)] public string Scope { get; set; }
+        /// <summary>#132: the words a range comment is on - the marker's own content.
+        /// Absent for a segment-scope comment, where it would just repeat the segment.</summary>
+        [DataMember(Name = "on", Order = 7, EmitDefaultValue = false)] public string On { get; set; }
     }
 
     [DataContract]

@@ -625,7 +625,7 @@
     {
       "name": "get_comments",
       "access": "read",
-      "description": "Read the Trados comments on a segment (author, date, severity, text), in a stable order whose index update_comment uses. Call before updating a comment.",
+      "description": "Read the Trados comments on a segment (author, date, severity, text), in a stable order whose index update_comment uses. Each comment also says which side it is on ('source' or 'target'), its scope ('segment' for the whole segment, 'range' for part of it), and for a range comment 'on' - the exact words it is attached to. Call before updating a comment.",
       "inputSchema": {
         "type": "object",
         "properties": {
