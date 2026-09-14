@@ -24,6 +24,7 @@ namespace Supervertaler.Trados.VoiceControl
     internal sealed class VoiceCommandExecutor
     {
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern IntPtr GetFocus();
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
         /// <summary>
@@ -317,6 +318,19 @@ namespace Supervertaler.Trados.VoiceControl
                 }
                 else if (string.Equals(cmd.ActionType, "keystroke", StringComparison.OrdinalIgnoreCase))
                 {
+                    // #129: a keystroke goes where focus is. Inside one of our own
+                    // panes that is never what was meant - and it used to be reported
+                    // as done.
+                    if (FocusIsInOurPane())
+                    {
+                        VoiceActivityLog.Resolved(
+                            "ignored - the cursor is in a Supervertaler pane, not the editor",
+                            VoiceActivityLog.Outcome.Suppressed);
+                        VoiceControlManager.Instance?.Announce(
+                            "click in the editor first", VoiceActivityLog.Outcome.Suppressed);
+                        return;
+                    }
+
                     var keys = ChordToSendKeys(cmd.Action);   // chords keep their colons? no - chords have none
                     if (keys != null)
                     {
@@ -333,6 +347,38 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 // A failing command must never take down the listener
             }
+        }
+
+        /// <summary>
+        /// Whether keyboard focus is inside one of our own panes rather than the
+        /// editor.
+        ///
+        /// <para>A keystroke command is sent with SendKeys, which goes to whatever
+        /// has focus. The foreground guard cannot catch this: our panes ARE Trados
+        /// Studio, same process, so "confirm" typed while the cursor sat in the
+        /// Supervertaler Assistant chat box sent Ctrl+Enter into the chat box - and
+        /// the voice list reported it green, as though the segment had been
+        /// confirmed. Measured 2026-09-14.</para>
+        ///
+        /// <para>Only keystroke commands are gated on this. Internal actions act on
+        /// the document through the API and do not care where focus is.</para>
+        /// </summary>
+        private static bool FocusIsInOurPane()
+        {
+            try
+            {
+                // GetFocus reports for the calling thread, and Execute runs on the
+                // UI thread, which is the one that owns these windows.
+                var focused = Control.FromHandle(GetFocus());
+                for (var c = focused; c != null; c = c.Parent)
+                {
+                    var ns = c.GetType().Namespace;
+                    if (ns != null && ns.StartsWith("Supervertaler.Trados", StringComparison.Ordinal))
+                        return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         private static bool IsStudioForeground()

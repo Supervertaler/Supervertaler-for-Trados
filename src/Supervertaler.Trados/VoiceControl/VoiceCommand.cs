@@ -119,9 +119,10 @@ namespace Supervertaler.Trados.VoiceControl
         /// History: 1 = initial set (20.126), 2 = match 1–9 / escape /
         /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128),
         /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191),
-        /// 6 = select source (20.191), 7 = dictate split into start/stop (20.191).
+        /// 6 = select source (20.191), 7 = dictate split into start/stop (20.191),
+        /// 8 = select all (20.192).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 7;
+        internal const int CurrentDefaultsVersion = 8;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -173,6 +174,7 @@ namespace Supervertaler.Trados.VoiceControl
                 new VoiceCommand { Phrase = "go to the top", Aliases = new List<string> { "go to top" }, ActionType = "keystroke", Action = "ctrl+home", Description = "Jump to the first segment (Ctrl+Home)", Category = "navigation" },
                 new VoiceCommand { Phrase = "go to the bottom", Aliases = new List<string> { "go to bottom" }, ActionType = "keystroke", Action = "ctrl+end", Description = "Jump to the last segment (Ctrl+End)", Category = "navigation" },
                 new VoiceCommand { Phrase = "copy source", Aliases = new List<string> { "copy from source" }, ActionType = "keystroke", Action = "ctrl+insert", Description = "Copy source to target", Category = "editing" },
+                new VoiceCommand { Phrase = "select all", Aliases = new List<string> { "select everything" }, ActionType = "keystroke", Action = "ctrl+a", Description = "Select all the text in the active segment (Ctrl+A)", Category = "editing" },
                 new VoiceCommand { Phrase = "clear target", Aliases = new List<string>(), ActionType = "keystroke", Action = "alt+delete", Description = "Clear the target segment", Category = "editing" },
 
                 // TermLens – direct plugin calls (case-adapted insertion)
