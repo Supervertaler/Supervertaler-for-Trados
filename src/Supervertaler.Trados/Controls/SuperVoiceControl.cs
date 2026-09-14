@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi.Interfaces;
@@ -116,6 +116,11 @@ namespace Supervertaler.Trados.Controls
 
             VoiceActivityLog.Changed += OnActivityChanged;
             DictationMode.Changed += OnDictationChanged;
+            // This pane supersedes the floating strip. If voice was already
+            // listening when the pane opened, the strip is on screen now - close it
+            // rather than leaving two things saying the same thing, one of them a
+            // small black window over the editor.
+            try { VoiceControlManager.Instance.DismissFloatingStrip(); } catch { }
             Refresh_();
             SyncState();
         }

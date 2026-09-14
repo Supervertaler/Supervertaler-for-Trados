@@ -65,10 +65,17 @@ namespace Supervertaler.Trados.VoiceControl
             DictationMode.Changed += on => SetStatus(on ? "Dictating - say \"stop now\" to take over again" : "Listening…",
                                                      state: 2);
 
-            // Preferred: the TermLens header hosts the indicator. Fallback:
-            // the floating strip (draggable, position remembered).
+            // Preferred: the TermLens header hosts the indicator. Then the
+            // SuperVoice pane. Only if NEITHER can show state does the floating
+            // strip appear.
+            //
+            // #129: the strip used to appear whenever TermLens was not the visible
+            // tab, which for a translator who keeps Concordance in front is always -
+            // so a small black window parked over the editor, unasked for, became
+            // permanent furniture. The pane shows everything the strip did and more,
+            // so when it is there the strip is pure clutter.
             _hostControl = TermLensEditorViewPart.TryGetVoiceHost();
-            if (_hostControl == null)
+            if (_hostControl == null && SuperVoiceViewPart.TryGetControl() == null)
             {
                 _statusWindow = new VoiceStatusWindow();
                 _statusWindow.StopRequested += (s, e) => Stop();
@@ -156,10 +163,39 @@ namespace Supervertaler.Trados.VoiceControl
             }
         }
 
+        /// <summary>
+        /// #129: closes the floating strip because the SuperVoice pane has taken
+        /// over. Called from the pane's constructor, which covers the order where
+        /// voice was already listening when the pane was opened; the opposite order
+        /// is handled in <see cref="Start"/>.
+        ///
+        /// <para>No-op when there is no strip, which is the ordinary case.</para>
+        /// </summary>
+        internal void DismissFloatingStrip()
+        {
+            var window = _statusWindow;
+            if (window == null) return;
+            _statusWindow = null;
+            if (window.IsDisposed) return;
+            try
+            {
+                if (window.InvokeRequired) window.BeginInvoke((Action)(() => window.Close()));
+                else window.Close();
+            }
+            catch { }
+        }
+
         private Control MarshalControl()
         {
             var host = _hostControl;
             if (host != null && !host.IsDisposed) return host;
+            // #129: the pane is a marshal target in its own right. Without this,
+            // suppressing the floating strip would leave no control to marshal to
+            // when TermLens is not the visible tab - and the two callers of this are
+            // the initial grammar seeding and the start-up error dialog, both of
+            // which would then be skipped in silence.
+            var pane = SuperVoiceViewPart.TryGetControl();
+            if (pane != null && !pane.IsDisposed) return pane;
             var window = _statusWindow;
             if (window != null && !window.IsDisposed) return window;
             return null;
