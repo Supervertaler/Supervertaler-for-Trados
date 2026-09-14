@@ -210,7 +210,12 @@ namespace Supervertaler.Trados.VoiceControl
                     // #129: an utterance that matches nothing must still say so.
                     // Left silent it sat in the SuperVoice list as "…" for ever,
                     // which reads as a hang rather than as "that was not a command".
-                    VoiceActivityLog.Resolved("no command matched", VoiceActivityLog.Outcome.Missed);
+                    //
+                    // Suppressed, not Missed: this is the ORDINARY case whenever the
+                    // translator says anything that is not a command, and a list of
+                    // red rows for ordinary speech reads as a fault. Red is kept for
+                    // a command that tried and failed.
+                    VoiceActivityLog.Resolved("no command matched", VoiceActivityLog.Outcome.Suppressed);
                     return;
                 }
                 cmd = _byPhrase[best];

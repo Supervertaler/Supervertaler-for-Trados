@@ -16,9 +16,13 @@ namespace Supervertaler.Trados
     /// feature. Studio lets a pane be docked anywhere and remembers where, so a
     /// narrow strip beside the editor costs nothing and is always readable.</para>
     ///
-    /// <para>Docked bottom and unpinned by default: it is a companion to the editor,
-    /// not something to give the right-hand column to. Whoever wants it elsewhere
-    /// drags it once and Studio remembers.</para>
+    /// <para>Docked RIGHT by default, where it lands beside Translation Results and
+    /// usually as a tab of it. That suits how the pane is actually read: the
+    /// microphone's state has to be visible all the time and already is, in the
+    /// TermLens header - what this pane holds is the history, which is looked at
+    /// occasionally rather than watched. A tab costs no screen space until it is
+    /// wanted. Whoever prefers it always visible drags it once and Studio
+    /// remembers.</para>
     /// </summary>
     [ViewPart(
         Id = "SuperVoiceViewPart",
@@ -26,7 +30,7 @@ namespace Supervertaler.Trados
         Description = "Voice control for Trados Studio - commands, selection and dictation hand-off",
         Icon = "SuperVoiceIcon"
     )]
-    [ViewPartLayout(typeof(EditorController), Dock = DockType.Bottom, Pinned = false)]
+    [ViewPartLayout(typeof(EditorController), Dock = DockType.Right, Pinned = false)]
     public class SuperVoiceViewPart : AbstractViewPartController
     {
         private static SuperVoiceControl _control;
