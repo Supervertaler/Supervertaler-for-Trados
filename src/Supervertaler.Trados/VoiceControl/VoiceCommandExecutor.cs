@@ -142,6 +142,21 @@ namespace Supervertaler.Trados.VoiceControl
             }
         }
 
+        /// <summary>
+        /// #129: whether this utterance IS a command, word for word.
+        ///
+        /// <para>The second recognition pass re-hears a "select …" utterance against
+        /// the segment's own words. That is right for the words after the prefix and
+        /// wrong for a command that merely begins with one: "select all" came back
+        /// from the second pass as bare "select", because the segment contains no
+        /// "all" - and bare "select" names nothing, so the command did nothing at all.
+        /// Measured 2026-09-14.</para>
+        /// </summary>
+        public bool IsExactCommand(string spoken)
+        {
+            return !string.IsNullOrWhiteSpace(spoken) && _byPhrase.ContainsKey(spoken.Trim());
+        }
+
         /// <summary>Rebuilds the phrase lookup from the (enabled) command list.</summary>
         public void LoadCommands(List<VoiceCommand> commands)
         {
@@ -360,6 +375,13 @@ namespace Supervertaler.Trados.VoiceControl
         /// the voice list reported it green, as though the segment had been
         /// confirmed. Measured 2026-09-14.</para>
         ///
+        /// <para>Only a TEXT BOX of ours counts. Studio dispatches its own shortcuts
+        /// application-wide - measured: "confirm" spoken with the cursor in Studio's
+        /// Concordance Search box confirmed the segment - so a keystroke is only lost
+        /// when the focused control swallows the key itself, which is what a text box
+        /// does. Gating on the pane rather than the text box would have refused
+        /// "confirm" right after clicking the microphone in this very pane.</para>
+        ///
         /// <para>Only keystroke commands are gated on this. Internal actions act on
         /// the document through the API and do not care where focus is.</para>
         /// </summary>
@@ -370,6 +392,7 @@ namespace Supervertaler.Trados.VoiceControl
                 // GetFocus reports for the calling thread, and Execute runs on the
                 // UI thread, which is the one that owns these windows.
                 var focused = Control.FromHandle(GetFocus());
+                if (!(focused is TextBoxBase)) return false;
                 for (var c = focused; c != null; c = c.Parent)
                 {
                     var ns = c.GetType().Namespace;

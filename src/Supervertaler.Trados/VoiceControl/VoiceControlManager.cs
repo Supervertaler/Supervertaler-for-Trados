@@ -281,6 +281,12 @@ namespace Supervertaler.Trados.VoiceControl
                 var engine = _engine;
                 if (engine == null || string.IsNullOrWhiteSpace(text)) return text;
 
+                // #129: an utterance that IS a command is left alone. "select all"
+                // begins with the "select" prefix but is not a selection, and
+                // re-hearing it against the segment's words reduced it to bare
+                // "select", which names nothing.
+                if (_executor != null && _executor.IsExactCommand(text)) return text;
+
                 // #127: source prefixes are checked FIRST and are longer ("select
                 // source" contains "select"), so the target path must not claim them.
                 var sourcePrefixes = _commands
@@ -317,7 +323,14 @@ namespace Supervertaler.Trados.VoiceControl
 
                 // Only accept a second reading that still names the command and still
                 // has words after it. Anything else is a worse answer than the first.
-                if (!prefixes.Any(p => ContainsWord(second, p))) return text;
+                var hit = prefixes.FirstOrDefault(p => ContainsWord(second, p));
+                if (hit == null) return text;
+
+                // ...and "after it" means something. Without this, "go select all"
+                // came back as bare "select": the prefix was present, the argument
+                // was gone, and the utterance matched nothing at all.
+                var at = second.IndexOf(hit, StringComparison.OrdinalIgnoreCase);
+                if (at < 0 || second.Substring(at + hit.Length).Trim().Length == 0) return text;
 
                 Core.DiagnosticLog.WriteAlways("VoiceHeard",
                     "second pass (" + sw.ElapsedMilliseconds + " ms, " + words.Count + " segment words): \""
