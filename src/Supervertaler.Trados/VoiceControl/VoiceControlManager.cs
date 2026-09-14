@@ -50,10 +50,18 @@ namespace Supervertaler.Trados.VoiceControl
             _commands = VoiceCommandSet.Load();
             _executor = new VoiceCommandExecutor();
             _executor.LoadCommands(_commands);
-            _executor.CommandExecuted += (phrase, desc) => FlashCommand(phrase);
+            _executor.CommandExecuted += (phrase, desc) =>
+            {
+                FlashCommand(phrase);
+                VoiceActivityLog.Resolved(desc ?? phrase, VoiceActivityLog.Outcome.Done);   // #129
+            };
             // #125: a command heard and deliberately ignored is not the same as one
             // not heard. Say which, or dictation mode looks like a broken recogniser.
-            _executor.CommandSuppressed += phrase => FlashCommand("(dictating) " + phrase);
+            _executor.CommandSuppressed += phrase =>
+            {
+                FlashCommand("(dictating) " + phrase);
+                VoiceActivityLog.Resolved("ignored - dictation is running", VoiceActivityLog.Outcome.Suppressed);   // #129
+            };
             DictationMode.Changed += on => SetStatus(on ? "Dictating - say \"stop now\" to take over again" : "Listening…",
                                                      state: 2);
 
@@ -132,6 +140,8 @@ namespace Supervertaler.Trados.VoiceControl
             try { _engine?.Dispose(); } catch { }
             _engine = null;
 
+            try { SuperVoiceViewPart.TryGetControl()?.SetState(0, "Off"); } catch { }   // #129
+
             var host = _hostControl;
             _hostControl = null;
             if (host != null && !host.IsDisposed)
@@ -157,6 +167,10 @@ namespace Supervertaler.Trados.VoiceControl
 
         private void SetStatus(string text, int state)
         {
+            // #129: the SuperVoice pane mirrors the same state. It may not exist -
+            // it is a pane the translator opens - and the strip stays authoritative.
+            try { SuperVoiceViewPart.TryGetControl()?.SetState(state, text); } catch { }
+
             var host = _hostControl;
             if (host != null && !host.IsDisposed)
             {
@@ -176,8 +190,23 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         public void Announce(string text)
         {
+            Announce(text, VoiceActivityLog.Outcome.Refused);
+        }
+
+        /// <summary>
+        /// #129: the same message, said once and kept. The strip shows it for five
+        /// seconds; the SuperVoice pane keeps it, which is the difference between a
+        /// translator who saw why a selection was declined and one who did not.
+        ///
+        /// <para>Refused is the default because most announcements are one: a word
+        /// buried in another word, an ambiguous phrase, a write declined on source
+        /// text. The caller says otherwise when the news is better or worse.</para>
+        /// </summary>
+        public void Announce(string text, VoiceActivityLog.Outcome kind)
+        {
             // Longer than a command echo. This is the only sign anything happened.
             try { FlashCommand(text, 5000); } catch { }
+            VoiceActivityLog.Resolved(text, kind);
         }
 
         private void FlashCommand(string phrase, int milliseconds = 2000)
@@ -206,6 +235,9 @@ namespace Supervertaler.Trados.VoiceControl
                     string.IsNullOrWhiteSpace(text) ? "(nothing)" : "\"" + text + "\"");
             }
             catch { }
+
+            // #129: and to the SuperVoice pane, where it stays readable.
+            VoiceActivityLog.Heard(text);
 
             text = ReconsiderSelection(text);
 
@@ -371,7 +403,7 @@ namespace Supervertaler.Trados.VoiceControl
 
                 Core.DiagnosticLog.WriteAlways("VoiceHeard",
                     "the source pass heard nothing and \"" + tail + "\" is not in the source - refused");
-                Announce("did not catch that word - try one next to it");
+                Announce("did not catch that word - try one next to it", VoiceActivityLog.Outcome.Missed);
                 return prefix;
             }
 

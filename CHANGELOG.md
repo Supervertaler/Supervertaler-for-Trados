@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.192 / 19.20.192] – Unreleased
+
+### Added
+- **SuperVoice has a pane of its own.** Until now the microphone button and everything the voice system said lived in the TermLens header – invisible to anyone who does not keep TermLens open, and gone within seconds either way. That was fine when the strip only echoed "confirm"; it stopped being fine when selection arrived and the messages started carrying what you actually need to read: which of four readings was taken, why a word could not be heard, what the recogniser really returned. **View → SuperVoice** opens a dockable pane with the microphone, its state, and the recent utterances – what was heard beside what happened to it, colour-coded, kept. Dock it anywhere and Studio remembers; it is deliberately small enough to live in a narrow strip beside the editor. The TermLens button and the floating strip work exactly as before, so nothing changes for anyone who liked them. Issue #129.
+
 ## [18.20.191 / 19.20.191] – 2026-09-13
 
 ### Added

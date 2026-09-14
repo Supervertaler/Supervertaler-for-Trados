@@ -1,4 +1,4 @@
-# Builds the plugin resource bundle Trados reads for pane names and icons.
+﻿# Builds the plugin resource bundle Trados reads for pane names and icons.
 #
 # Why this exists instead of PluginResources.resx: an SDK-style project cannot
 # compile a .resx holding images without switching to the preserialized
@@ -34,6 +34,7 @@ $icons = [ordered]@{
     'TermPickerIcon'  = 'termpicker'
     'SuperSearchIcon' = 'supersearch'
     'AssistantIcon'   = 'assistant'
+    'SuperVoiceIcon'  = 'supervoice'
 }
 
 $dir = Split-Path -Parent $Out

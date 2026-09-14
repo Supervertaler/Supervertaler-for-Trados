@@ -61,10 +61,24 @@ def assistant():
     return im
 
 
+def supervoice():
+    """A microphone: capsule, cradle arc, stem - what the header button shows."""
+    im, d = canvas()
+    # Capsule.
+    d.rounded_rectangle([96, 26, 160, 146], radius=32, fill=BLUE)
+    # Cradle: an arc under it, open at the top.
+    d.arc([56, 74, 200, 186], start=0, end=180, fill=BLUE, width=W)
+    # Stem and base.
+    d.line([128, 186, 128, 224], fill=BLUE, width=W)
+    d.line([88, 228, 168, 228], fill=BLUE, width=W)
+    return im
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name, glyph in [('termlens', termlens), ('termpicker', termpicker),
-                        ('supersearch', supersearch), ('assistant', assistant)]:
+                        ('supersearch', supersearch), ('assistant', assistant),
+                        ('supervoice', supervoice)]:
         im = glyph().resize((32, 32), Image.LANCZOS)
         im.save(os.path.join(OUT, name + '.png'))
         im.save(os.path.join(OUT, name + '.ico'), sizes=[(16, 16), (24, 24), (32, 32)])

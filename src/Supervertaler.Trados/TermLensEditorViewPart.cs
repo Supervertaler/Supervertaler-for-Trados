@@ -2216,7 +2216,8 @@ namespace Supervertaler.Trados
                     // control having died, and the translator's next move is to
                     // repeat themselves rather than to say something else.
                     VoiceControl.VoiceControlManager.Instance?.Announce(
-                        "no \"" + spoken + "\" in the " + side);
+                        "no \"" + spoken + "\" in the " + side,
+                        VoiceControl.VoiceActivityLog.Outcome.Missed);
                     return;
                 }
 
@@ -2396,12 +2397,14 @@ namespace Supervertaler.Trados
                 {
                     // Rival WORDS take precedence over repeated text: the translator
                     // is choosing between candidates, not between copies.
-                    VoiceControl.VoiceControlManager.Instance?.Announce(rivalNote);
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        rivalNote, VoiceControl.VoiceActivityLog.Outcome.Done);
                 }
                 else if (spots.Count > 1)
                 {
                     VoiceControl.VoiceControlManager.Instance?.Announce(
-                        (index + 1) + " of " + spots.Count + " - say again for the next");
+                        (index + 1) + " of " + spots.Count + " - say again for the next",
+                        VoiceControl.VoiceActivityLog.Outcome.Done);
                 }
             }
             catch (Exception ex)
