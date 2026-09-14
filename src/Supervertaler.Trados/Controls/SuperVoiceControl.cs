@@ -57,7 +57,13 @@ namespace Supervertaler.Trados.Controls
                 Dock = DockStyle.Left
             };
             _btnMic.FlatAppearance.BorderSize = 0;
+            _btnMic.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
             _btnMic.Click += (s, e) => VoiceControlManager.Instance.Toggle();
+            // Studio 2026's docking host swallows the click that activates an
+            // inactive pane, so a button in a pane the translator is not already
+            // working in does nothing the first time - and this pane is one nobody
+            // clicks into for any other reason. Same fix the TermLens header uses.
+            ClickThrough.Attach(_btnMic, () => VoiceControlManager.Instance.Toggle());
             new ToolTip().SetToolTip(_btnMic, "Start or stop SuperVoice (Ctrl+Alt+D)");
 
             _lblState = new Label
@@ -94,7 +100,9 @@ namespace Supervertaler.Trados.Controls
                 HeaderStyle = ColumnHeaderStyle.Nonclickable,
                 MultiSelect = false,
                 BorderStyle = BorderStyle.None,
-                BackColor = SystemColors.Window
+                BackColor = SystemColors.Window,
+                // However narrow the pane, hovering a row gives the whole of it.
+                ShowItemToolTips = true
             };
             _list.Columns.Add("Time", UiScale.Pixels(56));
             _list.Columns.Add("Heard", UiScale.Pixels(150));
@@ -123,17 +131,28 @@ namespace Supervertaler.Trados.Controls
                 Margin = new Padding(UiScale.Pixels(2), UiScale.Pixels(3), 0, 0)
             };
             b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 220, 220);
             b.Click += onClick;
+            ClickThrough.Attach(b, onClick);
             new ToolTip().SetToolTip(b, tip);
             return b;
         }
 
+        /// <summary>
+        /// Splits the width between "Heard" and "What happened" rather than giving
+        /// one of them a fixed size. The pane is meant to be parked narrow, and at
+        /// 330 px a fixed 150 px for the utterance left the outcome - the column
+        /// worth reading - showing "Jump to the fir…".
+        /// </summary>
         private void FitColumns()
         {
             if (_list.Columns.Count < 3) return;
-            var slack = _list.ClientSize.Width - _list.Columns[0].Width - _list.Columns[1].Width
+            var avail = _list.ClientSize.Width - _list.Columns[0].Width
                         - SystemInformation.VerticalScrollBarWidth - UiScale.Pixels(4);
-            if (slack > UiScale.Pixels(80)) _list.Columns[2].Width = slack;
+            if (avail < UiScale.Pixels(120)) return;
+            var heard = (int)(avail * 0.42);
+            _list.Columns[1].Width = heard;
+            _list.Columns[2].Width = avail - heard;
         }
 
         private static void ShowSettings()
@@ -213,7 +232,9 @@ namespace Supervertaler.Trados.Controls
                 {
                     var item = new ListViewItem(e.Time.ToString("HH:mm:ss"));
                     item.SubItems.Add(e.Heard ?? "");
-                    item.SubItems.Add(e.Result ?? (e.Kind == VoiceActivityLog.Outcome.Pending ? "…" : ""));
+                    var result = e.Result ?? (e.Kind == VoiceActivityLog.Outcome.Pending ? "…" : "");
+                    item.SubItems.Add(result);
+                    item.ToolTipText = string.IsNullOrEmpty(e.Heard) ? result : e.Heard + "  →  " + result;
                     switch (e.Kind)
                     {
                         case VoiceActivityLog.Outcome.Done: item.ForeColor = Green; break;
