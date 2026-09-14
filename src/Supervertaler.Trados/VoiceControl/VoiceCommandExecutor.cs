@@ -189,7 +189,14 @@ namespace Supervertaler.Trados.VoiceControl
                         && (best == null || phrase.Length > best.Length))
                         best = phrase;
                 }
-                if (best == null) return;
+                if (best == null)
+                {
+                    // #129: an utterance that matches nothing must still say so.
+                    // Left silent it sat in the SuperVoice list as "…" for ever,
+                    // which reads as a hang rather than as "that was not a command".
+                    VoiceActivityLog.Resolved("no command matched", VoiceActivityLog.Outcome.Missed);
+                    return;
+                }
                 cmd = _byPhrase[best];
             }
 
@@ -233,7 +240,14 @@ namespace Supervertaler.Trados.VoiceControl
                 CommandSuppressed?.Invoke(cmd.Phrase);
                 return;
             }
-            if (!isStop && !IsStudioForeground()) return;
+            if (!isStop && !IsStudioForeground())
+            {
+                // The foreground guard is deliberate - a stray "confirm" while
+                // reading email must do nothing - but silence makes it look broken.
+                VoiceActivityLog.Resolved("ignored - Studio was not the active window",
+                                          VoiceActivityLog.Outcome.Suppressed);
+                return;
+            }
 
             // Echoed BEFORE the handler runs, not after, so that a handler which has
             // something of its own to say gets the last word. A refusal ("'the' is
