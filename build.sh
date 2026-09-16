@@ -96,6 +96,34 @@ echo ""
 python "$SCRIPT_DIR/tools/check_mcp_docs.py" || exit 1
 echo ""
 
+# Compile the shared core/ sources ON THEIR OWN before either plugin build.
+#
+# core/ is compiled into this assembly, not referenced as a DLL, and
+# GlobalUsings.cs puts Supervertaler.Core and .Models in scope for every file -
+# core's own files included. So a core file that omits a using builds green
+# here and fails in Supervertaler for memoQ, which compiles the same sources
+# with no such declaration. GlossaryRepair.cs did exactly that for weeks and
+# broke the memoQ build the first time it was pulled (2026-09-16).
+#
+# Supervertaler.Core.Build.csproj compiles core with no host's global usings in
+# scope - the condition the other plugin builds in. About three seconds, and it
+# names the file and line rather than surfacing as someone else's broken pull.
+# The memoQ repo's build.sh runs the same check; a break in core now cannot
+# leave both repos green.
+echo "=== Compiling core/ on its own (no host global usings) ==="
+if ! CORE_BUILD_OUT=$(dotnet build "$SCRIPT_DIR/core/build/Supervertaler.Core.Build.csproj" -v q --nologo 2>&1); then
+    echo "$CORE_BUILD_OUT" | grep -E "error" | sort -u
+    echo ""
+    echo "  ERROR: core/ does not compile on its own."
+    echo "  It compiles inside this plugin only because GlobalUsings.cs is in"
+    echo "  scope here; Supervertaler for memoQ has no such file. Add the"
+    echo "  missing using to the core file named above."
+    echo ""
+    exit 1
+fi
+echo "  core/ compiles standalone"
+echo ""
+
 # A running Studio must not be deployed over: wiping its Unpacked folder pulls
 # the DLLs out from under a loaded plugin. But the two Studios live in entirely
 # separate trees, so a running 2026 is no reason to refuse 2024 - and a blanket
