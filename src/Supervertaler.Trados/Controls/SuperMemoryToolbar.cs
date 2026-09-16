@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
@@ -375,6 +375,54 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         /// <param name="banks">Bank names from <c>UserDataPath.ListMemoryBanks()</c>.</param>
         /// <param name="activeBank">The bank that should appear selected, or null.</param>
+        /// <summary>
+        /// Widens the DROPDOWN to fit the longest bank name, leaving the closed
+        /// combo at its fixed width.
+        ///
+        /// <para>The combo itself is pinned to 130 logical px on purpose - see its
+        /// construction - because the toolbar is a single non-wrapping row and at
+        /// 150% display scaling a wider box pushed Distill off the end. That
+        /// constraint applies to the closed control only: the dropdown is a popup
+        /// and is free to be wider than the thing it hangs from, which is what
+        /// WinForms' DropDownWidth is for.</para>
+        ///
+        /// <para>Real bank names run well past what 130 px shows, so they were being
+        /// truncated at exactly the characters that tell one bank from another.</para>
+        /// </summary>
+        private void FitDropDownWidth()
+        {
+            if (_cmbMemoryBank == null || _cmbMemoryBank.IsDisposed) return;
+            try
+            {
+                var widest = _cmbMemoryBank.Width;
+                foreach (var item in _cmbMemoryBank.Items)
+                {
+                    var text = item as string;
+                    if (string.IsNullOrEmpty(text)) continue;
+                    var w = TextRenderer.MeasureText(text, _cmbMemoryBank.Font).Width;
+                    if (w > widest) widest = w;
+                }
+
+                // Room for the scrollbar the list grows once it overflows, plus the
+                // few pixels an item's own left inset costs. Without the scrollbar
+                // allowance the longest name is clipped precisely when there are
+                // enough banks to need scrolling - which is when it matters.
+                widest += SystemInformation.VerticalScrollBarWidth + UiScale.Pixels(8);
+
+                // A popup may overhang the panel, but not the screen: past the
+                // working area Windows shifts it left and clips the other end
+                // instead. Half the screen is far more than any plausible name.
+                var cap = Math.Max(Screen.FromControl(_cmbMemoryBank).WorkingArea.Width / 2,
+                                   _cmbMemoryBank.Width);
+                _cmbMemoryBank.DropDownWidth = Math.Min(widest, cap);
+            }
+            catch
+            {
+                // Measuring is cosmetic. A handle-less or disposed control here must
+                // not stop the bank list being populated.
+            }
+        }
+
         public void SetMemoryBanks(System.Collections.Generic.IList<string> banks, string activeBank)
         {
             if (_cmbMemoryBank == null) return;
@@ -421,6 +469,9 @@ namespace Supervertaler.Trados.Controls
             finally
             {
                 _suppressComboChange = false;
+                // Both exit paths above end here, including the early return for
+                // "no banks", so the list is always sized to what is in it.
+                FitDropDownWidth();
             }
 
             LayoutControls();
