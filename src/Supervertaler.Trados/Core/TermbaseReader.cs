@@ -2297,9 +2297,22 @@ namespace Supervertaler.Trados.Core
                         fts.ExecuteNonQuery();
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // FTS5 not available in this SQLite build – non-critical
+                    // The index is not used by this plugin - nothing here ever
+                    // queries it - so a missing one costs US nothing, which is why
+                    // this was swallowed in silence when we were the only writer.
+                    //
+                    // We are not any more. The Workbench searches through this
+                    // index, and a provider without the fts5 module (memoQ's
+                    // System.Data.SQLite has none) produces a perfectly valid file
+                    // whose search quietly does not work, in a DIFFERENT product,
+                    // with nothing anywhere saying why. Still non-fatal, but it now
+                    // leaves a trace.
+                    DiagnosticLog.Log("Termbase",
+                        "FTS5 index could not be created (" + ex.Message +
+                        "). The database is usable here, but full-text search in " +
+                        "Supervertaler Workbench will find nothing in it.");
                 }
             }
         }
