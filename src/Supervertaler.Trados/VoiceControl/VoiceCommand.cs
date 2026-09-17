@@ -143,7 +143,7 @@ namespace Supervertaler.Trados.VoiceControl
                 // #125. "select" carries an open slot: the words after it are matched
                 // against the segment's own target text, which is also what the
                 // recogniser's grammar is built from while that segment is open.
-                new VoiceCommand { Phrase = "select {phrase}", Aliases = new List<string> { "choose {phrase}" }, ActionType = "internal", Action = "select_phrase", Description = "Select words in the target: say \"select\" and the words", Category = "editing" },
+                new VoiceCommand { Phrase = "select {phrase}", Aliases = new List<string> { "choose {phrase}" }, ActionType = "internal", Action = "select_phrase", Description = "BETA. Select words in the target by saying them. Works for everyday words; the voice model does not know most technical terms, and says so.", Category = "editing", Enabled = false },
                 new VoiceCommand { Phrase = "delete that", Aliases = new List<string> { "delete this", "remove that" }, ActionType = "internal", Action = "delete_selection", Description = "Delete whatever is selected in the target", Category = "editing" },
 
                 // #127. The words after "select source" are in the SOURCE language,
@@ -152,7 +152,7 @@ namespace Supervertaler.Trados.VoiceControl
                 // for the same reason "dictate" is: it costs a 40 MB download, and an
                 // installation whose source language has no model would only find out
                 // by trying.
-                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source select {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "Select words in the SOURCE segment. Downloads a voice model for the source language on first use. Read-only: \"delete that\" will refuse a source selection.", Category = "editing", Enabled = false },
+                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source select {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "BETA. Select words in the SOURCE segment by saying them. Needs a voice model for the source language, fetched the first time it is used. Read-only: \"delete that\" refuses a source selection.", Category = "editing", Enabled = false },
 
                 // Off by default: it drives an EXTERNAL dictation tool, which most
                 // installations will not have. Enabled on a machine without one, it
