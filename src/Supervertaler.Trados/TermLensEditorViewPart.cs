@@ -2368,6 +2368,11 @@ namespace Supervertaler.Trados
                         + (viaPart != null ? " (via the part \"" + viaPart + "\")" : found.Exact ? "" : " (some words dropped)")
                         + (note != null ? " - " + note : ""),
                         VoiceControl.VoiceActivityLog.Outcome.Done);
+                    // #128: a selection made by saying the word, with the number
+                    // popup open, is a selection all the same - the popup's job is
+                    // done. Found within the hour: a white word said aloud was
+                    // selected and the numbers stayed on screen.
+                    if (Controls.NumberPopupForm.IsOpen) VoiceHideNumbers();
                 }
             }
             catch (Exception ex)
