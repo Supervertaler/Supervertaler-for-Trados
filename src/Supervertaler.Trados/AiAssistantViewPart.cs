@@ -1115,7 +1115,15 @@ namespace Supervertaler.Trados
 
             return new BridgeInstanceInfo
             {
-                ProjectName = TermLensEditorViewPart.GetCurrentProjectName(),
+                // #134: the same source get_active_project reports - the project of
+                // the document open in the editor. The tracked name TermLens keeps
+                // for per-project settings is updated on TermLens's own document
+                // event and was returned FIRST, so the handshake - and with it
+                // list_trados_instances and the 'target' block on every write -
+                // could name one project while get_active_project named another
+                // (2026-09-17). Live first; the tracked name only when no document
+                // is open.
+                ProjectName = GetProjectName() ?? TermLensEditorViewPart.GetCurrentProjectName(),
                 ActiveFile = activeFile
             };
         }
