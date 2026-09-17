@@ -103,6 +103,10 @@ namespace Supervertaler.Trados.VoiceControl
                     engine.Start(VoiceCommandSet.GrammarPhrases(_commands)
                         .Concat(_segmentWords).Distinct().ToList());
                     _engine = engine;
+                    // #126: the word list is read from the model's own files, once.
+                    // Here, on the start-up thread, so the first failed selection
+                    // can already say whether the word was hearable.
+                    VoiceVocabulary.Preload(VoiceRuntimeInstaller.ModelDir);
 
                     _running = true;
                     SetStatus("Listening…", state: 2);
@@ -412,6 +416,7 @@ namespace Supervertaler.Trados.VoiceControl
                 BeginSourceModelDownload(culture);
                 return prefix;
             }
+            VoiceVocabulary.Preload(dir);   // #126: no-op once loaded
 
             List<string> words;
             lock (_segmentWordLock) { words = new List<string>(_sourceWords); }
@@ -466,7 +471,12 @@ namespace Supervertaler.Trados.VoiceControl
 
                 Core.DiagnosticLog.WriteAlways("VoiceHeard",
                     "the source pass heard nothing and \"" + tail + "\" is not in the source - refused");
-                Announce("did not catch that word - try one next to it", VoiceActivityLog.Outcome.Missed);
+                // #126: if the segment has words the source model cannot hear, say
+                // so - naming the one that begins with what the English pass heard
+                // when there is one ("add" for "adsorbens"), else counting them.
+                var why = VoiceVocabulary.ExplainMiss(dir, tail, words, "the source voice model");
+                Announce(why ?? "did not catch that word - try one next to it",
+                         why != null ? VoiceActivityLog.Outcome.Refused : VoiceActivityLog.Outcome.Missed);
                 return prefix;
             }
 
@@ -589,6 +599,20 @@ namespace Supervertaler.Trados.VoiceControl
                 _segmentWords = fresh;
             }
             RefreshGrammar();
+
+            // #126: how much of this segment the model can hear at all. Diagnostic
+            // only, once per segment change; the pane says it when a selection
+            // fails. This is the number that decides whether voice selection is
+            // usable on a given text, and it was never visible before.
+            try
+            {
+                var unheard = VoiceVocabulary.Unhearable(VoiceRuntimeInstaller.ModelDir, fresh);
+                if (unheard.Count > 0)
+                    Core.DiagnosticLog.Log("Voice", unheard.Count + " of " + fresh.Count
+                        + " target words are not in the model's vocabulary: "
+                        + string.Join(", ", unheard.Take(8)) + (unheard.Count > 8 ? ", …" : ""));
+            }
+            catch { }
         }
 
         /// <summary>Command phrases plus the current segment's words.</summary>

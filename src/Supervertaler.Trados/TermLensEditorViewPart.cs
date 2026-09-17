@@ -2215,9 +2215,21 @@ namespace Supervertaler.Trados
                     // Say so. Silence here is indistinguishable from the voice
                     // control having died, and the translator's next move is to
                     // repeat themselves rather than to say something else.
+                    // #126: when the real reason is that the model cannot hear the
+                    // word, say that. "no 'add' in the target" was true - and useless,
+                    // because nobody said "add": the recogniser matched the sound of
+                    // "adsorbent" to the nearest word it knew, and the word it was
+                    // asked for is one the model has never contained.
+                    var modelDir = inSource
+                        ? VoiceControl.VoiceRuntimeInstaller.SourceModelDir(VoiceSourceCultureName())
+                        : VoiceControl.VoiceRuntimeInstaller.ModelDir;
+                    var why = VoiceControl.VoiceVocabulary.ExplainMiss(
+                        modelDir, spoken, VoiceWordsOf(plain),
+                        inSource ? "the source voice model" : "the voice model");
                     VoiceControl.VoiceControlManager.Instance?.Announce(
-                        "no \"" + spoken + "\" in the " + side,
-                        VoiceControl.VoiceActivityLog.Outcome.Missed);
+                        why ?? "no \"" + spoken + "\" in the " + side,
+                        why != null ? VoiceControl.VoiceActivityLog.Outcome.Refused
+                                    : VoiceControl.VoiceActivityLog.Outcome.Missed);
                     return;
                 }
 
