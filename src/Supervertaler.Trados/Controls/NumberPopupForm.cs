@@ -355,6 +355,15 @@ namespace Supervertaler.Trados.Controls
                 Padding = new Padding(0, UiScale.Pixels(4), 0, UiScale.Pixels(4))
             };
             _body.Controls.Add(flow);
+            // Measured at its real width. The body's layout is suspended while the
+            // popup is filled, so Dock.Fill has not sized the panel yet and the
+            // chips wrapped at a default width - many rows, a popup at the cap,
+            // and a screen of white under the words (2026-09-17, same fault the
+            // sentence layout had). No scrollbar while measuring: it would steal
+            // width and wrap differently from the final layout.
+            flow.AutoScroll = false;
+            flow.Width = _body.ClientSize.Width;
+            flow.Height = 4000;
             var numFont = new Font("Segoe UI", UiScale.FontSize(7.5f), FontStyle.Bold);
             var wordFont = new Font("Segoe UI", UiScale.FontSize(10f));
             flow.SuspendLayout();
@@ -378,8 +387,10 @@ namespace Supervertaler.Trados.Controls
             }
             flow.ResumeLayout();
             flow.PerformLayout();
-            return flow.Controls.Count == 0 ? UiScale.Pixels(30)
-                 : flow.Controls[flow.Controls.Count - 1].Bottom + UiScale.Pixels(8);
+            var contentH = flow.Controls.Count == 0 ? UiScale.Pixels(30)
+                         : flow.Controls[flow.Controls.Count - 1].Bottom + UiScale.Pixels(8);
+            flow.AutoScroll = true;   // back on, for a segment past the cap
+            return contentH;
         }
 
         /// <summary>Same placement rule as the TermLens popup: near the point, on screen.</summary>
