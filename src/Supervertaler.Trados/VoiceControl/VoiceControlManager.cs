@@ -292,8 +292,11 @@ namespace Supervertaler.Trados.VoiceControl
             // not know the word, so the recogniser returned nothing for it - and
             // bare "select" matches no command, so the pane said "no command
             // matched". True and useless. The reason is knowable, so say it.
+            // Only if nothing has explained it yet: the source pass reduces an
+            // utterance to the bare prefix AFTER saying why ("adsorbens" cannot be
+            // heard), and a second explanation on top was an orphan row.
             var bare = BareSlotPrefix(text);
-            if (bare != null)
+            if (bare != null && VoiceActivityLog.HasPending())
             {
                 ExplainBarePrefix(bare);
                 return;
