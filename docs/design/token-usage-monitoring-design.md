@@ -106,7 +106,7 @@ One record per LLM call (or per aggregated batch). **JSONL** is the durable arti
   "project": "EP3456789A1",       // human name
   "project_key": "a83f…",         // hash of .sdlproj (stable join key)
   "file": "claims.docx",
-  "client": "Brants & Patents",   // optional, see §8
+  "client": "Acme Patents",   // optional, see §8
   "src_lang": "en", "tgt_lang": "nl",
   "segments": 312,                // segments covered by this record
   "tokens": {

@@ -28,7 +28,7 @@ Library
 │   └── Translate
 └── SuperMemory
     ├── _shared              loaded alongside the active bank, always
-    ├── brants-bari-001-be-ep    (active)
+    ├── acme-proj-001    (active)
     │   ├── brief.md
     │   ├── terminology.md
     │   ├── style.md
@@ -133,9 +133,9 @@ filings sharing one drawings folder: both projects point at it.
 **Per bank** would be simpler here, and survives the Studio project being deleted
 and recreated — but only if a bank maps 1:1 to a filing.
 
-The observed banks disagree with each other. `brants-bari-001-be-ep` and
-`brants-trax-005-be-ep` are per-filing. `impala_hbm-machines`, `mahatta_genpact`
-and `taya` read as per-client and would span many jobs with different drawings;
+The observed banks disagree with each other. `acme-proj-001` and
+`acme-proj-002` are per-filing. `client-b_machines`, `client-c_ops`
+and `client-d` read as per-client and would span many jobs with different drawings;
 per-bank would attach one job's figures to all of them.
 
 Per project is the safer default: never wrong, only sometimes repetitive.

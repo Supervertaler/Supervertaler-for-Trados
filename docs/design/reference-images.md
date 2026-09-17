@@ -193,7 +193,7 @@ to build any one channel as a special case.
 **Cost separates push from pull decisively.** Order of magnitude, because the
 exact figures move with provider and resolution: a drawing costs on the order of
 a thousand-odd input tokens, a paragraph of description costs tens. On the
-BRANTS job — 394 segments, 5 drawings — attaching every drawing to every request
+Acme job — 394 segments, 5 drawings — attaching every drawing to every request
 is roughly 5 × 394 image payloads per run, and that is before the source text.
 The distilled manifest is one vision pass ever, then well under a kilobyte per
 request. Three orders of magnitude is not a tuning question.

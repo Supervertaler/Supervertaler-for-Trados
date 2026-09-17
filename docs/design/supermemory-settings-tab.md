@@ -92,7 +92,7 @@ _shared                    (always loaded underneath the active bank)
   brief.md
   terminology.md
   style.md
-brants-bari-001-be-ep      (active - marked)
+acme-proj-001      (active - marked)
   brief.md
   terminology.md
   style.md
@@ -153,9 +153,9 @@ always correct, because drawings belong to a job.
 **Per bank** would be simpler in this UI and survives the Studio project being
 deleted and recreated — and it is right *if* a bank maps 1:1 to a filing.
 
-The observed banks do not agree with each other. `brants-bari-001-be-ep` and
-`brants-trax-005-be-ep` are per-filing, so per-bank would be right for them.
-`impala_hbm-machines`, `mahatta_genpact` and `taya` read as per-client, and would
+The observed banks do not agree with each other. `acme-proj-001` and
+`acme-proj-002` are per-filing, so per-bank would be right for them.
+`client-b_machines`, `client-c_ops` and `client-d` read as per-client, and would
 span many jobs with different drawings — per-bank would then attach one job's
 figures to all of them.
 
