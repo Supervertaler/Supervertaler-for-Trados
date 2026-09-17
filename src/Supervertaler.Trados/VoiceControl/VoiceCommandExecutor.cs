@@ -81,6 +81,9 @@ namespace Supervertaler.Trados.VoiceControl
             _slotHandlers["select_phrase"] = TermLensEditorViewPart.VoiceSelectPhrase;
             _slotHandlers["select_source_phrase"] = TermLensEditorViewPart.VoiceSelectSourcePhrase;
             _internalHandlers["delete_selection"] = TermLensEditorViewPart.VoiceDeleteSelection;
+            // #128: number the words so one can be chosen by saying its number.
+            _internalHandlers["number_words"] = () => TermLensEditorViewPart.VoiceShowNumbers(false, null);
+            _internalHandlers["number_source_words"] = () => TermLensEditorViewPart.VoiceShowNumbers(true, null);
         }
 
         /// <summary>

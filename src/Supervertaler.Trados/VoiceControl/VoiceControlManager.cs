@@ -157,6 +157,8 @@ namespace Supervertaler.Trados.VoiceControl
             try { TermLensEditorViewPart.VoiceForgetLastSelection(); } catch { }
             try { _engine?.Dispose(); } catch { }
             _engine = null;
+            Controls.NumberPopupForm.CloseIt();   // #128
+            lock (_segmentWordLock) { _numberPhrases = new List<string>(); }
 
             try { SuperVoiceViewPart.TryGetControl()?.SetState(0, "Off"); } catch { }   // #129
 
@@ -285,6 +287,10 @@ namespace Supervertaler.Trados.VoiceControl
 
             // #129: and to the SuperVoice pane, where it stays readable.
             VoiceActivityLog.Heard(text);
+
+            // #128: while the number popup is open, a number selects - before the
+            // second pass, which would try to hear "twelve" as a segment word.
+            if (Controls.NumberPopupForm.IsOpen && HandleNumberUtterance(text)) return;
 
             text = ReconsiderSelection(text);
 
@@ -493,6 +499,13 @@ namespace Supervertaler.Trados.VoiceControl
                 var why = VoiceVocabulary.ExplainMiss(dir, tail, whole, "the source voice model");
                 Announce(why ?? "did not catch that word - try one next to it",
                          why != null ? VoiceActivityLog.Outcome.Refused : VoiceActivityLog.Outcome.Missed);
+                // #128: the source word could not be heard; number the source.
+                var marshalNumbers = MarshalControl();
+                if (marshalNumbers != null)
+                {
+                    var reason = why ?? "did not catch that word";
+                    try { marshalNumbers.BeginInvoke((Action)(() => TermLensEditorViewPart.VoiceShowNumbers(true, reason))); } catch { }
+                }
                 return prefix;
             }
 
@@ -576,6 +589,10 @@ namespace Supervertaler.Trados.VoiceControl
                 msg += " (" + unheard.Count + " here it cannot hear: " + string.Join(", ", unheard.Take(3))
                      + (unheard.Count > 3 ? ", …" : "") + ")";
             Announce(msg, VoiceActivityLog.Outcome.Refused);
+            // #128: and offer the numbers - this is the case they exist for.
+            var marshal = MarshalControl();
+            if (marshal != null)
+                try { marshal.BeginInvoke((Action)(() => TermLensEditorViewPart.VoiceShowNumbers(isSource, msg))); } catch { }
         }
 
         private static bool ContainsWord(string utterance, string word)
@@ -603,6 +620,8 @@ namespace Supervertaler.Trados.VoiceControl
         /// accurate, and the reason it has to be rebuilt as the translator moves.</para>
         /// </summary>
         private List<string> _segmentWords = new List<string>();
+        /// <summary>#128: number words, in the grammar only while the number popup is open.</summary>
+        private List<string> _numberPhrases = new List<string>();
 
         /// <summary>
         /// Guards <see cref="_segmentWords"/>. It is written on the UI thread as the
@@ -678,12 +697,56 @@ namespace Supervertaler.Trados.VoiceControl
             catch { }
         }
 
+        /// <summary>#128: the number popup opened over <paramref name="count"/> words.</summary>
+        public void SetNumberPopup(int count)
+        {
+            lock (_segmentWordLock) { _numberPhrases = NumberWords.GrammarPhrases(count, null); }
+            RefreshGrammar();
+        }
+
+        /// <summary>#128: the popup closed; the number words leave the grammar.</summary>
+        public void ClearNumberPopup()
+        {
+            lock (_segmentWordLock)
+            {
+                if (_numberPhrases.Count == 0) return;
+                _numberPhrases = new List<string>();
+            }
+            RefreshGrammar();
+        }
+
+        /// <summary>
+        /// #128: while the popup is open, a number selects. Anything that is not a
+        /// number, or that is a command in its own right, goes on as usual.
+        /// </summary>
+        private bool HandleNumberUtterance(string text)
+        {
+            if (_executor != null && _executor.IsExactCommand(text)) return false;
+            var marshal = MarshalControl();
+            if (marshal == null) return false;
+            if (NumberWords.IsCancel(text))
+            {
+                Announce("numbers closed", VoiceActivityLog.Outcome.Suppressed);
+                try { marshal.BeginInvoke((Action)TermLensEditorViewPart.VoiceHideNumbers); } catch { }
+                return true;
+            }
+            int from, to;
+            if (!NumberWords.TryParse(text, out from, out to)) return false;
+            var inSource = Controls.NumberPopupForm.InSource;
+            try { marshal.BeginInvoke((Action)(() => TermLensEditorViewPart.VoiceSelectByNumber(inSource, from, to))); }
+            catch { }
+            return true;
+        }
+
         /// <summary>Command phrases plus the current segment's words.</summary>
         private void RefreshGrammar()
         {
             if (_engine == null || _commands == null) return;
+            List<string> numbers;
+            lock (_segmentWordLock) { numbers = new List<string>(_numberPhrases); }
             var phrases = VoiceCommandSet.GrammarPhrases(_commands)
                 .Concat(_segmentWords)
+                .Concat(numbers)
                 .Distinct()
                 .ToList();
             try { _engine.UpdateGrammar(phrases); }

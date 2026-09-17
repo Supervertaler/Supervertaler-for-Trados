@@ -2230,6 +2230,9 @@ namespace Supervertaler.Trados
                         why ?? "no \"" + spoken + "\" in the " + side,
                         why != null ? VoiceControl.VoiceActivityLog.Outcome.Refused
                                     : VoiceControl.VoiceActivityLog.Outcome.Missed);
+                    // #128: a word the model cannot hear is exactly what the numbers
+                    // are for. Open them, with the reason as the title.
+                    if (why != null) VoiceShowNumbers(inSource, why);
                     return;
                 }
 
@@ -2313,80 +2316,10 @@ namespace Supervertaler.Trados
                 _lastSelectStart = found.Start;
                 _lastSelectText = found.Text;
 
-                // Studio selects by TEXT, not by offset, and its search is a plain
-                // substring one: "the" lands inside "further" however carefully the
-                // matcher resolved it to the standalone word further along. There is
-                // no offset-based selection to fall back on.
-                //
-                // The search does NOT resume from the current selection - measured on
-                // 2026-09-12, two consecutive searches for "the" both landed at 8,
-                // inside "further" - so the hits cannot be walked.
-                //
-                // What works instead is to hand the substring search a string whose
-                // FIRST hit is already the right one. The word plus the character
-                // following it in the segment is usually enough: "the " skips the one
-                // inside "further", because that one is followed by "r". The extra
-                // characters are then shrunk off the selection with Shift+Left, which
-                // is why only a SUFFIX will do - a prefix would need the anchor moved,
-                // and only the moving end of a selection can be shrunk.
-                var ok = doc.FindTextInSegment(segNo, found.Text, true, inSource);
-                var landed = ok ? SelectionStart(doc, inSource) : -1;
-                var padded = 0;
-
-                if (ok && landed >= 0 && landed != found.Start)
-                {
-                    var pad = DisambiguatingSuffix(plain, found.Text, found.Start);
-                    if (pad != null)
-                    {
-                        padded = pad.Length - found.Text.Length;
-                        ok = doc.FindTextInSegment(segNo, pad, true, inSource);
-                        landed = ok ? SelectionStart(doc, inSource) : -1;
-
-                        // Shrink the padding back off. Only after the offset is
-                        // confirmed: shrinking a selection that landed somewhere
-                        // unexpected would leave a wrong selection one character
-                        // shorter rather than no selection at all.
-                        if (ok && landed == found.Start)
-                        {
-                            for (int i = 0; i < padded; i++)
-                                System.Windows.Forms.SendKeys.SendWait("+{LEFT}");
-
-                            // Did it actually shrink? Keyboard selection in the SOURCE
-                            // cell is not something to take on trust - the cell is
-                            // read-only by default and may not accept it. An unshrunk
-                            // selection carries the padding, which for a word at the
-                            // end of a segment is the full stop - and that would go
-                            // into the termbase with a quick-add.
-                            var length = SelectionLength(doc, inSource);
-                            if (length >= 0 && length != found.Text.Length)
-                            {
-                                Core.DiagnosticLog.WriteAlways("VoiceSelect",
-                                    "padding not trimmed: selected " + length + " chars, wanted "
-                                    + found.Text.Length + " (Shift+Left did not shrink"
-                                    + (inSource ? " the source cell)" : ")"));
-                                CollapseSelection(doc, inSource);
-                                VoiceControl.VoiceControlManager.Instance?.Announce(
-                                    "could not select \"" + found.Text + "\" cleanly");
-                                return;
-                            }
-                        }
-                    }
-                }
-
-                // Still in the wrong place. A selection somewhere the translator did
-                // not name is worse than none, because "delete that" would act on it.
-                if (ok && landed >= 0 && landed != found.Start)
-                {
-                    CollapseSelection(doc, inSource);
-                    Core.DiagnosticLog.WriteAlways("VoiceSelect",
-                        "heard \"" + spoken + "\" -> wanted \"" + found.Text + "\" at " + found.Start
-                        + " but Studio's search stopped at " + landed
-                        + " (padding " + (padded > 0 ? "+" + padded + " chars did not help" : "found none")
-                        + ") - refused");
-                    VoiceControl.VoiceControlManager.Instance?.Announce(
-                        "\"" + found.Text + "\" is inside another word - say more words");
-                    return;
-                }
+                int landed, padded;
+                var okN = SelectMatchInDocument(doc, segNo, plain, found, inSource, spoken, out landed, out padded);
+                if (okN == null) return;   // refused, and already said why
+                var ok = okN.Value;
 
                 Core.DiagnosticLog.WriteAlways("VoiceSelect",
                     "heard \"" + spoken + "\" -> selecting \"" + found.Text + "\" at " + found.Start
@@ -2441,6 +2374,233 @@ namespace Supervertaler.Trados
             {
                 try { Core.DiagnosticLog.Log("VoiceSelect", "select failed: " + ex.Message); } catch { }
             }
+        }
+
+        /// <summary>
+        /// Moves Studio's selection to <paramref name="found"/> - the padding trick,
+        /// the Shift+Left shrink, the two refusals. Lifted out of VoiceSelectCore
+        /// (#128) so that selecting by NUMBER drives exactly the same mechanics as
+        /// selecting by word rather than a second copy of them.
+        ///
+        /// <para>Returns true when selected at the right offset, false when Studio's
+        /// search found nothing (the caller says so), and null when the selection
+        /// landed somewhere else and was refused - already announced here.</para>
+        /// </summary>
+        private static bool? SelectMatchInDocument(Sdl.TranslationStudioAutomation.IntegrationApi.IStudioDocument doc, string segNo, string plain,
+            VoiceControl.PhraseMatcher.Match found, bool inSource, string spoken,
+            out int landed, out int padded)
+        {
+            landed = -1; padded = 0;
+                // Studio selects by TEXT, not by offset, and its search is a plain
+                // substring one: "the" lands inside "further" however carefully the
+                // matcher resolved it to the standalone word further along. There is
+                // no offset-based selection to fall back on.
+                //
+                // The search does NOT resume from the current selection - measured on
+                // 2026-09-12, two consecutive searches for "the" both landed at 8,
+                // inside "further" - so the hits cannot be walked.
+                //
+                // What works instead is to hand the substring search a string whose
+                // FIRST hit is already the right one. The word plus the character
+                // following it in the segment is usually enough: "the " skips the one
+                // inside "further", because that one is followed by "r". The extra
+                // characters are then shrunk off the selection with Shift+Left, which
+                // is why only a SUFFIX will do - a prefix would need the anchor moved,
+                // and only the moving end of a selection can be shrunk.
+                var ok = doc.FindTextInSegment(segNo, found.Text, true, inSource);
+                landed = ok ? SelectionStart(doc, inSource) : -1;
+                padded = 0;
+
+                if (ok && landed >= 0 && landed != found.Start)
+                {
+                    var pad = DisambiguatingSuffix(plain, found.Text, found.Start);
+                    if (pad != null)
+                    {
+                        padded = pad.Length - found.Text.Length;
+                        ok = doc.FindTextInSegment(segNo, pad, true, inSource);
+                        landed = ok ? SelectionStart(doc, inSource) : -1;
+
+                        // Shrink the padding back off. Only after the offset is
+                        // confirmed: shrinking a selection that landed somewhere
+                        // unexpected would leave a wrong selection one character
+                        // shorter rather than no selection at all.
+                        if (ok && landed == found.Start)
+                        {
+                            for (int i = 0; i < padded; i++)
+                                System.Windows.Forms.SendKeys.SendWait("+{LEFT}");
+
+                            // Did it actually shrink? Keyboard selection in the SOURCE
+                            // cell is not something to take on trust - the cell is
+                            // read-only by default and may not accept it. An unshrunk
+                            // selection carries the padding, which for a word at the
+                            // end of a segment is the full stop - and that would go
+                            // into the termbase with a quick-add.
+                            var length = SelectionLength(doc, inSource);
+                            if (length >= 0 && length != found.Text.Length)
+                            {
+                                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                                    "padding not trimmed: selected " + length + " chars, wanted "
+                                    + found.Text.Length + " (Shift+Left did not shrink"
+                                    + (inSource ? " the source cell)" : ")"));
+                                CollapseSelection(doc, inSource);
+                                VoiceControl.VoiceControlManager.Instance?.Announce(
+                                    "could not select \"" + found.Text + "\" cleanly");
+                                return null;
+                            }
+                        }
+                    }
+                }
+
+                // Still in the wrong place. A selection somewhere the translator did
+                // not name is worse than none, because "delete that" would act on it.
+                if (ok && landed >= 0 && landed != found.Start)
+                {
+                    CollapseSelection(doc, inSource);
+                    Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                        "heard \"" + spoken + "\" -> wanted \"" + found.Text + "\" at " + found.Start
+                        + " but Studio's search stopped at " + landed
+                        + " (padding " + (padded > 0 ? "+" + padded + " chars did not help" : "found none")
+                        + ") - refused");
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "\"" + found.Text + "\" is inside another word - say more words");
+                    return null;
+                }
+            return ok;
+        }
+
+        /// <summary>
+        /// #128: selects a span chosen by NUMBER from the popup. The span's text is
+        /// the segment text between the first and last chosen word, so a range keeps
+        /// what lies between; Studio's search is then driven exactly as for a spoken
+        /// phrase, padding and all.
+        /// </summary>
+        internal static void VoiceSelectByNumber(bool inSource, int from, int to)
+        {
+            try
+            {
+                var inst = _currentInstance;
+                var doc = inst?._activeDocument;
+                var pair = doc?.ActiveSegmentPair;
+                if (doc == null || pair == null) return;
+                var plain = SegmentTagHandler.StripTagPlaceholders(
+                    (inSource ? pair.Source?.ToString() : pair.Target?.ToString()) ?? "");
+                var span = Controls.NumberPopupForm.Span(from, to, plain);
+                if (span == null)
+                {
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "no word " + (from == to ? from.ToString() : from + " to " + to)
+                        + " - the popup numbers " + Controls.NumberPopupForm.WordCount);
+                    return;
+                }
+                var segNo = pair.Properties.Id.Id;
+                var found = new VoiceControl.PhraseMatcher.Match { Text = span.Text, Start = span.Start, Exact = true };
+                int landed, padded;
+                var okN = SelectMatchInDocument(doc, segNo, plain, found, inSource,
+                                                "#" + (from == to ? from.ToString() : from + "-" + to),
+                                                out landed, out padded);
+                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                    "by number " + from + (to != from ? "-" + to : "") + " -> \"" + span.Text + "\" at " + span.Start
+                    + (inSource ? " in the source" : "") + ": "
+                    + (okN == true ? "selected" : okN == false ? "FindTextInSegment said no" : "refused")
+                    + " (landed " + landed + (padded > 0 ? ", via +" + padded + " chars of padding" : "") + ")");
+                if (okN == null) return;
+                if (okN.Value)
+                {
+                    _lastSelectPhrase = null;   // a number is not a phrase to repeat
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "selected \"" + span.Text + "\"" + (inSource ? " in the source" : "") + " (by number)",
+                        VoiceControl.VoiceActivityLog.Outcome.Done);
+                    VoiceHideNumbers();
+                }
+                else
+                {
+                    VoiceControl.VoiceControlManager.Instance?.Announce("could not select \"" + span.Text + "\"");
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.Log("VoiceSelect", "select by number failed: " + ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// #128: numbers the words of one side of the active segment in a popup and
+        /// puts the number words into the recogniser's grammar for as long as it is
+        /// open. <paramref name="reason"/> is the failure that opened it, or null
+        /// for the explicit command.
+        /// </summary>
+        internal static void VoiceShowNumbers(bool inSource, string reason)
+        {
+            try
+            {
+                var inst = _currentInstance;
+                var pair = inst?._activeDocument?.ActiveSegmentPair;
+                if (pair == null)
+                {
+                    VoiceControl.VoiceControlManager.Instance?.Announce("open a segment first");
+                    return;
+                }
+                var plain = SegmentTagHandler.StripTagPlaceholders(
+                    (inSource ? pair.Source?.ToString() : pair.Target?.ToString()) ?? "");
+                var words = NumberedWordsOf(plain);
+                if (words.Count == 0)
+                {
+                    VoiceControl.VoiceControlManager.Instance?.Announce(
+                        "nothing to number" + (inSource ? " in the source" : ""));
+                    return;
+                }
+
+                // Mark what the model cannot hear: those are the words the numbers
+                // exist for. Hyphenated compounds are one chip, checked by their parts.
+                var modelDir = inSource
+                    ? VoiceControl.VoiceRuntimeInstaller.SourceModelDir(VoiceSourceCultureName())
+                    : VoiceControl.VoiceRuntimeInstaller.ModelDir;
+                var parts = words.SelectMany(w => w.Text.Split(new[] { '-', '\u2010', '\u2011', '\u2013' }, StringSplitOptions.RemoveEmptyEntries)).ToList();
+                var unheard = new HashSet<string>(VoiceControl.VoiceVocabulary.Unhearable(modelDir, parts), StringComparer.OrdinalIgnoreCase);
+                foreach (var w in words)
+                    w.Unhearable = w.Text.Split(new[] { '-', '\u2010', '\u2011', '\u2013' }, StringSplitOptions.RemoveEmptyEntries)
+                                          .Any(p => unheard.Contains(p));
+
+                var title = reason == null
+                    ? (inSource ? "Source words - say a number" : "Target words - say a number")
+                    : reason.Split(new[] { " - " }, 2, StringSplitOptions.None)[0] + " - say its number";
+                Controls.NumberPopupForm.ShowFor(inSource, title, words);
+                VoiceControl.VoiceControlManager.Instance?.SetNumberPopup(words.Count);
+                Core.DiagnosticLog.WriteAlways("VoiceSelect",
+                    "numbers shown: " + words.Count + (inSource ? " source" : " target") + " words, "
+                    + words.Count(w => w.Unhearable) + " unhearable");
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.Log("VoiceSelect", "show numbers failed: " + ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>Closes the number popup and takes the number words back out of the grammar.</summary>
+        internal static void VoiceHideNumbers()
+        {
+            try
+            {
+                Controls.NumberPopupForm.CloseIt();
+                VoiceControl.VoiceControlManager.Instance?.ClearNumberPopup();
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Every token of the segment with its offset, for numbering. Unlike
+        /// <see cref="VoiceWordsOf"/> this keeps a hyphenated compound as ONE unit -
+        /// "night-vision" gets one number - and keeps numbers and measurements,
+        /// because a range may need to run across them.
+        /// </summary>
+        private static List<Controls.NumberPopupForm.Word> NumberedWordsOf(string plain)
+        {
+            var list = new List<Controls.NumberPopupForm.Word>();
+            if (string.IsNullOrEmpty(plain)) return list;
+            foreach (System.Text.RegularExpressions.Match m in
+                     System.Text.RegularExpressions.Regex.Matches(plain, @"[\p{L}\p{N}]+(?:[-\u2010\u2011\u2013][\p{L}\p{N}]+)*"))
+                list.Add(new Controls.NumberPopupForm.Word { Text = m.Value, Start = m.Index });
+            return list;
         }
 
         /// <summary>
@@ -2542,6 +2702,8 @@ namespace Supervertaler.Trados
 
                 var pair = _activeDocument?.ActiveSegmentPair;
 
+                // #128: the numbers belong to the segment they were made for.
+                if (Controls.NumberPopupForm.IsOpen) VoiceHideNumbers();
                 mgr.SetSegmentWords(VoiceWordsOf(pair?.Target?.ToString()));
                 var sourceWords = VoiceWordsOf(pair?.Source?.ToString());
                 // #127: the source's words go to a different grammar, used only by the

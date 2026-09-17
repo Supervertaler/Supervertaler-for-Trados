@@ -122,7 +122,7 @@ namespace Supervertaler.Trados.VoiceControl
         /// 6 = select source (20.191), 7 = dictate split into start/stop (20.191),
         /// 8 = select all (20.192).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 8;
+        internal const int CurrentDefaultsVersion = 9;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -176,6 +176,9 @@ namespace Supervertaler.Trados.VoiceControl
                 new VoiceCommand { Phrase = "copy source", Aliases = new List<string> { "copy from source" }, ActionType = "keystroke", Action = "ctrl+insert", Description = "Copy source to target", Category = "editing" },
                 new VoiceCommand { Phrase = "select all", Aliases = new List<string> { "select everything" }, ActionType = "keystroke", Action = "ctrl+a", Description = "Select all the text in the active segment (Ctrl+A)", Category = "editing" },
                 new VoiceCommand { Phrase = "clear target", Aliases = new List<string>(), ActionType = "keystroke", Action = "alt+delete", Description = "Clear the target segment", Category = "editing" },
+                // #128: selecting by number - the route to words the voice model cannot hear.
+                new VoiceCommand { Phrase = "numbers", Aliases = new List<string> { "show numbers", "number words" }, ActionType = "internal", Action = "number_words", Description = "Number the words of the target, then say \"select 12\" or \"select 12 to 14\". Opens by itself when a word cannot be heard.", Category = "editing" },
+                new VoiceCommand { Phrase = "source numbers", Aliases = new List<string> { "number source words" }, ActionType = "internal", Action = "number_source_words", Description = "Number the words of the SOURCE segment, then say the number to select.", Category = "editing" },
 
                 // TermLens – direct plugin calls (case-adapted insertion)
                 new VoiceCommand { Phrase = "term one",   ActionType = "internal", Action = "insert_term_1", Description = "Insert TermLens match 1", Category = "termlens" },
