@@ -2418,9 +2418,21 @@ namespace Supervertaler.Trados
                     var note = rivalNote != null ? rivalNote
                              : spots.Count > 1 ? (index + 1) + " of " + spots.Count + " - say again for the next"
                              : null;
+                    // A match made through a compound PART - "select" landing on
+                    // "selectiviteit" - is named as one. The part mechanism exists
+                    // for "aftast" to reach "aftastperiode"; it also lets a word the
+                    // model could not hear, mapped onto whatever part it sounded
+                    // like, select something the translator never said. The row
+                    // cannot tell the two apart, but it can show which it did.
+                    var heardWords = spoken.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    var viaPart = heardWords.FirstOrDefault(h => h.Length >= 3
+                        && found.Text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0
+                        && !System.Text.RegularExpressions.Regex.IsMatch(found.Text,
+                               @"(?<![\p{L}])" + System.Text.RegularExpressions.Regex.Escape(h) + @"(?![\p{L}])",
+                               System.Text.RegularExpressions.RegexOptions.IgnoreCase));
                     VoiceControl.VoiceControlManager.Instance?.Announce(
                         "selected \"" + found.Text + "\"" + (inSource ? " in the source" : "")
-                        + (found.Exact ? "" : " (some words dropped)")
+                        + (viaPart != null ? " (via the part \"" + viaPart + "\")" : found.Exact ? "" : " (some words dropped)")
                         + (note != null ? " - " + note : ""),
                         VoiceControl.VoiceActivityLog.Outcome.Done);
                 }
@@ -2535,7 +2547,8 @@ namespace Supervertaler.Trados
                 // #127: the source's words go to a different grammar, used only by the
                 // source-language model. They must NOT join the command grammar - the
                 // command model cannot pronounce them, and Vosk drops them silently.
-                mgr.SetSourceWords(sourceWords.Concat(CompoundParts(sourceWords)).Distinct().ToList());
+                mgr.SetSourceWords(sourceWords.Concat(CompoundParts(sourceWords)).Distinct().ToList(),
+                                   sourceWords);   // #126: whole words apart from the parts
             }
             catch { /* never break segment navigation over a voice feature */ }
         }

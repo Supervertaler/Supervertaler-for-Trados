@@ -288,6 +288,17 @@ namespace Supervertaler.Trados.VoiceControl
 
             text = ReconsiderSelection(text);
 
+            // #126: "select adsorbent" came back as bare "select" - the model does
+            // not know the word, so the recogniser returned nothing for it - and
+            // bare "select" matches no command, so the pane said "no command
+            // matched". True and useless. The reason is knowable, so say it.
+            var bare = BareSlotPrefix(text);
+            if (bare != null)
+            {
+                ExplainBarePrefix(bare);
+                return;
+            }
+
             // Engine thread → UI thread
             var marshal = MarshalControl();
             if (marshal == null) return;
@@ -474,7 +485,9 @@ namespace Supervertaler.Trados.VoiceControl
                 // #126: if the segment has words the source model cannot hear, say
                 // so - naming the one that begins with what the English pass heard
                 // when there is one ("add" for "adsorbens"), else counting them.
-                var why = VoiceVocabulary.ExplainMiss(dir, tail, words, "the source voice model");
+                List<string> whole;
+                lock (_segmentWordLock) { whole = new List<string>(_sourceWholeWords); }
+                var why = VoiceVocabulary.ExplainMiss(dir, tail, whole, "the source voice model");
                 Announce(why ?? "did not catch that word - try one next to it",
                          why != null ? VoiceActivityLog.Outcome.Refused : VoiceActivityLog.Outcome.Missed);
                 return prefix;
@@ -525,6 +538,43 @@ namespace Supervertaler.Trados.VoiceControl
             });
         }
 
+        /// <summary>The slot prefix this utterance consists of and nothing else, or null.</summary>
+        private string BareSlotPrefix(string text)
+        {
+            var t = (text ?? "").Trim();
+            if (t.Length == 0 || _commands == null) return null;
+            return _commands
+                .Where(c => c.Enabled && c.HasSlot())
+                .SelectMany(c => c.SlotPrefixes())
+                .FirstOrDefault(p => string.Equals(p, t, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Says why a selection command arrived with no words after it: the word
+        /// spoken was not one the model knows, so the recogniser returned nothing
+        /// for it. Names how many words of the segment are in that position.
+        /// </summary>
+        private void ExplainBarePrefix(string prefix)
+        {
+            var isSource = _commands.Any(c => c.Enabled
+                && (c.Action ?? "").StartsWith("select_source_phrase", StringComparison.OrdinalIgnoreCase)
+                && c.SlotPrefixes().Any(p => string.Equals(p, prefix, StringComparison.OrdinalIgnoreCase)));
+
+            List<string> words;
+            lock (_segmentWordLock) { words = new List<string>(isSource ? _sourceWholeWords : _segmentWords); }
+            var modelDir = isSource
+                ? VoiceRuntimeInstaller.SourceModelDir(TermLensEditorViewPart.VoiceSourceCultureName())
+                : VoiceRuntimeInstaller.ModelDir;
+            var label = isSource ? "the source voice model" : "the voice model";
+
+            var unheard = VoiceVocabulary.Unhearable(modelDir, words);
+            var msg = "heard only \"" + prefix + "\" - the word after it is not one " + label + " knows";
+            if (unheard.Count > 0)
+                msg += " (" + unheard.Count + " here it cannot hear: " + string.Join(", ", unheard.Take(3))
+                     + (unheard.Count > 3 ? ", …" : "") + ")";
+            Announce(msg, VoiceActivityLog.Outcome.Refused);
+        }
+
         private static bool ContainsWord(string utterance, string word)
         {
             return (" " + utterance + " ").IndexOf(" " + word + " ",
@@ -567,16 +617,26 @@ namespace Supervertaler.Trados.VoiceControl
         /// for a second pass against the source-language model.
         /// </summary>
         private List<string> _sourceWords = new List<string>();
+        /// <summary>
+        /// #126: the source's words WITHOUT the compound parts that join the grammar.
+        /// The grammar list carries "select" for "selectiviteit" so a part can be
+        /// heard; a part is not a word a translator can be told about, and filtering
+        /// parts out of the grammar list by shape is impossible - "adsorbent" is a
+        /// substring of "adsorbents" too. So the whole words are kept on their own.
+        /// </summary>
+        private List<string> _sourceWholeWords = new List<string>();
 
         /// <summary>The source segment's words, for source-side recognition only.</summary>
-        public void SetSourceWords(IEnumerable<string> words)
+        public void SetSourceWords(IEnumerable<string> words, IEnumerable<string> wholeWords = null)
         {
             var fresh = (words ?? Enumerable.Empty<string>())
                 .Where(w => !string.IsNullOrWhiteSpace(w))
                 .Select(w => w.Trim().ToLowerInvariant())
                 .Distinct()
                 .ToList();
-            lock (_segmentWordLock) { _sourceWords = fresh; }
+            var whole = (wholeWords ?? words ?? Enumerable.Empty<string>())
+                .Where(w => !string.IsNullOrWhiteSpace(w)).Select(w => w.Trim()).Distinct().ToList();
+            lock (_segmentWordLock) { _sourceWords = fresh; _sourceWholeWords = whole; }
         }
 
         /// <summary>

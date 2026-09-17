@@ -96,7 +96,16 @@ namespace Supervertaler.Trados.VoiceControl
             if (string.IsNullOrWhiteSpace(result)) return;
             lock (_lock)
             {
-                var open = _entries.LastOrDefault();
+                // The OLDEST pending row that is still recent, not the latest. A
+                // stray "is" was heard between "select source select" and its
+                // outcome (2026-09-17), and the outcome landed on the "is" row while
+                // the real utterance sat at "…" for ever. Utterances are handled in
+                // order, so the one being resolved is the oldest still open. The
+                // age limit keeps a row abandoned by an exception from swallowing
+                // every later outcome.
+                var cutoff = DateTime.Now.AddSeconds(-15);
+                var open = _entries.FirstOrDefault(e => e.Kind == Outcome.Pending && e.Time >= cutoff)
+                        ?? _entries.LastOrDefault();
                 if (open == null || open.Kind != Outcome.Pending)
                 {
                     _entries.Add(new Entry { Time = DateTime.Now, Heard = null, Result = result.Trim(), Kind = kind });
