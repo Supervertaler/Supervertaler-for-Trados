@@ -299,10 +299,10 @@ namespace Supervertaler.Trados.VoiceControl
                 // when turning dictation ON; the way out must always work, or the
                 // gate below would trap the translator.
                 if ((isDictateToggle || isDictateOn) && !DictationMode.Active
-                    && TermLensEditorViewPart.VoiceSelectionIsSourceOnly())
+                    && TermLensEditorViewPart.VoiceDictationWouldGoToSource())
                 {
                     VoiceControlManager.Instance?.Announce(
-                        "that is source text - select in the target first");
+                        "the cursor is in the source - click in the target first");
                     return;
                 }
 

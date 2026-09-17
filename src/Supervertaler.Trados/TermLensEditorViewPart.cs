@@ -2176,6 +2176,30 @@ namespace Supervertaler.Trados
             catch { return "(unreadable)"; }
         }
 
+        /// <summary>
+        /// Whether starting dictation now would type into the SOURCE cell. Asks the
+        /// editor which cell has focus - the one direct answer the API gives - and
+        /// falls back to the selection test only when it gives none.
+        ///
+        /// <para>The selection test alone was wrong in the ordinary case (2026-09-17):
+        /// a "source select" leaves a highlight in the source that stays after the
+        /// caret has moved back to the target, and every "dictate" after that was
+        /// refused with "that is source text" while the caret sat, visibly, in the
+        /// target. Four refusals in a row. The dictation tool types where focus is,
+        /// so focus is the question.</para>
+        /// </summary>
+        internal static bool VoiceDictationWouldGoToSource()
+        {
+            try
+            {
+                var focus = FocusedContentName();
+                if (string.Equals(focus, "Source", StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(focus, "Target", StringComparison.OrdinalIgnoreCase)) return false;
+                return VoiceSelectionIsSourceOnly();   // no answer from the editor: the old test
+            }
+            catch { return VoiceSelectionIsSourceOnly(); }
+        }
+
         internal static bool VoiceSelectionIsSourceOnly()
         {
             try
