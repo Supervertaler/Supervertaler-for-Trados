@@ -70,6 +70,7 @@ namespace Supervertaler.Trados.VoiceControl
             // Per-word timings on every result: the source second pass needs to know
             // where the command words ended so it can skip them (see SecondsAfter).
             if (_recognizer != IntPtr.Zero) VoskNative.vosk_recognizer_set_words(_recognizer, 1);
+            _bytesFed = 0;   // a new recogniser starts a new clock
             if (_recognizer == IntPtr.Zero)
                 throw new InvalidOperationException("The voice recogniser could not be created.");
 
@@ -86,6 +87,7 @@ namespace Supervertaler.Trados.VoiceControl
                 if (_model == IntPtr.Zero) return;
                 var fresh = VoskNative.vosk_recognizer_new_grm(_model, 16000f, GrammarJson(grammarPhrases));
                 if (fresh != IntPtr.Zero) VoskNative.vosk_recognizer_set_words(fresh, 1);
+                _bytesFed = 0;   // the swapped-in recogniser starts a new clock
                 if (fresh == IntPtr.Zero) return;
                 var old = _recognizer;
                 _recognizer = fresh;
@@ -127,6 +129,14 @@ namespace Supervertaler.Trados.VoiceControl
         private byte[] _lastUtterance;
         /// <summary>Word timings of <see cref="_lastUtterance"/>, from the first pass.</summary>
         private List<TimedWord> _lastWords;
+        /// <summary>
+        /// Bytes fed to the LIVE recogniser since it was created. Vosk's word times
+        /// count from the recogniser's first sample, not from the utterance - the
+        /// first live run reported "select" ending at 12.85 s, 18.40 s, 26.50 s across
+        /// four utterances, every one past the end of a buffer a few seconds long.
+        /// This is what turns those into buffer-relative times.
+        /// </summary>
+        private long _bytesFed;
 
         private struct TimedWord { public string Word; public double Start, End; }
 
@@ -141,6 +151,7 @@ namespace Supervertaler.Trados.VoiceControl
                 Array.Copy(data, chunk, length);
                 _utterance.Add(chunk);
                 _utteranceBytes += length;
+                _bytesFed += length;
                 while (_utteranceBytes > MaxUtteranceBytes && _utterance.Count > 1)
                 {
                     _utteranceBytes -= _utterance[0].Length;
@@ -156,7 +167,13 @@ namespace Supervertaler.Trados.VoiceControl
                     // is being handled, and the next utterance starts collecting
                     // immediately.
                     _lastUtterance = Flatten(_utterance, _utteranceBytes);
-                    _lastWords = ExtractWords(resultJson);
+                    // The buffer's END is the sample just fed, so its start on Vosk's
+                    // clock is bytesFed minus its length. Times outside the buffer
+                    // mean the clocks disagree (a recogniser swapped mid-utterance);
+                    // then there are no timings, and the source pass runs untrimmed.
+                    var bufferSeconds = _lastUtterance.Length / 32000.0;
+                    var bufferStart = _bytesFed / 32000.0 - bufferSeconds;
+                    _lastWords = Rebase(ExtractWords(resultJson), bufferStart, bufferSeconds);
                     _utterance.Clear();
                     _utteranceBytes = 0;
 
@@ -367,6 +384,27 @@ namespace Supervertaler.Trados.VoiceControl
                 return Math.Max(0, words[i + want.Length - 1].End - 0.05);
             }
             return -1;
+        }
+
+        /// <summary>
+        /// Moves word times from Vosk's clock (seconds since the recogniser's first
+        /// sample) onto the utterance buffer's (seconds since the buffer began). Null
+        /// when any word lands outside the buffer: that means the two clocks do not
+        /// agree, and a wrong cut is worse than none.
+        /// </summary>
+        private static List<TimedWord> Rebase(List<TimedWord> words, double bufferStart, double bufferSeconds)
+        {
+            if (words == null || words.Count == 0) return null;
+            var moved = new List<TimedWord>(words.Count);
+            foreach (var w in words)
+            {
+                var t = new TimedWord { Word = w.Word, Start = w.Start - bufferStart, End = w.End - bufferStart };
+                // Half a second of slack: endpointing trims silence, so the first
+                // word can start a little before the buffer's nominal start.
+                if (t.End < -0.5 || t.Start > bufferSeconds + 0.5) return null;
+                moved.Add(t);
+            }
+            return moved;
         }
 
         /// <summary>
