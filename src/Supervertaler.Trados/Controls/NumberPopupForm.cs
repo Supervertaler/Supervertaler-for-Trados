@@ -75,7 +75,7 @@ namespace Supervertaler.Trados.Controls
 
         private readonly Label _title;
         private readonly Label _hint;
-        private readonly LinkLabel _layout;
+        private readonly Label _layout;
         private readonly Panel _body;
 
         public static bool IsOpen => _instance != null && !_instance.IsDisposed && _instance.Visible;
@@ -139,19 +139,22 @@ namespace Supervertaler.Trados.Controls
                 Text = "say \"select 12\" or \"select 12 to 14\"  ·  \"cancel\" closes"
             };
             // The layout switch lives here, where the opinion forms, not in a
-            // settings dialog. One click, saved.
-            _layout = new LinkLabel
+            // settings dialog. One click, saved. A Label styled as a link, not a
+            // LinkLabel: a LinkLabel takes keyboard focus when clicked and then
+            // draws a dotted focus rectangle - inside a window whose whole point
+            // is never to hold focus. A Label cannot be focused at all.
+            _layout = new Label
             {
                 Dock = DockStyle.Right,
                 AutoSize = true,
-                Font = new Font("Segoe UI", UiScale.FontSize(8f)),
-                LinkColor = HintColor,
-                ActiveLinkColor = NumberColor,
-                VisitedLinkColor = HintColor,
-                LinkBehavior = LinkBehavior.HoverUnderline,
+                Font = new Font("Segoe UI", UiScale.FontSize(8f), FontStyle.Underline),
+                ForeColor = HintColor,
+                Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleRight,
                 Padding = new Padding(0, UiScale.Pixels(2), 0, 0)
             };
+            _layout.MouseEnter += (s, e) => _layout.ForeColor = NumberColor;
+            _layout.MouseLeave += (s, e) => _layout.ForeColor = HintColor;
             _layout.Click += (s, e) => ToggleStyle();
             footer.Controls.Add(_hint);
             footer.Controls.Add(_layout);
@@ -242,12 +245,8 @@ namespace Supervertaler.Trados.Controls
             _plain = plain;
             _title_ = title;
             _title.Text = title ?? (inSource ? "Source words" : "Target words");
-            _layout.Text = Style == StyleSentence ? "layout: sentence · chips" : "layout: sentence · chips";
-            _layout.Links.Clear();
-            // Underline only the OTHER layout - the one a click switches to.
-            var other = Style == StyleSentence ? "chips" : "sentence";
-            var at = _layout.Text.IndexOf(other, StringComparison.Ordinal);
-            if (at >= 0) _layout.Links.Add(at, other.Length);
+            // Names the OTHER layout - the one a click switches to.
+            _layout.Text = Style == StyleSentence ? "switch to chips layout" : "switch to sentence layout";
 
             var screen = Screen.FromPoint(Cursor.Position).WorkingArea;
             var maxW = Math.Min(UiScale.Pixels(720), screen.Width * 6 / 10);
