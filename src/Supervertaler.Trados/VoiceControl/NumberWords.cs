@@ -116,6 +116,18 @@ namespace Supervertaler.Trados.VoiceControl
             if (pendingTens != null) numbers.Add(pendingTens.Value * 10);
             numbers.RemoveAll(n => n <= 0);
             if (numbers.Count == 0) return false;
+
+            // "forty two" came back from the recogniser as "four two" (2026-09-17),
+            // and two numbers read as a range selected words 2 to 4 - and reported
+            // success. Two single digits with no range word between them are the
+            // digits of one number, as anyone saying "four two" would mean; a range
+            // needs "to" or a number of ten or more.
+            var sawRangeWord = tokens.Any(t => RangeWords.Contains(t));
+            if (numbers.Count == 2 && !sawRangeWord && numbers[0] < 10 && numbers[1] < 10)
+            {
+                from = to = numbers[0] * 10 + numbers[1];
+                return true;
+            }
             from = numbers[0];
             to = numbers[numbers.Count - 1];
             if (to < from) { var t = from; from = to; to = t; }

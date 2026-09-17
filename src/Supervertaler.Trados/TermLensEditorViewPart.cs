@@ -2433,6 +2433,15 @@ namespace Supervertaler.Trados
                         {
                             for (int i = 0; i < padded; i++)
                                 System.Windows.Forms.SendKeys.SendWait("+{LEFT}");
+                            // SendWait returns when the keys are queued to the editor,
+                            // not when the editor has applied them. Read the length
+                            // straight away and a shrink still in flight reads as no
+                            // shrink at all. Poll briefly before concluding.
+                            for (int wait = 0; wait < 10 && SelectionLength(doc, inSource) != found.Text.Length; wait++)
+                            {
+                                System.Windows.Forms.Application.DoEvents();
+                                System.Threading.Thread.Sleep(30);
+                            }
 
                             // Did it actually shrink? Keyboard selection in the SOURCE
                             // cell is not something to take on trust - the cell is
@@ -2499,6 +2508,15 @@ namespace Supervertaler.Trados
                 }
                 var segNo = pair.Properties.Id.Id;
                 var found = new VoiceControl.PhraseMatcher.Match { Text = span.Text, Start = span.Start, Exact = true };
+
+                // The popup closes BEFORE the selection is driven, not after. A word
+                // that occurs six times in the segment needs a long padded search
+                // and a Shift+Left shrink to follow - and with the popup still on
+                // screen the shrink never took (segment 101, 2026-09-17: "selected
+                // 21 chars, wanted 10", twice). A top-level window in front, even
+                // one that does not activate, is not where those keys should go.
+                VoiceHideNumbers();
+
                 int landed, padded;
                 var okN = SelectMatchInDocument(doc, segNo, plain, found, inSource,
                                                 "#" + (from == to ? from.ToString() : from + "-" + to),
