@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Supervertaler.Trados.Models;
@@ -806,23 +807,52 @@ namespace Supervertaler.Trados.Core
         /// against a scratch database - FTS5's external-content delete must be given
         /// the OLD values exactly, or the index corrupts without a word.
         /// </summary>
-        private static readonly string[] TermIndexTriggerSql =
+        /// <summary>
+        /// The trigger statements for an index holding exactly <paramref name="cols"/>
+        /// - read from the file, never assumed. The Workbench declares the index with
+        /// three columns (source_term, target_term, definition); this plugin's own
+        /// CREATE declared four, with notes, until 18.20.192 - so files in the field
+        /// come in both shapes. A trigger naming a column the index lacks is created
+        /// without complaint (SQLite does not validate a trigger body) and then fails
+        /// EVERY insert on the table, in every product. Caught by the memoQ side on
+        /// 2026-09-17 against the live file before this shipped. And a trigger naming
+        /// FEWER columns than the index holds leaves the missing column's tokens in
+        /// the index on delete, which is corruption of the quiet kind. So: exactly
+        /// the file's columns, whichever shape it has.
+        /// </summary>
+        internal static string[] TermIndexTriggerSql(IList<string> cols)
         {
-            @"CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_ai AFTER INSERT ON termbase_terms BEGIN
-                INSERT INTO termbase_terms_fts(rowid, source_term, target_term, definition, notes)
-                VALUES (new.id, new.source_term, new.target_term, new.definition, new.notes);
-              END;",
-            @"CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_ad AFTER DELETE ON termbase_terms BEGIN
-                INSERT INTO termbase_terms_fts(termbase_terms_fts, rowid, source_term, target_term, definition, notes)
-                VALUES ('delete', old.id, old.source_term, old.target_term, old.definition, old.notes);
-              END;",
-            @"CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_au AFTER UPDATE ON termbase_terms BEGIN
-                INSERT INTO termbase_terms_fts(termbase_terms_fts, rowid, source_term, target_term, definition, notes)
-                VALUES ('delete', old.id, old.source_term, old.target_term, old.definition, old.notes);
-                INSERT INTO termbase_terms_fts(rowid, source_term, target_term, definition, notes)
-                VALUES (new.id, new.source_term, new.target_term, new.definition, new.notes);
-              END;"
-        };
+            var list = string.Join(", ", cols);
+            var news = string.Join(", ", cols.Select(c => "new." + c));
+            var olds = string.Join(", ", cols.Select(c => "old." + c));
+            return new[]
+            {
+                "CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_ai AFTER INSERT ON termbase_terms BEGIN\n" +
+                "  INSERT INTO termbase_terms_fts(rowid, " + list + ")\n" +
+                "  VALUES (new.id, " + news + ");\n" +
+                "END;",
+                "CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_ad AFTER DELETE ON termbase_terms BEGIN\n" +
+                "  INSERT INTO termbase_terms_fts(termbase_terms_fts, rowid, " + list + ")\n" +
+                "  VALUES ('delete', old.id, " + olds + ");\n" +
+                "END;",
+                "CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_au AFTER UPDATE ON termbase_terms BEGIN\n" +
+                "  INSERT INTO termbase_terms_fts(termbase_terms_fts, rowid, " + list + ")\n" +
+                "  VALUES ('delete', old.id, " + olds + ");\n" +
+                "  INSERT INTO termbase_terms_fts(rowid, " + list + ")\n" +
+                "  VALUES (new.id, " + news + ");\n" +
+                "END;"
+            };
+        }
+
+        /// <summary>The index's columns, as the file declares them, in declared order.</summary>
+        private static List<string> TermIndexColumns(SqliteConnection conn)
+        {
+            var cols = new List<string>();
+            using (var cmd = new SqliteCommand("PRAGMA table_info(termbase_terms_fts)", conn))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) cols.Add(r.GetString(1));
+            return cols;
+        }
 
         /// <summary>
         /// #133: keeps the full-text index current for EVERY writer of the shared
@@ -853,7 +883,11 @@ namespace Supervertaler.Trados.Core
                 {
                     if (Convert.ToInt64(q.ExecuteScalar()) > 0) return;
                 }
-                foreach (var sql in TermIndexTriggerSql)
+                var cols = TermIndexColumns(conn);
+                var known = new[] { "source_term", "target_term", "definition", "notes" };
+                cols = cols.Where(c => known.Contains(c)).ToList();
+                if (cols.Count == 0) { DiagnosticLog.Log("Termbase", "full-text index has no known columns; triggers not installed"); return; }
+                foreach (var sql in TermIndexTriggerSql(cols))
                     using (var cmd = new SqliteCommand(sql, conn)) cmd.ExecuteNonQuery();
                 using (var cmd = new SqliteCommand(
                     "INSERT INTO termbase_terms_fts(termbase_terms_fts) VALUES('rebuild')", conn))
@@ -2360,7 +2394,7 @@ namespace Supervertaler.Trados.Core
                 {
                     using (var fts = new SqliteCommand(@"
                         CREATE VIRTUAL TABLE IF NOT EXISTS termbase_terms_fts USING fts5(
-                            source_term, target_term, definition, notes,
+                            source_term, target_term, definition,
                             content='termbase_terms',
                             content_rowid='id'
                         );", conn))
