@@ -2393,17 +2393,23 @@ namespace Supervertaler.Trados
                     VoiceControl.VoiceControlManager.Instance?.Announce(
                         "could not select \"" + found.Text + "\"");
                 }
-                else if (rivalNote != null)
+                else
                 {
+                    // The row in the SuperVoice pane says what was selected, where,
+                    // and - when it is one of several - which. Until now a successful
+                    // selection wrote nothing here and the pane showed the command's
+                    // settings description instead, so a selection of the WRONG word
+                    // looked exactly like a selection of the right one.
+                    //
                     // Rival WORDS take precedence over repeated text: the translator
                     // is choosing between candidates, not between copies.
+                    var note = rivalNote != null ? rivalNote
+                             : spots.Count > 1 ? (index + 1) + " of " + spots.Count + " - say again for the next"
+                             : null;
                     VoiceControl.VoiceControlManager.Instance?.Announce(
-                        rivalNote, VoiceControl.VoiceActivityLog.Outcome.Done);
-                }
-                else if (spots.Count > 1)
-                {
-                    VoiceControl.VoiceControlManager.Instance?.Announce(
-                        (index + 1) + " of " + spots.Count + " - say again for the next",
+                        "selected \"" + found.Text + "\"" + (inSource ? " in the source" : "")
+                        + (found.Exact ? "" : " (some words dropped)")
+                        + (note != null ? " - " + note : ""),
                         VoiceControl.VoiceActivityLog.Outcome.Done);
                 }
             }

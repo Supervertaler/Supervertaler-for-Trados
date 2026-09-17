@@ -54,7 +54,7 @@ namespace Supervertaler.Trados.VoiceControl
             new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Raised after a command executes (phrase, description) – for status display.</summary>
-        public event Action<string, string> CommandExecuted;
+        public event Action<string, string, bool> CommandExecuted;
 
         /// <summary>#125: a command was heard but ignored because dictation is on.</summary>
         public event Action<string> CommandSuppressed;
@@ -215,7 +215,14 @@ namespace Supervertaler.Trados.VoiceControl
                     // translator says anything that is not a command, and a list of
                     // red rows for ordinary speech reads as a fault. Red is kept for
                     // a command that tried and failed.
-                    VoiceActivityLog.Resolved("no command matched", VoiceActivityLog.Outcome.Suppressed);
+                    //
+                    // But only when nothing has explained the utterance already. The
+                    // second pass can resolve it first - "downloading the source voice
+                    // model" - and return a bare prefix that matches nothing; saying
+                    // "no command matched" on top adds a row with no utterance beside
+                    // it, under a message that already said what happened.
+                    if (VoiceActivityLog.HasPending())
+                        VoiceActivityLog.Resolved("no command matched", VoiceActivityLog.Outcome.Suppressed);
                     return;
                 }
                 cmd = _byPhrase[best];
@@ -280,7 +287,7 @@ namespace Supervertaler.Trados.VoiceControl
             // Slot commands echo what was HEARD, not their phrase: "select {phrase}"
             // is a template, and a placeholder tells the translator nothing about
             // whether the words they said arrived intact.
-            CommandExecuted?.Invoke(cmd.HasSlot() ? spoken : cmd.Phrase, cmd.Description);
+            CommandExecuted?.Invoke(cmd.HasSlot() ? spoken : cmd.Phrase, cmd.Description, cmd.HasSlot());
 
             try
             {

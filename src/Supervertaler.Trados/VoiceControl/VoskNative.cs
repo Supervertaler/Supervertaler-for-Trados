@@ -70,6 +70,10 @@ namespace Supervertaler.Trados.VoiceControl
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
         public static extern void vosk_recognizer_reset(IntPtr recognizer);
 
+        /// <summary>1 = include per-word start/end seconds (a "result" array) in results.</summary>
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void vosk_recognizer_set_words(IntPtr recognizer, int words);
+
         /// <summary>UTF-8 path/JSON marshalling (net48 has no UTF8 string marshaller).</summary>
         public static byte[] Utf8(string s)
         {

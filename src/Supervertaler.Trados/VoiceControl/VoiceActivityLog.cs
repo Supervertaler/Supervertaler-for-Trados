@@ -111,6 +111,16 @@ namespace Supervertaler.Trados.VoiceControl
             Raise();
         }
 
+        /// <summary>Whether the latest utterance is still waiting for its outcome.</summary>
+        public static bool HasPending()
+        {
+            lock (_lock)
+            {
+                var open = _entries.LastOrDefault();
+                return open != null && open.Kind == Outcome.Pending;
+            }
+        }
+
         public static void Clear()
         {
             lock (_lock) _entries.Clear();

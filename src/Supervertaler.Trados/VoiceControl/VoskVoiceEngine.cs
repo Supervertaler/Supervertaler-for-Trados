@@ -29,7 +29,14 @@ namespace Supervertaler.Trados.VoiceControl
         /// whose words the command model cannot pronounce. <paramref name="modelDir"/>
         /// is loaded once and kept for the session. Null when it cannot be loaded.
         /// </summary>
-        string RecognizeLastUtteranceWith(string modelDir, List<string> grammarPhrases);
+        string RecognizeLastUtteranceWith(string modelDir, List<string> grammarPhrases, double skipSeconds);
+
+        /// <summary>
+        /// Where, in seconds, the given phrase ENDED in the utterance just reported -
+        /// so a second pass can be run on the audio after it. -1 when the phrase was
+        /// not heard as a contiguous run, or timings are unavailable.
+        /// </summary>
+        double SecondsAfter(string phrase);
     }
 
     /// <summary>
@@ -60,6 +67,9 @@ namespace Supervertaler.Trados.VoiceControl
                 throw new InvalidOperationException("The voice model could not be loaded (it may be corrupt – delete the trados/voice/models folder to re-download).");
 
             _recognizer = VoskNative.vosk_recognizer_new_grm(_model, 16000f, GrammarJson(grammarPhrases));
+            // Per-word timings on every result: the source second pass needs to know
+            // where the command words ended so it can skip them (see SecondsAfter).
+            if (_recognizer != IntPtr.Zero) VoskNative.vosk_recognizer_set_words(_recognizer, 1);
             if (_recognizer == IntPtr.Zero)
                 throw new InvalidOperationException("The voice recogniser could not be created.");
 
@@ -75,6 +85,7 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 if (_model == IntPtr.Zero) return;
                 var fresh = VoskNative.vosk_recognizer_new_grm(_model, 16000f, GrammarJson(grammarPhrases));
+                if (fresh != IntPtr.Zero) VoskNative.vosk_recognizer_set_words(fresh, 1);
                 if (fresh == IntPtr.Zero) return;
                 var old = _recognizer;
                 _recognizer = fresh;
@@ -114,6 +125,10 @@ namespace Supervertaler.Trados.VoiceControl
         private readonly List<byte[]> _utterance = new List<byte[]>();
         private int _utteranceBytes;
         private byte[] _lastUtterance;
+        /// <summary>Word timings of <see cref="_lastUtterance"/>, from the first pass.</summary>
+        private List<TimedWord> _lastWords;
+
+        private struct TimedWord { public string Word; public double Start, End; }
 
         private void OnAudio(byte[] data, int length)
         {
@@ -141,6 +156,7 @@ namespace Supervertaler.Trados.VoiceControl
                     // is being handled, and the next utterance starts collecting
                     // immediately.
                     _lastUtterance = Flatten(_utterance, _utteranceBytes);
+                    _lastWords = ExtractWords(resultJson);
                     _utterance.Clear();
                     _utteranceBytes = 0;
 
@@ -242,7 +258,7 @@ namespace Supervertaler.Trados.VoiceControl
         {
             IntPtr model;
             lock (_lock) { model = _model; }
-            return RecognizeWith(model, grammarPhrases);
+            return RecognizeWith(model, grammarPhrases, 0);
         }
 
         /// <summary>
@@ -256,7 +272,7 @@ namespace Supervertaler.Trados.VoiceControl
         private readonly Dictionary<string, IntPtr> _extraModels =
             new Dictionary<string, IntPtr>(StringComparer.OrdinalIgnoreCase);
 
-        public string RecognizeLastUtteranceWith(string modelDir, List<string> grammarPhrases)
+        public string RecognizeLastUtteranceWith(string modelDir, List<string> grammarPhrases, double skipSeconds)
         {
             if (string.IsNullOrWhiteSpace(modelDir)) return null;
 
@@ -274,15 +290,37 @@ namespace Supervertaler.Trados.VoiceControl
                 }
             }
             if (model == IntPtr.Zero) return null;
-            return RecognizeWith(model, grammarPhrases);
+            return RecognizeWith(model, grammarPhrases, skipSeconds);
         }
 
-        private string RecognizeWith(IntPtr model, List<string> grammarPhrases)
+        private string RecognizeWith(IntPtr model, List<string> grammarPhrases, double skipSeconds)
         {
             byte[] audio;
             lock (_lock) { audio = _lastUtterance; }
             if (audio == null || audio.Length == 0 || model == IntPtr.Zero) return null;
             if (grammarPhrases == null || grammarPhrases.Count == 0) return null;
+
+            // #127: run the pass on the audio AFTER the command words. The utterance
+            // is "source select uitvinding" spoken in one breath, and a grammar of
+            // Dutch source words has nothing for "source select" to be - so the
+            // recogniser, which cannot return nothing, mapped those sounds onto the
+            // nearest Dutch words it had ("zoals select") and handed the matcher
+            // three words, two of them never said. Measured 2026-09-17: the Dutch
+            // model heard "uitvinding" perfectly every time, and the matcher then
+            // selected "selectiviteit" from the junk in front of it. Skipping to
+            // where the first pass says the prefix ended removes the junk at the
+            // source rather than asking the matcher to guess which words are real.
+            if (skipSeconds > 0)
+            {
+                var skipBytes = (int)(skipSeconds * 16000 * 2) & ~1;   // 16 kHz, 16-bit mono
+                if (skipBytes >= audio.Length - 3200) return null;     // under 0.1 s left: nothing was said after
+                if (skipBytes > 0)
+                {
+                    var tail = new byte[audio.Length - skipBytes];
+                    Array.Copy(audio, skipBytes, tail, 0, tail.Length);
+                    audio = tail;
+                }
+            }
 
             var rec = IntPtr.Zero;
             try
@@ -305,6 +343,62 @@ namespace Supervertaler.Trados.VoiceControl
             {
                 if (rec != IntPtr.Zero) VoskNative.vosk_recognizer_free(rec);
             }
+        }
+
+        public double SecondsAfter(string phrase)
+        {
+            List<TimedWord> words;
+            lock (_lock) { words = _lastWords; }
+            if (words == null || words.Count == 0 || string.IsNullOrWhiteSpace(phrase)) return -1;
+            var want = phrase.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (want.Length == 0) return -1;
+            // The prefix as a contiguous run. It need not open the utterance - the
+            // recogniser prepends a stray word often enough that the slot matcher
+            // already tolerates one - but its words must be adjacent.
+            for (int i = 0; i + want.Length <= words.Count; i++)
+            {
+                bool all = true;
+                for (int k = 0; k < want.Length && all; k++)
+                    all = string.Equals(words[i + k].Word, want[k], StringComparison.OrdinalIgnoreCase);
+                if (!all) continue;
+                // A little before the boundary rather than exactly on it: word ends
+                // are estimates, and cutting into the onset of the next word costs
+                // more than leaving a sliver of the last command word.
+                return Math.Max(0, words[i + want.Length - 1].End - 0.05);
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Pulls the "result" array out of a Vosk result - one {conf,end,start,word}
+        /// object per word, present when vosk_recognizer_set_words is on. Empty when
+        /// absent. Hand-parsed like <see cref="ExtractText"/>: the shape is fixed and
+        /// a JSON library is not worth a dependency for it.
+        /// </summary>
+        private static List<TimedWord> ExtractWords(string json)
+        {
+            var list = new List<TimedWord>();
+            if (string.IsNullOrEmpty(json)) return list;
+            var at = json.IndexOf("\"result\"", StringComparison.Ordinal);
+            if (at < 0) return list;
+            var end = json.IndexOf("\"text\"", at, StringComparison.Ordinal);
+            var block = end > at ? json.Substring(at, end - at) : json.Substring(at);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            foreach (System.Text.RegularExpressions.Match m in
+                     System.Text.RegularExpressions.Regex.Matches(block, @"\{[^{}]*\}"))
+            {
+                var w = new TimedWord();
+                foreach (System.Text.RegularExpressions.Match kv in
+                         System.Text.RegularExpressions.Regex.Matches(m.Value, @"""(\w+)""\s*:\s*(?:""([^""]*)""|([-\d.]+))"))
+                {
+                    var key = kv.Groups[1].Value;
+                    if (key == "word") w.Word = kv.Groups[2].Value;
+                    else if (key == "start") double.TryParse(kv.Groups[3].Value, System.Globalization.NumberStyles.Float, inv, out w.Start);
+                    else if (key == "end") double.TryParse(kv.Groups[3].Value, System.Globalization.NumberStyles.Float, inv, out w.End);
+                }
+                if (!string.IsNullOrEmpty(w.Word) && w.Word != "[unk]") list.Add(w);
+            }
+            return list;
         }
 
         /// <summary>Pulls "text" out of Vosk's {"text" : "..."} result JSON.</summary>
@@ -337,6 +431,7 @@ namespace Supervertaler.Trados.VoiceControl
                 _utterance.Clear();
                 _utteranceBytes = 0;
                 _lastUtterance = null;
+                _lastWords = null;
             }
         }
 

@@ -50,10 +50,17 @@ namespace Supervertaler.Trados.VoiceControl
             _commands = VoiceCommandSet.Load();
             _executor = new VoiceCommandExecutor();
             _executor.LoadCommands(_commands);
-            _executor.CommandExecuted += (phrase, desc) =>
+            _executor.CommandExecuted += (phrase, desc, handlerOwnsOutcome) =>
             {
                 FlashCommand(phrase);
-                VoiceActivityLog.Resolved(desc ?? phrase, VoiceActivityLog.Outcome.Done);   // #129
+                // #129: a plain command IS its description - "Confirm segment and
+                // move to next unconfirmed" is the whole story. A slot command is
+                // not: its outcome is whatever the handler found, and writing the
+                // settings description here painted every selection green with
+                // "Downloads a voice model for the source language on first use" -
+                // read, reasonably, as a status about a download.
+                if (!handlerOwnsOutcome)
+                    VoiceActivityLog.Resolved(desc ?? phrase, VoiceActivityLog.Outcome.Done);
             };
             // #125: a command heard and deliberately ignored is not the same as one
             // not heard. Say which, or dictation mode looks like a broken recogniser.
@@ -410,13 +417,20 @@ namespace Supervertaler.Trados.VoiceControl
             lock (_segmentWordLock) { words = new List<string>(_sourceWords); }
             if (words.Count == 0) return prefix;
 
+            // Only the audio after the command words goes to the Dutch model. Fed
+            // the whole utterance, a grammar of source words has nothing for
+            // "source select" to be, and the recogniser mapped those sounds onto
+            // "zoals select" - which the matcher then took as words to find.
+            var skip = _engine.SecondsAfter(prefix);
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var second = _engine.RecognizeLastUtteranceWith(dir, words);
+            var second = _engine.RecognizeLastUtteranceWith(dir, words, skip > 0 ? skip : 0);
             sw.Stop();
 
             Core.DiagnosticLog.WriteAlways("VoiceHeard",
-                "source pass (" + sw.ElapsedMilliseconds + " ms, " + words.Count + " source words): \""
-                + text + "\" -> \"" + (second ?? "(nothing)") + "\"");
+                "source pass (" + sw.ElapsedMilliseconds + " ms, " + words.Count + " source words"
+                + (skip > 0 ? ", from " + skip.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " s"
+                            : ", untrimmed - no prefix timing")
+                + "): \"" + text + "\" -> \"" + (second ?? "(nothing)") + "\"");
 
             if (string.IsNullOrWhiteSpace(second))
             {
