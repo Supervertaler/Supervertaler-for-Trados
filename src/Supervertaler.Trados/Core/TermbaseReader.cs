@@ -795,6 +795,77 @@ namespace Supervertaler.Trados.Core
 
             // Backfill missing UUIDs (same as Supervertaler's generate_missing_uuids)
             BackfillMissingUuids(conn);
+
+            // #133: the full-text index follows the table from here on.
+            EnsureTermIndexTriggers(conn);
+        }
+
+        /// <summary>
+        /// The triggers that keep <c>termbase_terms_fts</c> current. One statement
+        /// each; mirrored verbatim in .dev/fts-trigger-test.py, which exercises them
+        /// against a scratch database - FTS5's external-content delete must be given
+        /// the OLD values exactly, or the index corrupts without a word.
+        /// </summary>
+        private static readonly string[] TermIndexTriggerSql =
+        {
+            @"CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_ai AFTER INSERT ON termbase_terms BEGIN
+                INSERT INTO termbase_terms_fts(rowid, source_term, target_term, definition, notes)
+                VALUES (new.id, new.source_term, new.target_term, new.definition, new.notes);
+              END;",
+            @"CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_ad AFTER DELETE ON termbase_terms BEGIN
+                INSERT INTO termbase_terms_fts(termbase_terms_fts, rowid, source_term, target_term, definition, notes)
+                VALUES ('delete', old.id, old.source_term, old.target_term, old.definition, old.notes);
+              END;",
+            @"CREATE TRIGGER IF NOT EXISTS termbase_terms_fts_au AFTER UPDATE ON termbase_terms BEGIN
+                INSERT INTO termbase_terms_fts(termbase_terms_fts, rowid, source_term, target_term, definition, notes)
+                VALUES ('delete', old.id, old.source_term, old.target_term, old.definition, old.notes);
+                INSERT INTO termbase_terms_fts(rowid, source_term, target_term, definition, notes)
+                VALUES (new.id, new.source_term, new.target_term, new.definition, new.notes);
+              END;"
+        };
+
+        /// <summary>
+        /// #133: keeps the full-text index current for EVERY writer of the shared
+        /// database - this plugin's sixteen write paths, Supervertaler Workbench,
+        /// Supervertaler for memoQ - by putting the maintenance on the table itself.
+        ///
+        /// <para>The index is external-content and, until now, nothing maintained it:
+        /// this plugin never touched it, and the Workbench rebuilds it once in a
+        /// migration. So every term added anywhere afterwards was missing from the
+        /// Workbench's search, and every deleted term still matched. Measured
+        /// 2026-09-17: the five newest terms absent; after a content-only delete the
+        /// deleted term still found. The Workbench already keeps its TM index this
+        /// way (tu_fts_insert/delete/update on translation_units); this follows it.</para>
+        ///
+        /// <para>Installing the triggers also REBUILDS the index once, for two
+        /// reasons: files already stale are repaired, and the delete trigger's
+        /// old-values delete is only correct against an index that holds the row.
+        /// About 0.1 s per 36,000 terms, once per database. Nothing to do when the
+        /// SQLite build has no FTS5 - there is no index to keep.</para>
+        /// </summary>
+        private static void EnsureTermIndexTriggers(SqliteConnection conn)
+        {
+            try
+            {
+                if (!HasTable(conn, "termbase_terms_fts")) return;
+                using (var q = new SqliteCommand(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='termbase_terms_fts_ai'", conn))
+                {
+                    if (Convert.ToInt64(q.ExecuteScalar()) > 0) return;
+                }
+                foreach (var sql in TermIndexTriggerSql)
+                    using (var cmd = new SqliteCommand(sql, conn)) cmd.ExecuteNonQuery();
+                using (var cmd = new SqliteCommand(
+                    "INSERT INTO termbase_terms_fts(termbase_terms_fts) VALUES('rebuild')", conn))
+                    cmd.ExecuteNonQuery();
+                DiagnosticLog.Log("Termbase", "full-text index triggers installed and the index rebuilt");
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: the database is usable without the index, as it always
+                // was. But not silent - this is the Workbench's search.
+                try { DiagnosticLog.Log("Termbase", "full-text index triggers could not be installed: " + ex.Message); } catch { }
+            }
         }
 
         /// <summary>
