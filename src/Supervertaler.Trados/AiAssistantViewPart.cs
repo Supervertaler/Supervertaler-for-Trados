@@ -1880,10 +1880,16 @@ namespace Supervertaler.Trados
 
                     // #134: the lock state to leave behind. 'locked' wins; without
                     // it, unlockForWrite restores what was there.
+                    // Set UNCONDITIONALLY when the item asked for a lock state or the
+                    // lock was taken off for the write. Measured 2026-09-17: after an
+                    // unlock, the property still read as locked for the rest of the
+                    // call, so a relock guarded by "is it different?" was skipped and
+                    // the segment stayed unlocked in Studio while the result claimed
+                    // it was locked. Exactly the #132 lesson, applied this time.
                     var wantLocked = u.Locked ?? lockedBefore;
-                    if (wantLocked != (pair.Properties?.IsLocked == true))
+                    if (u.Locked != null || unlockFirst)
                         SetSegmentLocked(pair, wantLocked);
-                    item.LockedAfter = pair.Properties?.IsLocked == true;
+                    item.LockedAfter = (u.Locked != null || unlockFirst) ? wantLocked : lockedBefore;
 
                     item.Ok = true;
                     if (!lockOnly) BridgeRecordWrite(u.Id); // coverage: this segment was written this session
