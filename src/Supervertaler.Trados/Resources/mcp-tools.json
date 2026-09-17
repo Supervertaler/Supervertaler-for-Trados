@@ -36,13 +36,18 @@
             "default": null
           },
           "on": {
-            "description": "The exact words in the TARGET to attach the comment to, as they appear (case-sensitive). Omit to comment the whole segment. Must not cut across an inline tag pair.",
+            "description": "The exact words in the TARGET to attach the comment to, as they appear (case-sensitive). Omit to comment the whole segment. Must not cut across an inline tag pair. A plain space matches a non-breaking space in the target, so \"M8 x 20 mm\" finds \"M8\u00a0x\u00a020 mm\".",
             "type": "string",
             "default": null
           },
           "occurrence": {
             "description": "When 'on' occurs more than once in the target, which one (1 = first). Default 1.",
             "type": "number",
+            "default": null
+          },
+          "decodeEntities": {
+            "type": "boolean",
+            "description": "Set true when 'on' or 'text' contains an HTML entity such as &nbsp; that should be decoded before use - the same opt-in update_segments has. A plain space in 'on' already matches a non-breaking space in the target.",
             "default": null
           }
         },
@@ -60,7 +65,7 @@
     {
       "name": "add_term",
       "access": "write",
-      "description": "Add a term pair to the user's Supervertaler Write termbases, optionally with definition/domain/notes. ORIENTATION: strongly prefer passing sourceLang/targetLang – each termbase then stores the pair according to its OWN declared direction, so one call is correct even for termbases of opposite directions. Without them, `source` is ASSUMED to be in the open project's source language; a termbase whose languages cannot be related to that refuses rather than guessing (no language detection – term pairs are often identical across languages). The response echoes per termbase exactly what was stored, including orientation and its resolved role ('project' or 'background') – check it. A 'duplicate' result includes the 'existing' entry it matched (id, source, target). Terms are stored EXACTLY as sent, including trailing punctuation - 'Rev.', 'Doc.nr.' and 'NOTE:' keep their final character, because abbreviation-with-period is a legitimate term form; send the exact form the client uses (lookup still matches the form without it). Without `termbases` or `scope`, writes go to EVERY Write-enabled termbase, mixing a background termbase (e.g. a large personal glossary) with a per-job project termbase. Prefer `scope` to target one role deliberately. NOTE: Trados's own project termbases (.ttb / MultiTerm) are READ-ONLY for you – if the user wants a term added there, tell them to add it in Trados itself. Only use when the user asked for a term to be added, or explicitly agreed to your suggestion to add one. BULK: to add more than one pair, pass 'entries' - an array of up to 40 {source, target, ...} objects - rather than calling this tool repeatedly. One call, one result per entry, and a duplicate on one entry does not stop the others.",
+      "description": "Add a term pair to the user's Supervertaler Write termbases, optionally with definition/domain/notes. ORIENTATION: strongly prefer passing sourceLang/targetLang \u2013 each termbase then stores the pair according to its OWN declared direction, so one call is correct even for termbases of opposite directions. Without them, `source` is ASSUMED to be in the open project's source language; a termbase whose languages cannot be related to that refuses rather than guessing (no language detection \u2013 term pairs are often identical across languages). The response echoes per termbase exactly what was stored, including orientation and its resolved role ('project' or 'background') \u2013 check it. A 'duplicate' result includes the 'existing' entry it matched (id, source, target). Terms are stored EXACTLY as sent, including trailing punctuation - 'Rev.', 'Doc.nr.' and 'NOTE:' keep their final character, because abbreviation-with-period is a legitimate term form; send the exact form the client uses (lookup still matches the form without it). Without `termbases` or `scope`, writes go to EVERY Write-enabled termbase, mixing a background termbase (e.g. a large personal glossary) with a per-job project termbase. Prefer `scope` to target one role deliberately. NOTE: Trados's own project termbases (.ttb / MultiTerm) are READ-ONLY for you \u2013 if the user wants a term added there, tell them to add it in Trados itself. Only use when the user asked for a term to be added, or explicitly agreed to your suggestion to add one. BULK: to add more than one pair, pass 'entries' - an array of up to 40 {source, target, ...} objects - rather than calling this tool repeatedly. One call, one result per entry, and a duplicate on one entry does not stop the others.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -260,7 +265,7 @@
     {
       "name": "check_tags",
       "access": "read",
-      "description": "QA check: find translated segments whose inline tags differ from the source – by COUNT (missing or extra formatting/placeholder tags) and by underlying TAG ID compared as a multiset. The id comparison catches what counts cannot: a target whose two tags carry the same underlying id (typically left behind by a stale fuzzy match or an old update_segments write) has the right count, passes no other check, and fails Studio's Tag Verifier. A count difference is not always an error – formatting can legitimately differ – so present those for review rather than auto-fixing. A tag-ID mismatch with matching counts IS always a defect: repair it by re-sending the segment with update_segments, copying the tag markers from the segment's SOURCE field.",
+      "description": "QA check: find translated segments whose inline tags differ from the source \u2013 by COUNT (missing or extra formatting/placeholder tags) and by underlying TAG ID compared as a multiset. The id comparison catches what counts cannot: a target whose two tags carry the same underlying id (typically left behind by a stale fuzzy match or an old update_segments write) has the right count, passes no other check, and fails Studio's Tag Verifier. A count difference is not always an error \u2013 formatting can legitimately differ \u2013 so present those for review rather than auto-fixing. A tag-ID mismatch with matching counts IS always a defect: repair it by re-sending the segment with update_segments, copying the tag markers from the segment's SOURCE field.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -285,7 +290,7 @@
     {
       "name": "check_terminology",
       "access": "read",
-      "description": "QA check: find termbase terms that appear in source segments whose targets don't use the expected translation (or any synonym, including inflected forms sharing the word stem). Covers Supervertaler termbases AND the Trados project's own termbases (.ttb/MultiTerm). Matching is longest-match-wins: when both 'valve' and 'safety valve' match the same words, only 'safety valve' is checked, so specific multi-word entries are no longer drowned out by generic single-word ones. Entries shorter than 3 characters are skipped entirely – they match prose, not terminology. Results are GROUPED PER TERM and RANKED BY SIGNAL, not raw count: multi-word terms and project-termbase entries first (they are curated), while a term affecting a very large share of segments ranks LOWER – that pattern usually means the project consistently uses a different translation than the termbase, which is a decision for the user, not a defect. Each group has the term, its termbase, the expected translations, how many segments are affected, and sample segment ids. On a project pairing a small client termbase with a large general-domain one, pass termbases=[...] to check only the curated one – that is where the real findings live. A response may also carry directionMismatches: termbase entries whose stored direction contradicts their termbase's. Read the sampled pairs. Any whose TEXT is reversed is indexed under the wrong language and was therefore invisible to this check – silence about it means 'not looked at', not 'not violated', which is worth raising since a term locked precisely because it was a known defect source is exactly the kind that ends up there. Entries where only the language labels are wrong were checked normally and need nothing but a label fix. Both kinds appear in that list, so do not report them all as broken",
+      "description": "QA check: find termbase terms that appear in source segments whose targets don't use the expected translation (or any synonym, including inflected forms sharing the word stem). Covers Supervertaler termbases AND the Trados project's own termbases (.ttb/MultiTerm). Matching is longest-match-wins: when both 'valve' and 'safety valve' match the same words, only 'safety valve' is checked, so specific multi-word entries are no longer drowned out by generic single-word ones. Entries shorter than 3 characters are skipped entirely \u2013 they match prose, not terminology. Results are GROUPED PER TERM and RANKED BY SIGNAL, not raw count: multi-word terms and project-termbase entries first (they are curated), while a term affecting a very large share of segments ranks LOWER \u2013 that pattern usually means the project consistently uses a different translation than the termbase, which is a decision for the user, not a defect. Each group has the term, its termbase, the expected translations, how many segments are affected, and sample segment ids. On a project pairing a small client termbase with a large general-domain one, pass termbases=[...] to check only the curated one \u2013 that is where the real findings live. A response may also carry directionMismatches: termbase entries whose stored direction contradicts their termbase's. Read the sampled pairs. Any whose TEXT is reversed is indexed under the wrong language and was therefore invisible to this check \u2013 silence about it means 'not looked at', not 'not violated', which is worth raising since a term locked precisely because it was a known defect source is exactly the kind that ends up there. Entries where only the language labels are wrong were checked normally and need nothing but a label fix. Both kinds appear in that list, so do not report them all as broken",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -334,7 +339,7 @@
       "writeWhen": [
         "save"
       ],
-      "description": "Extract the tracked changes (revisions) from the open document as (before, after) pairs per segment: 'before' is the target as it was offered (e.g. an AI draft or fuzzy match), 'after' is the reviewed final. These pairs show how the user actually corrects drafts – raw material for learning their style and terminology preferences. Only exists where Track Changes was switched ON in Studio while the edits were made; target-side text changes only (formatting-only edits are excluded). Pass save=true to ALSO write the FULL harvest (independent of 'limit', so the file is complete even when the response is truncated) as a Markdown note into the active SuperMemory bank's reference/ folder, where it is kept as source material. Nothing reads it automatically: to make it useful, read the harvest and add the recurring decisions to the bank's terminology.md table and style.md – typically once at the end of a review pass, and only when the user asked for it or agreed. Check with list_supermemory_banks that the right bank (client) is active before saving.",
+      "description": "Extract the tracked changes (revisions) from the open document as (before, after) pairs per segment: 'before' is the target as it was offered (e.g. an AI draft or fuzzy match), 'after' is the reviewed final. These pairs show how the user actually corrects drafts \u2013 raw material for learning their style and terminology preferences. Only exists where Track Changes was switched ON in Studio while the edits were made; target-side text changes only (formatting-only edits are excluded). Pass save=true to ALSO write the FULL harvest (independent of 'limit', so the file is complete even when the response is truncated) as a Markdown note into the active SuperMemory bank's reference/ folder, where it is kept as source material. Nothing reads it automatically: to make it useful, read the harvest and add the recurring decisions to the bank's terminology.md table and style.md \u2013 typically once at the end of a review pass, and only when the user asked for it or agreed. Check with list_supermemory_banks that the right bank (client) is active before saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -395,7 +400,7 @@
     {
       "name": "check_nbsp",
       "access": "read",
-      "description": "QA check: find translated segments that have fewer non-breaking spaces (U+00A0) than their source. Non-breaking spaces are invisible in Studio and in every tool response, so a lost one is normally only caught by the client rejecting the file – this is the only way to see them. Relevant whenever a style guide requires a non-breaking space between a value and its unit (230 V, 3,5 mm, 50 %) or before a figure reference. Fewer in the target is not always wrong, so review each hit against the source. IMPORTANT when writing one back with update_segments or find_and_replace: set decodeEntities=true and write the character as &nbsp;. Sending the character itself, or the JSON escape \\u00a0, is unreliable - it sometimes arrives intact and sometimes as an ordinary space, with success reported either way, so a 'fix' may silently change nothing. Re-run this check afterwards to confirm.",
+      "description": "QA check: find translated segments that have fewer non-breaking spaces (U+00A0) than their source. Non-breaking spaces are invisible in Studio and in every tool response, so a lost one is normally only caught by the client rejecting the file \u2013 this is the only way to see them. Relevant whenever a style guide requires a non-breaking space between a value and its unit (230\u00a0V, 3,5\u00a0mm, 50\u00a0%) or before a figure reference. Fewer in the target is not always wrong, so review each hit against the source. IMPORTANT when writing one back with update_segments or find_and_replace: set decodeEntities=true and write the character as &nbsp;. Sending the character itself, or the JSON escape \\u00a0, is unreliable - it sometimes arrives intact and sometimes as an ordinary space, with success reported either way, so a 'fix' may silently change nothing. Re-run this check afterwards to confirm.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -436,7 +441,7 @@
     {
       "name": "analyze_files",
       "access": "write",
-      "description": "Start Trados Studio's Analyse Files batch task on the open project. Computes the leverage breakdown (perfect/in-context-exact/exact/fuzzy/new/repetition words and segments) and writes it into the project, which is what get_project_statistics reads back. Runs in the BACKGROUND and returns a jobId immediately – analysis can take several minutes on a large project. Poll get_task_status with that jobId until it reports 'done', then call get_project_statistics to read the bands. Runs against the LAST SAVED state, so save first with save_document (with the user's OK).",
+      "description": "Start Trados Studio's Analyse Files batch task on the open project. Computes the leverage breakdown (perfect/in-context-exact/exact/fuzzy/new/repetition words and segments) and writes it into the project, which is what get_project_statistics reads back. Runs in the BACKGROUND and returns a jobId immediately \u2013 analysis can take several minutes on a large project. Poll get_task_status with that jobId until it reports 'done', then call get_project_statistics to read the bands. Runs against the LAST SAVED state, so save first with save_document (with the user's OK).",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -489,7 +494,7 @@
             "type": "string"
           },
           "dryRun": {
-            "description": "Preview only – report what would change without writing. Do this first for anything non-trivial.",
+            "description": "Preview only \u2013 report what would change without writing. Do this first for anything non-trivial.",
             "type": "boolean",
             "default": false
           },
@@ -519,7 +524,7 @@
             "default": null
           },
           "setStatus": {
-            "description": "What to do with the confirmation status of each changed segment: 'preserve' (default) puts back the status it had, or a ConfirmationLevel name (Draft, Translated, …) to force one. Note 'status' above is a FILTER, not a write – this is the write.",
+            "description": "What to do with the confirmation status of each changed segment: 'preserve' (default) puts back the status it had, or a ConfirmationLevel name (Draft, Translated, \u2026) to force one. Note 'status' above is a FILTER, not a write \u2013 this is the write.",
             "type": "string",
             "default": "preserve"
           },
@@ -574,7 +579,7 @@
     {
       "name": "compare_document_to_tm",
       "access": "read",
-      "description": "Compare the WHOLE open document against the translation memories attached to the project, and return only the segments where your translation differs from what the TM already holds for that exact same source. This is the pre-delivery consistency check, and it answers a question concordance search cannot: search_studio_tm tells you whether a phrase you already suspect exists in the TM, one query at a time, whereas this compares every segment at once - so it surfaces the cases you had no reason to look up. Typical use: the client supplied a reference TM and you want to know where you have departed from their established wording before you deliver. IMPORTANT: a difference is NOT automatically an error. A deliberate improvement looks exactly like an inconsistency here, and on a real job most differences are intentional. Present the list for the user to judge; never align segments to the TM automatically. Only segments whose source matches the TM verbatim are compared - fuzzy matches are not, so a clean result does not mean the whole document agrees with the TM. By default only finished segments (Translated / ApprovedTranslation) are checked. The comparison ignores differences in ordinary spacing but NOT in non-breaking spaces, so a target that lost one is reported. IMPORTANT LIMIT: agreement with the TM proves consistency with the memory, NOT correctness – if the memory itself is contaminated (pooled boilerplate from unrelated products), the document agreeing with it is the symptom, and citing a clean result as evidence of quality is circular. Never report a file as verified on the strength of this check",
+      "description": "Compare the WHOLE open document against the translation memories attached to the project, and return only the segments where your translation differs from what the TM already holds for that exact same source. This is the pre-delivery consistency check, and it answers a question concordance search cannot: search_studio_tm tells you whether a phrase you already suspect exists in the TM, one query at a time, whereas this compares every segment at once - so it surfaces the cases you had no reason to look up. Typical use: the client supplied a reference TM and you want to know where you have departed from their established wording before you deliver. IMPORTANT: a difference is NOT automatically an error. A deliberate improvement looks exactly like an inconsistency here, and on a real job most differences are intentional. Present the list for the user to judge; never align segments to the TM automatically. Only segments whose source matches the TM verbatim are compared - fuzzy matches are not, so a clean result does not mean the whole document agrees with the TM. By default only finished segments (Translated / ApprovedTranslation) are checked. The comparison ignores differences in ordinary spacing but NOT in non-breaking spaces, so a target that lost one is reported. IMPORTANT LIMIT: agreement with the TM proves consistency with the memory, NOT correctness \u2013 if the memory itself is contaminated (pooled boilerplate from unrelated products), the document agreeing with it is the symptom, and citing a clean result as evidence of quality is circular. Never report a file as verified on the strength of this check",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -607,7 +612,7 @@
     {
       "name": "get_active_project",
       "access": "read",
-      "description": "Get the Trados Studio project currently open in the editor: project name, source and target language, the document/file being edited, and progress statistics (segment counts per confirmation status, word counts). Call this first to orient yourself. The response may carry a 'warnings' array for setup problems that silently degrade quality – currently, no termbase being read-enabled. Relay any warning to the user rather than working around it silently.",
+      "description": "Get the Trados Studio project currently open in the editor: project name, source and target language, the document/file being edited, and progress statistics (segment counts per confirmation status, word counts). Call this first to orient yourself. The response may carry a 'warnings' array for setup problems that silently degrade quality \u2013 currently, no termbase being read-enabled. Relay any warning to the user rather than working around it silently.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -693,7 +698,7 @@
     {
       "name": "get_segments",
       "access": "read",
-      "description": "List segments of the document open in the Trados editor. Returns segment id, source text, target text, confirmation status (e.g. Unspecified/Draft/Translated), locked flag, and 'number' – the segment number the user sees in Studio's grid. ALWAYS cite that number (plus the file name in merged documents, where numbers restart per file) when referring to segments in conversation – never invent numbers. Inline formatting appears as tags like <t1>…</t1> or <b>…</b> – preserve them in any translation you propose. Each segment also carries 'fp', a short fingerprint of its source: pass it back on the matching update_segments item so the write can be checked against the segment you actually read. Use the filters to fetch only what you need instead of the whole document. Results are paged via limit/offset; the response says whether it was truncated. To read a SPECIFIC segment the user mentions by number, pass fromNumber=toNumber=<that number> (with 'file' in merged documents - numbers restart per file); never guess a segment's position by paging. Each segment also reports its TM 'match' percentage (e.g. 100 = exact/CM, 85 = fuzzy; absent when the segment has no TM/MT origin) and 'origin' (tm, mt, interactive, auto-propagated, source). Filter on it with matchMin/matchMax - e.g. matchMin=75, matchMax=94 for fuzzy matches to review, or matchMax=0 for segments with no match at all.",
+      "description": "List segments of the document open in the Trados editor. Returns segment id, source text, target text, confirmation status (e.g. Unspecified/Draft/Translated), locked flag, and 'number' \u2013 the segment number the user sees in Studio's grid. ALWAYS cite that number (plus the file name in merged documents, where numbers restart per file) when referring to segments in conversation \u2013 never invent numbers. Inline formatting appears as tags like <t1>\u2026</t1> or <b>\u2026</b> \u2013 preserve them in any translation you propose. Each segment also carries 'fp', a short fingerprint of its source: pass it back on the matching update_segments item so the write can be checked against the segment you actually read. Use the filters to fetch only what you need instead of the whole document. Results are paged via limit/offset; the response says whether it was truncated. To read a SPECIFIC segment the user mentions by number, pass fromNumber=toNumber=<that number> (with 'file' in merged documents - numbers restart per file); never guess a segment's position by paging. Each segment also reports its TM 'match' percentage (e.g. 100 = exact/CM, 85 = fuzzy; absent when the segment has no TM/MT origin) and 'origin' (tm, mt, interactive, auto-propagated, source). Filter on it with matchMin/matchMax - e.g. matchMin=75, matchMax=94 for fuzzy matches to review, or matchMax=0 for segments with no match at all.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -724,7 +729,7 @@
             "default": null
           },
           "file": {
-            "description": "Only segments from this file of a merged multi-file document – a file id or (partial) file name from get_files. Omit for all files.",
+            "description": "Only segments from this file of a merged multi-file document \u2013 a file id or (partial) file name from get_files. Omit for all files.",
             "type": "string",
             "default": null
           },
@@ -770,7 +775,7 @@
             "default": null
           },
           "file": {
-            "description": "File name or id (from get_files) – required with 'number' in merged documents.",
+            "description": "File name or id (from get_files) \u2013 required with 'number' in merged documents.",
             "type": "string",
             "default": null
           }
@@ -807,7 +812,7 @@
     {
       "name": "list_resources",
       "access": "read",
-      "description": "List the translation resources available: the Trados TMs attached to the open project (file-based and GroupShare server TMs), and ALL termbases - Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before searching, and to answer 'what TMs/termbases am I using?'. Each termbase reports readEnabled and writeEnabled (the per-project Read/Write ticks) and isProjectTermbase (the Trados 'Project' flag – true for a job-specific termbase, false for a shared background one). Check isProjectTermbase before add_term/update_term/delete_term calls to see which Write-enabled termbase(s) a 'project' vs 'background' scope would resolve to, and to catch a stale project termbase left Write-enabled from a previous job.",
+      "description": "List the translation resources available: the Trados TMs attached to the open project (file-based and GroupShare server TMs), and ALL termbases - Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before searching, and to answer 'what TMs/termbases am I using?'. Each termbase reports readEnabled and writeEnabled (the per-project Read/Write ticks) and isProjectTermbase (the Trados 'Project' flag \u2013 true for a job-specific termbase, false for a shared background one). Check isProjectTermbase before add_term/update_term/delete_term calls to see which Write-enabled termbase(s) a 'project' vs 'background' scope would resolve to, and to catch a stale project termbase left Write-enabled from a previous job.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -934,7 +939,7 @@
     {
       "name": "run_verification",
       "access": "write",
-      "description": "Run Trados Studio's OWN QA verification (Verify Files / F8 – QA Checker 3.0, tag and term verifiers: punctuation, brackets, repeated words, spelling, regex rules, length checks, etc.) and return the findings, each with file, segment number, the full segment 'id' (usable with go_to_segment / add_comment / update_segments), severity, origin (the QA rule), and message. This catches things the check_* tools don't (punctuation, spelling, regex) and complements them. Already-ignored messages are excluded. IMPORTANT: it reads the LAST SAVED state of the files. If you have applied edits that are not saved, the response comes back with \"stale\": true – when you see that, do NOT report the findings; save (save_document, or ask the user for Ctrl+S) and run again. The flag only covers edits YOU applied; edits the user made by hand in Studio are invisible to it, so a run right after the user was typing may still be out of date. Triage each finding against the source before proposing fixes; some are false positives.",
+      "description": "Run Trados Studio's OWN QA verification (Verify Files / F8 \u2013 QA Checker 3.0, tag and term verifiers: punctuation, brackets, repeated words, spelling, regex rules, length checks, etc.) and return the findings, each with file, segment number, the full segment 'id' (usable with go_to_segment / add_comment / update_segments), severity, origin (the QA rule), and message. This catches things the check_* tools don't (punctuation, spelling, regex) and complements them. Already-ignored messages are excluded. IMPORTANT: it reads the LAST SAVED state of the files. If you have applied edits that are not saved, the response comes back with \"stale\": true \u2013 when you see that, do NOT report the findings; save (save_document, or ask the user for Ctrl+S) and run again. The flag only covers edits YOU applied; edits the user made by hand in Studio are invisible to it, so a run right after the user was typing may still be out of date. Triage each finding against the source before proposing fixes; some are false positives.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -948,7 +953,7 @@
     {
       "name": "search_studio_tm",
       "access": "read",
-      "description": "Concordance-search the native Trados translation memories attached to the open project – the .sdltm files and GroupShare server TMs the user actually translates against (the same TMs as Supervertaler's SuperSearch). Returns previous source/target pairs with match scores and the TM name. This is usually the right tool for \"how did I translate this before?\".",
+      "description": "Concordance-search the native Trados translation memories attached to the open project \u2013 the .sdltm files and GroupShare server TMs the user actually translates against (the same TMs as Supervertaler's SuperSearch). Returns previous source/target pairs with match scores and the TM name. This is usually the right tool for \"how did I translate this before?\".",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -986,7 +991,7 @@
     {
       "name": "update_comment",
       "access": "write",
-      "description": "Replace the text and/or severity of an existing Trados comment on a segment – e.g. when a fix you applied makes the old comment text outdated. Address the comment by the index from get_comments (call it first). Provide 'text', 'severity', or both - at least one is required. Only update comments the user asked you to change.",
+      "description": "Replace the text and/or severity of an existing Trados comment on a segment \u2013 e.g. when a fix you applied makes the old comment text outdated. Address the comment by the index from get_comments (call it first). Provide 'text', 'severity', or both - at least one is required. Only update comments the user asked you to change.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1065,7 +1070,7 @@
     {
       "name": "update_segments",
       "access": "write",
-      "description": "Write translations and/or set confirmation statuses for segments in the document open in Trados Studio, addressed by the ids returned by get_segments. INLINE TAGS: copy the tag markers (<t1>…</t1>, <t2/>, <b>…</b>) from the segment's SOURCE field, not from its existing target – the source is what Trados verifies the target's tags against. Use each marker at most once, and do not invent a number the source does not have; a repeated or unknown marker loses that tag's formatting rather than writing a tag Studio will reject. If a written segment's tags still end up not matching the source, the result item for that segment carries a 'warning' field saying so – re-send it with the source's markers to repair it, which also clears a tag defect an earlier bad write or a fuzzy match left behind. A target write without an explicit status is set to Draft automatically so the user can review your work in Studio. Locked segments are refused. SEND THE 'fp': each segment in a get_segments response carries a short fingerprint of its source, and copying it into the matching update item makes the plugin verify, before writing, that the segment still holds the source you translated. Without it a batch whose ids have drifted - or ids read from a document that is no longer the one open - writes good translations into the wrong rows and reports complete success. Maximum 40 updates per call – page larger jobs. To write a non-breaking space (or any other character you cannot type reliably), set decodeEntities=true and write it as &nbsp;. Sending the character itself - or the JSON escape \\u00a0 - is unreliable: it sometimes arrives intact and sometimes as an ordinary space, and the write reports success either way. LINE BREAKS inside a segment: reproduce whatever the segment's source field shows. If the source contains a literal newline, send \\n in the target string – it is an ordinary JSON escape, decoded before the bridge sees it, and writes correctly (it is NOT covered by the \\u00a0 warning above). If the source shows a placeholder tag like <t1/> where the break is, send that tag in position instead. Only use when the user asked you to change segments, and afterwards tell them exactly what you changed. Changes land in the open document; the user still needs to save it in Studio.",
+      "description": "Write translations and/or set confirmation statuses for segments in the document open in Trados Studio, addressed by the ids returned by get_segments. INLINE TAGS: copy the tag markers (<t1>\u2026</t1>, <t2/>, <b>\u2026</b>) from the segment's SOURCE field, not from its existing target \u2013 the source is what Trados verifies the target's tags against. Use each marker at most once, and do not invent a number the source does not have; a repeated or unknown marker loses that tag's formatting rather than writing a tag Studio will reject. If a written segment's tags still end up not matching the source, the result item for that segment carries a 'warning' field saying so \u2013 re-send it with the source's markers to repair it, which also clears a tag defect an earlier bad write or a fuzzy match left behind. A target write without an explicit status is set to Draft automatically so the user can review your work in Studio. Locked segments are refused. SEND THE 'fp': each segment in a get_segments response carries a short fingerprint of its source, and copying it into the matching update item makes the plugin verify, before writing, that the segment still holds the source you translated. Without it a batch whose ids have drifted - or ids read from a document that is no longer the one open - writes good translations into the wrong rows and reports complete success. Maximum 40 updates per call \u2013 page larger jobs. To write a non-breaking space (or any other character you cannot type reliably), set decodeEntities=true and write it as &nbsp;. Sending the character itself - or the JSON escape \\u00a0 - is unreliable: it sometimes arrives intact and sometimes as an ordinary space, and the write reports success either way. LINE BREAKS inside a segment: reproduce whatever the segment's source field shows. If the source contains a literal newline, send \\n in the target string \u2013 it is an ordinary JSON escape, decoded before the bridge sees it, and writes correctly (it is NOT covered by the \\u00a0 warning above). If the source shows a placeholder tag like <t1/> where the break is, send that tag in position instead. Only use when the user asked you to change segments, and afterwards tell them exactly what you changed. Changes land in the open document; the user still needs to save it in Studio. LOCKED SEGMENTS: a locked segment is refused unless the item says unlockForWrite: true (unlocked for the write, locked again after) or locked: false; 'locked' alone changes the lock without writing. The fp check runs before the lock is touched, and a failed write puts the lock back. Each result item reports lockedBefore and lockedAfter. Change lock state only when the user asked for it, or when it is needed to apply a fix the user approved.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1080,7 +1085,7 @@
                   "type": "string"
                 },
                 "target": {
-                  "description": "New target text. Omit to change only the status. Reproduce the inline tag markers exactly as they appear in this segment's SOURCE field – each one at most once, none invented. Reposition them freely for the target language; just do not copy them from the segment's existing target, which may carry tags from an unrelated fuzzy match.",
+                  "description": "New target text. Omit to change only the status. Reproduce the inline tag markers exactly as they appear in this segment's SOURCE field \u2013 each one at most once, none invented. Reposition them freely for the target language; just do not copy them from the segment's existing target, which may carry tags from an unrelated fuzzy match.",
                   "type": [
                     "string",
                     "null"
@@ -1099,6 +1104,16 @@
                     "string",
                     "null"
                   ]
+                },
+                "locked": {
+                  "type": "boolean",
+                  "description": "Lock state to leave the segment in: true locks it after the write, false unlocks it (first, if it is locked) and leaves it unlocked. Omit to leave the lock alone. May be sent on its own, with no target or status, to lock or unlock a segment.",
+                  "default": null
+                },
+                "unlockForWrite": {
+                  "type": "boolean",
+                  "description": "Unlock a locked segment for this write and lock it again afterwards (unless 'locked' says otherwise). Send {id, fp, target, status, unlockForWrite: true} to fix a locked segment in one call.",
+                  "default": null
                 }
               }
             }
@@ -1188,7 +1203,7 @@
     {
       "name": "save_prompt",
       "access": "write",
-      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with Supervertaler for memoQ). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten – save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
+      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with Supervertaler for memoQ). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten \u2013 save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1235,7 +1250,7 @@
     {
       "name": "get_prompt_context",
       "access": "read",
-      "description": "Get the document context needed to write a tailored translation prompt for the project open in Trados – so you can act as the user's prompt engineer. Returns source/target languages, the detected domain, the source text (whole document by default, or capped by the user's AI-settings limit), the relevant termbase terms, a few confirmed TM example pairs, and the user's current Default Translation Prompt as a baseline to improve on. After refining a prompt together with the user, save it with save_prompt. Pass maxSegments to control how much source is included: 0 = whole document (best for large-context models), or a positive number to cap it; omit to use the user's setting.",
+      "description": "Get the document context needed to write a tailored translation prompt for the project open in Trados \u2013 so you can act as the user's prompt engineer. Returns source/target languages, the detected domain, the source text (whole document by default, or capped by the user's AI-settings limit), the relevant termbase terms, a few confirmed TM example pairs, and the user's current Default Translation Prompt as a baseline to improve on. After refining a prompt together with the user, save it with save_prompt. Pass maxSegments to control how much source is included: 0 = whole document (best for large-context models), or a positive number to cap it; omit to use the user's setting.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1291,7 +1306,7 @@
             "default": null
           },
           "bank": {
-            "description": "Read a specific memory bank instead of the active one, by folder name (see list_supermemory_banks). Omit to read the active bank. An unknown name is an ERROR, not a fall back to the active bank — the response always carries a 'bank' field, so a silent substitution is indistinguishable from success and injects another project's terminology. The 'bank' in the response is always the bank actually read.",
+            "description": "Read a specific memory bank instead of the active one, by folder name (see list_supermemory_banks). Omit to read the active bank. An unknown name is an ERROR, not a fall back to the active bank \u2014 the response always carries a 'bank' field, so a silent substitution is indistinguishable from success and injects another project's terminology. The 'bank' in the response is always the bank actually read.",
             "type": "string"
           }
         }

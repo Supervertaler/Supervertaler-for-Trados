@@ -1658,9 +1658,22 @@ namespace Supervertaler.Trados
                     continue;
                 }
 
-                if (pair.Properties?.IsLocked == true)
+                // #134: a locked segment is refused unless the caller asked to
+                // unlock it - either for this write only (unlockForWrite: the lock
+                // is put back afterwards) or for good (locked: false). An item that
+                // only sets 'locked', with nothing to write, is a lock change on its
+                // own. The lock is NOT touched here: the fp check below comes first,
+                // so a stale write never unlocks anything.
+                var lockedBefore = pair.Properties?.IsLocked == true;
+                item.LockedBefore = lockedBefore;
+                item.LockedAfter = lockedBefore;
+                var lockOnly = u.Target == null && string.IsNullOrEmpty(u.Status) && u.Locked != null;
+                var unlockFirst = lockedBefore && (u.UnlockForWrite || u.Locked == false);
+                if (lockedBefore && !unlockFirst && !lockOnly)
                 {
-                    item.Error = "segment is locked";
+                    item.Error = "segment is locked – nothing written. To write it anyway send unlockForWrite: true " +
+                                 "(the lock is put back afterwards), or locked: false (it stays unlocked). To lock " +
+                                 "or unlock without writing, send 'locked' on its own.";
                     response.Failed++;
                     continue;
                 }
@@ -1719,9 +1732,9 @@ namespace Supervertaler.Trados
                     setStatus = true;
                 }
 
-                if (u.Target == null && !setStatus)
+                if (u.Target == null && !setStatus && u.Locked == null)
                 {
-                    item.Error = "nothing to do – provide 'target' and/or 'status'";
+                    item.Error = "nothing to do – provide 'target', 'status' and/or 'locked'";
                     response.Failed++;
                     continue;
                 }
@@ -1733,6 +1746,20 @@ namespace Supervertaler.Trados
                     targetText = Core.EntityEscapes.Decode(targetText);
 
                 string tagWarning = null;
+
+                // #134: only now, after the fp check, does the lock come off - and a
+                // write that then fails puts it back (see the catch below). A segment
+                // must never be left unlocked by accident.
+                if (unlockFirst)
+                {
+                    try { SetSegmentLocked(pair, false); }
+                    catch (Exception ex)
+                    {
+                        item.Error = "could not unlock the segment – nothing written: " + ex.Message;
+                        response.Failed++;
+                        continue;
+                    }
+                }
 
                 try
                 {
@@ -1843,8 +1870,15 @@ namespace Supervertaler.Trados
                         _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
                     }
 
+                    // #134: the lock state to leave behind. 'locked' wins; without
+                    // it, unlockForWrite restores what was there.
+                    var wantLocked = u.Locked ?? lockedBefore;
+                    if (wantLocked != (pair.Properties?.IsLocked == true))
+                        SetSegmentLocked(pair, wantLocked);
+                    item.LockedAfter = pair.Properties?.IsLocked == true;
+
                     item.Ok = true;
-                    BridgeRecordWrite(u.Id); // coverage: this segment was written this session
+                    if (!lockOnly) BridgeRecordWrite(u.Id); // coverage: this segment was written this session
                     if (!string.IsNullOrEmpty(tagWarning))
                     {
                         item.Warning = tagWarning;
@@ -1856,6 +1890,17 @@ namespace Supervertaler.Trados
                 {
                     item.Error = "write failed: " + ex.Message;
                     response.Failed++;
+                    // #134: never leave a segment unlocked by accident.
+                    if (unlockFirst)
+                    {
+                        try { SetSegmentLocked(pair, true); item.LockedAfter = true; }
+                        catch (Exception ex2)
+                        {
+                            item.Error += " – and the segment could NOT be locked again (" + ex2.Message +
+                                          "); it is unlocked now.";
+                            item.LockedAfter = false;
+                        }
+                    }
                 }
             }
 
@@ -5036,6 +5081,17 @@ namespace Supervertaler.Trados
         /// it cannot; Studio's own UI refuses the same selection. Refused rather than
         /// guessed at, because a comment on the wrong words is worse than none.</para>
         /// </summary>
+        /// <summary>
+        /// #134: sets a segment's lock through the same property write the
+        /// confirmation level uses. Read back immediately the property may not yet
+        /// show the change (the #132 lesson), so callers set it unconditionally.
+        /// </summary>
+        private void SetSegmentLocked(ISegmentPair pair, bool locked)
+        {
+            pair.Properties.IsLocked = locked;
+            _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
+        }
+
         private string AddRangeComment(ISegmentPair pair, string on, int occurrence, string text,
                                        Sdl.FileTypeSupport.Framework.NativeApi.Severity severity)
         {
@@ -5156,6 +5212,12 @@ namespace Supervertaler.Trados
             int total = 0;
             CollectTextRuns(target, runs, ref total);
             var plain = PlainTextOf(target);
+            // #134: a non-breaking space and a plain space count as the same
+            // character when locating 'on'. A target holding "M8\u00A0x\u00A020 mm"
+            // could not be named at all - a client's "M8 x 20 mm" never matched -
+            // and offsets are unchanged by the fold, one character for one.
+            var hay = plain.Replace('\u00A0', ' ');
+            var needle = (on ?? "").Replace('\u00A0', ' ');
 
             // Locate the nth occurrence, case-sensitively: the caller quotes the
             // target's own words, and "Interaction" and "interaction" may both be
@@ -5163,7 +5225,7 @@ namespace Supervertaler.Trados
             int start = -1, from = 0;
             for (int n = 0; n < occurrence; n++)
             {
-                start = plain.IndexOf(on, from, StringComparison.Ordinal);
+                start = hay.IndexOf(needle, from, StringComparison.Ordinal);
                 if (start < 0) break;
                 from = start + 1;
             }
@@ -5359,17 +5421,21 @@ namespace Supervertaler.Trados
                 // on the whole segment otherwise, exactly as before.
                 if (!string.IsNullOrWhiteSpace(req.On))
                 {
-                    var failure = AddRangeComment(pair, req.On, req.Occurrence < 1 ? 1 : req.Occurrence, req.Text, severity);
+                    // #134: the same opt-in decoding update_segments has, so a range
+                    // holding a non-breaking space ("M8 x 20 mm") can be named.
+                    var on = req.DecodeEntities ? Core.EntityEscapes.Decode(req.On) : req.On;
+                    var text = req.DecodeEntities ? Core.EntityEscapes.Decode(req.Text) : req.Text;
+                    var failure = AddRangeComment(pair, on, req.Occurrence < 1 ? 1 : req.Occurrence, text, severity);
                     if (failure != null)
                         return new BridgeResultResponse { Ok = false, Error = failure };
                     return new BridgeResultResponse
                     {
                         Ok = true,
-                        Note = "Comment added on \"" + req.On + "\". It is part of the document's unsaved changes until the user saves in Studio."
+                        Note = "Comment added on \"" + on + "\". It is part of the document's unsaved changes until the user saves in Studio."
                     };
                 }
 
-                _activeDocument.AddCommentOnSegment(pair, req.Text, severity);
+                _activeDocument.AddCommentOnSegment(pair, req.DecodeEntities ? Core.EntityEscapes.Decode(req.Text) : req.Text, severity);
                 return new BridgeResultResponse
                 {
                     Ok = true,

@@ -1049,6 +1049,9 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "on", EmitDefaultValue = false)] public string On { get; set; }
         /// <summary>#132: which occurrence of "on" when it repeats in the target. 1-based; default 1.</summary>
         [DataMember(Name = "occurrence", EmitDefaultValue = false)] public int Occurrence { get; set; }
+        /// <summary>#134: decode &amp;nbsp; and friends in 'on' and 'text', as
+        /// update_segments and find_and_replace do.</summary>
+        [DataMember(Name = "decodeEntities", EmitDefaultValue = false)] public bool DecodeEntities { get; set; }
     }
 
     [DataContract]
@@ -1221,6 +1224,14 @@ namespace Supervertaler.Trados.Core
         /// the segment still holds that same source. See
         /// <see cref="SourceFingerprint"/>.</summary>
         [DataMember(Name = "fp", EmitDefaultValue = false)] public string Fp { get; set; }
+        /// <summary>#134: the lock state to leave the segment in. true = lock it after
+        /// the write; false = unlock it (first, if it is locked) and leave it unlocked.
+        /// Null = do not touch the lock.</summary>
+        [DataMember(Name = "locked", EmitDefaultValue = false)] public bool? Locked { get; set; }
+        /// <summary>#134: unlock a locked segment for this write and put the lock back
+        /// afterwards (unless <see cref="Locked"/> says otherwise). The way to fix a
+        /// locked segment in one call.</summary>
+        [DataMember(Name = "unlockForWrite", EmitDefaultValue = false)] public bool UnlockForWrite { get; set; }
     }
 
     [DataContract]
@@ -1296,6 +1307,9 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
         [DataMember(Name = "ok", Order = 1)] public bool Ok { get; set; }
         [DataMember(Name = "error", Order = 2, EmitDefaultValue = false)] public string Error { get; set; }
+        /// <summary>#134: the segment's lock state before and after this item.</summary>
+        [DataMember(Name = "lockedBefore", Order = 20, EmitDefaultValue = false)] public bool? LockedBefore { get; set; }
+        [DataMember(Name = "lockedAfter", Order = 21, EmitDefaultValue = false)] public bool? LockedAfter { get; set; }
 
         /// <summary>Set when the write succeeded but the target's inline tags do
         /// not carry the same underlying tag ids as the source. Studio's own Tag
