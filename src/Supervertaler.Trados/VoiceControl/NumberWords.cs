@@ -34,9 +34,15 @@ namespace Supervertaler.Trados.VoiceControl
         private static readonly HashSet<string> RangeWords =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "to", "through", "till", "until", "thru" };
 
-        /// <summary>What closes the popup without selecting.</summary>
+        /// <summary>
+        /// What closes the popup without selecting. "escape" and "close window" are
+        /// the existing command's phrases: while the popup is open, closing the
+        /// popup is what pressing Escape would mean, and the popup cannot receive
+        /// the key itself - it never has focus.
+        /// </summary>
         private static readonly HashSet<string> CancelWords =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cancel", "close", "never mind", "dismiss" };
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "cancel", "close", "never mind", "dismiss", "escape", "close window" };
 
         /// <summary>The spoken form of 1..99: "seven", "twenty three".</summary>
         public static string ToWords(int n)

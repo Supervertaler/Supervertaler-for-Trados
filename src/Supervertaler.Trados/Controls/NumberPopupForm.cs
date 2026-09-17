@@ -77,8 +77,29 @@ namespace Supervertaler.Trados.Controls
                 AutoSize = false,
                 Height = UiScale.Pixels(22),
                 Font = new Font("Segoe UI", UiScale.FontSize(9f), FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleLeft
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(0, 0, UiScale.Pixels(24), 0)
             };
+            // A close button. The window never takes keyboard focus, so Escape
+            // reaches it only through the application's message filter - which
+            // covers Studio's own windows, but a translator in the middle of a
+            // screencast needs something to click as well. Mouse clicks arrive
+            // regardless of activation.
+            var close = new Label
+            {
+                Text = "✕",
+                AutoSize = false,
+                Width = UiScale.Pixels(22),
+                Height = UiScale.Pixels(22),
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = HintColor,
+                Cursor = Cursors.Hand,
+                Font = new Font("Segoe UI", UiScale.FontSize(9f))
+            };
+            new ToolTip().SetToolTip(close, "Close (Escape, or say \"cancel\")");
+            close.Click += (s, e) => Supervertaler.Trados.TermLensEditorViewPart.VoiceHideNumbers();
+            _title.Controls.Add(close);
+            _title.Resize += (s, e) => close.Location = new Point(_title.Width - close.Width, 0);
             _hint = new Label
             {
                 Dock = DockStyle.Bottom,

@@ -721,15 +721,17 @@ namespace Supervertaler.Trados.VoiceControl
         /// </summary>
         private bool HandleNumberUtterance(string text)
         {
-            if (_executor != null && _executor.IsExactCommand(text)) return false;
             var marshal = MarshalControl();
             if (marshal == null) return false;
+            // Before the exact-command guard: "escape" is a command in its own
+            // right, and while the popup is open closing the popup IS what it means.
             if (NumberWords.IsCancel(text))
             {
                 Announce("numbers closed", VoiceActivityLog.Outcome.Suppressed);
                 try { marshal.BeginInvoke((Action)TermLensEditorViewPart.VoiceHideNumbers); } catch { }
                 return true;
             }
+            if (_executor != null && _executor.IsExactCommand(text)) return false;
             int from, to;
             if (!NumberWords.TryParse(text, out from, out to)) return false;
             var inSource = Controls.NumberPopupForm.InSource;

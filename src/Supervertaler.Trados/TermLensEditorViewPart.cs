@@ -191,7 +191,7 @@ namespace Supervertaler.Trados
             {
                 _ctrlTapFilter = new CtrlTapFilter(
                     () => HandleTermLensPopup(),
-                    onEscape: () => TryCloseTermLensPopup(),
+                    onEscape: () => TryCloseNumberPopup() || TryCloseTermLensPopup(),
                     ctrlTapEnabled: false);
                 System.Windows.Forms.Application.AddMessageFilter(_ctrlTapFilter);
 
@@ -2533,6 +2533,20 @@ namespace Supervertaler.Trados
         {
             try
             {
+                // An automatic open (reason != null) must not interrupt anything.
+                // Free dictation with commands live produces stray "select"s, and
+                // before today those cost a stray selection; a popup that pops up
+                // over a screencast is worse. The explicit command is gated by the
+                // executor already; this gates the automatic one the same way, and
+                // on dictation mode besides.
+                if (reason != null
+                    && (VoiceControl.DictationMode.Active || !VoiceControl.VoiceCommandExecutor.IsStudioForeground()))
+                {
+                    Core.DiagnosticLog.WriteAlways("VoiceSelect", "numbers not opened automatically: "
+                        + (VoiceControl.DictationMode.Active ? "dictating" : "Studio is not the active window"));
+                    return;
+                }
+
                 var inst = _currentInstance;
                 var pair = inst?._activeDocument?.ActiveSegmentPair;
                 if (pair == null)
@@ -2574,6 +2588,19 @@ namespace Supervertaler.Trados
             {
                 try { Core.DiagnosticLog.Log("VoiceSelect", "show numbers failed: " + ex.Message); } catch { }
             }
+        }
+
+        /// <summary>
+        /// Escape closes the number popup. The popup never has keyboard focus - it
+        /// must not, or the selection it exists for would break - so the key
+        /// reaches it through the application message filter, the same route the
+        /// TermLens popup uses. True when there was one to close.
+        /// </summary>
+        private static bool TryCloseNumberPopup()
+        {
+            if (!Controls.NumberPopupForm.IsOpen) return false;
+            VoiceHideNumbers();
+            return true;
         }
 
         /// <summary>Closes the number popup and takes the number words back out of the grammar.</summary>

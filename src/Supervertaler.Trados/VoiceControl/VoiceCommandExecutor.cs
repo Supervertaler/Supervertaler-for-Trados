@@ -419,7 +419,7 @@ namespace Supervertaler.Trados.VoiceControl
             return false;
         }
 
-        private static bool IsStudioForeground()
+        internal static bool IsStudioForeground()
         {
             try
             {
