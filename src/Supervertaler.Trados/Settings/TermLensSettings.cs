@@ -157,6 +157,14 @@ namespace Supervertaler.Trados.Settings
         public bool SuperSearchInAssistantTab { get; set; } = false;
 
         /// <summary>
+        /// #128: how the number popup lays the segment out. "sentence" - the text as
+        /// it reads, each word followed by a small superscript number; "chips" -
+        /// number then word on a grid. Switched from the popup itself.
+        /// </summary>
+        [DataMember(Name = "numberPopupStyle")]
+        public string NumberPopupStyle { get; set; } = "sentence";
+
+        /// <summary>
         /// SuperSearch search source: "ProjectFiles" (SDLXLIFF files only),
         /// "FilesAndTms" (files + project translation memories), or "TmsOnly"
         /// (concordance — project TMs only). Persisted until the user changes

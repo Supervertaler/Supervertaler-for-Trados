@@ -2601,7 +2601,7 @@ namespace Supervertaler.Trados
                 var title = reason == null
                     ? (inSource ? "Source words - say a number" : "Target words - say a number")
                     : reason.Split(new[] { " - " }, 2, StringSplitOptions.None)[0] + " - say its number";
-                Controls.NumberPopupForm.ShowFor(inSource, title, words);
+                Controls.NumberPopupForm.ShowFor(inSource, title, words, plain);
                 VoiceControl.VoiceControlManager.Instance?.SetNumberPopup(words.Count);
                 Core.DiagnosticLog.WriteAlways("VoiceSelect",
                     "numbers shown: " + words.Count + (inSource ? " source" : " target") + " words, "
