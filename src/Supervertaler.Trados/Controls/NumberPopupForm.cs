@@ -45,6 +45,13 @@ namespace Supervertaler.Trados.Controls
     {
         private static readonly Color BorderColor = Color.FromArgb(190, 190, 190);
         private static readonly Color NumberColor = Color.FromArgb(30, 90, 158);
+        /// <summary>
+        /// The footnote numbers in the sentence layout: muted, so they sit behind
+        /// the words rather than beside them. The link blue in bold was "too
+        /// distracting - a hard time focusing on the words and seeing the numbers
+        /// at the same time" (2026-09-17). The eye should land on the word first.
+        /// </summary>
+        private static readonly Color FootnoteColor = Color.FromArgb(120, 140, 170);
         private static readonly Color UnhearableBack = Color.FromArgb(255, 243, 208);   // the NT chip yellow
         private static readonly Color HintColor = Color.FromArgb(110, 110, 110);
 
@@ -285,11 +292,20 @@ namespace Supervertaler.Trados.Controls
                 ShortcutsEnabled = false
             };
             var textFont = new Font("Segoe UI", UiScale.FontSize(10.5f));
-            var numFont = new Font("Segoe UI", UiScale.FontSize(7.5f), FontStyle.Bold);
+            var numFont = new Font("Segoe UI", UiScale.FontSize(7f));
             var raise = UiScale.Pixels(5);
             _body.Controls.Add(rtb);
 
-            rtb.SuspendLayout();
+            // The text's real height, reported by the control as it lays the text
+            // out. Asking GetPositionFromCharIndex before layout gave a nonsense
+            // answer and the popup sized itself to the cap - a paragraph of text
+            // above a screen's worth of white (2026-09-17). The handle must exist
+            // for the event to fire, so it is created first, at the final width.
+            int textHeight = 0;
+            rtb.ContentsResized += (s, e) => textHeight = e.NewRectangle.Height;
+            rtb.Width = _body.ClientSize.Width;
+            var handle = rtb.Handle;   // forces creation
+
             int pos = 0;
             for (int n = 0; n < words.Count; n++)
             {
@@ -297,18 +313,21 @@ namespace Supervertaler.Trados.Controls
                 if (w.Start > pos && w.Start <= plain.Length)
                     Append(rtb, plain.Substring(pos, w.Start - pos), textFont, Color.Black, Color.White, 0);
                 Append(rtb, w.Text, textFont, Color.Black, w.Unhearable ? UnhearableBack : Color.White, 0);
-                Append(rtb, (n + 1).ToString(), numFont, NumberColor, Color.White, raise);
+                Append(rtb, (n + 1).ToString(), numFont, FootnoteColor, Color.White, raise);
                 pos = Math.Min(plain.Length, w.Start + w.Text.Length);
             }
             if (pos < plain.Length)
                 Append(rtb, plain.Substring(pos), textFont, Color.Black, Color.White, 0);
             rtb.Select(0, 0);
-            rtb.ResumeLayout();
 
-            // Measure: the bottom of the last character, plus a line's worth of room.
-            var last = Math.Max(0, rtb.TextLength - 1);
-            var bottom = rtb.GetPositionFromCharIndex(last).Y + textFont.Height * 2;
-            return Math.Max(UiScale.Pixels(30), bottom);
+            if (textHeight <= 0)
+            {
+                // No event (should not happen with a handle): fall back to a measure
+                // of the last character, which is at least right once laid out.
+                var last = Math.Max(0, rtb.TextLength - 1);
+                textHeight = rtb.GetPositionFromCharIndex(last).Y + textFont.Height;
+            }
+            return Math.Max(UiScale.Pixels(30), textHeight + textFont.Height / 2);
         }
 
         private static void Append(RichTextBox rtb, string text, Font font, Color fore, Color back, int offset)
