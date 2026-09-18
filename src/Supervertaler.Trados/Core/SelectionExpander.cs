@@ -161,11 +161,37 @@ namespace Supervertaler.Trados.Core
             if (trimStart > trimEnd)
                 return text.Trim(); // degenerate case
 
+            // A bracket pair that wraps the WHOLE kept text is not part of the
+            // word: "(oxide)" is the word "oxide" in brackets, unlike
+            // "(her)certificering", where the pair sits inside the word. The
+            // balanced-bracket rule above kept both; strip the wrapping pair
+            // and trim again, since the inside may have edges of its own.
+            if (trimEnd > trimStart && MatchingCloser(text, trimStart, trimEnd) == trimEnd)
+                return TrimNonWordEdges(text.Substring(trimStart + 1, trimEnd - trimStart - 1));
+
             return text.Substring(trimStart, trimEnd - trimStart + 1);
         }
 
         /// <summary>True when text[start] opens a bracket closed at or before
         /// <paramref name="end"/> - the pair is intact within the range.</summary>
+        /// <summary>Index of the closer matching the opener at <paramref name="start"/>,
+        /// searched up to <paramref name="end"/>; -1 when text[start] is no opener or
+        /// nothing closes it in range.</summary>
+        private static int MatchingCloser(string text, int start, int end)
+        {
+            const string openers = "([{";
+            const string closers = ")]}";
+            int o = openers.IndexOf(text[start]);
+            if (o < 0) return -1;
+            int depth = 0;
+            for (int i = start; i <= end && i < text.Length; i++)
+            {
+                if (text[i] == openers[o]) depth++;
+                else if (text[i] == closers[o] && --depth == 0) return i;
+            }
+            return -1;
+        }
+
         private static bool IsBalancedOpener(string text, int start, int end)
         {
             const string openers = "([{";
@@ -207,7 +233,13 @@ namespace Supervertaler.Trados.Core
         private static bool IsWordChar(char c)
         {
             return char.IsLetterOrDigit(c) || c == '-' || c == '\'' || c == '\u2019' // right single quote
-                || IsScriptDigit(c);
+                || IsScriptDigit(c) || IsScriptSign(c);
+        }
+
+        /// <summary>Sub- and superscript plus and minus: ⁺ ⁻ ₊ ₋. Part of a formula's charge.</summary>
+        private static bool IsScriptSign(char c)
+        {
+            return c == '\u207A' || c == '\u207B' || c == '\u208A' || c == '\u208B';
         }
 
         /// <summary>
@@ -215,9 +247,7 @@ namespace Supervertaler.Trados.Core
         /// to them (Unicode category No, not Nd), so a selection of "O₃" was trimmed
         /// to "O" and saved as such. The term matcher's word pattern accepts exactly
         /// this set and normalises it to plain digits for matching, so a saved
-        /// "O₃" is found again. Superscript charges (⁺ ⁻) are still edges: the
-        /// matcher does not tokenise them either, so keeping them would save a
-        /// term that can never match.
+        /// "O₃" is found again.
         /// </summary>
         private static bool IsScriptDigit(char c)
         {

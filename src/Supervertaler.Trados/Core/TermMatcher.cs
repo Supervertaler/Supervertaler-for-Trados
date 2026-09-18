@@ -44,7 +44,7 @@ namespace Supervertaler.Trados.Core
         // in Dutch and English legal text, so every such term silently lost its
         // highlight. Keep '-' escaped and last so it cannot start a range again.
         private static readonly Regex WordPattern = new Regex(
-            @"(?<!\w)[\w.,%&'*+/\u2080-\u2089\u2070\u00B9\u00B2\u00B3\u2074-\u2079\-]+(?!\w)",
+            @"(?<!\w)[\w.,%&'*+/\u2080-\u2089\u2070\u00B9\u00B2\u00B3\u2074-\u2079\u207A\u207B\u208A\u208B\-]+(?!\w)",
             RegexOptions.Compiled);
 
         // The complement of WordPattern's character class (plus whitespace).
@@ -54,7 +54,7 @@ namespace Supervertaler.Trados.Core
         // the selection through this before matching; keep it in sync with
         // WordPattern above.
         private static readonly Regex NonRenderableChars = new Regex(
-            @"[^\w.,%&'*+/\u2080-\u2089\u2070\u00B9\u00B2\u00B3\u2074-\u2079\-]+",
+            @"[^\w.,%&'*+/\u2080-\u2089\u2070\u00B9\u00B2\u00B3\u2074-\u2079\u207A\u207B\u208A\u208B\-]+",
             RegexOptions.Compiled);
 
         /// <summary>Reduces text to the characters that can appear in a
@@ -469,7 +469,7 @@ namespace Supervertaler.Trados.Core
             {
                 if ((c >= '\u2080' && c <= '\u2089') || c == '\u2070' ||
                     c == '\u00B9' || c == '\u00B2' || c == '\u00B3' ||
-                    (c >= '\u2074' && c <= '\u2079') || IsSpaceVariant(c) || IsApostropheVariant(c))
+                    (c >= '\u2074' && c <= '\u2079') || IsScriptSign(c) || IsSpaceVariant(c) || IsApostropheVariant(c))
                 {
                     hasScript = true;
                     break;
@@ -486,6 +486,8 @@ namespace Supervertaler.Trados.Core
                 else if (c == '\u00B2')                  sb.Append('2');  // ²
                 else if (c == '\u00B3')                  sb.Append('3');  // ³
                 else if (c >= '\u2074' && c <= '\u2079') sb.Append((char)('0' + (c - '\u2070'))); // ⁴-⁹
+                else if (c == '\u207A' || c == '\u208A') sb.Append('+');  // ⁺ ₊ - a formula's charge
+                else if (c == '\u207B' || c == '\u208B') sb.Append('-');  // ⁻ ₋
                 else if (IsSpaceVariant(c))              sb.Append(' ');
                 else if (IsApostropheVariant(c))         sb.Append('\'');  // curly / modifier apostrophes -> '
                 else                                     sb.Append(c);
@@ -500,6 +502,12 @@ namespace Supervertaler.Trados.Core
         /// entry stored with one apostrophe form still matches a segment that
         /// carries the other (SDG + curly-apostrophe-s vs SDG + straight-quote-s).
         /// </summary>
+        /// <summary>Sub- and superscript plus and minus, folded to + and - for matching.</summary>
+        private static bool IsScriptSign(char c)
+        {
+            return c == '\u207A' || c == '\u207B' || c == '\u208A' || c == '\u208B';
+        }
+
         private static bool IsApostropheVariant(char c)
         {
             return c == '\u2018'   // left single quotation mark

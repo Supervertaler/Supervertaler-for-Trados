@@ -93,7 +93,7 @@ namespace Supervertaler.Trados
                         {
                             var srcSel = selection.Source?.ToString();
                             if (!string.IsNullOrWhiteSpace(srcSel))
-                                sourceText = SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel, srcAutoExpand);
+                                sourceText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Source, fullSource, SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel, srcAutoExpand));
                         }
                         catch { /* Selection may not be available */ }
 
@@ -107,7 +107,7 @@ namespace Supervertaler.Trados
                         {
                             var tgtSel = selection.Target?.ToString();
                             if (!string.IsNullOrWhiteSpace(tgtSel))
-                                targetText = SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel, tgtAutoExpand);
+                                targetText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Target, fullTarget, SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel, tgtAutoExpand));
                         }
                         catch { /* Selection may not be available */ }
                     }
