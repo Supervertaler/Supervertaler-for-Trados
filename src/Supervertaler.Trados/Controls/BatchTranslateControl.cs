@@ -1330,9 +1330,16 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// Toggles the UI between running and idle states.
         /// </summary>
+        /// <summary>#135: whether any batch run is in progress - the memory bank must not change under one.</summary>
+        public static bool IsAnyRunning { get; private set; }
+        /// <summary>#135: raised when a run ends, so a deferred bank switch can be applied.</summary>
+        public static event Action RunFinished;
+
         public void SetRunning(bool running)
         {
             _isRunning = running;
+            IsAnyRunning = running;
+            if (!running) { try { RunFinished?.Invoke(); } catch { } }
             UpdateActionButtonText();
             _cmbScope.Enabled = !running;
             _cmbPrompt.Enabled = !running;

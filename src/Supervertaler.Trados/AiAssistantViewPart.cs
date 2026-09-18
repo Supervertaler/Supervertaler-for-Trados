@@ -242,9 +242,18 @@ namespace Supervertaler.Trados
             {
                 _editorController.ActiveDocumentChanged += OnActiveDocumentChanged;
 
+                // #135: a batch run must not have the bank change under it; when
+                // one ends, the project's bank is applied then.
+                Controls.BatchTranslateControl.RunFinished += () => SafeInvoke(ApplyProjectMemoryBank);
+
                 if (_editorController.ActiveDocument != null)
                 {
                     _activeDocument = _editorController.ActiveDocument;
+                    // #135: the only path that applies the project's bank was the
+                    // document-change handler, which never fires for a document
+                    // already open when Studio starts - so the last session's bank
+                    // stayed loaded whatever the project. Apply it here as well.
+                    ApplyProjectMemoryBank();
                     _activeDocument.ActiveSegmentChanged += OnActiveSegmentChanged;
                     _activeDocument.DocumentFilterChanged += OnDocumentFilterChanged;
                     GetDocumentSourceLanguage();
@@ -1364,9 +1373,12 @@ namespace Supervertaler.Trados
 
                 // Orientation call – the right place to surface a setup problem
                 // the caller would otherwise never see.
+                var warnings = new List<string>();
                 var termbaseWarning = BridgeTermbaseWarning();
-                if (termbaseWarning != null)
-                    snapshot.Warnings = new List<string> { termbaseWarning };
+                if (termbaseWarning != null) warnings.Add(termbaseWarning);
+                var bankWarning = BridgeMemoryBankWarning();   // #135
+                if (bankWarning != null) warnings.Add(bankWarning);
+                if (warnings.Count > 0) snapshot.Warnings = warnings;
             }
             catch (Exception ex)
             {
@@ -8249,16 +8261,59 @@ namespace Supervertaler.Trados
             {
                 var projectPath = CurrentProjectPathFromDocument();
                 if (string.IsNullOrEmpty(projectPath)) return;
+
+                // #135: never under a running batch - later segments would be built
+                // on a different bank from earlier ones. Left unmarked so the next
+                // call (RunFinished, or the next document change) applies it.
+                if (Controls.BatchTranslateControl.IsAnyRunning)
+                {
+                    if (!string.Equals(projectPath, _bankProjectPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { Core.DiagnosticLog.Log("SuperMemory", "bank not switched for " + projectPath + ": a batch run is in progress"); } catch { }
+                        SafeInvoke(() => ShowSuperMemoryMessage(
+                            "The memory bank was **not** switched for this project: a batch run is in "
+                            + "progress and would otherwise change banks halfway. It follows the project "
+                            + "when the run ends."));
+                    }
+                    return;
+                }
+
                 if (string.Equals(projectPath, _bankProjectPath, StringComparison.OrdinalIgnoreCase))
                     return;                      // same project, nothing to do
                 _bankProjectPath = projectPath;
 
+                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
                 string wanted = null;
                 try { wanted = Settings.ProjectSettings.Load(projectPath)?.MemoryBankName; }
                 catch { }
 
+                // #135: a project with no recorded bank gets the one named after it,
+                // if there is one - the banks ARE named that way (SanitizeBankName of
+                // the project name). Exact match or nothing: a near miss picked
+                // silently is the bug this whole mechanism exists to prevent. The
+                // pick is recorded, so it is this project's bank from now on.
+                var matchedByName = false;
+                if (string.IsNullOrEmpty(wanted))
+                {
+                    var slug = UserDataPath.SanitizeBankName(projectName);
+                    if (slug.Length > 0 && !UserDataPath.IsSharedBankName(slug)
+                        && UserDataPath.ListMemoryBanks().Any(b => string.Equals(b, slug, StringComparison.Ordinal)))
+                    {
+                        wanted = slug;
+                        matchedByName = true;
+                        RecordBankAgainst(projectPath, slug, projectName);
+                    }
+                }
+
                 var current = _settings?.AiSettings?.ActiveMemoryBankName ?? "";
                 var target = wanted ?? "";
+                try
+                {
+                    Core.DiagnosticLog.Log("SuperMemory", "project " + projectName + ": bank '" + current + "' -> '"
+                        + target + "'" + (matchedByName ? " (matched by name, recorded)" : "")
+                        + (string.Equals(current, target, StringComparison.Ordinal) ? " (unchanged)" : ""));
+                }
+                catch { }
                 if (string.Equals(current, target, StringComparison.Ordinal)) return;
 
                 SettingsService.Update(s =>
@@ -8271,17 +8326,59 @@ namespace Supervertaler.Trados
                 _kbReaderBankName = null;
                 try { RefreshMemoryBankDropdown(); } catch { }
 
-                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
                 SafeInvoke(() => ShowSuperMemoryMessage(
                     target.Length > 0
-                        ? "Switched to memory bank **" + target + "** for **" + projectName + "**."
-                        : "**No memory bank** is set for **" + projectName + "**, so SuperMemory is "
-                          + "contributing nothing to prompts. Pick one from the SuperMemory dropdown "
-                          + "if this project should have one." + "\n\n*The previous project's bank is "
+                        ? "Switched to memory bank **" + target + "** for **" + projectName + "**"
+                          + (matchedByName ? " – matched by name, and recorded as this project's bank." : ".")
+                        : "**No memory bank** is set for **" + projectName + "**, and none is named after it, "
+                          + "so SuperMemory is contributing nothing to prompts. Pick one from the SuperMemory "
+                          + "dropdown if this project should have one." + "\n\n*The previous project's bank is "
                           + "deliberately not carried over: it would feed another client's terminology "
                           + "into every request without saying so.*"));
             }
             catch { }
+        }
+
+        /// <summary>
+        /// #135: what get_active_project says when the active bank is not the open
+        /// project's. The bank feeds every prompt, and an assistant that reads the
+        /// project first is the one place a mismatch can be caught before a request
+        /// is built on the wrong client's terminology. Null when they agree.
+        /// </summary>
+        private string BridgeMemoryBankWarning()
+        {
+            try
+            {
+                var projectPath = CurrentProjectPathFromDocument();
+                if (string.IsNullOrEmpty(projectPath)) return null;
+                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
+
+                string expected = null;
+                try { expected = Settings.ProjectSettings.Load(projectPath)?.MemoryBankName; }
+                catch { }
+                if (string.IsNullOrEmpty(expected))
+                {
+                    var slug = UserDataPath.SanitizeBankName(projectName);
+                    if (slug.Length > 0 && UserDataPath.ListMemoryBanks().Any(b => string.Equals(b, slug, StringComparison.Ordinal)))
+                        expected = slug;
+                }
+                expected = expected ?? "";
+                var active = _settings?.AiSettings?.ActiveMemoryBankName ?? "";
+                if (string.Equals(active, expected, StringComparison.Ordinal)) return null;
+
+                if (expected.Length == 0)
+                    return active.Length == 0 ? null
+                        : "The active memory bank '" + active + "' is not this project's: no bank is recorded for '"
+                          + projectName + "' and none is named after it. Prompts built now draw on '" + active
+                          + "', which belongs to another job. Tell the user; the bank is chosen in the SuperMemory dropdown.";
+                if (active.Length == 0)
+                    return "No memory bank is active, but '" + expected + "' is this project's bank. Prompts built now "
+                         + "get nothing from SuperMemory. Tell the user; the bank is chosen in the SuperMemory dropdown.";
+                return "The active memory bank '" + active + "' is not this project's bank '" + expected
+                     + "'. Prompts built now draw on '" + active + "'. Tell the user; the bank is chosen in the "
+                     + "SuperMemory dropdown.";
+            }
+            catch { return null; }
         }
 
         private void OnMemoryBankChanged(object sender, MemoryBankChangedEventArgs e)
