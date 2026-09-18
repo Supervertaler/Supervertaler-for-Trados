@@ -350,6 +350,7 @@ namespace Supervertaler.Trados
             _control.Value.SuperMemoryRefreshRequested += (s, e) => RefreshSuperMemoryInboxCount();
             _control.Value.MemoryBankChanged += OnMemoryBankChanged;
             _control.Value.NewMemoryBankRequested += OnNewMemoryBankRequested;
+            _control.Value.MatchByProjectNameRequested += OnMatchByProjectNameRequested;
 
             // Initial context update
             UpdateContextDisplay();
@@ -8557,6 +8558,48 @@ namespace Supervertaler.Trados
         /// layout), refreshes the dropdown with the new bank visible, and
         /// switches to it by reusing <see cref="OnMemoryBankChanged"/>.
         /// </summary>
+        /// <summary>
+        /// #135: "(match by project name)" in the dropdown. An explicit choice is
+        /// recorded and sticks, so the name match never overrides one; this is
+        /// the way back. The project's recorded bank is cleared and the normal
+        /// resolution runs again, which picks the bank named after the project
+        /// when there is one, and reports either way.
+        /// </summary>
+        private void OnMatchByProjectNameRequested(object sender, EventArgs e)
+        {
+            _control.Value.ReengageAutoScroll();
+            try
+            {
+                var projectPath = CurrentProjectPathFromDocument();
+                if (string.IsNullOrEmpty(projectPath))
+                {
+                    ShowSuperMemoryMessage("No project is open, so there is no project name to match.");
+                    return;
+                }
+                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
+                var slug = UserDataPath.SanitizeBankName(projectName);
+                var before = _settings?.AiSettings?.ActiveMemoryBankName ?? "";
+
+                RecordBankAgainst(projectPath, "", projectName);
+                try { Core.DiagnosticLog.Log("SuperMemory", "project " + projectName + ": recorded bank cleared by the user; matching by name (" + slug + ")"); } catch { }
+
+                _bankProjectPath = null;
+                ApplyProjectMemoryBank();   // logs, records a match, and announces the switch
+
+                var after = _settings?.AiSettings?.ActiveMemoryBankName ?? "";
+                if (string.Equals(before, after, StringComparison.Ordinal))
+                {
+                    // Nothing changed, so the resolution said nothing: say why.
+                    var found = UserDataPath.ListMemoryBanks().Any(b => string.Equals(b, slug, StringComparison.Ordinal));
+                    ShowSuperMemoryMessage(found
+                        ? "This project's recorded bank was cleared. **" + slug + "** is named after the project and is already the active bank, so it is recorded again."
+                        : "This project's recorded bank was cleared, but no bank is named **" + slug + "**, so nothing changed. "
+                          + "Create a bank with that name and it is picked up the next time this project is opened, or pick one from the dropdown.");
+                }
+            }
+            catch { }
+        }
+
         private void OnNewMemoryBankRequested(object sender, EventArgs e)
         {
             // User-initiated action (+ New memory bank sentinel) – re-engage

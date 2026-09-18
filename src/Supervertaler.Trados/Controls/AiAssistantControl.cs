@@ -159,6 +159,9 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         public event EventHandler NewMemoryBankRequested;
 
+        /// <summary>#135: "(match by project name)" was picked in the SuperMemory dropdown.</summary>
+        public event EventHandler MatchByProjectNameRequested;
+
         /// <summary>
         /// Fired when the user changes chat font size via the A+/A- buttons.
         /// The ViewPart should persist the new size.
@@ -419,6 +422,8 @@ namespace Supervertaler.Trados.Controls
                 MemoryBankChanged?.Invoke(this, e);
             _superMemoryToolbar.NewMemoryBankRequested += (s, e) =>
                 NewMemoryBankRequested?.Invoke(this, EventArgs.Empty);
+            _superMemoryToolbar.MatchByProjectNameRequested += (s, e) =>
+                MatchByProjectNameRequested?.Invoke(this, EventArgs.Empty);
 
             // ─── Input panel (bottom) ─────────────────────────────
             _inputPanel = new Panel

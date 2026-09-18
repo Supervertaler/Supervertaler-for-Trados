@@ -73,11 +73,18 @@ namespace Supervertaler.Trados.Controls
         public event EventHandler NewMemoryBankRequested;
 
         /// <summary>
+        /// #135: the user picked "(match by project name)". The view part forgets
+        /// the project's recorded bank and resolves it again from the project name.
+        /// </summary>
+        public event EventHandler MatchByProjectNameRequested;
+
+        /// <summary>
         /// Sentinel display text for the "create new bank" entry. Kept as a
         /// constant so the change handler can reliably recognise the row
         /// without depending on string literals sprinkled through the file.
         /// </summary>
         private const string NewBankSentinel = "+ New memory bank\u2026"; // ellipsis
+        private const string MatchByNameSentinel = "(match by project name)";
 
         public SuperMemoryToolbar()
         {
@@ -441,6 +448,7 @@ namespace Supervertaler.Trados.Controls
                     // per-item enabled state, so we rely on the change handler
                     // ignoring the placeholder.
                     _cmbMemoryBank.Items.Add("(no memory banks)");
+                    _cmbMemoryBank.Items.Add(MatchByNameSentinel);
                     _cmbMemoryBank.Items.Add(NewBankSentinel);
                     _cmbMemoryBank.SelectedIndex = 0;
                     _cmbMemoryBank.Enabled = true;
@@ -461,6 +469,7 @@ namespace Supervertaler.Trados.Controls
                 // Append the "create new bank" sentinel as the last entry.
                 // It is not selectable in the normal sense – OnMemoryBankComboChanged
                 // fires NewMemoryBankRequested and reverts the combo instead.
+                _cmbMemoryBank.Items.Add(MatchByNameSentinel);
                 _cmbMemoryBank.Items.Add(NewBankSentinel);
 
                 _cmbMemoryBank.SelectedIndex = selected;
@@ -487,6 +496,7 @@ namespace Supervertaler.Trados.Controls
                 if (string.IsNullOrEmpty(item)) return null;
                 if (item == "(no memory banks)") return null;
                 if (item == NewBankSentinel) return null;
+                if (item == MatchByNameSentinel) return null;
                 return item;
             }
         }
@@ -518,7 +528,7 @@ namespace Supervertaler.Trados.Controls
             // Intercept the sentinel row: instead of firing MemoryBankChanged,
             // revert the combo to the previously selected bank and ask the
             // view part to prompt for a new bank name.
-            if (rawItem == NewBankSentinel)
+            if (rawItem == NewBankSentinel || rawItem == MatchByNameSentinel)
             {
                 // Revert selection so the sentinel never appears as "active".
                 // Prefer the bank we were on when the dropdown opened; fall
@@ -531,7 +541,7 @@ namespace Supervertaler.Trados.Controls
                     for (int i = 0; i < _cmbMemoryBank.Items.Count; i++)
                     {
                         var text = _cmbMemoryBank.Items[i] as string;
-                        if (text != null && text != NewBankSentinel && text != "(no memory banks)")
+                        if (text != null && text != NewBankSentinel && text != MatchByNameSentinel && text != "(no memory banks)")
                         {
                             idx = i;
                             break;
@@ -549,7 +559,10 @@ namespace Supervertaler.Trados.Controls
                     _suppressComboChange = false;
                 }
 
-                NewMemoryBankRequested?.Invoke(this, EventArgs.Empty);
+                if (rawItem == NewBankSentinel)
+                    NewMemoryBankRequested?.Invoke(this, EventArgs.Empty);
+                else
+                    MatchByProjectNameRequested?.Invoke(this, EventArgs.Empty);
                 return;
             }
 
