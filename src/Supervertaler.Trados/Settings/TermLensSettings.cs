@@ -733,6 +733,8 @@ namespace Supervertaler.Trados.Settings
             // Per-project active prompt (overrides global SelectedPromptPath)
             if (AiSettings != null && !string.IsNullOrEmpty(ps.ActivePromptPath))
                 AiSettings.SelectedPromptPath = ps.ActivePromptPath;
+            if (AiSettings != null && !string.IsNullOrEmpty(ps.ActiveProofreadPromptPath))
+                AiSettings.SelectedProofreadPromptPath = ps.ActiveProofreadPromptPath;
         }
 
         /// <summary>
@@ -823,6 +825,7 @@ namespace Supervertaler.Trados.Settings
                 // the plugin has loaded and applied them at least once.
                 AiTermbaseIdsInitialized = true,
                 ActivePromptPath = AiSettings?.SelectedPromptPath ?? "",
+                ActiveProofreadPromptPath = AiSettings?.SelectedProofreadPromptPath ?? "",
 
                 // Carried forward, not derived — and every per-job field added
                 // here in future must be too.

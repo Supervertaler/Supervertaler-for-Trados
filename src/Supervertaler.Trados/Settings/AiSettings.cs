@@ -99,6 +99,23 @@ namespace Supervertaler.Trados.Settings
         public string SelectedPromptPath { get; set; } = "";
 
         /// <summary>
+        /// The proofreading prompt, kept apart from the translation one. Until
+        /// 18.20.192 both modes of the batch panel wrote the same field, so a
+        /// proofread run replaced the recorded translation prompt.
+        /// </summary>
+        [DataMember(Name = "selectedProofreadPromptPath")]
+        public string SelectedProofreadPromptPath { get; set; } = "";
+
+        public string GetBatchPrompt(bool proofread) =>
+            (proofread ? SelectedProofreadPromptPath : SelectedPromptPath) ?? "";
+
+        public void SetBatchPrompt(bool proofread, string path)
+        {
+            if (proofread) SelectedProofreadPromptPath = path ?? "";
+            else SelectedPromptPath = path ?? "";
+        }
+
+        /// <summary>
         /// User's custom system prompt override. When non-null and non-empty,
         /// replaces the entire base system prompt (tag preservation, number formatting, etc.).
         /// Null means use the default base system prompt.

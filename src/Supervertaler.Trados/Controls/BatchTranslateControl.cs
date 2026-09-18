@@ -1076,7 +1076,7 @@ namespace Supervertaler.Trados.Controls
         /// The trailing separator matters: without it "Proofreading" would match
         /// a filter of "Proofread".
         /// </remarks>
-        private static bool CategoryBelongsTo(string category, string filter)
+        internal static bool CategoryBelongsTo(string category, string filter)
         {
             var c = (category ?? "").Replace('\\', '/').Trim().Trim('/');
             if (c.Length == 0) return false;

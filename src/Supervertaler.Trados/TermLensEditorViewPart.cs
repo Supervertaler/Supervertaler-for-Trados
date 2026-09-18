@@ -1430,13 +1430,14 @@ namespace Supervertaler.Trados
             try
             {
                 if (_settings.AiSettings == null) return;
-                var wanted = ps?.ActivePromptPath ?? "";
-                var current = _settings.AiSettings.SelectedPromptPath ?? "";
-                if (!string.Equals(current, wanted, StringComparison.Ordinal))
+                foreach (var proofread in new[] { false, true })
                 {
-                    _settings.AiSettings.SelectedPromptPath = wanted;
-                    DiagnosticLog.Log("Prompt", "project " + (projectName ?? "?") + ": prompt '" + current + "' -> '"
-                        + (wanted.Length > 0 ? wanted : "(default)") + "'"
+                    var wanted = ps?.GetBatchPrompt(proofread) ?? "";
+                    var current = _settings.AiSettings.GetBatchPrompt(proofread);
+                    if (string.Equals(current, wanted, StringComparison.Ordinal)) continue;
+                    _settings.AiSettings.SetBatchPrompt(proofread, wanted);
+                    DiagnosticLog.Log("Prompt", "project " + (projectName ?? "?") + ": " + (proofread ? "proofread" : "translate")
+                        + " prompt '" + current + "' -> '" + (wanted.Length > 0 ? wanted : "(default)") + "'"
                         + (wanted.Length > 0 ? "" : " (none recorded for this project; the previous project's is not carried over)"));
                 }
                 AiAssistantViewPart.RefreshBatchPromptDropdown();

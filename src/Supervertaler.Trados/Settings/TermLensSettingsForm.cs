@@ -1260,14 +1260,17 @@ namespace Supervertaler.Trados.Settings
 
             // Prompts – pass per-project active prompt if available
             string projectActivePrompt = null;
+            string projectActiveProofreadPrompt = null;
             var projPath = TermLensEditorViewPart.GetCurrentProjectPath();
             if (!string.IsNullOrEmpty(projPath))
             {
                 var ps = ProjectSettings.Load(projPath);
                 if (ps != null && !string.IsNullOrEmpty(ps.ActivePromptPath))
                     projectActivePrompt = ps.ActivePromptPath;
+                if (ps != null && !string.IsNullOrEmpty(ps.ActiveProofreadPromptPath))
+                    projectActiveProofreadPrompt = ps.ActiveProofreadPromptPath;
             }
-            _promptManagerPanel.PopulateFromSettings(_settings.AiSettings, _promptLibrary, projectActivePrompt);
+            _promptManagerPanel.PopulateFromSettings(_settings.AiSettings, _promptLibrary, projectActivePrompt, projectActiveProofreadPrompt);
         }
 
         private void OnBrowseClick(object sender, EventArgs e)

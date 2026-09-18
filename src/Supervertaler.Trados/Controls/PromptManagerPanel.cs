@@ -78,6 +78,13 @@ namespace Supervertaler.Trados.Controls
         private string _autoTaggerInstruction; // null = use default
         private const string AutoTaggerTag = "__AUTOTAGGER__";
         private string _activePromptPath; // per-project active prompt relative path
+        private string _activeProofreadPromptPath; // the same, for the Proofread category
+
+        private bool IsProofread(PromptTemplate prompt) =>
+            prompt != null && BatchTranslateControl.CategoryBelongsTo(prompt.Category, "Proofread");
+
+        private string ActiveFor(PromptTemplate prompt) =>
+            IsProofread(prompt) ? _activeProofreadPromptPath : _activePromptPath;
 
         // ─── SuperMemory (read-only) ─────────────────────────────
         // A distinct Tag TYPE, not a string: OnTreeAfterSelect treats any string
@@ -429,8 +436,9 @@ namespace Supervertaler.Trados.Controls
                 miSetActive.Visible = prompt != null && !prompt.IsQuickLauncher;
                 if (prompt != null && miSetActive.Visible)
                 {
-                    miSetActive.Checked = !string.IsNullOrEmpty(_activePromptPath)
-                        && PromptPaths.Match(prompt.RelativePath, _activePromptPath) /* marker-tolerant, #100 */;
+                    var activeHere = ActiveFor(prompt);
+                    miSetActive.Checked = !string.IsNullOrEmpty(activeHere)
+                        && PromptPaths.Match(prompt.RelativePath, activeHere) /* marker-tolerant, #100 */;
                 }
                 miDeleteFolder.Visible = isFolder;
                 miFlatSection.Visible = isQlFolder;
@@ -1079,7 +1087,8 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// Populates the panel from current settings and prompt library.
         /// </summary>
-        public void PopulateFromSettings(AiSettings settings, PromptLibrary library, string projectActivePromptPath = null)
+        public void PopulateFromSettings(AiSettings settings, PromptLibrary library, string projectActivePromptPath = null,
+            string projectActiveProofreadPromptPath = null)
         {
             _library = library ?? new PromptLibrary();
             _aiSettings = settings;
@@ -1090,6 +1099,9 @@ namespace Supervertaler.Trados.Controls
             _activePromptPath = !string.IsNullOrEmpty(projectActivePromptPath)
                 ? projectActivePromptPath
                 : settings?.SelectedPromptPath ?? "";
+            _activeProofreadPromptPath = !string.IsNullOrEmpty(projectActiveProofreadPromptPath)
+                ? projectActiveProofreadPromptPath
+                : settings?.SelectedProofreadPromptPath ?? "";
 
             // Build shortcut assignments from settings
             _shortcutAssignments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -1126,6 +1138,7 @@ namespace Supervertaler.Trados.Controls
             settings.CustomSystemPrompt = _customSystemPrompt;
             settings.AutoTaggerInstruction = _autoTaggerInstruction;
             settings.SelectedPromptPath = _activePromptPath ?? "";
+            settings.SelectedProofreadPromptPath = _activeProofreadPromptPath ?? "";
 
             // Save shortcut slot assignments from _shortcutAssignments
             var slots = new Dictionary<string, string>();
@@ -1744,8 +1757,9 @@ namespace Supervertaler.Trados.Controls
                 }
 
                 // Mark the active prompt for this project
-                var isActive = !string.IsNullOrEmpty(_activePromptPath)
-                    && PromptPaths.Match(prompt.RelativePath, _activePromptPath) /* marker-tolerant, #100 */;
+                var activeHere = ActiveFor(prompt);
+                var isActive = !string.IsNullOrEmpty(activeHere)
+                    && PromptPaths.Match(prompt.RelativePath, activeHere) /* marker-tolerant, #100 */;
                 if (isActive)
                     displayName = "\U0001F4CC " + displayName; // 📌 pin emoji
 
@@ -2730,20 +2744,18 @@ namespace Supervertaler.Trados.Controls
             var prompt = GetSelectedPrompt();
             if (prompt == null) return;
 
-            // Toggle: if already active, clear it; otherwise set it
-            if (!string.IsNullOrEmpty(_activePromptPath)
-                && PromptPaths.Match(prompt.RelativePath, _activePromptPath) /* marker-tolerant, #100 */)
-            {
-                _activePromptPath = "";
-            }
-            else
-            {
-                _activePromptPath = prompt.RelativePath;
-            }
+            // Toggle within the prompt's own mode: a Proofread prompt is the
+            // active proofreading prompt, anything else the translation one.
+            var proofread = IsProofread(prompt);
+            var current = proofread ? _activeProofreadPromptPath : _activePromptPath;
+            var next = !string.IsNullOrEmpty(current)
+                && PromptPaths.Match(prompt.RelativePath, current) /* marker-tolerant, #100 */
+                ? "" : prompt.RelativePath;
+            if (proofread) _activeProofreadPromptPath = next; else _activePromptPath = next;
 
             RefreshTree();
-            ActivePromptChanged?.Invoke(this, _activePromptPath ?? "");
-            ActivePromptChangedGlobal?.Invoke(this, _activePromptPath ?? "");
+            ActivePromptChanged?.Invoke(this, next ?? "");
+            ActivePromptChangedGlobal?.Invoke(this, next ?? "");
         }
 
         // ═══════════════════════════════════════════════════════════

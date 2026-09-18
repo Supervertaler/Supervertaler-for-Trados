@@ -121,6 +121,13 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "activePromptPath")]
         public string ActivePromptPath { get; set; } = "";
 
+        /// <summary>The proofreading prompt for this project; empty means the default.</summary>
+        [DataMember(Name = "activeProofreadPromptPath")]
+        public string ActiveProofreadPromptPath { get; set; } = "";
+
+        public string GetBatchPrompt(bool proofread) =>
+            (proofread ? ActiveProofreadPromptPath : ActivePromptPath) ?? "";
+
         // ─── Reference drawings ─────────────────────────────────────
 
         /// <summary>
@@ -350,7 +357,8 @@ namespace Supervertaler.Trados.Settings
                 try
                 {
                     Supervertaler.Trados.Core.DiagnosticLog.Log("Overlay", "write " + key + " (" + (ps?.ProjectName ?? "") + ") via " + via
-                        + ": bank='" + (ps?.MemoryBankName ?? "") + "' prompt='" + (ps?.ActivePromptPath ?? "") + "'");
+                        + ": bank='" + (ps?.MemoryBankName ?? "") + "' prompt='" + (ps?.ActivePromptPath ?? "")
+                        + "' proofread='" + (ps?.ActiveProofreadPromptPath ?? "") + "'");
                 }
                 catch { }
 

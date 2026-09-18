@@ -7482,8 +7482,10 @@ namespace Supervertaler.Trados
                 _promptLibrary?.Refresh();
                 var prompts = _promptLibrary?.GetAllPrompts();
 
-                // Use per-project active prompt if set, else global
-                var selectedPath = _settings?.AiSettings?.SelectedPromptPath ?? "";
+                // The mode's own prompt: per-project override if set, else global.
+                var mode = _control.Value.BatchTranslateControl.CurrentMode;
+                var proofread = mode == BatchMode.Proofread;
+                var selectedPath = _settings?.AiSettings?.GetBatchPrompt(proofread) ?? "";
                 string activePromptPath = null;
                 var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
                 if (!string.IsNullOrEmpty(projectPath))
@@ -7491,17 +7493,17 @@ namespace Supervertaler.Trados
                     try
                     {
                         var ps = Settings.ProjectSettings.Load(projectPath);
-                        if (ps != null && !string.IsNullOrEmpty(ps.ActivePromptPath))
+                        var psPath = ps?.GetBatchPrompt(proofread);
+                        if (!string.IsNullOrEmpty(psPath))
                         {
-                            activePromptPath = ps.ActivePromptPath;
+                            activePromptPath = psPath;
                             selectedPath = activePromptPath;
                         }
                     }
                     catch { }
                 }
 
-                var mode = _control.Value.BatchTranslateControl.CurrentMode;
-                var categoryFilter = mode == BatchMode.Proofread ? "Proofread" : "Translate";
+                var categoryFilter = proofread ? "Proofread" : "Translate";
                 var projectName = TermLensEditorViewPart.GetCurrentProjectName();
                 _control.Value.BatchTranslateControl.SetPrompts(
                     prompts, selectedPath, categoryFilter, projectName, activePromptPath);
@@ -7538,11 +7540,19 @@ namespace Supervertaler.Trados
                     if (prompts == null) return;
                     if (_control?.Value?.BatchTranslateControl == null) return;
 
-                    var normalisedActive = string.IsNullOrEmpty(activePath) ? null : activePath;
-                    var selectedPath = normalisedActive ?? (_settings?.AiSettings?.SelectedPromptPath ?? "");
-
                     var mode = _control.Value.BatchTranslateControl.CurrentMode;
-                    var categoryFilter = mode == BatchMode.Proofread ? "Proofread" : "Translate";
+                    var proofread = mode == BatchMode.Proofread;
+                    var normalisedActive = string.IsNullOrEmpty(activePath) ? null : activePath;
+                    // A prompt made active for the OTHER mode is not this dropdown's
+                    // business: repopulate from the stored state instead.
+                    if (normalisedActive != null && IsProofreadPrompt(normalisedActive) != proofread)
+                    {
+                        PopulateBatchPromptDropdown();
+                        return;
+                    }
+                    var selectedPath = normalisedActive ?? (_settings?.AiSettings?.GetBatchPrompt(proofread) ?? "");
+
+                    var categoryFilter = proofread ? "Proofread" : "Translate";
                     var projectName = TermLensEditorViewPart.GetCurrentProjectName();
 
                     _control.Value.BatchTranslateControl.SetPrompts(
@@ -7560,9 +7570,20 @@ namespace Supervertaler.Trados
         /// Resolves the custom prompt content for the currently selected prompt.
         /// Applies variable substitution for source/target language.
         /// </summary>
-        private string ResolveCustomPromptContent(string sourceLang, string targetLang)
+        /// <summary>Whether the library prompt at <paramref name="path"/> lives under the Proofread category.</summary>
+        private bool IsProofreadPrompt(string path)
         {
-            var selectedPath = _settings?.AiSettings?.SelectedPromptPath;
+            try
+            {
+                var p = _promptLibrary == null || string.IsNullOrEmpty(path) ? null : PromptPaths.Find(_promptLibrary, path);
+                return p != null && Controls.BatchTranslateControl.CategoryBelongsTo(p.Category, "Proofread");
+            }
+            catch { return false; }
+        }
+
+        private string ResolveCustomPromptContent(string sourceLang, string targetLang, bool proofread = false)
+        {
+            var selectedPath = _settings?.AiSettings?.GetBatchPrompt(proofread);
             if (string.IsNullOrEmpty(selectedPath) || _promptLibrary == null)
                 return null;
 
@@ -9719,10 +9740,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Resolve custom prompt from library selection
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
-                aiSettings.SelectedPromptPath = selectedPromptPath;
+                var proofreadRun = batchControl.CurrentMode == BatchMode.Proofread;
+                aiSettings.SetBatchPrompt(proofreadRun, selectedPromptPath);
                 SettingsService.Save();
 
-                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
+                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang, proofreadRun);
                 var customSystemPrompt = aiSettings.CustomSystemPrompt;
 
                 // Collect document context for AI document type analysis
@@ -10163,12 +10185,13 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Persist the prompt dropdown selection before resolving
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
+                var proofreadRun = batchControl.CurrentMode == BatchMode.Proofread;
                 if (aiSettings != null)
-                    aiSettings.SelectedPromptPath = selectedPromptPath;
+                    aiSettings.SetBatchPrompt(proofreadRun, selectedPromptPath);
                 SettingsService.Save();
 
                 // Resolve custom prompt
-                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
+                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang, proofreadRun);
                 var customSystemPrompt = aiSettings?.CustomSystemPrompt;
 
                 var includeTermMeta = aiSettings?.IncludeTermMetadata ?? true;
@@ -11423,11 +11446,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 termbaseTerms = TermsForPrompt(termbaseTerms, segments.Select(sg => sg.SourceText), batchControl);   // #102
 
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
+                var proofreadRun = batchControl.CurrentMode == BatchMode.Proofread;
                 if (aiSettings != null)
-                    aiSettings.SelectedPromptPath = selectedPromptPath;
+                    aiSettings.SetBatchPrompt(proofreadRun, selectedPromptPath);
                 SettingsService.Save();
 
-                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
+                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang, proofreadRun);
                 var customSystemPrompt = aiSettings?.CustomSystemPrompt;
 
                 var includeTermMeta = aiSettings?.IncludeTermMetadata ?? true;
@@ -11880,10 +11904,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Resolve custom prompt from library selection
                 var selectedPromptPath = batchControl.GetSelectedPromptPath();
-                aiSettings.SelectedPromptPath = selectedPromptPath;
+                var proofreadRun = batchControl.CurrentMode == BatchMode.Proofread;
+                aiSettings.SetBatchPrompt(proofreadRun, selectedPromptPath);
                 SettingsService.Save();
 
-                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang);
+                var customPromptContent = ResolveCustomPromptContent(sourceLang, targetLang, proofreadRun);
 
                 // Collect FULL bilingual document context (source + target for every
                 // segment in the document, no truncation). The proofreader needs both
@@ -13835,8 +13860,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                     // Resolve custom prompt (from batch translate tab selection)
                     var batchControl = _control.Value.BatchTranslateControl;
-                    var selectedPromptPath = batchControl.GetSelectedPromptPath();
-                    aiSettings.SelectedPromptPath = selectedPromptPath;
+                    if (batchControl.CurrentMode == BatchMode.Translate)
+                        aiSettings.SelectedPromptPath = batchControl.GetSelectedPromptPath();
 
                     var customPromptContent = instance.ResolveCustomPromptContent(sourceLang, targetLang);
                     var customSystemPrompt = aiSettings.CustomSystemPrompt;
