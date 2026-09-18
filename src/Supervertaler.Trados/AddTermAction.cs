@@ -78,6 +78,7 @@ namespace Supervertaler.Trados
                     ? SegmentTagHandler.GetFinalText(doc.ActiveSegmentPair.Target) : "";
                 string sourceText = fullSource;
                 string targetText = fullTarget;
+                string srcSelRaw = null, tgtSelRaw = null;
 
                 try
                 {
@@ -93,7 +94,7 @@ namespace Supervertaler.Trados
                             TermLensEditorViewPart.GetCurrentProjectSourceLanguage());
                         try
                         {
-                            var srcSel = selection.Source?.ToString();
+                            var srcSel = selection.Source?.ToString(); srcSelRaw = srcSel;
                             if (!string.IsNullOrWhiteSpace(srcSel))
                                 sourceText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Source, fullSource, SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel, srcAutoExpand));
                         }
@@ -107,7 +108,7 @@ namespace Supervertaler.Trados
                             TermLensEditorViewPart.GetCurrentProjectTargetLanguage());
                         try
                         {
-                            var tgtSel = selection.Target?.ToString();
+                            var tgtSel = selection.Target?.ToString(); tgtSelRaw = tgtSel;
                             if (!string.IsNullOrWhiteSpace(tgtSel))
                                 targetText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Target, fullTarget, SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel, tgtAutoExpand));
                         }
@@ -157,7 +158,10 @@ namespace Supervertaler.Trados
 
                 // Open the full term entry editor in add mode
                 using (var dlg = new TermEntryEditorDialog(
-                    sourceText.Trim(), targetText.Trim(), settings.TermbasePath, primaryTb, projectSourceLang))
+                    // The editor shows the text, so no question: the exact selection when trimming dropped content.
+                    TermSaveGuard.Prefer(srcSelRaw, sourceText.Trim(), doc.ActiveSegmentPair?.Source, fullSource),
+                    TermSaveGuard.Prefer(tgtSelRaw, targetText.Trim(), doc.ActiveSegmentPair?.Target, fullTarget),
+                    settings.TermbasePath, primaryTb, projectSourceLang))
                 {
                     if (dlg.ShowDialog() == DialogResult.OK)
                     {

@@ -79,6 +79,7 @@ namespace Supervertaler.Trados
                     ? SegmentTagHandler.GetFinalText(doc.ActiveSegmentPair.Target) : "";
                 string sourceText = fullSource;
                 string targetText = fullTarget;
+                string srcSelRaw = null, tgtSelRaw = null;
 
                 try
                 {
@@ -88,7 +89,7 @@ namespace Supervertaler.Trados
                     {
                         try
                         {
-                            var srcSel = selection.Source?.ToString();
+                            var srcSel = selection.Source?.ToString(); srcSelRaw = srcSel;
                             if (!string.IsNullOrWhiteSpace(srcSel))
                                 sourceText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Source, fullSource, SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel));
                         }
@@ -96,7 +97,7 @@ namespace Supervertaler.Trados
 
                         try
                         {
-                            var tgtSel = selection.Target?.ToString();
+                            var tgtSel = selection.Target?.ToString(); tgtSelRaw = tgtSel;
                             if (!string.IsNullOrWhiteSpace(tgtSel))
                                 targetText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Target, fullTarget, SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel));
                         }
@@ -112,6 +113,12 @@ namespace Supervertaler.Trados
 
                 sourceText = sourceText.Trim();
                 targetText = targetText.Trim();
+
+                // Trimming is for edges; a dropped letter, digit or symbol is asked about.
+                sourceText = TermSaveGuard.Confirm(srcSelRaw, sourceText, doc.ActiveSegmentPair?.Source, fullSource, "TermLens \u2014 Quick-Add Term");
+                if (sourceText == null) return;
+                targetText = TermSaveGuard.Confirm(tgtSelRaw, targetText, doc.ActiveSegmentPair?.Target, fullTarget, "TermLens \u2014 Quick-Add Term");
+                if (targetText == null) return;
 
                 // Validate we have text to work with
                 if (string.IsNullOrWhiteSpace(sourceText) || string.IsNullOrWhiteSpace(targetText))

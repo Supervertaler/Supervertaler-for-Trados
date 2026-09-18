@@ -79,6 +79,7 @@ namespace Supervertaler.Trados
                 string fullTarget = doc.ActiveSegmentPair?.Target != null
                     ? SegmentTagHandler.GetFinalText(doc.ActiveSegmentPair.Target) : "";
                 string sourceText = null;
+                string srcSelRaw = null, tgtSelRaw = null;
 
                 try
                 {
@@ -93,7 +94,7 @@ namespace Supervertaler.Trados
                         // Try source selection first
                         try
                         {
-                            var srcSel = selection.Source?.ToString();
+                            var srcSel = selection.Source?.ToString(); srcSelRaw = srcSel;
                             if (!string.IsNullOrWhiteSpace(srcSel))
                                 sourceText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Source, fullSource, SelectionExpander.ExpandToWordBoundaries(fullSource, srcSel, srcAutoExpand));
                         }
@@ -109,7 +110,7 @@ namespace Supervertaler.Trados
                                 TermLensEditorViewPart.GetCurrentProjectTargetLanguage());
                             try
                             {
-                                var tgtSel = selection.Target?.ToString();
+                                var tgtSel = selection.Target?.ToString(); tgtSelRaw = tgtSel;
                                 if (!string.IsNullOrWhiteSpace(tgtSel))
                                     sourceText = ScriptFormatting.Apply(doc.ActiveSegmentPair?.Target, fullTarget, SelectionExpander.ExpandToWordBoundaries(fullTarget, tgtSel, tgtAutoExpand));
                             }
@@ -127,6 +128,13 @@ namespace Supervertaler.Trados
                     sourceText = fullSource;
 
                 sourceText = sourceText.Trim();
+
+                // Trimming is for edges; a dropped letter, digit or symbol is asked about.
+                var fromSource = !string.IsNullOrWhiteSpace(srcSelRaw);
+                sourceText = TermSaveGuard.Confirm(fromSource ? srcSelRaw : tgtSelRaw, sourceText,
+                    fromSource ? doc.ActiveSegmentPair?.Source : doc.ActiveSegmentPair?.Target,
+                    fromSource ? fullSource : fullTarget, "TermLens \u2014 Non-Translatable");
+                if (sourceText == null) return;
 
                 if (string.IsNullOrWhiteSpace(sourceText))
                 {
