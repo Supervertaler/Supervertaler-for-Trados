@@ -1264,6 +1264,7 @@ namespace Supervertaler.Trados
                     // Hand over every termbase id so anything this project has never
                     // heard of is OFF here, not inherited from the previous project (#103).
                     _settings.ApplyProjectOverlay(ps, GetAllTermbaseIds(ps.TermbasePath ?? _settings.TermbasePath));
+                    FollowProjectPrompt(ps, projectName);
                     // CRITICAL: persist the global settings file so that
                     // disk-based readers (QuickAddTermAction, AddTermAction)
                     // see the new project's WriteTermbaseIds / ProjectTermbaseId
@@ -1309,6 +1310,7 @@ namespace Supervertaler.Trados
                         AiTermbaseIdsInitialized = true,
                     };
                     _settings.ApplyProjectOverlay(newPs, allIds);
+                    FollowProjectPrompt(newPs, projectName);
                     ProjectSettings.Save(projectPath, newPs);
                     // CRITICAL: persist the global settings file so disk-based
                     // readers see the empty WriteTermbaseIds / cleared
@@ -1412,6 +1414,34 @@ namespace Supervertaler.Trados
             {
                 return new List<long>();
             }
+        }
+
+        /// <summary>
+        /// #135: the prompt is a per-project choice, like the bank. The overlay
+        /// carries it when one was chosen; ApplyProjectOverlay applies that. A
+        /// project with none recorded used to keep whatever the previous project
+        /// left in the global setting - and SaveCurrentProjectSettings then wrote
+        /// that into this project's overlay at the next switch, so one client's
+        /// prompt became another's, recorded and permanent. Here a project with
+        /// no prompt of its own gets the default, and the dropdown is refreshed.
+        /// </summary>
+        private void FollowProjectPrompt(ProjectSettings ps, string projectName)
+        {
+            try
+            {
+                if (_settings.AiSettings == null) return;
+                var wanted = ps?.ActivePromptPath ?? "";
+                var current = _settings.AiSettings.SelectedPromptPath ?? "";
+                if (!string.Equals(current, wanted, StringComparison.Ordinal))
+                {
+                    _settings.AiSettings.SelectedPromptPath = wanted;
+                    DiagnosticLog.Log("Prompt", "project " + (projectName ?? "?") + ": prompt '" + current + "' -> '"
+                        + (wanted.Length > 0 ? wanted : "(default)") + "'"
+                        + (wanted.Length > 0 ? "" : " (none recorded for this project; the previous project's is not carried over)"));
+                }
+                AiAssistantViewPart.RefreshBatchPromptDropdown();
+            }
+            catch { }
         }
 
         /// <summary>

@@ -114,8 +114,9 @@ namespace Supervertaler.Trados.Settings
 
         /// <summary>
         /// Relative path (from prompt_library/) of the active translation prompt
-        /// for this project. Empty string means no project-specific override
-        /// (falls back to the global SelectedPromptPath).
+        /// for this project. Empty string means the default prompt. It is applied
+        /// to the global SelectedPromptPath at every project switch (#135), so the
+        /// global value is always the open project's, never a previous one's.
         /// </summary>
         [DataMember(Name = "activePromptPath")]
         public string ActivePromptPath { get; set; } = "";

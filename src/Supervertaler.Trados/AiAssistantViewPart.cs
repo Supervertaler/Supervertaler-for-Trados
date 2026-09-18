@@ -14789,6 +14789,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// dropdown — so a bank created in the dialog appeared only if you had
         /// opened Settings from the *other* panel.</para>
         /// </summary>
+        /// <summary>#135: the TermLens side changed the prompt at a project switch; show it.</summary>
+        public static void RefreshBatchPromptDropdown()
+        {
+            var instance = _currentInstance;
+            if (instance == null) return;
+            try { instance.PopulateBatchPromptDropdown(); } catch { }
+        }
+
         public static void RefreshAfterSettingsChanged()
         {
             var instance = _currentInstance;
@@ -14796,6 +14804,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             instance.UpdateProviderDisplay();
             instance.UpdateBatchProviderDisplay();
             instance.PopulateBatchPromptDropdown();
+            // #135: the reload took settings.json as it is on disk, and with two
+            // Studios open the last writer may be the other one, with its own
+            // project's bank. This project's bank is re-derived from the overlay
+            // (or the name), so the other instance's choice cannot leak in here.
+            instance._bankProjectPath = null;
+            instance.ApplyProjectMemoryBank();
             // Pick up any bank-list changes (new bank added via settings dialog,
             // rename, etc.) and re-select the active bank without firing the
             // toolbar's change event.
