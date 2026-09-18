@@ -8167,6 +8167,26 @@ namespace Supervertaler.Trados
         /// lagged one project behind on every switch. The document knows its own
         /// project and cannot be stale.</para>
         /// </summary>
+        /// <summary>
+        /// #135: the project NAME, from the document too, for the same reason as
+        /// the path. TermLensEditorViewPart.GetCurrentProjectName() is that view
+        /// part's tracker, and when this handler runs first it still names the
+        /// PREVIOUS project - which the name match would then resolve to the
+        /// previous project's bank and record against the new one.
+        /// </summary>
+        private string CurrentProjectNameFromDocument()
+        {
+            try
+            {
+                var fbp = _activeDocument?.Project as Sdl.ProjectAutomation.FileBased.FileBasedProject;
+                var name = fbp?.GetProjectInfo()?.Name;
+                if (!string.IsNullOrEmpty(name)) return name;
+            }
+            catch { }
+            try { return TermLensEditorViewPart.GetCurrentProjectName(); }
+            catch { return null; }
+        }
+
         private string CurrentProjectPathFromDocument()
         {
             try
@@ -8283,7 +8303,7 @@ namespace Supervertaler.Trados
                     return;                      // same project, nothing to do
                 _bankProjectPath = projectPath;
 
-                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
+                var projectName = CurrentProjectNameFromDocument() ?? "this project";
                 string wanted = null;
                 try { wanted = Settings.ProjectSettings.Load(projectPath)?.MemoryBankName; }
                 catch { }
@@ -8360,7 +8380,7 @@ namespace Supervertaler.Trados
             {
                 var projectPath = CurrentProjectPathFromDocument();
                 if (string.IsNullOrEmpty(projectPath)) return null;
-                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
+                var projectName = CurrentProjectNameFromDocument() ?? "this project";
 
                 string expected = null;
                 try { expected = Settings.ProjectSettings.Load(projectPath)?.MemoryBankName; }
@@ -8576,7 +8596,7 @@ namespace Supervertaler.Trados
                     ShowSuperMemoryMessage("No project is open, so there is no project name to match.");
                     return;
                 }
-                var projectName = TermLensEditorViewPart.GetCurrentProjectName() ?? "this project";
+                var projectName = CurrentProjectNameFromDocument() ?? "this project";
                 var slug = UserDataPath.SanitizeBankName(projectName);
                 var before = _settings?.AiSettings?.ActiveMemoryBankName ?? "";
 
