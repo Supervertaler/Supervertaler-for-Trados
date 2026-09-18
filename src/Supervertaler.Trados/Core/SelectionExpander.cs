@@ -206,7 +206,24 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         private static bool IsWordChar(char c)
         {
-            return char.IsLetterOrDigit(c) || c == '-' || c == '\'' || c == '\u2019'; // right single quote
+            return char.IsLetterOrDigit(c) || c == '-' || c == '\'' || c == '\u2019' // right single quote
+                || IsScriptDigit(c);
+        }
+
+        /// <summary>
+        /// Sub- and superscript digits: ₀-₉ ⁰ ¹ ² ³ ⁴-⁹. char.IsLetterOrDigit says no
+        /// to them (Unicode category No, not Nd), so a selection of "O₃" was trimmed
+        /// to "O" and saved as such. The term matcher's word pattern accepts exactly
+        /// this set and normalises it to plain digits for matching, so a saved
+        /// "O₃" is found again. Superscript charges (⁺ ⁻) are still edges: the
+        /// matcher does not tokenise them either, so keeping them would save a
+        /// term that can never match.
+        /// </summary>
+        private static bool IsScriptDigit(char c)
+        {
+            return (c >= '₀' && c <= '₉') || c == '⁰'
+                || c == '¹' || c == '²' || c == '³'
+                || (c >= '⁴' && c <= '⁹');
         }
     }
 }
