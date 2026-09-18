@@ -8049,11 +8049,21 @@ namespace Supervertaler.Trados
                 var banks = UserDataPath.ListMemoryBanks();
                 var activeName = ActiveMemoryBankName;
 
+                // #135: no project bank chosen, and nothing called 'default' on
+                // disk - then the resolved name is a fiction, and showing it as
+                // "default" beside a real "_shared" row read as two banks. Show
+                // the state instead. (A real 'default' bank shows as itself.)
+                if (string.IsNullOrWhiteSpace(_settings?.AiSettings?.ActiveMemoryBankName)
+                    && !banks.Contains(UserDataPath.DefaultMemoryBankName, StringComparer.Ordinal))
+                {
+                    activeName = Controls.SuperMemoryToolbar.NoBankPlaceholder;
+                    banks.Insert(0, activeName);
+                }
                 // Make sure the active bank is always visible in the list, even
                 // if the on-disk directory hasn't been created yet (e.g. just
                 // after a fresh install before the default bank's sub-folders
                 // are written). This keeps the combo from looking empty on day one.
-                if (!string.IsNullOrWhiteSpace(activeName) &&
+                else if (!string.IsNullOrWhiteSpace(activeName) &&
                     !banks.Contains(activeName, StringComparer.Ordinal))
                 {
                     banks.Insert(0, activeName);
@@ -8359,8 +8369,7 @@ namespace Supervertaler.Trados
                         : "**No memory bank** is recorded for **" + projectName + "**, and none is named after it, so "
                           + (defaultExists
                               ? "SuperMemory is on the **default** bank, plus your shared bank. "
-                              : "only your shared bank is contributing to prompts (the dropdown shows **default**, "
-                                + "which is the name used when no bank is chosen; no such bank exists). ")
+                              : "only your shared bank is contributing to prompts. ")
                           + "Pick one from the SuperMemory dropdown if this project should have its own."
                           + "\n\n*The previous project's bank is deliberately not carried over: it would feed "
                           + "another client's terminology into every request without saying so.*"));

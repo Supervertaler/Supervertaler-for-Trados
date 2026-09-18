@@ -86,6 +86,14 @@ namespace Supervertaler.Trados.Controls
         private const string NewBankSentinel = "+ New memory bank\u2026"; // ellipsis
         private const string MatchByNameSentinel = "(match by project name)";
 
+        /// <summary>
+        /// #135: shown as the selected row when no project bank is chosen and no
+        /// bank called 'default' exists - the state used to display as "default",
+        /// beside a real "_shared" row, and read as a bank. A placeholder, not a
+        /// choice: selecting it does nothing.
+        /// </summary>
+        public const string NoBankPlaceholder = "(no project bank – shared only)";
+
         public SuperMemoryToolbar()
         {
             BuildUI();
@@ -495,6 +503,7 @@ namespace Supervertaler.Trados.Controls
                 var item = _cmbMemoryBank.SelectedItem as string;
                 if (string.IsNullOrEmpty(item)) return null;
                 if (item == "(no memory banks)") return null;
+                if (item == NoBankPlaceholder) return null;
                 if (item == NewBankSentinel) return null;
                 if (item == MatchByNameSentinel) return null;
                 return item;
@@ -541,7 +550,8 @@ namespace Supervertaler.Trados.Controls
                     for (int i = 0; i < _cmbMemoryBank.Items.Count; i++)
                     {
                         var text = _cmbMemoryBank.Items[i] as string;
-                        if (text != null && text != NewBankSentinel && text != MatchByNameSentinel && text != "(no memory banks)")
+                        if (text != null && text != NewBankSentinel && text != MatchByNameSentinel
+                            && text != "(no memory banks)" && text != NoBankPlaceholder)
                         {
                             idx = i;
                             break;
