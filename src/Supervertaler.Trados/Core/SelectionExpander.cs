@@ -233,7 +233,7 @@ namespace Supervertaler.Trados.Core
         private static bool IsWordChar(char c)
         {
             return char.IsLetterOrDigit(c) || c == '-' || c == '\'' || c == '\u2019' // right single quote
-                || IsScriptDigit(c) || IsScriptSign(c);
+                || IsScriptDigit(c) || IsScriptSign(c) || TermMatcher.IsRadicalDot(c);
         }
 
         /// <summary>Sub- and superscript plus and minus: ⁺ ⁻ ₊ ₋. Part of a formula's charge.</summary>
