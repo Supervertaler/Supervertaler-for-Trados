@@ -337,12 +337,22 @@ namespace Supervertaler.Trados.Settings
         /// Uses the project name from the settings object to create a human-readable filename.
         /// Cleans up old files with a different name for the same hash (e.g. after a project rename).
         /// </summary>
-        public static void Save(string projectFilePath, ProjectSettings ps)
+        public static void Save(string projectFilePath, ProjectSettings ps,
+            [System.Runtime.CompilerServices.CallerMemberName] string via = "")
         {
             try
             {
                 var key = GetProjectKey(projectFilePath);
                 if (key == null) return;
+
+                // #135: every overlay write is logged with its caller. The recorded
+                // bank drifted between projects on 2026-09-18 and no writer owned up.
+                try
+                {
+                    Supervertaler.Trados.Core.DiagnosticLog.Log("Overlay", "write " + key + " (" + (ps?.ProjectName ?? "") + ") via " + via
+                        + ": bank='" + (ps?.MemoryBankName ?? "") + "' prompt='" + (ps?.ActivePromptPath ?? "") + "'");
+                }
+                catch { }
 
                 Directory.CreateDirectory(ProjectsDir);
 
