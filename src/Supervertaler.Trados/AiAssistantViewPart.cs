@@ -8326,15 +8326,23 @@ namespace Supervertaler.Trados
                 _kbReaderBankName = null;
                 try { RefreshMemoryBankDropdown(); } catch { }
 
+                // An empty name resolves to the 'default' bank everywhere (the
+                // dropdown shows it), and '_shared' is loaded on top of whatever
+                // is active - so say what actually contributes, not "nothing".
+                var defaultExists = false;
+                try { defaultExists = Directory.Exists(UserDataPath.GetMemoryBankDir(UserDataPath.DefaultMemoryBankName)); } catch { }
                 SafeInvoke(() => ShowSuperMemoryMessage(
                     target.Length > 0
                         ? "Switched to memory bank **" + target + "** for **" + projectName + "**"
                           + (matchedByName ? " – matched by name, and recorded as this project's bank." : ".")
-                        : "**No memory bank** is set for **" + projectName + "**, and none is named after it, "
-                          + "so SuperMemory is contributing nothing to prompts. Pick one from the SuperMemory "
-                          + "dropdown if this project should have one." + "\n\n*The previous project's bank is "
-                          + "deliberately not carried over: it would feed another client's terminology "
-                          + "into every request without saying so.*"));
+                        : "**No memory bank** is recorded for **" + projectName + "**, and none is named after it, so "
+                          + (defaultExists
+                              ? "SuperMemory is on the **default** bank, plus your shared bank. "
+                              : "only your shared bank is contributing to prompts (the dropdown shows **default**, "
+                                + "which is the name used when no bank is chosen; no such bank exists). ")
+                          + "Pick one from the SuperMemory dropdown if this project should have its own."
+                          + "\n\n*The previous project's bank is deliberately not carried over: it would feed "
+                          + "another client's terminology into every request without saying so.*"));
             }
             catch { }
         }
@@ -8372,8 +8380,8 @@ namespace Supervertaler.Trados
                           + projectName + "' and none is named after it. Prompts built now draw on '" + active
                           + "', which belongs to another job. Tell the user; the bank is chosen in the SuperMemory dropdown.";
                 if (active.Length == 0)
-                    return "No memory bank is active, but '" + expected + "' is this project's bank. Prompts built now "
-                         + "get nothing from SuperMemory. Tell the user; the bank is chosen in the SuperMemory dropdown.";
+                    return "No memory bank is chosen, but '" + expected + "' is this project's bank. Prompts built now "
+                         + "get only the shared bank from SuperMemory. Tell the user; the bank is chosen in the SuperMemory dropdown.";
                 return "The active memory bank '" + active + "' is not this project's bank '" + expected
                      + "'. Prompts built now draw on '" + active + "'. Tell the user; the bank is chosen in the "
                      + "SuperMemory dropdown.";
