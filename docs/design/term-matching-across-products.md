@@ -56,7 +56,7 @@ divergence is real and this section is the record of it.
 
 Note that U+200B and the other zero-width characters are deliberately **not** in
 the space list: they are not spaces and are removed on the write path instead
-(section 8).
+(section 7).
 
 **Every mapping is one character to one character.** This is not incidental.
 
