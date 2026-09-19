@@ -512,6 +512,34 @@ namespace Supervertaler.Trados.Core
         /// carries the other (SDG + curly-apostrophe-s vs SDG + straight-quote-s).
         /// </summary>
         /// <summary>
+        /// True when the character at <paramref name="i"/> joins the text to its
+        /// left into one word - a hyphen, slash or apostrophe with a letter or
+        /// digit on its far side, as in "niet-actieve", "and/or", "don't".
+        ///
+        /// <para>Only the joiners are treated this way, never trailing
+        /// punctuation: a term followed by a comma or full stop must still
+        /// match, which is why this is not simply the tokenizer's whole
+        /// character class.</para>
+        /// </summary>
+        private static bool JoinsLeft(string s, int i)
+        {
+            if (i < 1 || !IsJoiner(s[i])) return false;
+            return char.IsLetterOrDigit(s[i - 1]);
+        }
+
+        /// <summary>The mirror of <see cref="JoinsLeft"/>, looking right.</summary>
+        private static bool JoinsRight(string s, int i)
+        {
+            if (i < 0 || i + 1 >= s.Length || !IsJoiner(s[i])) return false;
+            return char.IsLetterOrDigit(s[i + 1]);
+        }
+
+        private static bool IsJoiner(char c)
+        {
+            return c == '-' || c == '/' || c == '\'' || c == '’';
+        }
+
+        /// <summary>
         /// The unpaired-electron dot of a radical (OH∙, SO₄∙⁻), in the code points
         /// documents use for it: middle dot, bullet operator, dot operator, bullet.
         /// Part of the formula, so part of the word; folded to the middle dot for
@@ -696,9 +724,21 @@ namespace Supervertaler.Trados.Core
 
                     int endIdx = idx + term.Length;
 
-                    // Check word boundaries
-                    bool startBoundary = idx == 0 || !char.IsLetterOrDigit(lineLower[idx - 1]);
-                    bool endBoundary = endIdx >= lineLower.Length || !char.IsLetterOrDigit(lineLower[endIdx]);
+                    // Check word boundaries.
+                    //
+                    // A hyphen INSIDE a compound is not a boundary. The tokenizer
+                    // treats '-' as word-internal, so "niet-actieve" is one word;
+                    // a letter-or-digit test alone disagrees with it and let the
+                    // term "actieve anodes" match inside "niet-actieve anodes".
+                    // The panel then rendered the segment without the negation -
+                    // "Deze actieve anodes ..." for a source reading "Deze
+                    // niet-actieve anodes ..." - which is worse than a missed
+                    // highlight: it showed the translator the opposite of what
+                    // the document said. Reported 2026-09-19.
+                    bool startBoundary = idx == 0
+                        || !(char.IsLetterOrDigit(lineLower[idx - 1]) || JoinsLeft(lineLower, idx - 1));
+                    bool endBoundary = endIdx >= lineLower.Length
+                        || !(char.IsLetterOrDigit(lineLower[endIdx]) || JoinsRight(lineLower, endIdx));
 
                     // Suffix-tolerant: allow the term's final CJK token to be a
                     // prefix of a longer segment token (제2 전압 값 ↦ 제2 전압 값으로).

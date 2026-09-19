@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.193 / 19.20.193] – Unreleased
+
+### Fixed
+- **TermLens could show a segment without its negation.** A multi-word term matched inside a hyphenated compound, so with a term `actieve anodes` in the termbase a source reading *"Deze **niet-**actieve anodes onderscheiden zich"* was displayed as *"Deze actieve anodes onderscheiden zich"* – the opposite of what the document said, which is worse than a missed highlight. The tokenizer treats a hyphen as part of a word, so `niet-actieve` is one word, but the multi-word boundary check used a letter-or-digit test that read the hyphen as a boundary; the two disagreed about what a word is. A hyphen, slash or apostrophe with a letter on its far side is no longer a boundary. Trailing punctuation still is, so a term before a comma or full stop matches as before.
+
 ## [18.20.192 / 19.20.192] – 2026-09-19
 
 ### Added
