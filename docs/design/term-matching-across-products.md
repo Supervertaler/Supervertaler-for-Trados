@@ -25,10 +25,12 @@ of exactly this within a day of each other:
 
 Neither produced an error. Both looked like the feature working.
 
-## 2. The fold — identical in both products
+## 2. The fold
 
-Applied when a term is indexed **and** when a segment is read, on both sides.
-Change it in one product only alongside the same change in the other.
+Applied when a term is indexed **and** when a segment is read. Change it in one
+product only alongside the same change in the other.
+
+**2a. Identical in both products** (memoQ adopted these verbatim on 2026-09-19):
 
 | from | to |
 |---|---|
@@ -37,10 +39,27 @@ Change it in one product only alongside the same change in the other.
 | U+207A `⁺`, U+208A `₊` | `+` |
 | U+207B `⁻`, U+208B `₋` | `-` |
 | U+00B7 `·`, U+2219 `∙`, U+22C5 `⋅`, U+2022 `•` | U+00B7 `·` |
-| space variants | space |
-| apostrophe variants | `'` |
+
+**2b. Trados only — an open cross-product gap.** These two rows predate the
+joint work and memoQ does not implement them, confirmed by measurement on
+2026-09-19. A term stored with a curly apostrophe matches a segment written with
+an ASCII one in Trados and **does not** in memoQ, in the same termbase, with no
+error. Apostrophes and non-breaking spaces are far commoner in this source
+material than any formula, so this is the larger of the two gaps this note
+records. memoQ adopts both lists after the App Store submission; until then the
+divergence is real and this section is the record of it.
+
+| from | to |
+|---|---|
+| U+00A0, U+1680, U+2000–U+200A, U+202F, U+205F, U+3000 | space (U+0020) |
+| U+2018 `‘`, U+2019 `’`, U+02BC `ʼ`, U+FF07 `＇` | `'` (U+0027) |
+
+Note that U+200B and the other zero-width characters are deliberately **not** in
+the space list: they are not spaces and are removed on the write path instead
+(section 8).
 
 **Every mapping is one character to one character.** This is not incidental.
+
 Matching runs on the folded text while highlighting uses offsets into the
 original, so a fold that changed a length would silently misplace every
 highlight. Both products have a test for it rather than a comment.
@@ -54,8 +73,14 @@ is findable by the other.
 | | Trados | memoQ |
 |---|---|---|
 | letters, digits, underscore | word | word |
-| the fold's characters above | word | word |
+| the fold's **digits** (once folded, ordinary digits) | word | word |
+| the fold's **signs and dot** `⁺ ⁻ ₊ ₋ · ∙ ⋅ •` | **word** | not word |
 | `. , % & ' * + / -` | **word** | not word |
+
+The third row is the one section 4 turns on: because a charge is not a word
+character in memoQ, it falls outside the token there and memoQ's exact lookups
+already succeed. Do not "fix" that row to make the products agree — doing so
+would reintroduce in memoQ the regression section 4 describes.
 
 Trados's wider set is load-bearing for Dutch legal text — `verkoper(s)`,
 `kandidaat-koper`, decimals, percentages — and carries bracket-alias machinery
@@ -122,13 +147,35 @@ translator inserting from a near-match gets the bare term's translation where
 the ion was meant. That is an argument for making the chip visibly distinguish a
 retry match from an exact one, not for removing the retry.
 
+**The cost is Trados-only today.** memoQ has no insert-by-number shortcut, so a
+near-match there is information on screen and nothing more. The case for
+tolerating the row is therefore stronger on the memoQ side than on this one, and
+whatever is decided should say so rather than describe the trade-off as shared.
+
 To settle after the submission, with this row as the worked example.
 
-## 7. Changing any of this
+## 7. The write path is a contract too
 
-The fold table and the retry rule are cross-product contracts. Change either in
-one product only in the same session as the other, the way the termbase
-full-text index triggers were agreed. Tests to keep green:
+Matching is only half of it: both products write into the same table, so a term
+one product stores badly is dead for both. Trados sanitises every term and
+synonym write through `TermbaseReader.SanitizeTermWhitespace`, which:
+
+- folds tabs and every space variant from 2b to a plain space;
+- **removes zero-width characters entirely** — U+200B zero-width space, U+2060
+  word joiner, U+FEFF byte-order mark;
+- collapses runs of spaces, and trims.
+
+The zero-width removal is the load-bearing part, and it exists only here: those
+characters are not in the fold, so a term stored with one **never matches in
+either product**, invisibly. IDML-derived segments are the common source, which
+both tools handle. Whatever writes to this termbase needs the equivalent.
+
+## 8. Changing any of this
+
+The fold table, the retry rule and the write-path sanitiser are cross-product
+contracts. Change any of them in one product only in the same session as the
+other, the way the termbase full-text index triggers were agreed. Tests to keep
+green:
 
 - Trados: `.dev/script-chars-test.ps1`, `.dev/charge-suffix-test.ps1`
-- memoQ: its fold harness and its six-row matching harness
+- memoQ: `tools/scriptchars-test.ps1` (fold and matching, one file)
