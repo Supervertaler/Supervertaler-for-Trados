@@ -267,6 +267,17 @@ namespace Supervertaler.Trados.Licensing
                 var json = await response.Content.ReadAsStringAsync();
                 var result = ParseLemonSqueezyResponse(json);
 
+                // An answer we cannot read is not an answer. A reply that does
+                // not parse, or that arrives in an unexpected shape, is treated
+                // exactly like a transport failure: nothing stored changes, the
+                // cached state stands, and the offline window runs down as it
+                // would with no network at all. Only a reply we understood may
+                // change licence state, and only one that says active may renew
+                // the window. Do not relax either half; both directions of
+                // getting this wrong are bad, one for the user and one for us.
+                if (!result.Understood)
+                    return (false, "Could not read the licence server's reply. Using cached licence state.");
+
                 var previousTier = ResolveTier();
 
                 lock (_lock)
@@ -274,7 +285,14 @@ namespace Supervertaler.Trados.Licensing
                     _info.Status = result.Status;
                     _info.VariantName = result.VariantName;
                     _info.ExpiresAt = result.ExpiresAt;
-                    _info.LastValidatedAt = DateTime.UtcNow;
+
+                    // Only a reply that says ACTIVE renews the window. A reply
+                    // that says disabled or expired still takes effect at once
+                    // through Status above — it just does not buy another 30
+                    // days of offline grace.
+                    if (IsStatusActive())
+                        _info.LastValidatedAt = DateTime.UtcNow;
+
                     _info.Save();
                 }
 
@@ -384,6 +402,14 @@ namespace Supervertaler.Trados.Licensing
                     result.Activated = response.Activated;
                     result.Error = response.Error;
 
+                    // "Understood" means the body parsed AND carried a
+                    // recognisable licence block — which every real reply from
+                    // this endpoint does, verified against the live API on
+                    // 2026-09-19. It is the test ValidateOnlineAsync uses to
+                    // decide whether the reply may change stored state at all.
+                    result.Understood = response.LicenseKey != null
+                        && !string.IsNullOrEmpty(response.LicenseKey.Status);
+
                     if (response.LicenseKey != null)
                     {
                         result.Status = response.LicenseKey.Status ?? "";
@@ -448,6 +474,13 @@ namespace Supervertaler.Trados.Licensing
 
         private class LemonSqueezyResult
         {
+            /// <summary>
+            /// The body parsed and carried a recognisable licence block. False
+            /// for a non-JSON body, a parse failure, or a reply of an
+            /// unexpected shape — all of which mean "we did not reach the
+            /// server", never "the licence is fine".
+            /// </summary>
+            public bool Understood;
             public bool Valid;
             public bool Activated;
             public string Error;
