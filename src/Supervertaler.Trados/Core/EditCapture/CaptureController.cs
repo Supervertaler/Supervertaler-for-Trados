@@ -81,7 +81,7 @@ namespace Supervertaler.Trados.Core.EditCapture
                 _doc = doc;
                 if (_doc == null) return;
 
-                _doc.ContentChanged += OnContentChanged;
+                _doc.ActiveSegmentContentIsReady += OnContentReady;
                 _doc.ActiveSegmentChanged += OnActiveSegmentChanged;
 
                 _project = SafeProjectName(_doc);
@@ -100,7 +100,7 @@ namespace Supervertaler.Trados.Core.EditCapture
             {
                 if (_doc != null)
                 {
-                    _doc.ContentChanged -= OnContentChanged;
+                    _doc.ActiveSegmentContentIsReady -= OnContentReady;
                     _doc.ActiveSegmentChanged -= OnActiveSegmentChanged;
                 }
             }
@@ -129,29 +129,30 @@ namespace Supervertaler.Trados.Core.EditCapture
         // ─── Capture points ─────────────────────────────────────────
 
         /// <summary>
-        /// Target content arrived, from any source. Origin-agnostic on purpose:
-        /// MT, TM, AI, auto-propagate and a plain paste are all the same event
-        /// here, and a segment typed cold with an empty proposal is a valid
-        /// record rather than a skipped one.
+        /// The active segment's content has settled — this is the proposal,
+        /// whatever put it there: MT, TM, AI, a pre-translate pass or a paste.
+        ///
+        /// <para><b>ContentChanged is deliberately not used.</b> It names the
+        /// segments that changed, which looked ideal, but there is no reliable
+        /// way to get from one of those ISegments back to its pair, and the pair
+        /// is what carries identity. Measured, in this order: matching by segment
+        /// number found a different paragraph unit (numbers repeat, and a merged
+        /// document renumbers); ParentParagraphUnit is null on those segments;
+        /// and object identity does not match either, because Studio does not
+        /// hand out the same instance the pair holds. Three attempts, three live
+        /// runs, no populated events. This event carries no payload at all and
+        /// therefore needs none: it is about the active segment by definition, so
+        /// the pair is simply ActiveSegmentPair.</para>
+        ///
+        /// <para>The cost is a known gap: a segment changed somewhere else in the
+        /// document — auto-propagate — gets no proposal. Its final state is still
+        /// recorded by the sweep at close, so the record says "no proposal
+        /// captured" rather than inventing one.</para>
         /// </summary>
-        private void OnContentChanged(object sender, DocumentContentEventArgs e)
+        private void OnContentReady(object sender, EventArgs e)
         {
-            try
-            {
-                if (e?.Segments == null) return;
-
-                // Every segment, not just the first. Auto-propagate is the case
-                // this exists for: the payload is a collection precisely because
-                // one change can touch many segments, and a production plugin
-                // taking only the first is how auto-propagate goes unrecorded.
-                var doc = e.Document ?? _doc;
-                foreach (var seg in e.Segments)
-                {
-                    var pair = PairFor(doc, seg);
-                    if (pair != null) Emit(CaptureEvent.Populated, pair, doc);
-                }
-            }
-            catch (Exception ex) { Swallow("content changed", ex); }
+            try { Emit(CaptureEvent.Populated, _doc?.ActiveSegmentPair); }
+            catch (Exception ex) { Swallow("content ready", ex); }
         }
 
         /// <summary>
@@ -267,33 +268,6 @@ namespace Supervertaler.Trados.Core.EditCapture
                 });
             }
             catch (Exception ex) { Swallow("emit", ex); }
-        }
-
-        /// <summary>
-        /// The pair owning <paramref name="seg"/>, matched by OBJECT IDENTITY.
-        /// Segment numbers repeat across paragraph units and are renumbered in a
-        /// merged document, so comparing them finds the wrong segment; comparing
-        /// references cannot. The active pair is checked first, which is the case
-        /// for anything the translator is touching; the walk is for a change
-        /// somewhere else in the document, which is what auto-propagate is.
-        /// </summary>
-        private static ISegmentPair PairFor(IStudioDocument doc, ISegment seg)
-        {
-            try
-            {
-                if (doc == null || seg == null) return null;
-
-                var active = doc.ActiveSegmentPair;
-                if (active != null &&
-                    (ReferenceEquals(active.Target, seg) || ReferenceEquals(active.Source, seg)))
-                    return active;
-
-                foreach (var p in doc.SegmentPairs)
-                    if (ReferenceEquals(p.Target, seg) || ReferenceEquals(p.Source, seg))
-                        return p;
-            }
-            catch { }
-            return null;
         }
 
         private static string SafeConfLevel(ISegmentPair pair)
