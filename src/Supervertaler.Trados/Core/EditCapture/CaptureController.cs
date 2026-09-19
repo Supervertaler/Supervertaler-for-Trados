@@ -24,7 +24,15 @@ namespace Supervertaler.Trados.Core.EditCapture
     /// comment saying exactly that, and works around it by amending the record it
     /// already wrote. Capturing on departure means the wrong record is never
     /// written, so the ordering stops mattering and the handler stops being
-    /// needed. The save/close sweep supplies the authoritative final state.</para>
+    /// needed. The close sweep supplies the authoritative final state.</para>
+    ///
+    /// <para><b>The sweep runs on close, not on save.</b> It walks every
+    /// segment, and on the first live run a single save wrote 930 rows for a
+    /// document of that size - almost all of them identical to the last pass.
+    /// At a few saves an hour that is most of the database and none of the
+    /// value. Departures already cover everything touched mid-session, so
+    /// close is enough, and the cost of a crash is the tail the append-only
+    /// design already accepts.</para>
     ///
     /// <para>Nothing here may throw into Studio's UI thread: every handler is
     /// wrapped, and failures are logged and swallowed. A capture failure must be
@@ -55,7 +63,6 @@ namespace Supervertaler.Trados.Core.EditCapture
             {
                 _editor = editor;
                 _editor.ActiveDocumentChanged += OnDocumentChanged;
-                _editor.Saving += OnSaving;
                 _editor.Closing += OnClosing;
                 Attach(_editor.ActiveDocument);
                 _started = true;
@@ -111,12 +118,6 @@ namespace Supervertaler.Trados.Core.EditCapture
                 Attach(_editor?.ActiveDocument);
             }
             catch (Exception ex) { Swallow("document changed", ex); }
-        }
-
-        private void OnSaving(object sender, CancelDocumentEventArgs e)
-        {
-            try { SweepDocument(e?.Document ?? _doc); }
-            catch (Exception ex) { Swallow("saving", ex); }
         }
 
         private void OnClosing(object sender, CancelDocumentEventArgs e)
@@ -350,7 +351,6 @@ namespace Supervertaler.Trados.Core.EditCapture
                 if (_editor != null)
                 {
                     _editor.ActiveDocumentChanged -= OnDocumentChanged;
-                    _editor.Saving -= OnSaving;
                     _editor.Closing -= OnClosing;
                 }
             }
