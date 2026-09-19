@@ -7,7 +7,7 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
-## [18.20.192 / 19.20.192] – Unreleased
+## [18.20.192 / 19.20.192] – 2026-09-19
 
 ### Added
 - **SuperVoice has a pane of its own.** Until now the microphone button and everything the voice system said lived in the TermLens header – invisible to anyone who does not keep TermLens open, and gone within seconds either way. That was fine when the strip only echoed "confirm"; it stopped being fine when selection arrived and the messages started carrying what you actually need to read: which of four readings was taken, why a word could not be heard, what the recogniser really returned. **View → SuperVoice** opens a dockable pane with the microphone, its state, and the recent utterances – newest at the top, what was heard beside what happened to it, kept rather than flashed. Green is a command that ran, amber a selection declined with a reason, red a command that tried and failed; ordinary speech that matched no command is grey, because it is not an error. It opens on the right, beside Translation Results, as a tab – the microphone's state is already visible all the time in the TermLens header, and what this pane holds is the history, which is read occasionally rather than watched. Dock it anywhere and Studio remembers; sized to a few rows it always shows the last thing that happened. The TermLens button works exactly as before. The small black floating strip no longer appears while the pane is open: it was only ever a fallback for when nothing else could show the state, and with the pane there it was clutter over the editor. Issue #129.
