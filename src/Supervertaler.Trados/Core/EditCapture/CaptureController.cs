@@ -41,8 +41,7 @@ namespace Supervertaler.Trados.Core.EditCapture
         // when it has gone stale across a filter change or a reload. Looking a
         // segment up by id means walking every pair in the document, which is
         // not something to do on every cursor move.
-        private ISegmentPair _current;
-        private string _curPuId, _curSegId;
+        private ISegment _current;
 
         private string _project, _srcLang, _tgtLang;
         private bool _started;
@@ -99,7 +98,7 @@ namespace Supervertaler.Trados.Core.EditCapture
                 }
             }
             catch { }
-            finally { _doc = null; _current = null; _curPuId = null; _curSegId = null; }
+            finally { _doc = null; _current = null; }
         }
 
         private void OnDocumentChanged(object sender, DocumentEventArgs e)
@@ -145,10 +144,7 @@ namespace Supervertaler.Trados.Core.EditCapture
                 // one change can touch many segments, and a production plugin
                 // taking only the first is how auto-propagate goes unrecorded.
                 foreach (var seg in e.Segments)
-                {
-                    var pair = FindPair(e.Document ?? _doc, seg);
-                    if (pair != null) Emit(CaptureEvent.Populated, pair);
-                }
+                    EmitSegment(CaptureEvent.Populated, seg);
             }
             catch (Exception ex) { Swallow("content changed", ex); }
         }
@@ -170,17 +166,13 @@ namespace Supervertaler.Trados.Core.EditCapture
 
         private void EmitLeft()
         {
-            if (_current == null && _curSegId == null) return;
+            if (_current == null) return;
             try
             {
-                var pair = _current;
-                try { var _ = pair?.Properties; }      // cheap probe for a stale reference
-                catch { pair = null; }
-
-                if (pair == null && _curPuId != null && _curSegId != null)
-                    pair = LookupById(_doc, _curPuId, _curSegId);
-
-                if (pair != null) Emit(CaptureEvent.Left, pair);
+                // A stale reference throws on read; the sweep at save or close
+                // covers anything missed here, so there is no id lookup to fall
+                // back to and no shadow copy of the document to maintain.
+                EmitSegment(CaptureEvent.Left, _current);
             }
             catch (Exception ex) { Swallow("left", ex); }
         }
@@ -198,32 +190,40 @@ namespace Supervertaler.Trados.Core.EditCapture
             try
             {
                 foreach (var pair in doc.SegmentPairs)
-                    Emit(CaptureEvent.Sweep, pair, doc);
+                    EmitSegment(CaptureEvent.Sweep, pair.Target);
             }
             catch (Exception ex) { Swallow("sweep", ex); }
         }
 
         // ─── Reading a pair ─────────────────────────────────────────
 
-        private void Emit(string kind, ISegmentPair pair, IStudioDocument doc = null)
+        private void Remember(ISegmentPair pair)
+        {
+            try { _current = pair?.Target; } catch { _current = null; }
+        }
+
+        /// <summary>
+        /// Emit for a segment we have only as an ISegment - the ContentChanged
+        /// payload. Identity and text both come from this graph, so a populated
+        /// event and a later left event describe the same segment by the same
+        /// name. The source is taken from the parent paragraph unit when it can
+        /// be found and left null when it cannot: a known gap is worth more than
+        /// a guess, and the left event carries the source anyway.
+        /// </summary>
+        private void EmitSegment(string kind, ISegment seg)
         {
             try
             {
-                doc = doc ?? _doc;
-                if (pair == null) return;
-
-                var puId = "";
-                try { puId = doc?.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; }
-                catch { }
-                var segId = "";
-                try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+                if (seg == null) return;
+                var puId = ParagraphId(seg);
+                var segId = SegmentId(seg);
                 if (puId.Length == 0 && segId.Length == 0) return;
 
                 string originType = null;
                 int? match = null;
                 try
                 {
-                    var origin = pair.Properties?.TranslationOrigin;
+                    var origin = seg.Properties?.TranslationOrigin;
                     if (origin != null)
                     {
                         originType = string.IsNullOrEmpty(origin.OriginType) ? null : origin.OriginType;
@@ -235,64 +235,62 @@ namespace Supervertaler.Trados.Core.EditCapture
                 _store.Enqueue(new CaptureEvent
                 {
                     Event = kind,
-                    FileId = SafeFileId(doc),
+                    FileId = SafeFileId(_doc),
                     UnitId = puId,
                     SegId = segId,
-                    Source = SafeText(pair.Source),
-                    Target = SafeText(pair.Target),
+                    Source = SourceFor(seg),
+                    Target = SafeText(seg),
                     Origin = originType,
                     MatchPercent = match,
-                    ConfLevel = SafeConfLevel(pair),
+                    ConfLevel = SafeConfLevelOf(seg),
                     Project = _project,
                     SrcLang = _srcLang,
                     TgtLang = _tgtLang
                 });
             }
-            catch (Exception ex) { Swallow("emit", ex); }
+            catch (Exception ex) { Swallow("emit segment", ex); }
         }
 
-        private void Remember(ISegmentPair pair)
+        private static string ParagraphId(ISegment seg)
         {
-            _current = pair;
-            _curPuId = null; _curSegId = null;
-            try
-            {
-                if (pair == null) return;
-                _curPuId = _doc?.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id;
-                _curSegId = pair.Properties?.Id.Id;
-            }
-            catch { }
+            try { return seg?.ParentParagraphUnit?.Properties?.ParagraphUnitId.Id ?? ""; }
+            catch { return ""; }
         }
 
-        private static ISegmentPair FindPair(IStudioDocument doc, ISegment seg)
+        private static string SegmentId(ISegment seg)
         {
-            try
-            {
-                if (doc == null || seg == null) return null;
-                var wanted = seg.Properties?.Id.Id;
-                if (string.IsNullOrEmpty(wanted)) return null;
-                if (string.Equals(doc.ActiveSegmentPair?.Properties?.Id.Id, wanted, StringComparison.Ordinal))
-                    return doc.ActiveSegmentPair;      // the common case, without a walk
-                return LookupById(doc, null, wanted);
-            }
-            catch { return null; }
+            try { return seg?.Properties?.Id.Id ?? ""; }
+            catch { return ""; }
         }
 
-        private static ISegmentPair LookupById(IStudioDocument doc, string puId, string segId)
+        /// <summary>The source segment carrying the same id, from the parent paragraph unit.</summary>
+        private static string SourceFor(ISegment target)
         {
             try
             {
-                if (doc == null || string.IsNullOrEmpty(segId)) return null;
-                foreach (var p in doc.SegmentPairs)
+                var pu = target?.ParentParagraphUnit;
+                if (pu?.Source == null) return null;
+                var wanted = SegmentId(target);
+                if (wanted.Length == 0) return null;
+                foreach (var item in pu.Source)
                 {
-                    if (!string.Equals(p.Properties?.Id.Id, segId, StringComparison.Ordinal)) continue;
-                    if (puId == null) return p;
-                    var pu = doc.GetParentParagraphUnit(p)?.Properties?.ParagraphUnitId.Id;
-                    if (string.Equals(pu, puId, StringComparison.Ordinal)) return p;
+                    var s2 = item as ISegment;
+                    if (s2 != null && string.Equals(SegmentId(s2), wanted, StringComparison.Ordinal))
+                        return SafeText(s2);
                 }
             }
             catch { }
             return null;
+        }
+
+        private static string SafeConfLevelOf(ISegment seg)
+        {
+            try
+            {
+                return (seg.Properties?.ConfirmationLevel
+                        ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
+            }
+            catch { return null; }
         }
 
         private static string SafeText(ISegment seg)
