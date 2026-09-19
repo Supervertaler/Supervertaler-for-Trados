@@ -96,6 +96,37 @@ echo ""
 python "$SCRIPT_DIR/tools/check_mcp_docs.py" || exit 1
 echo ""
 
+# The build compiles core/ from the CHECKED-OUT files, not from the commit the
+# superproject pins, so those two must agree or the binary contains code this
+# repo has not recorded. Normally a submodule sits detached at the pinned
+# commit and cannot drift; ours is checked out on a branch tracking origin/main,
+# so a pull inside core/ - or any tooling that runs `submodule update --remote`
+# - moves the source under the build silently. That matters most during a
+# release freeze, which is exactly when someone is least likely to notice.
+echo "=== Checking core/ matches the pinned commit ==="
+CORE_PINNED=$(git -C "$SCRIPT_DIR" ls-tree HEAD core | awk '{print $3}')
+CORE_ACTUAL=$(git -C "$SCRIPT_DIR/core" rev-parse HEAD 2>/dev/null)
+if [ -z "$CORE_PINNED" ] || [ -z "$CORE_ACTUAL" ]; then
+    echo "  WARNING: could not read the core/ pointer; skipping the check."
+elif [ "$CORE_PINNED" != "$CORE_ACTUAL" ]; then
+    echo ""
+    echo "  ERROR: core/ is not at the commit this repo pins."
+    echo "    pinned by this repo : $CORE_PINNED"
+    echo "    checked out in core/: $CORE_ACTUAL"
+    echo ""
+    echo "  The build would compile the checked-out files, so the plugin would"
+    echo "  contain core code this repo has not recorded. Either go back to the"
+    echo "  pinned commit:"
+    echo "      git -C core checkout $CORE_PINNED"
+    echo "  or take the new core deliberately and record it:"
+    echo "      git add core && git commit"
+    echo "  Do not take it during a release freeze."
+    echo ""
+    exit 1
+fi
+echo "  core/ is at the pinned commit"
+echo ""
+
 # Compile the shared core/ sources ON THEIR OWN before either plugin build.
 #
 # core/ is compiled into this assembly, not referenced as a DLL, and
