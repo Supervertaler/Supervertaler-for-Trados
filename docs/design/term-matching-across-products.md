@@ -30,7 +30,7 @@ Neither produced an error. Both looked like the feature working.
 Applied when a term is indexed **and** when a segment is read. Change it in one
 product only alongside the same change in the other.
 
-**2a. Identical in both products** (memoQ adopted these verbatim on 2026-09-19):
+All seven rows are implemented identically in both products as of 2026-09-19.
 
 | from | to |
 |---|---|
@@ -39,24 +39,20 @@ product only alongside the same change in the other.
 | U+207A `⁺`, U+208A `₊` | `+` |
 | U+207B `⁻`, U+208B `₋` | `-` |
 | U+00B7 `·`, U+2219 `∙`, U+22C5 `⋅`, U+2022 `•` | U+00B7 `·` |
-
-**2b. Trados only — an open cross-product gap.** These two rows predate the
-joint work and memoQ does not implement them, confirmed by measurement on
-2026-09-19. A term stored with a curly apostrophe matches a segment written with
-an ASCII one in Trados and **does not** in memoQ, in the same termbase, with no
-error. Apostrophes and non-breaking spaces are far commoner in this source
-material than any formula, so this is the larger of the two gaps this note
-records. memoQ adopts both lists after the App Store submission; until then the
-divergence is real and this section is the record of it.
-
-| from | to |
-|---|---|
 | U+00A0, U+1680, U+2000–U+200A, U+202F, U+205F, U+3000 | space (U+0020) |
 | U+2018 `‘`, U+2019 `’`, U+02BC `ʼ`, U+FF07 `＇` | `'` (U+0027) |
 
+The last two rows were Trados-only for a day, which is how this note found its
+most useful example. A term stored with a curly apostrophe matched a segment
+written with an ASCII one in Trados and not in memoQ, in the same termbase, with
+no error — and a smart apostrophe in an English possessive or a no-break space
+in a figure occurs in almost every real job, where a chemical formula does not.
+Neither side would have found it by looking at chemistry.
+
 Note that U+200B and the other zero-width characters are deliberately **not** in
-the space list: they are not spaces and are removed on the write path instead
-(section 7).
+the space list: they are not spaces, and they are removed on the write path
+instead (section 7). Both products assert that separation as a test rather than
+leaving it to memory.
 
 **Every mapping is one character to one character.** This is not incidental.
 
@@ -157,18 +153,42 @@ To settle after the submission, with this row as the worked example.
 ## 7. The write path is a contract too
 
 Matching is only half of it: both products write into the same table, so a term
-one product stores badly is dead for both. Trados sanitises every term and
-synonym write through `TermbaseReader.SanitizeTermWhitespace`, which:
+one product stores badly is dead for both. Trados sanitises through
+`TermbaseReader.SanitizeTermWhitespace` and memoQ through `TermText.Clean`; both
+do the same thing:
 
-- folds tabs and every space variant from 2b to a plain space;
-- **removes zero-width characters entirely** — U+200B zero-width space, U+2060
+- fold tabs, newlines and every space variant from section 2 to a plain space;
+- **remove zero-width characters entirely** — U+200B zero-width space, U+2060
   word joiner, U+FEFF byte-order mark;
-- collapses runs of spaces, and trims.
+- collapse runs of spaces, and trim.
 
 The zero-width removal is the load-bearing part, and it exists only here: those
 characters are not in the fold, so a term stored with one **never matches in
-either product**, invisibly. IDML-derived segments are the common source, which
-both tools handle. Whatever writes to this termbase needs the equivalent.
+either product**, invisibly. memoQ's write path did nothing but `Trim` until
+2026-09-19 — and `Trim` does not touch U+200B, which is category Cf and not
+whitespace — so a term taken from an IDML-derived segment was stored dead there,
+permanently, for both products. IDML is the common source and both tools handle
+it.
+
+**Applied at every write point, not just the shortcut.** Trados:
+`InsertTerm`, `InsertTermBatchCore` (which the batch entry points funnel into),
+`UpdateTerm`, and `ImportTsv` — plus both `InsertSynonyms` overloads, so
+synonyms and imported files get the same treatment as a term typed in a dialog.
+memoQ: Import, AddTerm and UpdateTerm. A file imported in one product and the
+same file imported in the other must produce the same stored term.
+
+**The sanitiser deliberately does NOT fold apostrophes or sub/superscripts.**
+Both products assert this as a test. The user's spelling survives into the
+panel, the prompt and any export; folding is match-time only and never changes
+what is stored. If the two mechanisms are ever merged, the length-preserving
+property of the fold that keeps highlight offsets honest goes with it.
+
+Known inconsistency, Trados only, not urgent: a main term is sanitised with
+`SanitizeTermWhitespace` while a synonym goes through `NormalizeTermForSave`,
+which additionally strips trailing `. , ; : ! ?`. So a main term keeps a trailing
+full stop and a synonym loses it. Not a matching defect — the lookup strips
+trailing punctuation and the index carries a stripped variant — but the two
+should agree on what is stored.
 
 ## 8. Changing any of this
 
