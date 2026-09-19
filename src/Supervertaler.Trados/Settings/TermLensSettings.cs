@@ -41,6 +41,21 @@ namespace Supervertaler.Trados.Settings
         public bool DiagnosticLogging { get; set; } = false;
 
         /// <summary>
+        /// EditLens edit capture: record what the AI proposed alongside what you
+        /// confirmed, so repeated corrections can be turned into a prompt rule or
+        /// a glossary entry instead of being made again.
+        ///
+        /// <para><b>Off by default and deliberately the only setting.</b> No
+        /// thresholds, no filters, no per-project options: nobody has asked to
+        /// vary those and each one would have to be maintained. The captured
+        /// database holds verbatim client text, so capture also refuses to run
+        /// when the data folder is inside a synchronised folder — see
+        /// <see cref="Core.EditCapture.CapturePaths"/>.</para>
+        /// </summary>
+        [DataMember(Name = "editCapture")]
+        public bool EditCapture { get; set; } = false;
+
+        /// <summary>
         /// IDs of termbases the user has disabled. Empty means all termbases are active.
         /// Stored as disabled-list so newly added termbases are active by default.
         /// </summary>

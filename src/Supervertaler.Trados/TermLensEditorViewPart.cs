@@ -57,6 +57,8 @@ namespace Supervertaler.Trados
         private static volatile Core.UsageContextSnapshot _cachedUsageContext;
 
         private EditorController _editorController;
+        private Core.EditCapture.CaptureStore _captureStore;
+        private Core.EditCapture.CaptureController _capture;
         private IStudioDocument _activeDocument;
         /// <summary>
         /// The shared settings instance. A property, not a field: a private copy
@@ -280,6 +282,8 @@ namespace Supervertaler.Trados
             if (_editorController != null)
             {
                 _editorController.ActiveDocumentChanged += OnActiveDocumentChanged;
+
+                StartEditCapture();
 
                 // If a document is already open, wire up to it immediately
                 if (_editorController.ActiveDocument != null)
@@ -4432,8 +4436,51 @@ namespace Supervertaler.Trados
 
         // ─────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// EditLens: start edit capture when the user has switched it on and the
+        /// location is not synchronised. Off by default, and any failure here
+        /// leaves capture off rather than surfacing to the translator.
+        /// </summary>
+        private void StartEditCapture()
+        {
+            try
+            {
+                if (_settings == null || !_settings.EditCapture) return;
+
+                var refusal = Core.EditCapture.CapturePaths.RefusalReason();
+                if (refusal != null)
+                {
+                    DiagnosticLog.Log("EditCapture", "not started: " + refusal);
+                    return;
+                }
+                if (!Core.EditCapture.CapturePaths.EnsureDir()) return;
+
+                var store = new Core.EditCapture.CaptureStore(Core.EditCapture.CapturePaths.DatabasePath);
+                if (!store.Start()) { store.Dispose(); return; }
+
+                _captureStore = store;
+                _capture = new Core.EditCapture.CaptureController(store);
+                _capture.Start(_editorController);
+            }
+            catch (Exception ex)
+            {
+                try { DiagnosticLog.Log("EditCapture", "start failed: " + ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>Stops capture and flushes the tail. Runs whether or not anything above threw.</summary>
+        private void StopEditCapture()
+        {
+            try { _capture?.Dispose(); } catch { }
+            try { _captureStore?.Dispose(); } catch { }
+            _capture = null;
+            _captureStore = null;
+        }
+
         public override void Dispose()
         {
+            StopEditCapture();
+
             // Save per-project settings before shutting down
             SaveCurrentProjectSettings();
 
