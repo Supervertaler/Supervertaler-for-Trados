@@ -49,7 +49,7 @@ namespace Supervertaler.Trados.Core.EditCapture
         // when it has gone stale across a filter change or a reload. Looking a
         // segment up by id means walking every pair in the document, which is
         // not something to do on every cursor move.
-        private ISegment _current;
+        private ISegmentPair _current;
 
         private string _project, _srcLang, _tgtLang;
         private bool _started;
@@ -144,8 +144,12 @@ namespace Supervertaler.Trados.Core.EditCapture
                 // this exists for: the payload is a collection precisely because
                 // one change can touch many segments, and a production plugin
                 // taking only the first is how auto-propagate goes unrecorded.
+                var doc = e.Document ?? _doc;
                 foreach (var seg in e.Segments)
-                    EmitSegment(CaptureEvent.Populated, seg);
+                {
+                    var pair = PairFor(doc, seg);
+                    if (pair != null) Emit(CaptureEvent.Populated, pair, doc);
+                }
             }
             catch (Exception ex) { Swallow("content changed", ex); }
         }
@@ -173,7 +177,7 @@ namespace Supervertaler.Trados.Core.EditCapture
                 // A stale reference throws on read; the sweep at save or close
                 // covers anything missed here, so there is no id lookup to fall
                 // back to and no shadow copy of the document to maintain.
-                EmitSegment(CaptureEvent.Left, _current);
+                Emit(CaptureEvent.Left, _current);
             }
             catch (Exception ex) { Swallow("left", ex); }
         }
@@ -191,7 +195,7 @@ namespace Supervertaler.Trados.Core.EditCapture
             try
             {
                 foreach (var pair in doc.SegmentPairs)
-                    EmitSegment(CaptureEvent.Sweep, pair.Target);
+                    Emit(CaptureEvent.Sweep, pair, doc);
             }
             catch (Exception ex) { Swallow("sweep", ex); }
         }
@@ -200,31 +204,44 @@ namespace Supervertaler.Trados.Core.EditCapture
 
         private void Remember(ISegmentPair pair)
         {
-            try { _current = pair?.Target; } catch { _current = null; }
+            _current = pair;
         }
 
         /// <summary>
-        /// Emit for a segment we have only as an ISegment - the ContentChanged
-        /// payload. Identity and text both come from this graph, so a populated
-        /// event and a later left event describe the same segment by the same
-        /// name. The source is taken from the parent paragraph unit when it can
-        /// be found and left null when it cannot: a known gap is worth more than
-        /// a guess, and the left event carries the source anyway.
+        /// Identity and text come from the PAIR, on every path.
+        ///
+        /// <para>Two earlier attempts failed here and both are worth recording.
+        /// Looking a pair up by segment <em>number</em> matched a different
+        /// paragraph unit, because those numbers repeat and a merged "Multiple
+        /// Files" document renumbers them. Taking identity from the ISegment
+        /// instead looked cleaner but <c>ParentParagraphUnit</c> is null on the
+        /// segments Studio hands to ContentChanged, so every row was rejected by
+        /// the NOT NULL columns and an entire session was lost. The pair is the
+        /// only graph that reliably answers both questions, so the content event
+        /// is mapped onto it by object identity — never by number.</para>
         /// </summary>
-        private void EmitSegment(string kind, ISegment seg)
+        private void Emit(string kind, ISegmentPair pair, IStudioDocument doc = null)
         {
             try
             {
-                if (seg == null) return;
-                var puId = ParagraphId(seg);
-                var segId = SegmentId(seg);
-                if (puId.Length == 0 && segId.Length == 0) return;
+                doc = doc ?? _doc;
+                if (pair == null || doc == null) return;
+
+                var puId = "";
+                try { puId = doc.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; }
+                catch { }
+                var segId = "";
+                try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+
+                // Either id missing makes the row unpairable and the NOT NULL
+                // columns reject it anyway. Count it as a gap and move on.
+                if (puId.Length == 0 || segId.Length == 0) return;
 
                 string originType = null;
                 int? match = null;
                 try
                 {
-                    var origin = seg.Properties?.TranslationOrigin;
+                    var origin = pair.Properties?.TranslationOrigin;
                     if (origin != null)
                     {
                         originType = string.IsNullOrEmpty(origin.OriginType) ? null : origin.OriginType;
@@ -236,68 +253,47 @@ namespace Supervertaler.Trados.Core.EditCapture
                 _store.Enqueue(new CaptureEvent
                 {
                     Event = kind,
-                    FileId = SafeFileId(_doc),
+                    FileId = SafeFileId(doc),
                     UnitId = puId,
                     SegId = segId,
-                    Source = SourceFor(seg),
-                    Target = SafeText(seg),
+                    Source = SafeText(pair.Source),
+                    Target = SafeText(pair.Target),
                     Origin = originType,
                     MatchPercent = match,
-                    ConfLevel = SafeConfLevelOf(seg),
+                    ConfLevel = SafeConfLevel(pair),
                     Project = _project,
                     SrcLang = _srcLang,
                     TgtLang = _tgtLang
                 });
             }
-            catch (Exception ex) { Swallow("emit segment", ex); }
+            catch (Exception ex) { Swallow("emit", ex); }
         }
 
-        private static string ParagraphId(ISegment seg)
-        {
-            try { return seg?.ParentParagraphUnit?.Properties?.ParagraphUnitId.Id ?? ""; }
-            catch { return ""; }
-        }
-
-        private static string SegmentId(ISegment seg)
-        {
-            try { return seg?.Properties?.Id.Id ?? ""; }
-            catch { return ""; }
-        }
-
-        /// <summary>The source segment carrying the same id, from the parent paragraph unit.</summary>
-        private static string SourceFor(ISegment target)
+        /// <summary>
+        /// The pair owning <paramref name="seg"/>, matched by OBJECT IDENTITY.
+        /// Segment numbers repeat across paragraph units and are renumbered in a
+        /// merged document, so comparing them finds the wrong segment; comparing
+        /// references cannot. The active pair is checked first, which is the case
+        /// for anything the translator is touching; the walk is for a change
+        /// somewhere else in the document, which is what auto-propagate is.
+        /// </summary>
+        private static ISegmentPair PairFor(IStudioDocument doc, ISegment seg)
         {
             try
             {
-                var pu = target?.ParentParagraphUnit;
-                if (pu?.Source == null) return null;
-                var wanted = SegmentId(target);
-                if (wanted.Length == 0) return null;
-                foreach (var item in pu.Source)
-                {
-                    var s2 = item as ISegment;
-                    if (s2 != null && string.Equals(SegmentId(s2), wanted, StringComparison.Ordinal))
-                        return SafeText(s2);
-                }
+                if (doc == null || seg == null) return null;
+
+                var active = doc.ActiveSegmentPair;
+                if (active != null &&
+                    (ReferenceEquals(active.Target, seg) || ReferenceEquals(active.Source, seg)))
+                    return active;
+
+                foreach (var p in doc.SegmentPairs)
+                    if (ReferenceEquals(p.Target, seg) || ReferenceEquals(p.Source, seg))
+                        return p;
             }
             catch { }
             return null;
-        }
-
-        private static string SafeConfLevelOf(ISegment seg)
-        {
-            try
-            {
-                return (seg.Properties?.ConfirmationLevel
-                        ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
-            }
-            catch { return null; }
-        }
-
-        private static string SafeText(ISegment seg)
-        {
-            try { return seg == null ? null : SegmentTagHandler.GetFinalText(seg); }
-            catch { return null; }
         }
 
         private static string SafeConfLevel(ISegmentPair pair)
@@ -307,6 +303,12 @@ namespace Supervertaler.Trados.Core.EditCapture
                 return (pair.Properties?.ConfirmationLevel
                         ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified).ToString();
             }
+            catch { return null; }
+        }
+
+        private static string SafeText(ISegment seg)
+        {
+            try { return seg == null ? null : SegmentTagHandler.GetFinalText(seg); }
             catch { return null; }
         }
 

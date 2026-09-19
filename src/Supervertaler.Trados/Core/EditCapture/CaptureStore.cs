@@ -242,9 +242,13 @@ VALUES (@event, @ts, @file, @unit, @seg, @source, @target, @origin,
                         {
                             p["@event"].Value = Val(e.Event);
                             p["@ts"].Value = e.TimestampUtc.ToString("o");
-                            p["@file"].Value = Val(e.FileId) ?? (object)"";
-                            p["@unit"].Value = Val(e.UnitId) ?? (object)"";
-                            p["@seg"].Value = Val(e.SegId) ?? (object)"";
+                            // These three are NOT NULL. Val() yields DBNull for an
+                            // empty string and DBNull is not null, so "Val(x) ?? \"\""
+                            // never fell back and every batch was rejected - the
+                            // whole of the second live run was lost this way.
+                            p["@file"].Value = e.FileId ?? "";
+                            p["@unit"].Value = e.UnitId ?? "";
+                            p["@seg"].Value = e.SegId ?? "";
                             p["@source"].Value = Val(e.Source);
                             p["@target"].Value = Val(e.Target);
                             p["@origin"].Value = Val(e.Origin);
