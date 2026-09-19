@@ -31,6 +31,14 @@ namespace Supervertaler.Trados.Core
         // word boundaries, and '*' is a non-word character.
         private static readonly char[] PunctChars = ".!?,;:\"'\u201C\u201D\u201E\u00AB\u00BB\u2018\u2019\u201A\u2039\u203A()[]*_".ToCharArray();
 
+        /// <summary>
+        /// What a formula may trail that a stored term need not repeat: a charge
+        /// and a radical dot, in their NORMALISED forms (NormalizeScriptChars has
+        /// already folded \u207A \u208A to +, \u207B \u208B to -, and \u2219 \u22C5 \u2022 to \u00B7). Trimmed only from
+        /// the end of a token, and only after an exact lookup has failed.
+        /// </summary>
+        private static readonly char[] FormulaSuffixChars = { '+', '-', '\u00B7' };
+
         // Pattern for splitting words: captures words, decimals, percentages, units.
         // Includes subscript digits (₀-₉, U+2080-U+2089) and superscript digits
         // (⁰¹²³⁴⁵⁶⁷⁸⁹) so that chemical/scientific tokens like H₂O or CO₂ are
@@ -792,18 +800,37 @@ namespace Supervertaler.Trados.Core
             var stripped = normalised.TrimEnd(PunctChars).TrimStart(PunctChars);
 
             List<TermEntry> entries = null;
+            var matchedText = stripped.Length > 0 ? stripped : normalised;
 
             // Try exact match first, then stripped
             if (_termIndex.TryGetValue(normalised, out var exact))
                 entries = exact;
             else if (stripped.Length > 0 && stripped != normalised && _termIndex.TryGetValue(stripped, out var strippedMatch))
                 entries = strippedMatch;
+            else
+            {
+                // Last resort: a trailing charge or radical dot, with the term
+                // stored without it. Since 18.20.192 those characters are part of
+                // the token, so "MnO₄⁻" in a segment no longer found a termbase
+                // entry reading "MnO₄" - which is how every such term saved before
+                // that release is spelled, and how memoQ's shortcut still saves
+                // them. Charge signs and radical dots normalise to + - · here and
+                // never occur word-internally, so trimming them off the END of a
+                // token is unambiguous. Exact and stripped are tried first, so a
+                // term that does carry its charge still wins.
+                var bare = stripped.TrimEnd(FormulaSuffixChars);
+                if (bare.Length > 0 && bare != stripped && _termIndex.TryGetValue(bare, out var bareMatch))
+                {
+                    entries = bareMatch;
+                    matchedText = bare;
+                }
+            }
 
             if (entries == null || entries.Count == 0)
                 return emptyResult;
 
             // Post-filter: for case-sensitive entries, verify that the original text matches
-            var originalText = stripped.Length > 0 ? stripped : normalised;
+            var originalText = matchedText;
             var filtered = new List<TermEntry>(entries.Count);
             foreach (var entry in entries)
             {
