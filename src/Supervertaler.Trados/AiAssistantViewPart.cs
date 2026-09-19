@@ -9997,6 +9997,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                         var textClone = (IText)textTemplate.Clone();
                                         textClone.Properties.Text = plainTranslation;
                                         sp.Target.Add(textClone);
+                                        // EditLens: we wrote this, so we know the proposal.
+                                        Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                     }
                                 }
                                 return;
@@ -10013,6 +10015,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 var textClone = (IText)textTpl.Clone();
                                 textClone.Properties.Text = e.Translation;
                                 sp.Target.Add(textClone);
+                                // EditLens: we wrote this, so we know the proposal.
+                                Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                             }
                         });
 
@@ -11717,6 +11721,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                                     var textClone = (IText)textTemplate.Clone();
                                                     textClone.Properties.Text = plainTranslation;
                                                     sp.Target.Add(textClone);
+                                                    // EditLens: we wrote this, so we know the proposal.
+                                                    Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                                 }
                                             }
                                         }
@@ -11729,6 +11735,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                                 var textClone = (IText)textTpl.Clone();
                                                 textClone.Properties.Text = pt.Translation;
                                                 sp.Target.Add(textClone);
+                                                // EditLens: we wrote this, so we know the proposal.
+                                                Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                             }
                                         }
                                     });
@@ -13679,6 +13687,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                                             var textClone = (IText)textTpl.Clone();
                                                             textClone.Properties.Text = translation;
                                                             sp.Target.Add(textClone);
+                                                            // EditLens: we wrote this, so we know the proposal.
+                                                            Core.EditCapture.CaptureController.NoteProposal(sp, _currentInstance?._activeDocument);
                                                         }
                                                     });
                                                 batchControl.AppendLog(

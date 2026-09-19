@@ -54,6 +54,28 @@ namespace Supervertaler.Trados.Core.EditCapture
         private string _project, _srcLang, _tgtLang;
         private bool _started;
 
+        /// <summary>The running controller, or null when capture is off.</summary>
+        private static CaptureController _live;
+
+        /// <summary>
+        /// Declare a proposal that THIS PLUGIN just wrote into a segment.
+        ///
+        /// <para>Batch Translate and clipboard mode write targets directly,
+        /// segment by segment, never through the cursor — so no editor event
+        /// fires for them and the proposal would be lost for exactly the
+        /// workflow the feature exists to study. Measured 2026-09-19: 9
+        /// proposals captured against 69 departures on a batch-translated file.
+        /// We wrote the text, so we do not need Studio to tell us: the writer
+        /// says so itself. Safe to call when capture is off — it does nothing.</para>
+        /// </summary>
+        internal static void NoteProposal(ISegmentPair pair, IStudioDocument doc)
+        {
+            var live = _live;
+            if (live == null || pair == null) return;
+            try { live.Emit(CaptureEvent.Populated, pair, doc); }
+            catch { }
+        }
+
         public CaptureController(CaptureStore store) { _store = store; }
 
         public void Start(EditorController editor)
@@ -66,6 +88,7 @@ namespace Supervertaler.Trados.Core.EditCapture
                 _editor.Closing += OnClosing;
                 Attach(_editor.ActiveDocument);
                 _started = true;
+                _live = this;
                 DiagnosticLog.Log("EditCapture", "capture started");
             }
             catch (Exception ex) { Swallow("start", ex); }
@@ -336,6 +359,7 @@ namespace Supervertaler.Trados.Core.EditCapture
                 Detach();
                 _editor = null;
                 _started = false;
+                if (ReferenceEquals(_live, this)) _live = null;
             }
         }
     }
