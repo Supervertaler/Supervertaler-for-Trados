@@ -183,6 +183,10 @@ panel, the prompt and any export; folding is match-time only and never changes
 what is stored. If the two mechanisms are ever merged, the length-preserving
 property of the fold that keeps highlight offsets honest goes with it.
 
+memoQ does not strip trailing punctuation on write or on lookup anywhere, so
+it is consistently "neither"; if Trados settles on stripping in both its paths,
+that becomes a divergence to mirror.
+
 Known inconsistency, Trados only, not urgent: a main term is sanitised with
 `SanitizeTermWhitespace` while a synonym goes through `NormalizeTermForSave`,
 which additionally strips trailing `. , ; : ! ?`. So a main term keeps a trailing
@@ -190,7 +194,32 @@ full stop and a synonym loses it. Not a matching defect — the lookup strips
 trailing punctuation and the index carries a stripped variant — but the two
 should agree on what is stored.
 
-## 8. Changing any of this
+## 8. Synonyms are Trados-only
+
+Not a defect and nothing to fix on either side, but it has the same shape as
+everything else here and belongs beside it.
+
+Trados reads `termbase_synonyms` into the match index, so a synonym matches the
+way a term does, and writes them through both `InsertSynonyms` overloads.
+**memoQ does neither.** Confirmed 2026-09-19: the only statements it issues
+against that table are two deletes, one when a term is removed and one when a
+termbase is removed. Its index is built from `termbase_terms` alone.
+
+So a synonym saved in Trados matches in Trados and is invisible in memoQ, in the
+same termbase, with nothing on screen to explain the difference. A translator who
+builds synonyms here and then works the same job there simply gets fewer hits.
+
+Scale on the author's own termbase, 2026-09-19: 1,147 synonym rows against
+37,359 terms, so 2.2% of terms carry one, and 1,081 of those rows sit in a
+single termbase. Small in proportion, concentrated in the one that gets daily
+use — which is the worst shape for noticing, because the loss shows up only on
+the terms most worked on.
+
+A feature for memoQ to build when it is worth building, not a contract either
+side is currently breaking. Recorded so that "fewer hits over there" has an
+explanation waiting when someone eventually asks.
+
+## 9. Changing any of this
 
 The fold table, the retry rule and the write-path sanitiser are cross-product
 contracts. Change any of them in one product only in the same session as the
