@@ -1881,6 +1881,7 @@ namespace Supervertaler.Trados
                                 // a target carrying none - which Studio reports as N missing
                                 // tags. That is exactly the silent lossy write this audit
                                 // exists to stop being silent.
+                                Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                 tagWarning = DescribeTagIdMismatch(sp.Source, sp.Target);
 
                                 // Comment audit, same principle as the tag audit: a
@@ -14147,6 +14148,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 sp.Target.Add(clone);
                             }
                         }
+                        // Declared on the tagged path too: ReconstructTarget writes through
+                        // sp.Target itself, so this branch returns without ever touching
+                        // Target.Add and would otherwise leave no proposal behind.
+                        Core.EditCapture.CaptureController.NoteProposal(sp, doc);
                         return;
                     }
                     var textTpl = SegmentTagHandler.FindFirstText(sp.Source);
@@ -14157,6 +14162,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         clone.Properties.Text = e.Translation;
                         sp.Target.Add(clone);
                     }
+                    Core.EditCapture.CaptureController.NoteProposal(sp, doc);
                 });
             }
             catch (Exception ex)
@@ -15873,6 +15879,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                             sp.Target.Add(clone);
                                         }
                                     }
+                                    Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                 });
                             applied++;
                         }
