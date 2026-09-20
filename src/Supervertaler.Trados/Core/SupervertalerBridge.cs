@@ -1216,6 +1216,20 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "id", IsRequired = true)] public string Id { get; set; }
         /// <summary>New target text (may contain &lt;tN&gt;/&lt;b&gt; tag markers). Null = leave target unchanged (status-only update).</summary>
         [DataMember(Name = "target", EmitDefaultValue = false)] public string Target { get; set; }
+
+        /// <summary>
+        /// Permission to write an EMPTY target, which clears the cell.
+        ///
+        /// <para>Without it an empty string is refused. A caller that means
+        /// "I have nothing for this segment" and a caller that means "blank
+        /// this segment" send identical JSON, and only one of them wants the
+        /// translator's work destroyed. The memoQ side shipped exactly that
+        /// bug on a real job: an empty translation returned for every unstaged
+        /// segment, written straight into the grid, 32 rows silently emptied.
+        /// Same shape as the locked-segment refusal in #134 - say no, say why,
+        /// and take a flag from anyone who really means it.</para>
+        /// </summary>
+        [DataMember(Name = "allowEmpty", EmitDefaultValue = false)] public bool AllowEmpty { get; set; }
         /// <summary>ConfirmationLevel name. Null with a target write defaults to Draft.</summary>
         [DataMember(Name = "status", EmitDefaultValue = false)] public string Status { get; set; }
         /// <summary>The 'fp' this segment carried in the get_segments response

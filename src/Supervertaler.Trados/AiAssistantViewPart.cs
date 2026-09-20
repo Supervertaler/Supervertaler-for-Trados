@@ -1760,6 +1760,21 @@ namespace Supervertaler.Trados
                     continue;
                 }
 
+                // An empty target clears the cell. "I have nothing for this
+                // segment" and "blank this segment" arrive as identical JSON,
+                // and only one of them wants the translator's work destroyed - so
+                // the ambiguous one is refused and the deliberate one carries a
+                // flag. The memoQ side shipped this exact bug on a real job: an
+                // empty translation returned for every unstaged segment, written
+                // straight into the grid, 32 rows silently emptied.
+                if (u.Target != null && u.Target.Length == 0 && !u.AllowEmpty)
+                {
+                    item.Error = "refusing to write an empty target: it would clear the segment. "
+                               + "Omit 'target' to leave it alone, or set allowEmpty:true to blank it deliberately.";
+                    response.Failed++;
+                    continue;
+                }
+
                 // Decode once, here, so the tag-aware path and the plain-text
                 // fallback below both see the real characters.
                 var targetText = u.Target;
