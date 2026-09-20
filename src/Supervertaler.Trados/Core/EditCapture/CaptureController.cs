@@ -54,6 +54,29 @@ namespace Supervertaler.Trados.Core.EditCapture
         private string _project, _srcLang, _tgtLang;
         private bool _started;
 
+        /// <summary>
+        /// The last state recorded for each segment this session, keyed
+        /// file/unit/segment. Only the sweep consults it: a sweep is a snapshot,
+        /// and re-photographing an unchanged segment says nothing. A <c>left</c>
+        /// that matches its proposal is the opposite - that IS the finding - so
+        /// the real events are never deduplicated.
+        ///
+        /// <para>Bounded at <see cref="MaxSeen"/> entries and cleared wholesale
+        /// when it fills, so a very long session degrades to writing every sweep
+        /// row again rather than growing without limit.</para>
+        /// </summary>
+        private readonly Dictionary<string, string> _seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        private const int MaxSeen = 50000;
+
+        /// <summary>
+        /// The document already swept on its way out. Closing a document raises
+        /// BOTH ActiveDocumentChanged and Closing, and each used to sweep: 936
+        /// sweep rows landed in one minute on 2026-09-20 for a 468-segment file,
+        /// two complete duplicate snapshots. Cleared in <see cref="Attach"/>, so
+        /// switching back to a document re-arms its sweep.
+        /// </summary>
+        private IStudioDocument _swept;
+
         /// <summary>The running controller, or null when capture is off.</summary>
         private static CaptureController _live;
 
@@ -102,6 +125,7 @@ namespace Supervertaler.Trados.Core.EditCapture
             {
                 Detach();
                 _doc = doc;
+                _swept = null;          // re-arm: this document can be swept again
                 if (_doc == null) return;
 
                 _doc.ActiveSegmentContentIsReady += OnContentReady;
@@ -209,22 +233,82 @@ namespace Supervertaler.Trados.Core.EditCapture
         /// <summary>
         /// Read the whole document. Later than any <c>left</c> event, so where the
         /// two disagree this one is right. Also the only thing that captures the
-        /// last segment of a session, which is never departed from, and comments
-        /// added after a segment was confirmed — the API raises no event at all
-        /// for a comment, so this is the substitute for polling.
+        /// last segment of a session, which is never departed from.
+        ///
+        /// <para>It does NOT yet capture comments. The API raises no event for a
+        /// comment, so a sweep is the only place one could be noticed, but Emit
+        /// does not read them and the comment columns have been null in every row
+        /// written so far. Phase 2.</para>
         /// </summary>
         private void SweepDocument(IStudioDocument doc)
         {
             if (doc == null) return;
+            if (ReferenceEquals(doc, _swept)) return;   // already photographed on the way out
+            _swept = doc;
             try
             {
+                var written = 0;
+                var skipped = 0;
                 foreach (var pair in doc.SegmentPairs)
+                {
+                    if (Unchanged(pair, doc)) { skipped++; continue; }
                     Emit(CaptureEvent.Sweep, pair, doc);
+                    written++;
+                }
+                if (written > 0 || skipped > 0)
+                    Log("sweep: " + written + " changed, " + skipped + " unchanged");
             }
             catch (Exception ex) { Swallow("sweep", ex); }
         }
 
+        /// <summary>
+        /// True when this segment looks exactly as it did the last time anything
+        /// was recorded for it, so the sweep has nothing to add. Returns false on
+        /// any doubt - a duplicate row is cheap, a missing final state is not.
+        /// </summary>
+        private bool Unchanged(ISegmentPair pair, IStudioDocument doc)
+        {
+            try
+            {
+                var key = SeenKey(pair, doc);
+                if (key == null) return false;
+                string previous;
+                return _seen.TryGetValue(key, out previous)
+                    && string.Equals(previous, Fingerprint(pair), StringComparison.Ordinal);
+            }
+            catch { return false; }
+        }
+
         // ─── Reading a pair ─────────────────────────────────────────
+
+        /// <summary>
+        /// The key a segment is remembered under, or null when either id is
+        /// missing - which is the same condition that makes the row unwritable.
+        /// </summary>
+        private string SeenKey(ISegmentPair pair, IStudioDocument doc)
+        {
+            var puId = "";
+            try { puId = doc.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? ""; }
+            catch { }
+            var segId = "";
+            try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+            if (puId.Length == 0 || segId.Length == 0) return null;
+            return SafeFileId(doc) + "" + puId + "" + segId;
+        }
+
+        /// <summary>
+        /// What "the same as last time" means for a sweep: the target text and
+        /// the confirmation level. The source cannot change without the segment
+        /// being a different segment, and comments are not captured yet.
+        ///
+        /// <para>The text itself is kept rather than a hash. A 64-bit hash would
+        /// be smaller, but a collision would drop a final state silently, and
+        /// silent loss is the one failure this feature cannot afford.</para>
+        /// </summary>
+        private static string Fingerprint(ISegmentPair pair)
+        {
+            return SafeText(pair == null ? null : pair.Target) + "" + SafeConfLevel(pair);
+        }
 
         private void Remember(ISegmentPair pair)
         {
@@ -271,6 +355,16 @@ namespace Supervertaler.Trados.Core.EditCapture
                         originType = string.IsNullOrEmpty(origin.OriginType) ? null : origin.OriginType;
                         match = origin.MatchPercent;
                     }
+                }
+                catch { }
+
+                // Remember how the segment looked, for the sweep to compare
+                // against. Recorded for every event kind, including the sweep's
+                // own rows, so a second sweep sees the first one's work.
+                try
+                {
+                    if (_seen.Count >= MaxSeen) _seen.Clear();
+                    _seen[SafeFileId(doc) + "" + puId + "" + segId] = Fingerprint(pair);
                 }
                 catch { }
 
@@ -335,6 +429,12 @@ namespace Supervertaler.Trados.Core.EditCapture
                     : f?.Language?.DisplayName;
             }
             catch { return null; }
+        }
+
+        private static void Log(string message)
+        {
+            try { DiagnosticLog.Log("EditCapture", message); }
+            catch { }
         }
 
         private static void Swallow(string where, Exception ex)
