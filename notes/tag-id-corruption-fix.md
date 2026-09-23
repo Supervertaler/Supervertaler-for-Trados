@@ -1,7 +1,7 @@
 # `update_segments` tag-ID corruption — root cause and fix
 
 Repo: `Supervertaler-for-Trados`
-Reported from: job PO414646 (H136748/H136749 compressor manual), segments 498, 500, 552, 559
+Reported from: job PROJ-001 (a technical manual), segments 498, 500, 552, 559
 Date: 2026-08-03
 
 ---
