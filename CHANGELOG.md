@@ -7,7 +7,10 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
-## [Next release – shared licence] – Unreleased
+## [18.20.197 / 19.20.197] – Unreleased
+
+### Fixed
+- **Deactivating your licence no longer shows an error box.** If the AI Assistant pane had never been opened in that session, Settings → Licence → Deactivate showed an error, although the deactivation had in fact worked. The pane now catches up with the licence the first time it is opened.
 
 ### Changed
 - **One licence for Supervertaler for Trados and Supervertaler for memoQ.** Your licence and trial are now kept where both plugins read them, so an activation counts for every Supervertaler plugin on the same computer, and a computer has one trial rather than one per plugin. There is nothing to do: the first start after updating copies your existing activation across, nobody is asked to reactivate, and the old licence file is left where it was, so going back to an earlier version still finds it. Entering your key in a second plugin on a computer that is already activated with it recognises that activation instead of using up another. Both plugins can be open at once; neither can leave the other with a half-written licence.
