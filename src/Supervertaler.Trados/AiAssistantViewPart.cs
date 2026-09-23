@@ -1737,7 +1737,8 @@ namespace Supervertaler.Trados
                 // Resolve the requested status up front so an unknown name fails
                 // the whole item before any content is written.
                 var statusName = u.Status;
-                if (string.IsNullOrEmpty(statusName) && u.Target != null)
+                bool statusDefaulted = string.IsNullOrEmpty(statusName) && u.Target != null;
+                if (statusDefaulted)
                     statusName = "Draft";
 
                 Sdl.Core.Globalization.ConfirmationLevel level = default;
@@ -1791,6 +1792,12 @@ namespace Supervertaler.Trados
                 string trackedNote = null;
                 Core.TrackingSuspension suspension = null;
 
+                // #138: true when the write leaves the target reading exactly as it
+                // did (judged on the accepted view, tags included). Then the default
+                // Draft status is not applied: nothing changed, so there is nothing
+                // for anyone to review, and a status flip would be the only trace.
+                bool unchangedText = false;
+
                 // #134: only now, after the fp check, does the lock come off - and a
                 // write that then fails puts it back (see the catch below). A segment
                 // must never be left unlocked by accident.
@@ -1820,6 +1827,7 @@ namespace Supervertaler.Trados
                                 // The target as it stands, taken before anything below
                                 // clears it. Only needed for a tracked write.
                                 var targetBefore = trackWords ? sp.Target.Clone() as ISegment : null;
+                                var acceptedBefore = Core.TrackedTargetMerge.Project(sp.Target, accept: true);
 
                                 // Tag-aware write. NOTE the difference from bilingual
                                 // re-import: that path uses BuildCombinedTagMap, where
@@ -1907,6 +1915,9 @@ namespace Supervertaler.Trados
                                 if (targetBefore != null)
                                     suspension = WriteAsTrackedChanges(sp, targetBefore, out trackedNote);
 
+                                unchangedText = Core.TrackedTargetMerge.Project(sp.Target, accept: true)
+                                                == acceptedBefore;
+
                                 Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                 tagWarning = DescribeTagIdMismatch(sp.Source, sp.Target);
 
@@ -1933,6 +1944,11 @@ namespace Supervertaler.Trados
                         // finally below covers the path where the write throws.
                         suspension?.Dispose();
                     }
+
+                    // An explicitly requested status is always honoured; only the
+                    // automatic Draft is skipped when the text did not change.
+                    if (setStatus && statusDefaulted && unchangedText)
+                        setStatus = false;
 
                     if (setStatus)
                     {
