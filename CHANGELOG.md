@@ -7,6 +7,12 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [Next release – shared licence] – Unreleased
+
+### Changed
+- **One licence for Supervertaler for Trados and Supervertaler for memoQ.** Your licence and trial are now kept where both plugins read them, so an activation counts for every Supervertaler plugin on the same computer, and a computer has one trial rather than one per plugin. There is nothing to do: the first start after updating copies your existing activation across, nobody is asked to reactivate, and the old licence file is left where it was, so going back to an earlier version still finds it. Entering your key in a second plugin on a computer that is already activated with it recognises that activation instead of using up another. Both plugins can be open at once; neither can leave the other with a half-written licence.
+- **A licence file that cannot be read no longer counts as a lapsed licence.** Settings → Licence and the About box now say the licence could not be read, rather than that it has expired, and your features stay available. If the file was damaged you are asked to enter your key again.
+
 ## [18.20.196 / 19.20.196] – Unreleased
 
 ### Fixed

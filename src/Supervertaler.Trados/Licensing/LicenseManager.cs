@@ -1,25 +1,18 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net.Http;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Json;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Supervertaler.Core;
 
 namespace Supervertaler.Trados.Licensing
 {
     /// <summary>
-    /// Singleton managing all license state: trial, activation, validation, and caching.
-    /// The single source of truth for whether features should be enabled.
+    /// The Trados plugin's view of the Supervertaler licence.
     ///
-    /// Uses the Lemon Squeezy License API:
-    ///   - POST /v1/licenses/activate   – activate a key on this machine
-    ///   - POST /v1/licenses/validate   – check if a key is still valid
-    ///   - POST /v1/licenses/deactivate – release this machine's activation
-    ///
-    /// No auth header required – these endpoints only need the license key.
+    /// The licence itself - trial, activation, validation, storage - lives in
+    /// core's <see cref="SupervertalerLicence"/>, shared with Supervertaler for
+    /// memoQ: one licence per computer, whichever products are on it. This
+    /// class keeps the plugin's own vocabulary (<see cref="LicenseTier"/>, the
+    /// feature gates) and its UI, which core deliberately has none of.
     /// </summary>
     public sealed class LicenseManager
     {
@@ -30,33 +23,14 @@ namespace Supervertaler.Trados.Licensing
 
         public static LicenseManager Instance => _lazy.Value;
 
-        // ─── Constants ──────────────────────────────────────────────
-
-        private const string BaseUrl = "https://api.lemonsqueezy.com/v1/licenses";
-        private const int OfflineCacheDays = 30;
-        private const int TrialDays = LicenseInfo.TrialDays;
-
-        // v4.20.23: removed the legacy VariantTier1 / VariantTier2 /
-        // VariantAssistant constants. They were never referenced anywhere
-        // (MapVariantToTier always returns Licensed regardless), and they
-        // documented a multi-tier product layout (TermLens / Assistant /
-        // bundle) that no longer exists on Lemon Squeezy — the store now
-        // sells a single product called "Supervertaler for Trados". The
-        // license response's variant_name field still flows through to
-        // LicenseInfo.VariantName for display in the License panel; it
-        // just doesn't gate any features.
-
-        // ─── State ──────────────────────────────────────────────────
-
-        private LicenseInfo _info;
-        private readonly object _lock = new object();
-        private static readonly HttpClient Http = new HttpClient();
+        private readonly SupervertalerLicence _licence;
 
         // ─── Events ─────────────────────────────────────────────────
 
         /// <summary>
         /// Fired when the license state changes (activation, deactivation, validation result).
         /// UI subscribes to this to show/hide features without restarting Trados.
+        /// Raised on whichever thread made the change.
         /// </summary>
         public event EventHandler LicenseStateChanged;
 
@@ -64,79 +38,76 @@ namespace Supervertaler.Trados.Licensing
 
         private LicenseManager()
         {
-            _info = LicenseInfo.Load();
+            // Before the first touch of Instance, which reads the licence and
+            // may already have something to report.
+            SupervertalerLicence.Log = Core.BridgeLog.Write;
+
+            _licence = SupervertalerLicence.Instance;
+            _licence.StateChanged += (s, e) => LicenseStateChanged?.Invoke(this, EventArgs.Empty);
+
+            // At every start until a key is activated, not only the first: the
+            // session after the damage is the one that can lock a paying
+            // customer out, and it would otherwise say nothing about why.
+            if (_licence.DamagedFileFound && _licence.State != LicenceState.Licensed)
+                ShowDamagedFileMessage(thisSession: _licence.State == LicenceState.Unknown);
         }
 
         // ─── Public properties ──────────────────────────────────────
 
-        /// <summary>
-        /// The current effective license tier.
-        /// </summary>
+        /// <summary>The current effective license tier.</summary>
         public LicenseTier CurrentTier
         {
             get
             {
-                lock (_lock)
+                switch (_licence.State)
                 {
-                    return ResolveTier();
+                    case LicenceState.Licensed: return LicenseTier.Licensed;
+                    case LicenceState.Trial: return LicenseTier.Trial;
+                    case LicenceState.Unknown: return LicenseTier.Unknown;
+                    default: return LicenseTier.None;
                 }
             }
         }
 
-        /// <summary>True if the user has an active license or trial – all features unlocked.</summary>
+        /// <summary>
+        /// True unless the licence is known to have lapsed – all features unlocked.
+        /// An unreadable licence counts: it is never a refusal.
+        /// </summary>
         public bool IsLicensed => CurrentTier != LicenseTier.None;
 
         /// <summary>Backward-compatible alias for IsLicensed. All paid tiers now grant full access.</summary>
         public bool HasTier1Access => IsLicensed;
 
         /// <summary>Backward-compatible alias for IsLicensed. All paid tiers now grant full access.</summary>
-        public bool HasTier2Access => IsLicensed;
-
-        /// <summary>Backward-compatible alias for IsLicensed. All paid tiers now grant full access.</summary>
         public bool HasAssistantAccess => IsLicensed;
 
-        /// <summary>Days remaining in the trial (0 if expired or licensed).</summary>
-        public int TrialDaysRemaining => _info?.TrialDaysRemaining ?? 0;
-
-        /// <summary>Whether the user is currently on a trial (no license key entered).</summary>
-        public bool IsOnTrial => CurrentTier == LicenseTier.Trial;
+        /// <summary>Days remaining in the trial (0 when not on trial).</summary>
+        public int TrialDaysRemaining => _licence.TrialDaysRemaining;
 
         /// <summary>The variant name from Lemon Squeezy for display (legacy – all variants now grant full access).</summary>
-        public string VariantName => _info?.VariantName ?? "";
-
-        /// <summary>The license status string ("active", "expired", etc.).</summary>
-        public string Status => _info?.Status ?? "";
+        public string VariantName => _licence.VariantName;
 
         /// <summary>Whether a license key has been entered.</summary>
-        public bool HasLicenseKey => _info?.HasLicenseKey ?? false;
+        public bool HasLicenseKey => _licence.HasKey;
 
         /// <summary>The masked license key for display (first 8 + last 4 characters).</summary>
-        public string MaskedLicenseKey
-        {
-            get
-            {
-                var key = _info?.LicenseKey ?? "";
-                if (key.Length <= 12) return key;
-                return key.Substring(0, 8) + "..." + key.Substring(key.Length - 4);
-            }
-        }
+        public string MaskedLicenseKey => _licence.MaskedKey;
 
         /// <summary>Last successful validation time (UTC).</summary>
-        public DateTime LastValidatedAt => _info?.LastValidatedAt ?? DateTime.MinValue;
+        public DateTime LastValidatedAt => _licence.LastValidatedUtc;
 
         // ─── Initialization ─────────────────────────────────────────
 
         /// <summary>
-        /// Called from AppInitializer.Execute(). Loads cached state (instant),
-        /// then fires a background validation if a license key is present.
-        /// Never blocks Trados startup.
+        /// Called from AppInitializer.Execute(). The licence is already loaded
+        /// (instant); this fires a background validation if the computer is
+        /// activated. Never blocks Trados startup.
         /// </summary>
         public void InitializeAsync()
         {
-            // Already loaded in constructor. Kick off background validation.
-            if (_info.IsActivated)
+            if (_licence.IsActivated)
             {
-                Task.Run(() => ValidateOnlineAsync());
+                Task.Run(() => _licence.ValidateOnlineAsync());
             }
             else
             {
@@ -144,309 +115,25 @@ namespace Supervertaler.Trados.Licensing
                 // Observe-only in this release – the server records the
                 // authoritative start date; local trial behaviour is unchanged
                 // and the call fails silently when offline.
-                var trialStart = _info.TrialStartedAt;
-                var trialActive = _info.IsTrialActive;
+                var trialStart = _licence.TrialStartedUtc;
+                var trialActive = _licence.State == LicenceState.Trial;
                 Task.Run(() => TrialRegistration.RegisterAsync(trialStart, trialActive));
             }
         }
 
-        // ─── Activation ─────────────────────────────────────────────
+        // ─── Activation, deactivation, validation ───────────────────
 
-        /// <summary>
-        /// Activates a license key on this machine.
-        /// Returns (success, errorMessage).
-        /// </summary>
-        public async Task<(bool Success, string Message)> ActivateAsync(string licenseKey)
-        {
-            if (string.IsNullOrWhiteSpace(licenseKey))
-                return (false, "Please enter a licence key.");
+        /// <summary>Activates a license key on this machine. Returns (success, message).</summary>
+        public Task<(bool Success, string Message)> ActivateAsync(string licenseKey) =>
+            _licence.ActivateAsync(licenseKey);
 
-            try
-            {
-                var fingerprint = MachineId.GetFingerprint();
+        /// <summary>Deactivates the license on this machine, freeing the activation slot.</summary>
+        public Task<(bool Success, string Message)> DeactivateAsync() =>
+            _licence.DeactivateAsync();
 
-                var content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("license_key", licenseKey.Trim()),
-                    new KeyValuePair<string, string>("instance_name", fingerprint),
-                });
-
-                var response = await Http.PostAsync(BaseUrl + "/activate", content);
-                var json = await response.Content.ReadAsStringAsync();
-                var result = ParseLemonSqueezyResponse(json);
-
-                if (result.Activated)
-                {
-                    lock (_lock)
-                    {
-                        _info.LicenseKey = licenseKey.Trim();
-                        _info.InstanceId = result.InstanceId;
-                        _info.VariantName = result.VariantName;
-                        _info.Status = result.Status;
-                        _info.ActivatedAt = DateTime.UtcNow;
-                        _info.LastValidatedAt = DateTime.UtcNow;
-                        _info.ExpiresAt = result.ExpiresAt;
-                        _info.MachineFingerprint = fingerprint;
-                        _info.Save();
-                    }
-
-                    OnLicenseStateChanged();
-                    return (true, "Licence activated successfully.");
-                }
-
-                // Activation failed – return the error from Lemon Squeezy
-                return (false, result.Error ?? "Activation failed. Please check your licence key.");
-            }
-            catch (HttpRequestException ex)
-            {
-                return (false, "Could not reach the licence server. Please check your internet connection.\n\n" + ex.Message);
-            }
-            catch (Exception ex)
-            {
-                return (false, "An error occurred during activation: " + ex.Message);
-            }
-        }
-
-        // ─── Deactivation ───────────────────────────────────────────
-
-        /// <summary>
-        /// Deactivates the license on this machine, freeing up the activation slot.
-        /// Returns (success, errorMessage).
-        /// </summary>
-        public async Task<(bool Success, string Message)> DeactivateAsync()
-        {
-            if (!_info.IsActivated)
-                return (false, "No active licence to deactivate.");
-
-            try
-            {
-                var content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("license_key", _info.LicenseKey),
-                    new KeyValuePair<string, string>("instance_id", _info.InstanceId),
-                });
-
-                var response = await Http.PostAsync(BaseUrl + "/deactivate", content);
-                // Even if the server call fails, we clear local state
-            }
-            catch
-            {
-                // Network error – still clear local state
-            }
-
-            lock (_lock)
-            {
-                _info.Reset();
-            }
-
-            OnLicenseStateChanged();
-            return (true, "Licence deactivated. This machine's activation slot has been freed.");
-        }
-
-        // ─── Validation ─────────────────────────────────────────────
-
-        /// <summary>
-        /// Validates the license online. Called on startup (background) and
-        /// can be called manually from the License panel ("Refresh" button).
-        /// Returns (success, errorMessage).
-        /// </summary>
-        public async Task<(bool Success, string Message)> ValidateOnlineAsync()
-        {
-            if (!_info.IsActivated)
-                return (false, "No active licence to validate.");
-
-            try
-            {
-                var content = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("license_key", _info.LicenseKey),
-                    new KeyValuePair<string, string>("instance_id", _info.InstanceId),
-                });
-
-                var response = await Http.PostAsync(BaseUrl + "/validate", content);
-                var json = await response.Content.ReadAsStringAsync();
-                var result = ParseLemonSqueezyResponse(json);
-
-                // An answer we cannot read is not an answer. A reply that does
-                // not parse, or that arrives in an unexpected shape, is treated
-                // exactly like a transport failure: nothing stored changes, the
-                // cached state stands, and the offline window runs down as it
-                // would with no network at all. Only a reply we understood may
-                // change licence state, and only one that says active may renew
-                // the window. Do not relax either half; both directions of
-                // getting this wrong are bad, one for the user and one for us.
-                if (!result.Understood)
-                    return (false, "Could not read the licence server's reply. Using cached licence state.");
-
-                var previousTier = ResolveTier();
-
-                lock (_lock)
-                {
-                    _info.Status = result.Status;
-                    _info.VariantName = result.VariantName;
-                    _info.ExpiresAt = result.ExpiresAt;
-
-                    // Only a reply that says ACTIVE renews the window. A reply
-                    // that says disabled or expired still takes effect at once
-                    // through Status above — it just does not buy another 30
-                    // days of offline grace.
-                    if (IsStatusActive())
-                        _info.LastValidatedAt = DateTime.UtcNow;
-
-                    _info.Save();
-                }
-
-                var newTier = ResolveTier();
-                if (newTier != previousTier)
-                    OnLicenseStateChanged();
-
-                if (result.Valid)
-                    return (true, "Licence is valid.");
-                else
-                    return (false, result.Error ?? "Licence validation failed.");
-            }
-            catch (HttpRequestException)
-            {
-                // Network error – offline mode, trust cached state
-                return (false, "Could not reach the licence server. Using cached licence state.");
-            }
-            catch (Exception ex)
-            {
-                return (false, "Validation error: " + ex.Message);
-            }
-        }
-
-        // ─── Tier Resolution ────────────────────────────────────────
-
-        private LicenseTier ResolveTier()
-        {
-            // 1. If we have an activated license with valid cached state
-            if (_info.IsActivated && IsStatusActive())
-            {
-                // Check that the cached validation is still within the offline window
-                if (IsCacheValid())
-                    return LicenseTier.Licensed;
-            }
-
-            // 2. If we have an activated license but the cache is stale
-            //    (online validation hasn't succeeded in 30+ days)
-            if (_info.IsActivated && !IsCacheValid())
-                return LicenseTier.None;
-
-            // 3. If no license key, check trial
-            if (!_info.HasLicenseKey && _info.IsTrialActive)
-                return LicenseTier.Trial;
-
-            return LicenseTier.None;
-        }
-
-        private bool IsStatusActive()
-        {
-            // Treat null/empty as active – the activation succeeded (we have an instance ID)
-            // but the Lemon Squeezy response may not have included a status field (e.g. API
-            // was down or returned an unexpected response format during activation).
-            if (string.IsNullOrEmpty(_info.Status))
-                return _info.IsActivated;
-
-            return string.Equals(_info.Status, "active", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private bool IsCacheValid()
-        {
-            if (_info.LastValidatedAt == DateTime.MinValue)
-                return false;
-
-            return (DateTime.UtcNow - _info.LastValidatedAt).TotalDays < OfflineCacheDays;
-        }
-
-        /// <summary>
-        /// Maps a Lemon Squeezy variant name to a license tier.
-        /// Since v4.18.48, all variants grant full access (single-tier model).
-        /// Since v4.20.23, Lemon Squeezy only sells one product anyway
-        /// ("Supervertaler for Trados"); the variant_name is captured for
-        /// display in the License panel but no longer affects feature
-        /// gating. Kept as a method (rather than inlined) so future
-        /// variant-aware product layouts can re-introduce gating here
-        /// without touching the caller.
-        /// </summary>
-        private static LicenseTier MapVariantToTier(string variantName)
-        {
-            return LicenseTier.Licensed;
-        }
-
-        // ─── Lemon Squeezy Response Parsing ─────────────────────────
-
-        /// <summary>
-        /// Parses the JSON response from Lemon Squeezy's License API.
-        /// The response structure is:
-        /// {
-        ///   "valid": true/false,
-        ///   "error": "...",
-        ///   "license_key": { "status": "active", "expires_at": "..." },
-        ///   "meta": { "variant_name": "..." },
-        ///   "instance": { "id": "..." }
-        /// }
-        /// </summary>
-        private static LemonSqueezyResult ParseLemonSqueezyResponse(string json)
-        {
-            var result = new LemonSqueezyResult();
-
-            try
-            {
-                using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
-                {
-                    var serializer = new DataContractJsonSerializer(typeof(LsResponse));
-                    var response = (LsResponse)serializer.ReadObject(stream);
-
-                    result.Valid = response.Valid;
-                    result.Activated = response.Activated;
-                    result.Error = response.Error;
-
-                    // "Understood" means the body parsed AND carried a
-                    // recognisable licence block — which every real reply from
-                    // this endpoint does, verified against the live API on
-                    // 2026-09-19. It is the test ValidateOnlineAsync uses to
-                    // decide whether the reply may change stored state at all.
-                    result.Understood = response.LicenseKey != null
-                        && !string.IsNullOrEmpty(response.LicenseKey.Status);
-
-                    if (response.LicenseKey != null)
-                    {
-                        result.Status = response.LicenseKey.Status ?? "";
-
-                        if (!string.IsNullOrWhiteSpace(response.LicenseKey.ExpiresAt))
-                        {
-                            if (DateTime.TryParse(response.LicenseKey.ExpiresAt, null,
-                                System.Globalization.DateTimeStyles.RoundtripKind, out var expires))
-                            {
-                                result.ExpiresAt = expires;
-                            }
-                        }
-                    }
-
-                    if (response.Meta != null)
-                    {
-                        result.VariantName = response.Meta.VariantName ?? "";
-                    }
-
-                    if (response.Instance != null)
-                    {
-                        result.InstanceId = response.Instance.Id ?? "";
-                    }
-                }
-            }
-            catch
-            {
-                result.Error = "Failed to parse licence server response.";
-            }
-
-            return result;
-        }
-
-        private void OnLicenseStateChanged()
-        {
-            LicenseStateChanged?.Invoke(this, EventArgs.Empty);
-        }
+        /// <summary>Validates the license online. Startup (background) and the panel's "Verify Now".</summary>
+        public Task<(bool Success, string Message)> ValidateOnlineAsync() =>
+            _licence.ValidateOnlineAsync();
 
         // ─── Static UI helpers ──────────────────────────────────────
 
@@ -456,9 +143,9 @@ namespace Supervertaler.Trados.Licensing
         public static void ShowLicenseRequiredMessage()
         {
             MessageBox.Show(
-                "Your trial has expired. Please enter a licence key in Settings \u2192 Licence to continue using Supervertaler for Trados.\n\n" +
+                "Your trial has expired. Please enter a licence key in Settings → Licence to continue using Supervertaler for Trados.\n\n" +
                 "Visit supervertaler.com/trados/ for pricing and purchase options.\n\n" +
-                "Cost shouldn\u2019t be a barrier: if the price is a problem for you, get in touch via beijer.uk/contact and we\u2019ll work something out.",
+                "Cost shouldn’t be a barrier: if the price is a problem for you, get in touch via beijer.uk/contact and we’ll work something out.",
                 "Licence Required",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -470,70 +157,25 @@ namespace Supervertaler.Trados.Licensing
         /// </summary>
         public static void ShowUpgradeMessage() => ShowLicenseRequiredMessage();
 
-        // ─── Lemon Squeezy response DTOs ────────────────────────────
-
-        private class LemonSqueezyResult
+        private static void ShowDamagedFileMessage(bool thisSession)
         {
-            /// <summary>
-            /// The body parsed and carried a recognisable licence block. False
-            /// for a non-JSON body, a parse failure, or a reply of an
-            /// unexpected shape — all of which mean "we did not reach the
-            /// server", never "the licence is fine".
-            /// </summary>
-            public bool Understood;
-            public bool Valid;
-            public bool Activated;
-            public string Error;
-            public string Status;
-            public string VariantName;
-            public string InstanceId;
-            public DateTime? ExpiresAt;
-        }
-
-        [DataContract]
-        private class LsResponse
-        {
-            [DataMember(Name = "valid")]
-            public bool Valid { get; set; }
-
-            [DataMember(Name = "activated")]
-            public bool Activated { get; set; }
-
-            [DataMember(Name = "error")]
-            public string Error { get; set; }
-
-            [DataMember(Name = "license_key")]
-            public LsLicenseKey LicenseKey { get; set; }
-
-            [DataMember(Name = "meta")]
-            public LsMeta Meta { get; set; }
-
-            [DataMember(Name = "instance")]
-            public LsInstance Instance { get; set; }
-        }
-
-        [DataContract]
-        private class LsLicenseKey
-        {
-            [DataMember(Name = "status")]
-            public string Status { get; set; }
-
-            [DataMember(Name = "expires_at")]
-            public string ExpiresAt { get; set; }
-        }
-
-        [DataContract]
-        private class LsMeta
-        {
-            [DataMember(Name = "variant_name")]
-            public string VariantName { get; set; }
-        }
-
-        [DataContract]
-        private class LsInstance
-        {
-            [DataMember(Name = "id")]
-            public string Id { get; set; }
+            try
+            {
+                MessageBox.Show(
+                    (thisSession
+                        ? "Your Supervertaler licence file is damaged and could not be read, so it has been reset.\n\n" +
+                          "If you have a licence key, please re-enter it in Settings → Licence. " +
+                          "Everything stays available until you next start Trados Studio."
+                        : "Your Supervertaler licence file was found damaged and has been reset.\n\n" +
+                          "If you have a licence key, please re-enter it in Settings → Licence to restore access."),
+                    "Supervertaler – Licence File Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            catch
+            {
+                // UI not available yet – the log has it.
+            }
         }
     }
 }

@@ -18,12 +18,13 @@ namespace Supervertaler.Trados.Settings
     /// Folder layout under the root:
     ///   prompt_library/     – prompt .md files shared between both products
     ///   resources/          – supervertaler.db (shared termbase, if present)
+    ///   licence/            – the licence every product shares (core's SupervertalerLicence)
     ///   workbench/          – Supervertaler Workbench-specific data
     ///     settings/         – Workbench settings files
     ///   trados/
     ///     settings/         – Trados plugin settings
     ///       settings.json   – plugin preferences
-    ///       license.json    – license activation state
+    ///       license.json    – the licence before it was shared; now only read, once, as the source of a copy
     ///       chat_history.json – AI Assistant chat history
     ///     projects/         – per-project settings overlays
     ///
@@ -1040,7 +1041,11 @@ namespace Supervertaler.Trados.Settings
         /// <summary>Path to the plugin settings file.</summary>
         public static string SettingsFilePath => Path.Combine(TradosSettingsDir, "settings.json");
 
-        /// <summary>Path to the license activation file.</summary>
+        /// <summary>
+        /// Where the licence lived before it was shared. The layout migrations
+        /// below still bring older files here, because core copies the shared
+        /// licence from this path on first start.
+        /// </summary>
         public static string LicenseFilePath => Path.Combine(TradosSettingsDir, "license.json");
 
         /// <summary>Path to the persisted AI Assistant chat history file.</summary>

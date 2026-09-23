@@ -4777,6 +4777,7 @@ namespace Supervertaler.Trados
                 {
                     case LicenseTier.Trial: return "trial";
                     case LicenseTier.None: return "unlicensed";
+                    case LicenseTier.Unknown: return "unknown";
                     default: return "licensed"; // Licensed + legacy paid tiers
                 }
             }

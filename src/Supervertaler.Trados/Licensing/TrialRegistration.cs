@@ -6,6 +6,7 @@ using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading.Tasks;
+using Supervertaler.Core;
 
 namespace Supervertaler.Trados.Licensing
 {

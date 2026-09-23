@@ -30,5 +30,12 @@ namespace Supervertaler.Trados.Licensing
         /// <summary>Obsolete. Previously: Assistant only. Now treated as Licensed.</summary>
         [Obsolete("Use Licensed. Single-tier model since v4.18.48.")]
         AssistantOnly = 5,
+
+        /// <summary>
+        /// The licence could not be read this session. Never a refusal: every
+        /// feature stays available, because a paying customer must not be
+        /// locked out by an absence of information.
+        /// </summary>
+        Unknown = 6,
     }
 }

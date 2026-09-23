@@ -315,6 +315,10 @@ namespace Supervertaler.Trados.Licensing
                     ShowLicensedState(mgr);
                     break;
 
+                case LicenseTier.Unknown:
+                    ShowUnknownState();
+                    break;
+
                 case LicenseTier.None:
                 default:
                     if (mgr.HasLicenseKey)
@@ -380,6 +384,19 @@ namespace Supervertaler.Trados.Licensing
             _statusBanner.Invalidate();
             _statusText.Text = "\u274c  Licence expired";
             _statusText.ForeColor = Color.FromArgb(180, 40, 40);
+
+            _activationPanel.Visible = true;
+            _licensedPanel.Visible = false;
+        }
+
+        // The licence file could not be read. Everything stays available; the
+        // activation panel is shown so a key can be re-entered if it was lost.
+        private void ShowUnknownState()
+        {
+            _statusBanner.BackColor = Color.FromArgb(255, 245, 215);
+            _statusBanner.Invalidate();
+            _statusText.Text = "⚠  Licence could not be read";
+            _statusText.ForeColor = Color.FromArgb(140, 100, 0);
 
             _activationPanel.Visible = true;
             _licensedPanel.Visible = false;

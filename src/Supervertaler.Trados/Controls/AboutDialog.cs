@@ -148,6 +148,10 @@ namespace Supervertaler.Trados.Controls
                     licenseText = "Licence: Active";
                     licenseColor = Color.FromArgb(40, 120, 40);
                     break;
+                case LicenseTier.Unknown:
+                    licenseText = "Licence: Could not be read";
+                    licenseColor = Color.FromArgb(140, 100, 0);
+                    break;
                 default:
                     licenseText = "Licence: No active licence";
                     licenseColor = Color.FromArgb(180, 40, 40);
