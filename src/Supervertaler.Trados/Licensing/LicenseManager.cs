@@ -43,13 +43,37 @@ namespace Supervertaler.Trados.Licensing
             SupervertalerLicence.Log = Core.BridgeLog.Write;
 
             _licence = SupervertalerLicence.Instance;
-            _licence.StateChanged += (s, e) => LicenseStateChanged?.Invoke(this, EventArgs.Empty);
+            _licence.StateChanged += (s, e) => RaiseLicenseStateChanged();
 
             // At every start until a key is activated, not only the first: the
             // session after the damage is the one that can lock a paying
             // customer out, and it would otherwise say nothing about why.
             if (_licence.DamagedFileFound && _licence.State != LicenceState.Licensed)
                 ShowDamagedFileMessage(thisSession: _licence.State == LicenceState.Unknown);
+        }
+
+        /// <summary>
+        /// Each subscriber on its own, so one pane that fails to update - the AI
+        /// Assistant touching a window that was never opened did exactly this -
+        /// cannot keep the others from hearing of the change.
+        /// </summary>
+        private void RaiseLicenseStateChanged()
+        {
+            var handlers = LicenseStateChanged;
+            if (handlers == null) return;
+
+            foreach (EventHandler handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(this, EventArgs.Empty);
+                }
+                catch (Exception ex)
+                {
+                    Core.BridgeLog.Write("Licence: a LicenseStateChanged subscriber failed and was skipped: " +
+                        ex.GetType().Name + ": " + ex.Message);
+                }
+            }
         }
 
         // ─── Public properties ──────────────────────────────────────

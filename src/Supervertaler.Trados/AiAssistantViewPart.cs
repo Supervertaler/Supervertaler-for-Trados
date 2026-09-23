@@ -180,20 +180,16 @@ namespace Supervertaler.Trados
             // returned early due to no access), run the deferred full init so
             // event handlers, memory-bank dropdown, inbox watcher, etc. are
             // all wired up without requiring a Trados restart.
+            //
+            // A pane that has never been opened (auto-hidden, say) has no window
+            // yet, and BeginInvoke on it throws - which, raised from a licence
+            // change, surfaced as an error dialog on Deactivate. So only marshal
+            // when there is a window; otherwise HandleCreated below applies the
+            // licence state when the pane is first shown.
             LicenseManager.Instance.LicenseStateChanged += (s, e) =>
             {
-                _control.Value.BeginInvoke(new Action(() =>
-                {
-                    if (LicenseManager.Instance.HasAssistantAccess)
-                    {
-                        _control.Value.HideUpgradeRequired();
-                        InitializeFullIfNeeded();
-                    }
-                    else
-                    {
-                        _control.Value.ShowUpgradeRequired();
-                    }
-                }));
+                if (_control.IsValueCreated && _control.Value.IsHandleCreated)
+                    _control.Value.BeginInvoke(new Action(ApplyLicenceState));
             };
 
             // Settings load themselves on first touch via SettingsService.
@@ -203,6 +199,7 @@ namespace Supervertaler.Trados
             _promptLibrary = TermLensEditorViewPart.GetPromptLibrary() ?? new PromptLibrary();
             _promptLibrary.EnsureDefaultPrompts();
             _control.Value.SettingsRequested += OnSettingsRequested;
+            _control.Value.HandleCreated += (s, e) => ApplyLicenceState();
 
             // Live-sync the Batch Translate dropdown whenever the user toggles the
             // active prompt in the Prompt Manager, no matter which entry point
@@ -232,6 +229,25 @@ namespace Supervertaler.Trados
         /// licensed at startup) or from the <c>LicenseStateChanged</c>
         /// handler (when the user activates mid-session).
         /// </summary>
+        /// <summary>
+        /// Shows or hides the upgrade overlay for the licence as it is now, and
+        /// finishes a deferred initialisation once there is access. Both halves
+        /// are idempotent, so it is safe on every licence change and every time
+        /// the pane's window is (re)created. UI thread only.
+        /// </summary>
+        private void ApplyLicenceState()
+        {
+            if (LicenseManager.Instance.HasAssistantAccess)
+            {
+                _control.Value.HideUpgradeRequired();
+                InitializeFullIfNeeded();
+            }
+            else
+            {
+                _control.Value.ShowUpgradeRequired();
+            }
+        }
+
         private void InitializeFullIfNeeded()
         {
             if (_fullyInitialized) return;

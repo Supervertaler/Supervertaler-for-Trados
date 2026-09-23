@@ -47,13 +47,29 @@ namespace Supervertaler.Trados.Licensing
             BuildUI();
             RefreshDisplay();
 
-            LicenseManager.Instance.LicenseStateChanged += (s, e) =>
-            {
-                if (InvokeRequired)
-                    BeginInvoke(new Action(RefreshDisplay));
-                else
-                    RefreshDisplay();
-            };
+            // Unsubscribed in Dispose: the manager is a singleton, so without it
+            // every Settings dialog ever opened stayed subscribed for the rest of
+            // the session and was "refreshed" long after it had closed.
+            LicenseManager.Instance.LicenseStateChanged += OnLicenseStateChanged;
+            HandleCreated += (s, e) => RefreshDisplay();
+        }
+
+        // Raised on whichever thread changed the licence. Without a window there
+        // is nothing to marshal to, and HandleCreated refreshes it when shown.
+        private void OnLicenseStateChanged(object sender, EventArgs e)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            if (InvokeRequired)
+                BeginInvoke(new Action(RefreshDisplay));
+            else
+                RefreshDisplay();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                LicenseManager.Instance.LicenseStateChanged -= OnLicenseStateChanged;
+            base.Dispose(disposing);
         }
 
         private void BuildUI()
