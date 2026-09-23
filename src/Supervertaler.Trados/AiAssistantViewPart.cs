@@ -1642,6 +1642,7 @@ namespace Supervertaler.Trados
             var pairIndex = BuildSegmentPairIndex(null);
             int processed = 0;
             int tagMismatches = 0;
+            int trackedWholeSegment = 0;
             int staleFingerprints = 0;
 
             foreach (var u in req.Updates)
@@ -1783,6 +1784,13 @@ namespace Supervertaler.Trados
 
                 string tagWarning = null;
 
+                // #138: set when Track Changes is on but this write could not be
+                // shown word by word and was recorded as one whole-segment change.
+                // Reported on its own, never through tagWarning, which counts as a
+                // tag mismatch.
+                string trackedNote = null;
+                Core.TrackingSuspension suspension = null;
+
                 // #134: only now, after the fp check, does the lock come off - and a
                 // write that then fails puts it back (see the catch below). A segment
                 // must never be left unlocked by accident.
@@ -1801,9 +1809,18 @@ namespace Supervertaler.Trados
                 {
                     if (targetText != null)
                     {
+                        // #138: with Track Changes on, write only what changed. Read
+                        // per segment rather than once per call, because the loop
+                        // pumps messages and the translator can toggle it mid-batch.
+                        bool trackWords = Core.TrackingSuspension.IsTracking(_activeDocument) == true;
+
                         _activeDocument.ProcessSegmentPair(pair, "Supervertaler MCP",
                             (sp, cancel) =>
                             {
+                                // The target as it stands, taken before anything below
+                                // clears it. Only needed for a tracked write.
+                                var targetBefore = trackWords ? sp.Target.Clone() as ISegment : null;
+
                                 // Tag-aware write. NOTE the difference from bilingual
                                 // re-import: that path uses BuildCombinedTagMap, where
                                 // the TARGET wins numbering collisions, because the
@@ -1820,7 +1837,7 @@ namespace Supervertaler.Trados
                                 // self-perpetuating — the next write re-serialised that
                                 // same corrupt target and let it win again, so
                                 // rewriting the segment could never heal it.
-                                // Field report: job PO414646, segments 498/500/552/559,
+                                // Field report: job PROJ-001, segments 498/500/552/559,
                                 // all of the shape "<b>I/O</b> switch … <b>O</b> position".
                                 //
                                 // So: source-authoritative, always.
@@ -1881,6 +1898,15 @@ namespace Supervertaler.Trados
                                 // a target carrying none - which Studio reports as N missing
                                 // tags. That is exactly the silent lossy write this audit
                                 // exists to stop being silent.
+
+                                // #138: the new target is built; if tracking is on,
+                                // re-express it against the old one as word-level
+                                // revisions. On any refusal the target is left exactly
+                                // as built above, tracking stays on, and Studio records
+                                // its whole-segment change as it always has.
+                                if (targetBefore != null)
+                                    suspension = WriteAsTrackedChanges(sp, targetBefore, out trackedNote);
+
                                 Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                 tagWarning = DescribeTagIdMismatch(sp.Source, sp.Target);
 
@@ -1899,6 +1925,13 @@ namespace Supervertaler.Trados
                                         + "add_comment (get_comments to confirm).";
                                 }
                             });
+
+                        // #138: Studio has applied the write; tracking goes back on
+                        // NOW, before anything else runs. The loop pumps messages
+                        // every few segments, and a translator typing while it is off
+                        // would make edits no reviewer can see. Idempotent - the
+                        // finally below covers the path where the write throws.
+                        suspension?.Dispose();
                     }
 
                     if (setStatus)
@@ -1927,6 +1960,13 @@ namespace Supervertaler.Trados
                         item.Warning = tagWarning;
                         tagMismatches++;
                     }
+                    if (!string.IsNullOrEmpty(trackedNote))
+                    {
+                        item.Warning = string.IsNullOrEmpty(item.Warning)
+                            ? trackedNote
+                            : item.Warning + " " + trackedNote;
+                        trackedWholeSegment++;
+                    }
                     response.Applied++;
                 }
                 catch (Exception ex)
@@ -1944,6 +1984,12 @@ namespace Supervertaler.Trados
                             item.LockedAfter = false;
                         }
                     }
+                }
+                finally
+                {
+                    // #138: whatever happened above, the translator's editor is
+                    // never left with Track Changes switched off.
+                    suspension?.Dispose();
                 }
             }
 
@@ -1983,6 +2029,11 @@ namespace Supervertaler.Trados
                     response.Note += " WARNING: at least one target contained &nbsp; but decodeEntities was not set, " +
                         "so it was written as those six literal characters. Re-send with decodeEntities=true if you " +
                         "meant a non-breaking space.";
+                if (trackedWholeSegment > 0)
+                    response.Note += $" NOTE: Track Changes is on, and {trackedWholeSegment} segment(s) could not be " +
+                        "written as word-level revisions, so each was recorded as one whole-segment change - see the " +
+                        "per-item 'warning' field for why. The text is exactly what was sent; only the granularity of " +
+                        "the revision differs.";
                 if (tagMismatches > 0)
                     response.Note += $" WARNING: {tagMismatches} segment(s) were written with inline tags whose " +
                         "underlying tag ids do not match the source — see the per-item 'warning' field. Studio's Tag " +
@@ -2087,6 +2138,81 @@ namespace Supervertaler.Trados
         /// <summary>Depth-first list of the underlying Trados tag ids in a segment,
         /// in document order, including duplicates. Tags whose id cannot be read are
         /// skipped rather than guessed at.</summary>
+        /// <summary>
+        /// #138: replaces the freshly built target in <paramref name="sp"/> with the
+        /// same text expressed as word-level revisions against
+        /// <paramref name="targetBefore"/>, and switches Track Changes off so Studio
+        /// applies them as they are instead of wrapping them in its own
+        /// whole-segment revision.
+        ///
+        /// <para>Returns the suspension the caller must dispose the moment the write
+        /// has been applied. Returns null, with a reason in
+        /// <paramref name="note"/>, whenever it declines - and in that case it has
+        /// changed nothing: the target is still exactly what the ordinary write
+        /// built, and tracking is still on.</para>
+        ///
+        /// <para>The order is deliberate. The merge is built and self-checked on a
+        /// detached copy first; tracking is switched off only once there is a
+        /// verified result to write; and the target is replaced only once tracking
+        /// is known to be off. No failure along the way can leave an untracked
+        /// change behind.</para>
+        /// </summary>
+        private Core.TrackingSuspension WriteAsTrackedChanges(
+            ISegmentPair sp, ISegment targetBefore, out string note)
+        {
+            note = null;
+            var factory = CreateDocumentItemFactory();
+            var props = factory?.PropertiesFactory;
+            if (props == null)
+            {
+                note = "tracked as a whole-segment change (revision markers could not be created).";
+                return null;
+            }
+
+            // One insertion and one deletion per segment, shared by every marker
+            // in it - the shape Studio documents for one edit spanning several
+            // markers, and the shape the issue's reference output used.
+            var author = Core.TrackingSuspension.EditingUser(_activeDocument);
+            var now = DateTime.Now;
+            var ins = props.CreateRevisionProperties(RevisionType.Insert);
+            ins.Author = author;
+            ins.Date = now;
+            var del = props.CreateRevisionProperties(RevisionType.Delete);
+            del.Author = author;
+            del.Date = now;
+
+            var refusal = Core.TrackedTargetMerge.TryMerge(targetBefore, sp.Target, factory, ins, del);
+            if (refusal != null)
+            {
+                note = "tracked as a whole-segment change (" + refusal + ").";
+                return null;
+            }
+
+            var suspension = Core.TrackingSuspension.TurnOff(_activeDocument);
+            if (suspension == null)
+            {
+                note = "tracked as a whole-segment change (Track Changes could not be switched for the write).";
+                return null;
+            }
+
+            // From here the suspension exists but the caller does not have it yet,
+            // so a throw would lose it and leave Track Changes off for the rest of
+            // the session. Restore it here, then rethrow rather than return: if the
+            // clear succeeded and the move did not, the target is half-replaced,
+            // and throwing out of the callback is what stops Studio writing it.
+            try
+            {
+                sp.Target.Clear();
+                targetBefore.MoveAllItemsTo(sp.Target);
+            }
+            catch
+            {
+                suspension.Dispose();
+                throw;
+            }
+            return suspension;
+        }
+
         private static List<string> CollectTagIds(IAbstractMarkupDataContainer container)
         {
             if (container == null) return null;
@@ -2621,7 +2747,7 @@ namespace Supervertaler.Trados
         // ── Coverage tracking (session-scoped) ─────────────────────────────
         //
         // The root cause of the worst QA miss on record (84 defects behind two
-        // "clean" QA passes, PO414646) was not any single broken check - it was
+        // "clean" QA passes, PROJ-001) was not any single broken check - it was
         // that nothing tracked which segments had actually been LOOKED AT, so
         // an agent could fix three defect categories, re-run the suite, see
         // green, and stop without ever reading ~40 of the 220 fuzzy segments.
