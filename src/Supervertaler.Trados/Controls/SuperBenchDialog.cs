@@ -90,7 +90,7 @@ namespace Supervertaler.Trados.Controls
             var providerKeys = LlmModels.AllProviderKeys.Where(k => k != LlmModels.ProviderCustomOpenAi).ToList();
             var defaults = new[]
             {
-                (LlmModels.ProviderClaude, "claude-opus-5"),
+                (LlmModels.ProviderClaude, "claude-opus-5-5"),
                 (LlmModels.ProviderOpenAi, "gpt-5.6-sol"),
                 (LlmModels.ProviderGemini, "gemini-3.1-pro-preview"),
             };

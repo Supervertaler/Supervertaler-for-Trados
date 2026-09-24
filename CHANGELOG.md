@@ -9,7 +9,12 @@
 
 ## [18.20.197 / 19.20.197] – Unreleased
 
+### Added
+- **Claude Opus 5.5 is in the model list.** It is the newest Opus and costs less than Opus 5 ($4 input / $20 output per million tokens, against $5 / $25). Its costs now show in the prompt log and cost estimates, where a run on it used to say "unknown". Opus 5 stays in the list for anyone who prefers it.
+
 ### Fixed
+- **Batch Translate no longer moves numbered lines from one segment to another.** A segment whose text had numbered lines of its own – a contents list with "4.1 …", "4.2 …", or the steps "1. …", "2. …" of a procedure – could come back with those lines cut off and added to a different segment of the batch, their numbers stripped, leaving the segment with only its first line. Such lines now stay in their own segment.
+- **Cost estimates for Claude Sonnet 5 were too high.** The price list had it at $3 / $15 per million tokens; it is $2 / $10. Claude Opus 4.6 through OpenRouter is corrected the same way, to $5 / $25.
 - **Deactivating your licence no longer shows an error box.** If the AI Assistant pane had never been opened in that session, Settings → Licence → Deactivate showed an error, although the deactivation had in fact worked. The pane now catches up with the licence the first time it is opened.
 
 ### Changed

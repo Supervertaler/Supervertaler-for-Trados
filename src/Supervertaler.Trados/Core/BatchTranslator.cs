@@ -355,7 +355,7 @@ namespace Supervertaler.Trados.Core
                         }
 
                         // Parse response
-                        var parsed = TranslationPrompt.ParseBatchResponse(response, batchCount);
+                        var parsed = TranslationPrompt.ParseBatchResponse(response, promptSegments);
 
                         // Map parsed translations back to segments by number
                         var translationMap = new Dictionary<int, string>();
@@ -487,7 +487,7 @@ namespace Supervertaler.Trados.Core
                                 }
                                 else aggActualUsageComplete = false;
 
-                                var rParsed = TranslationPrompt.ParseBatchResponse(rResponse, re - rs);
+                                var rParsed = TranslationPrompt.ParseBatchResponse(rResponse, ps);
                                 var rMap = new Dictionary<int, string>();
                                 foreach (var p in rParsed)
                                     rMap[p.Number] = CleanTarget(p.Translation,
