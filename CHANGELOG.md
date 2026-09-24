@@ -10,7 +10,7 @@
 ## [18.20.197 / 19.20.197] – Unreleased
 
 ### Added
-- **Claude Opus 5.5 is in the model list.** It is the newest Opus and costs less than Opus 5 ($4 input / $20 output per million tokens, against $5 / $25). Its costs now show in the prompt log and cost estimates, where a run on it used to say "unknown". Opus 5 stays in the list for anyone who prefers it.
+- **Claude Opus 5.5 replaces Opus 5 in the model list.** It is the newest Opus and costs less ($4 input / $20 output per million tokens, against $5 / $25). Its costs now show in the prompt log and cost estimates, where a run on it used to say "unknown". If you have Opus 5 selected it keeps working: it appears in the custom model ID field instead of the list.
 
 ### Fixed
 - **Batch Translate no longer moves numbered lines from one segment to another.** A segment whose text had numbered lines of its own – a contents list with "4.1 …", "4.2 …", or the steps "1. …", "2. …" of a procedure – could come back with those lines cut off and added to a different segment of the batch, their numbers stripped, leaving the segment with only its first line. Such lines now stay in their own segment.
