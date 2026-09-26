@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.198 / 19.20.198] – Unreleased
+
+### Added
+- **An AI assistant writing through the MCP server can now update your translation memory as it goes.** `update_segments` has a new option, `updateTm`. With it, each segment the assistant leaves Translated, Approved or Signed off is also written to the project's main translation memories, exactly as when you confirm a segment yourself: rewriting a segment updates the unit it wrote before rather than adding a second one, and translations stored for the same sentence in other places are left alone. Drafts are never sent, so nothing reaches the memory unreviewed, and the option is off unless the assistant is asked to use it. Each segment's result says whether the memory took it. Save the document afterwards: the link between each segment and its unit in the memory is kept there.
+
 ## [18.20.197 / 19.20.197] – Unreleased
 
 ### Added

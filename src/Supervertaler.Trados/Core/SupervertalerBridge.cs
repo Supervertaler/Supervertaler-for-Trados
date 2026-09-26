@@ -1256,6 +1256,35 @@ namespace Supervertaler.Trados.Core
         /// <summary>Opt in to HTML-entity decoding of every 'target'. See
         /// <see cref="EntityEscapes"/> for why this exists.</summary>
         [DataMember(Name = "decodeEntities", EmitDefaultValue = false)] public bool DecodeEntities { get; set; }
+        /// <summary>Also write each segment left Translated, ApprovedTranslation or
+        /// ApprovedSignOff to the project's main TM(s), as Studio does on confirm:
+        /// the unit this segment wrote before is overwritten, not duplicated. Off
+        /// by default, so drafts never reach a TM unreviewed. See
+        /// <see cref="TmSegmentWriter"/>.</summary>
+        [DataMember(Name = "updateTm", EmitDefaultValue = false)] public bool UpdateTm { get; set; }
+    }
+
+    /// <summary>updateTm: what happened to one segment in the translation memory.</summary>
+    [DataContract]
+    public class BridgeTmWrite
+    {
+        /// <summary>True when every main TM accepted the segment.</summary>
+        [DataMember(Name = "written", Order = 0)] public bool Written { get; set; }
+        /// <summary>Why the segment was not sent to the TM at all (Draft status,
+        /// no main TM...). Not an error: the segment itself was written.</summary>
+        [DataMember(Name = "skipped", Order = 1, EmitDefaultValue = false)] public string Skipped { get; set; }
+        [DataMember(Name = "results", Order = 2, EmitDefaultValue = false)] public List<BridgeTmWriteTarget> Results { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeTmWriteTarget
+    {
+        [DataMember(Name = "tm", Order = 0)] public string Tm { get; set; }
+        /// <summary>added (new unit), updated (the unit this segment wrote before,
+        /// overwritten in place), merged (the same pair was already there; this
+        /// context was added to it) or unchanged (already there exactly).</summary>
+        [DataMember(Name = "action", Order = 1, EmitDefaultValue = false)] public string Action { get; set; }
+        [DataMember(Name = "error", Order = 2, EmitDefaultValue = false)] public string Error { get; set; }
     }
 
     /// <summary>
@@ -1332,6 +1361,9 @@ namespace Supervertaler.Trados.Core
         /// write time instead of at verification time. Not an error — the text
         /// was written — but the segment needs attention.</summary>
         [DataMember(Name = "warning", Order = 3, EmitDefaultValue = false)] public string Warning { get; set; }
+
+        /// <summary>updateTm only: the translation-memory outcome for this segment.</summary>
+        [DataMember(Name = "tm", Order = 30, EmitDefaultValue = false)] public BridgeTmWrite Tm { get; set; }
     }
 
     [DataContract]

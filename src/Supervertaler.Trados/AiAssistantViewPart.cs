@@ -1629,23 +1629,72 @@ namespace Supervertaler.Trados
         /// write path as bilingual re-import. A target write without an explicit
         /// status defaults to Draft so AI writes are always visible as such in
         /// Studio. Locked segments are refused. Marshals to the UI thread.
+        ///
+        /// <para>With updateTm, the segments are written and their TM units built
+        /// on the UI thread, the TM write runs HERE on the bridge's own thread -
+        /// a write to a multi-gigabyte memory or a GroupShare server must not
+        /// freeze the editor - and the hash that links each segment to its unit
+        /// is stamped back on the UI thread. See Core/TmSegmentWriter.</para>
         /// </summary>
         private BridgeUpdateSegmentsResponse BridgeUpdateSegments(BridgeUpdateSegmentsRequest req)
         {
-            var ctrl = _control?.Value;
-            if (ctrl == null || ctrl.IsDisposed)
-                return new BridgeUpdateSegmentsResponse { Ok = false, Error = "ai assistant disposed" };
-
-            if (ctrl.InvokeRequired)
+            Core.TmSegmentWriter.Plan tmPlan = null;
+            object tmDocument = null;
+            var response = OnUiThread(() =>
             {
-                return (BridgeUpdateSegmentsResponse)ctrl.Invoke(new Func<BridgeUpdateSegmentsResponse>(() => BridgeUpdateSegments(req)));
+                tmDocument = _activeDocument;
+                return ApplySegmentUpdates(req, out tmPlan);
+            });
+            if (response == null)
+                return new BridgeUpdateSegmentsResponse { Ok = false, Error = "ai assistant disposed" };
+            if (tmPlan == null) return response;
+
+            // The segments are already written. Nothing past this point may turn
+            // the response into a failure: a caller told "update failed" would
+            // rewrite segments that are fine.
+            try
+            {
+                var outcomes = Core.TmSegmentWriter.Write(tmPlan);
+                int unstamped = OnUiThread(() => (object)StampTmHashes(tmPlan, outcomes, tmDocument)) as int?
+                                ?? tmPlan.Units.Count;
+                ReportTmOutcomes(tmPlan, outcomes, unstamped, response);
             }
+            catch (Exception ex)
+            {
+                Core.DiagnosticLog.Log("TmUpdate", "TM phase threw: " + ex);
+                response.Note = (response.Note ?? "").TrimEnd() +
+                    " WARNING: the segments were written, but the translation memory update failed (" + ex.Message +
+                    "). Nothing reported here as written to the TM should be assumed to be there.";
+                foreach (var item in response.Results ?? new List<BridgeUpdateResultItem>())
+                    if (item.Ok && item.Tm == null)
+                        item.Tm = new BridgeTmWrite { Written = false, Results = new List<BridgeTmWriteTarget>
+                            { new BridgeTmWriteTarget { Tm = "(all)", Error = ex.Message } } };
+            }
+            return response;
+        }
+
+        /// <summary>
+        /// Runs <paramref name="func"/> on the UI thread and returns its result,
+        /// or null when the panel is gone.
+        /// </summary>
+        private T OnUiThread<T>(Func<T> func) where T : class
+        {
+            var ctrl = _control?.Value;
+            if (ctrl == null || ctrl.IsDisposed) return null;
+            if (ctrl.InvokeRequired) return (T)ctrl.Invoke(func);
             // The panel may have no handle yet (never opened this session), in
             // which case InvokeRequired lies – marshal via the UI thread we
             // captured at startup instead. See Core/UiThread.
-            if (UiThread.InvokeRequired && UiThread.IsAvailable)
-                return UiThread.Invoke(() => BridgeUpdateSegments(req));
+            if (UiThread.InvokeRequired && UiThread.IsAvailable) return UiThread.Invoke(func);
+            return func();
+        }
 
+        /// <summary>The UI-thread half of <see cref="BridgeUpdateSegments"/>:
+        /// writes the segments and, with updateTm, builds the TM plan.</summary>
+        private BridgeUpdateSegmentsResponse ApplySegmentUpdates(
+            BridgeUpdateSegmentsRequest req, out Core.TmSegmentWriter.Plan tmPlan)
+        {
+            tmPlan = null;
             if (_activeDocument == null)
                 return new BridgeUpdateSegmentsResponse { Ok = false, Error = "no document is open in the Trados editor" };
 
@@ -1660,6 +1709,10 @@ namespace Supervertaler.Trados
             int tagMismatches = 0;
             int trackedWholeSegment = 0;
             int staleFingerprints = 0;
+
+            // updateTm: the segments written, to send to the TM once the whole
+            // batch is in - so each one's context is its neighbour as it now reads.
+            var tmCandidates = req.UpdateTm ? new List<KeyValuePair<string, BridgeUpdateResultItem>>() : null;
 
             foreach (var u in req.Updates)
             {
@@ -1689,7 +1742,8 @@ namespace Supervertaler.Trados
                 }
 
                 ISegmentPair pair;
-                if (!pairIndex.TryGetValue(KeyOf(u.Id.Substring(0, sep), u.Id.Substring(sep + 1)), out pair) || pair == null)
+                var pairKey = KeyOf(u.Id.Substring(0, sep), u.Id.Substring(sep + 1));
+                if (!pairIndex.TryGetValue(pairKey, out pair) || pair == null)
                 {
                     item.Error = "segment not found in the open document";
                     response.Failed++;
@@ -1987,6 +2041,8 @@ namespace Supervertaler.Trados
 
                     item.Ok = true;
                     if (!lockOnly) BridgeRecordWrite(u.Id); // coverage: this segment was written this session
+                    if (tmCandidates != null && !lockOnly)
+                        tmCandidates.Add(new KeyValuePair<string, BridgeUpdateResultItem>(pairKey, item));
                     if (!string.IsNullOrEmpty(tagWarning))
                     {
                         item.Warning = tagWarning;
@@ -2085,7 +2141,261 @@ namespace Supervertaler.Trados
                     "and tell the user what happened before rewriting anything. "
                     + (response.Note ?? "");
 
+            if (tmCandidates != null && tmCandidates.Count > 0)
+            {
+                tmPlan = PrepareTmUpdate(tmCandidates);
+                if (tmPlan == null)
+                {
+                    var reasons = response.Results
+                        .Where(r => r.Tm?.Skipped != null)
+                        .Select(r => r.Tm.Skipped)
+                        .Distinct()
+                        .ToList();
+                    response.Note = (response.Note ?? "").TrimEnd() +
+                        " TM: nothing was written to the translation memory" +
+                        (reasons.Count == 1 ? " – " + reasons[0] + "." : "; see each item's 'tm.skipped' for why.");
+                }
+            }
+
             return response;
+        }
+
+        /// <summary>
+        /// updateTm, UI thread: builds a TM unit for every written segment that is
+        /// Translated or better, with its preceding segment for context, exactly as
+        /// Studio's editor does on confirm (see Core/TmSegmentWriter). Segments that
+        /// do not qualify get their reason on the result item now. Null when
+        /// nothing is left to write.
+        /// </summary>
+        private Core.TmSegmentWriter.Plan PrepareTmUpdate(
+            List<KeyValuePair<string, BridgeUpdateResultItem>> candidates)
+        {
+            // A segment updated twice in one call goes to the TM once, as it ends up.
+            var byKey = new Dictionary<string, List<BridgeUpdateResultItem>>(StringComparer.Ordinal);
+            foreach (var c in candidates)
+            {
+                if (!byKey.TryGetValue(c.Key, out var items)) byKey[c.Key] = items = new List<BridgeUpdateResultItem>();
+                items.Add(c.Value);
+            }
+
+            var plan = new Core.TmSegmentWriter.Plan();
+            Sdl.Core.Globalization.Language source = null, target = null;
+            try
+            {
+                target = _activeDocument.ActiveFile?.Language;
+                source = _activeDocument.ActiveFile?.SourceFile?.Language;
+            }
+            catch { }
+            plan.SourceCulture = source?.CultureInfo;
+            plan.TargetCulture = target?.CultureInfo;
+            if (plan.SourceCulture == null || plan.TargetCulture == null)
+                plan.Problem = "could not read the document's language pair";
+            else
+                Core.TmSegmentWriter.FindMainTms(_activeDocument.Project as FileBasedProject, target, plan);
+
+            if (plan.Problem != null)
+            {
+                foreach (var items in byKey.Values)
+                    foreach (var item in items)
+                        item.Tm = new BridgeTmWrite { Written = false, Skipped = plan.Problem };
+                return null;
+            }
+
+            var lp = new Sdl.LanguagePlatform.Core.LanguagePair(
+                new Sdl.Core.Globalization.CultureCode(plan.SourceCulture.Name),
+                new Sdl.Core.Globalization.CultureCode(plan.TargetCulture.Name));
+
+            // One pass in document order, carrying the preceding segment the way the
+            // editor finds it: the segment before, stopping at a file boundary, and
+            // stepping over an empty merged-paragraph marker.
+            EnsureBridgeFileMapFresh();
+            ISegmentPair prev = null;
+            IParagraphUnit prevPu = null;
+            string prevKey = null, prevFile = null;
+            var found = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var pair in _activeDocument.SegmentPairs)
+            {
+                if (pair == null) continue;
+                IParagraphUnit pu = null;
+                string puId = "", segId = "";
+                try { pu = _activeDocument.GetParentParagraphUnit(pair); puId = pu?.Properties?.ParagraphUnitId.Id ?? ""; } catch { }
+                try { segId = pair.Properties?.Id.Id ?? ""; } catch { }
+
+                string file = null;
+                if (puId.Length > 0) _puIdToFileId.TryGetValue(puId, out file);
+                if (prev != null && file != null && prevFile != null && file != prevFile) prev = null;
+
+                var key = KeyOf(puId, segId);
+                if (puId.Length > 0 && segId.Length > 0 && byKey.TryGetValue(key, out var items) && found.Add(key))
+                {
+                    var why = AddTmUnit(plan, lp, pair, pu, key, prev, prevPu, prevKey);
+                    if (why != null)
+                        foreach (var item in items) item.Tm = new BridgeTmWrite { Written = false, Skipped = why };
+                }
+
+                if (!IsEmptyMergedParagraphMarker(pair))
+                {
+                    prev = pair; prevPu = pu; prevKey = key; prevFile = file;
+                }
+            }
+
+            foreach (var kv in byKey)
+                if (!found.Contains(kv.Key))
+                    foreach (var item in kv.Value)
+                        item.Tm = new BridgeTmWrite { Written = false, Skipped = "the segment could not be found again to build its TM unit" };
+
+            return plan.Units.Count > 0 ? plan : null;
+        }
+
+        /// <summary>Adds one segment to the plan, or says why it does not go to the TM.</summary>
+        private static string AddTmUnit(
+            Core.TmSegmentWriter.Plan plan, Sdl.LanguagePlatform.Core.LanguagePair lp,
+            ISegmentPair pair, IParagraphUnit pu, string key,
+            ISegmentPair prev, IParagraphUnit prevPu, string prevKey)
+        {
+            var level = pair.Properties?.ConfirmationLevel ?? Sdl.Core.Globalization.ConfirmationLevel.Unspecified;
+            if (!Core.TmSegmentWriter.Qualifies(level))
+                return "status is " + level + " – only Translated, ApprovedTranslation and ApprovedSignOff segments " +
+                       "go to the TM, so drafts never reach it unreviewed";
+
+            Sdl.LanguagePlatform.TranslationMemory.TranslationUnit tu;
+            try { tu = Core.TmSegmentWriter.BuildUnit(lp, pair, pu?.Properties); }
+            catch (Exception ex) { return "could not build the TM unit: " + ex.Message; }
+            if (tu == null) return "the segment has no source text";
+            if (tu.TargetSegment == null || tu.TargetSegment.IsEmpty) return "the segment has no target text";
+            Core.TmSegmentWriter.MarkConfirmed(tu);
+
+            // The preceding segment only carries the context; a missing one puts
+            // this unit first in its call, which is the start-of-file context -
+            // what the editor does when it has none either.
+            Sdl.LanguagePlatform.TranslationMemory.TranslationUnit contextTu = null;
+            if (prev != null)
+            {
+                try { contextTu = Core.TmSegmentWriter.BuildUnit(lp, prev, prevPu?.Properties); }
+                catch { contextTu = null; }
+            }
+
+            plan.Units.Add(new Core.TmSegmentWriter.Unit
+            {
+                Key = key,
+                Tu = tu,
+                ContextTu = contextTu,
+                ContextKey = contextTu != null ? prevKey : null,
+                PreviousHash = Core.TmSegmentWriter.ReadPreviousHash(pair, out var raw),
+                HashSeen = raw,
+                NewHash = tu.TargetSegment.GetWeakHashCode(),
+                Pair = pair
+            });
+            return null;
+        }
+
+        private static bool IsEmptyMergedParagraphMarker(ISegmentPair pair)
+        {
+            try
+            {
+                return pair.Properties?.TranslationOrigin?.OriginSystem == "MergedParagraph"
+                       && !(pair.Source?.AllSubItems?.Any() ?? false);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// updateTm, UI thread: records on each segment what it now holds in the
+        /// main TM, so that rewriting it later overwrites that unit instead of
+        /// adding another - the same stamp the editor leaves on confirm. Skipped
+        /// where anything else has updated the TM from the segment meanwhile.
+        /// Returns how many written segments could NOT be stamped.
+        /// </summary>
+        private int StampTmHashes(Core.TmSegmentWriter.Plan plan,
+            List<Core.TmSegmentWriter.Outcome>[] outcomes, object documentAtPrepare)
+        {
+            int toStamp = 0, unstamped = 0;
+            IDocumentItemFactory factory = null;
+            bool sameDocument = ReferenceEquals(_activeDocument, documentAtPrepare) && _activeDocument != null;
+            for (int i = 0; i < plan.Units.Count; i++)
+            {
+                if (!outcomes[i].Any(o => o.Stamp)) continue;
+                toStamp++;
+                if (!sameDocument) { unstamped++; continue; }
+
+                var u = plan.Units[i];
+                try
+                {
+                    var props = u.Pair.Properties;
+                    var origin = props.TranslationOrigin;
+                    if ((origin?.OriginalTranslationHash ?? "") != (u.HashSeen ?? "")) { unstamped++; continue; }
+                    if (origin == null)
+                    {
+                        factory = factory ?? CreateDocumentItemFactory();
+                        origin = factory?.CreateTranslationOrigin();
+                        if (origin == null) { unstamped++; continue; }
+                        props.TranslationOrigin = origin;
+                    }
+                    origin.OriginalTranslationHash = u.NewHash.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    _activeDocument.UpdateSegmentPairProperties(u.Pair, props);
+                }
+                catch (Exception ex)
+                {
+                    unstamped++;
+                    Core.DiagnosticLog.Log("TmUpdate", "Could not stamp the TM hash on " + u.Key + ": " + ex.Message);
+                }
+            }
+            if (!sameDocument && toStamp > 0)
+                Core.DiagnosticLog.Log("TmUpdate", "The document changed before the TM hashes could be stamped.");
+            return unstamped;
+        }
+
+        /// <summary>updateTm: puts each segment's TM outcome on its result item
+        /// and one summary line in the note. Plain data, any thread.</summary>
+        private static void ReportTmOutcomes(Core.TmSegmentWriter.Plan plan,
+            List<Core.TmSegmentWriter.Outcome>[] outcomes, int unstamped, BridgeUpdateSegmentsResponse response)
+        {
+            var byKey = new Dictionary<string, BridgeTmWrite>(StringComparer.Ordinal);
+            int written = 0, notWritten = 0;
+            var actions = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (int i = 0; i < plan.Units.Count; i++)
+            {
+                var o = outcomes[i];
+                var tm = new BridgeTmWrite
+                {
+                    Written = o.Count > 0 && o.All(x => x.Error == null),
+                    Results = o.Select(x => new BridgeTmWriteTarget { Tm = x.Tm, Action = x.Action, Error = x.Error }).ToList()
+                };
+                byKey[plan.Units[i].Key] = tm;
+                if (tm.Written) written++; else notWritten++;
+                foreach (var x in o.Where(x => x.Action != null))
+                    actions[x.Action] = (actions.TryGetValue(x.Action, out var n) ? n : 0) + 1;
+            }
+
+            foreach (var item in response.Results ?? new List<BridgeUpdateResultItem>())
+            {
+                if (item.Tm != null || !item.Ok) continue;
+                var sep = item.Id?.LastIndexOf(':') ?? -1;
+                if (sep <= 0) continue;
+                if (byKey.TryGetValue(KeyOf(item.Id.Substring(0, sep), item.Id.Substring(sep + 1)), out var tm))
+                    item.Tm = tm;
+            }
+
+            var skipped = (response.Results ?? new List<BridgeUpdateResultItem>())
+                .Count(r => r.Tm != null && r.Tm.Skipped != null);
+            var tmNames = string.Join(", ", plan.Tms.Select(t => t.Name));
+            var line = $" TM ({tmNames}): {written} segment(s) written";
+            if (actions.Count > 0)
+                line += " – " + string.Join(", ", actions.OrderBy(a => a.Key).Select(a => a.Value + " " + a.Key));
+            line += ".";
+            if (notWritten > 0)
+                line += $" WARNING: {notWritten} segment(s) could not be written to the TM – see each item's 'tm' field.";
+            if (skipped > 0)
+                line += $" {skipped} segment(s) were not sent to the TM – see each item's 'tm.skipped' for why.";
+            if (plan.NotTms.Count > 0)
+                line += " Not written to " + string.Join(", ", plan.NotTms) +
+                        ": Update is ticked for it, but it is not a Trados translation memory.";
+            if (unstamped > 0)
+                line += $" NOTE: {unstamped} segment(s) reached the TM but could not be linked to their unit in the " +
+                        "document, so rewriting them later will add a new unit rather than update this one.";
+            line += " The link between each segment and its TM unit is kept in the document: the user needs to " +
+                    "save it, or the next rewrite adds a unit instead of updating this one.";
+            response.Note = (response.Note ?? "").TrimEnd() + line;
         }
 
         /// <summary>
