@@ -4049,9 +4049,13 @@ namespace Supervertaler.Trados
             try
             {
                 var ctrl = _control?.Value;
-                if (ctrl != null && !ctrl.IsDisposed && (ctrl.InvokeRequired || (UiThread.InvokeRequired && UiThread.IsAvailable)))
+                // A panel never opened this session has no handle, and Invoke on it
+                // throws - which read as "no document is open". See Core/UiThread.
+                if (ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired)
                     activeFilePath = (string)ctrl.Invoke(new Func<string>(
                         () => ResolveProjectAnchorPathCore()));
+                else if (UiThread.InvokeRequired && UiThread.IsAvailable)
+                    activeFilePath = UiThread.Invoke(() => ResolveProjectAnchorPathCore());
                 else
                     activeFilePath = ResolveProjectAnchorPathCore();
             }
@@ -4178,9 +4182,13 @@ namespace Supervertaler.Trados
             var ctrl = _control?.Value;
             try
             {
-                if (ctrl != null && !ctrl.IsDisposed && (ctrl.InvokeRequired || (UiThread.InvokeRequired && UiThread.IsAvailable)))
+                // A panel never opened this session has no handle, and Invoke on it
+                // throws - which read as "no document is open". See Core/UiThread.
+                if (ctrl != null && !ctrl.IsDisposed && ctrl.InvokeRequired)
                     activeFilePath = (string)ctrl.Invoke(new Func<string>(
                         () => ResolveProjectAnchorPathCore()));
+                else if (UiThread.InvokeRequired && UiThread.IsAvailable)
+                    activeFilePath = UiThread.Invoke(() => ResolveProjectAnchorPathCore());
                 else
                     activeFilePath = ResolveProjectAnchorPathCore();
             }
