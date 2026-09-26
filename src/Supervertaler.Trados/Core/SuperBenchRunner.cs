@@ -262,7 +262,14 @@ namespace Supervertaler.Trados.Core
                 if (!string.IsNullOrEmpty(e.Model) && !string.Equals(e.Model, _model, StringComparison.OrdinalIgnoreCase)) return;
                 lock (_sync)
                 {
-                    Cost += e.ActualCost ?? e.EstimatedCost;
+                    // A model missing from the price list is counted at the most it
+                    // can have cost, and shown as "up to" (CostKnown false).
+                    Cost += e.IsCostKnown
+                        ? e.ActualCost ?? e.EstimatedCost
+                        : TokenEstimator.CostCeiling(e.Provider, e.Model,
+                            e.ActualRegularInputTokens ?? e.EstimatedInputTokens,
+                            e.ActualCacheReadTokens ?? 0, e.ActualCacheWriteTokens ?? 0,
+                            e.ActualOutputTokens ?? e.EstimatedOutputTokens);
                     CostKnown &= e.IsCostKnown;
                     InputTokens += (e.ActualRegularInputTokens ?? e.EstimatedInputTokens)
                                  + (e.ActualCacheReadTokens ?? 0) + (e.ActualCacheWriteTokens ?? 0);
@@ -271,10 +278,25 @@ namespace Supervertaler.Trados.Core
             }
         }
 
-        /// <summary>A rough cost before running: every contender's batch plus the judge.</summary>
-        public static decimal EstimateCost(SuperBenchInputs inputs, IList<ModelChoice> contenders, ModelChoice judge)
+        /// <summary>
+        /// A rough cost before running: every contender's batch plus the judge.
+        /// A model missing from the price list is counted at the most it can cost
+        /// (<see cref="TokenEstimator.CostCeiling"/>), and <paramref name="upperBound"/>
+        /// says so, rather than adding nothing and understating the total.
+        /// </summary>
+        public static decimal EstimateCost(SuperBenchInputs inputs, IList<ModelChoice> contenders, ModelChoice judge,
+            out bool upperBound)
         {
+            upperBound = false;
             if (inputs == null || inputs.Segments.Count == 0) return 0m;
+            bool ceilingUsed = false;
+            decimal Price(ModelChoice m, int input, int output)
+            {
+                if (TokenEstimator.HasPricing(m.Model)) return TokenEstimator.EstimateCost(m.Model, input, output);
+                var ceiling = TokenEstimator.CostCeiling(m.Provider, m.Model, input, 0, 0, output);
+                if (ceiling > 0) ceilingUsed = true;
+                return ceiling;
+            }
             string systemPrompt;
             try
             {
@@ -292,16 +314,17 @@ namespace Supervertaler.Trados.Core
             int batches = Math.Max(1, (int)Math.Ceiling(inputs.Segments.Count / (double)Math.Max(1, inputs.BatchSize)));
             decimal total = 0m;
             foreach (var c in contenders ?? new List<ModelChoice>())
-                total += TokenEstimator.EstimateCost(c.Model, sys * batches + src, (int)(src * 1.2));
+                total += Price(c, sys * batches + src, (int)(src * 1.2));
             if (judge != null)
             {
                 // The judge reads the instructions and the approved terms as well as
                 // every candidate - on a real run that was most of its input.
                 int instructions = TokenEstimator.EstimateTokens(inputs.CustomPromptContent ?? "");
                 int terms = (inputs.TermbaseTerms?.Count ?? 0) * 12;
-                total += TokenEstimator.EstimateCost(judge.Model,
+                total += Price(judge,
                     instructions + terms + src * (1 + (contenders?.Count ?? 0)) + 1200, 1800);
             }
+            upperBound = ceilingUsed;
             return total;
         }
     }

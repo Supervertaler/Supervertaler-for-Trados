@@ -157,6 +157,12 @@ namespace Supervertaler.Trados.Core
                     : e.EstimatedInputTokens,
                 OutputTokens = e.HasActualUsage ? (e.ActualOutputTokens ?? 0) : e.EstimatedOutputTokens,
                 CostUsd = e.HasActualUsage ? (e.ActualCost ?? 0m) : e.EstimatedCost,
+                // Of inputTokens, how many were read from / written to the prompt
+                // cache. The one place outside Reports where a miss shows: a
+                // repeated request with a write and no read every time is paying
+                // 1.25x for a cache nothing uses.
+                CacheReadTokens = e.HasActualUsage ? e.ActualCacheReadTokens : null,
+                CacheWriteTokens = e.HasActualUsage ? e.ActualCacheWriteTokens : null,
             };
 
             if (e.Messages != null && e.Messages.Count > 0)
@@ -256,6 +262,8 @@ namespace Supervertaler.Trados.Core
         // absent when it gave none. The one field that tells a cut-short reply
         // from a finished one (#119).
         [DataMember(Name = "finishReason", EmitDefaultValue = false)] public string FinishReason { get; set; }
+        [DataMember(Name = "cacheReadTokens", EmitDefaultValue = false)] public int? CacheReadTokens { get; set; }
+        [DataMember(Name = "cacheWriteTokens", EmitDefaultValue = false)] public int? CacheWriteTokens { get; set; }
     }
 
     [DataContract]

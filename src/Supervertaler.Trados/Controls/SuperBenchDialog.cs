@@ -248,8 +248,9 @@ namespace Supervertaler.Trados.Controls
             if (_lblEstimate == null || _inputs == null) return;
             try
             {
-                var est = SuperBenchRunner.EstimateCost(_inputs.Take((int)_nudSegments.Value), Contenders(), JudgeChoice());
-                _lblEstimate.Text = $"of {_inputs.Segments.Count} in the document · estimated cost about ${est:0.00} for the three runs and the judge";
+                var est = SuperBenchRunner.EstimateCost(_inputs.Take((int)_nudSegments.Value), Contenders(), JudgeChoice(), out var upperBound);
+                _lblEstimate.Text = $"of {_inputs.Segments.Count} in the document · estimated cost {(upperBound ? "up to" : "about")} ${est:0.00} for the three runs and the judge"
+                    + (upperBound ? " (a model not in the price list is counted at the dearest listed rate)" : "");
             }
             catch { _lblEstimate.Text = ""; }
         }
@@ -331,7 +332,9 @@ namespace Supervertaler.Trados.Controls
 
             var sb = new StringBuilder();
             sb.AppendLine("Legend: " + string.Join("   ", ordered.Select(c => c.Label + " = " + (c.DisplayModel ?? c.Model)
-                + (c.CostKnown ? $" (${c.Cost:0.00##}, {c.Elapsed.TotalSeconds:F0} s)" : $" ({c.Elapsed.TotalSeconds:F0} s)")
+                + (c.CostKnown ? $" (${c.Cost:0.00##}, {c.Elapsed.TotalSeconds:F0} s)"
+                    : c.Cost > 0 ? $" (up to ${c.Cost:0.00##}, {c.Elapsed.TotalSeconds:F0} s)"
+                    : $" (free, {c.Elapsed.TotalSeconds:F0} s)")
                 + (string.IsNullOrEmpty(c.Error) ? "" : " – " + c.Error))));
             sb.AppendLine();
             sb.AppendLine(string.IsNullOrWhiteSpace(run.JudgeReport)

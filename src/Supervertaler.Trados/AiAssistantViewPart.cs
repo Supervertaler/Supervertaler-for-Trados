@@ -11992,7 +11992,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         var kbContext = LoadKbContextForPrompt(
                             GetProjectName(), sourceLang, targetLang);
 
-                        var apiSystemPrompt = TranslationPrompt.BuildSystemPrompt(
+                        // Through the run's own functions, which also decide where the
+                        // terms go (a one-segment scope carries them in the user message).
+                        var apiSystemPrompt = BatchTranslator.SystemPromptFor(segments.Count,
                             sourceLang, targetLang,
                             customPromptContent, termbaseTerms, customSystemPrompt,
                             includeDocContext ? docSegments : null,
@@ -12032,7 +12034,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             + Environment.NewLine + Environment.NewLine
                             + "════════ USER MESSAGE ════════"
                             + Environment.NewLine + Environment.NewLine
-                            + TranslationPrompt.BuildBatchUserPrompt(promptSegments);
+                            + BatchTranslator.UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, promptSegments);
 
                         if (segments.Count > previewCount)
                         {

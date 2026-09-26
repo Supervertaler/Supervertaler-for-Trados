@@ -194,6 +194,11 @@ namespace Supervertaler.Trados.Core
             int aggActualOutput = 0;
             bool aggActualUsageComplete = true;
 
+            // A one-batch run's user prompt, for Reports: the part of what was sent
+            // that is not in the system prompt - its segments and, for one segment,
+            // that segment's terms. A longer run shows a placeholder instead.
+            string singleUserPrompt = null;
+
             if (segments == null || segments.Count == 0)
             {
                 Completed?.Invoke(this, new BatchCompletedEventArgs
@@ -226,7 +231,7 @@ namespace Supervertaler.Trados.Core
                 batchSize = clampedBatch;
             }
 
-            var systemPrompt = TranslationPrompt.BuildSystemPrompt(
+            var systemPrompt = SystemPromptFor(segments.Count,
                 sourceLang, targetLang,
                 customPromptContent, termbaseTerms, customSystemPrompt,
                 includeDoc ? documentSegments : null,
@@ -313,14 +318,18 @@ namespace Supervertaler.Trados.Core
                         }
 
                         // Build user prompt
-                        var userPrompt = TranslationPrompt.BuildBatchUserPrompt(promptSegments);
+                        var userPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, promptSegments);
+                        if (totalBatches == 1) singleUserPrompt = userPrompt;
 
                         // Call LLM - suppress per-batch log entries; we fire one aggregated entry at the end.
                         // enablePromptCaching: the system prompt (base instructions + custom prompt + KB +
                         // termbase + document context) is byte-stable across every batch in this run, so
-                        // caching pays off from batch 2 onwards. Anthropic native and OpenRouter->Anthropic
-                        // get explicit cache_control markers; OpenAI/DeepSeek/Gemini 2.5+ get implicit
-                        // automatic caching at the provider layer; other providers ignore the flag.
+                        // caching pays off from batch 2 onwards. A one-segment run (Ctrl+T) has one batch,
+                        // but the NEXT segment's run sends the same system prompt, because its terms travel
+                        // in the user prompt (SystemPromptFor) - so it pays off from the second segment.
+                        // Anthropic native and OpenRouter->Anthropic get explicit cache_control markers;
+                        // OpenAI/DeepSeek/Gemini 2.5+ get implicit automatic caching at the provider layer;
+                        // other providers ignore the flag.
                         var response = await client.SendPromptAsync(
                             userPrompt, systemPrompt, maxTokens, cancellationToken,
                             feature: PromptLogFeature.BatchTranslate,
@@ -469,7 +478,7 @@ namespace Supervertaler.Trados.Core
                                 for (int i = rs; i < re; i++)
                                     ps.Add(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) });
 
-                                var rUserPrompt = TranslationPrompt.BuildBatchUserPrompt(ps);
+                                var rUserPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, ps);
                                 var rResponse = await client.SendPromptAsync(
                                     rUserPrompt, systemPrompt, maxTokens, cancellationToken,
                                     feature: PromptLogFeature.BatchTranslate,
@@ -551,7 +560,7 @@ namespace Supervertaler.Trados.Core
                     SystemPrompt = systemPrompt,
                     UserPrompt = totalBatches > 1
                         ? $"({totalBatches} batches combined - expand system prompt to see translation instructions)"
-                        : null,
+                        : singleUserPrompt,
                     EstimatedInputTokens = aggInputTokens,
                     EstimatedOutputTokens = aggOutputTokens,
                     EstimatedCost = TokenEstimator.EstimateCost(model, aggInputTokens, aggOutputTokens),
@@ -589,6 +598,58 @@ namespace Supervertaler.Trados.Core
         /// #110: without the match's source, only an exact match is safe to show.
         /// </summary>
         internal const int ExactMatch = 100;
+
+        /// <summary>
+        /// Whether a run's termbase hits travel in the user prompt, with its
+        /// segments, rather than in the system prompt. Yes for a one-segment run -
+        /// Ctrl+T, which the translator repeats down the document. Its terms are
+        /// that one segment's (#102), so they change with every segment, and in
+        /// the system prompt they changed the whole prompt with them: every
+        /// request paid 1.25x to write a cache that the next one could never
+        /// read. With them in the user prompt, the system prompt (instructions,
+        /// SuperMemory, document content) is the same for every segment of the
+        /// document, and every request after the first reads it at a tenth of
+        /// the price. A longer run keeps one list for all its batches in the
+        /// system prompt, where it is cached once for the run.
+        /// </summary>
+        internal static bool TermsTravelWithTheSegment(int segmentCount) => segmentCount == 1;
+
+        /// <summary>
+        /// The system prompt a run of <paramref name="segmentCount"/> segments
+        /// sends. Internal, with <see cref="UserPromptFor"/>, so Preview prompt
+        /// builds its prompt through the SAME functions the run does.
+        /// </summary>
+        internal static string SystemPromptFor(int segmentCount,
+            string sourceLang, string targetLang,
+            string customPromptContent, List<TermEntry> termbaseTerms, string customSystemPrompt,
+            List<string> documentSegments, int maxDocumentSegments, bool includeTermMetadata,
+            string kbContext, StructureContextMode structureContext)
+        {
+            return TranslationPrompt.BuildSystemPrompt(
+                sourceLang, targetLang,
+                customPromptContent,
+                TermsTravelWithTheSegment(segmentCount) ? null : termbaseTerms,
+                customSystemPrompt,
+                documentSegments, maxDocumentSegments, includeTermMetadata,
+                kbContext, structureContext);
+        }
+
+        /// <summary>
+        /// One request's user prompt: its segments, preceded - in a one-segment
+        /// run - by that segment's terms, worded exactly as the system prompt
+        /// would have worded them.
+        /// </summary>
+        internal static string UserPromptFor(int segmentCount, List<TermEntry> termbaseTerms,
+            bool includeTermMetadata, List<BatchSegmentInput> promptSegments)
+        {
+            var segmentsPrompt = TranslationPrompt.BuildBatchUserPrompt(promptSegments);
+            if (!TermsTravelWithTheSegment(segmentCount)) return segmentsPrompt;
+
+            var terms = TranslationPrompt.BuildTermbaseBlock(termbaseTerms, includeTermMetadata);
+            return terms == null
+                ? segmentsPrompt
+                : terms + Environment.NewLine + Environment.NewLine + segmentsPrompt;
+        }
 
         /// <summary>
         /// #109: the source as the model sees it - the document's list marker in a
