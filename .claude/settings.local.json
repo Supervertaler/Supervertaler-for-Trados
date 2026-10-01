@@ -83,7 +83,7 @@
       "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Dev\\\\Supervertaler-for-Trados\\\\inspect_api.ps1\")",
       "Bash(xargs grep -l \"Image\\\\|Attachment\\\\|File\")",
       "Read(//d/Dev/Sv/**)",
-      "Read(//d/Google Drive/Skills/Sv__Supervertaler MCP Server//**)",
+      "Read(//d/SynologyDrive/Skills/Sv__Supervertaler MCP Server//**)",
       "Bash(cd /d/Dev/Sv && find . -maxdepth 4 -iname \"*mcp*\" -not -path \"*/node_modules/*\" -not -path \"*/.git/*\" 2>/dev/null | head -50)",
       "Read(//c/Users/mbeijer/AppData/Roaming/Claude/**)",
       "Read(//c/Users/mbeijer/.claude/**)",

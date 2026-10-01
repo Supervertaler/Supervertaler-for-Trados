@@ -4,7 +4,7 @@
     {
       "name": "site-preview",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8901", "--directory", "D:/Google Drive/Dev/Sv/Supervertaler/docs"],
+      "runtimeArgs": ["-m", "http.server", "8901", "--directory", "D:/SynologyDrive/Dev/Sv/Supervertaler/docs"],
       "port": 8901
     }
   ]
