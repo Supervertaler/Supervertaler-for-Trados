@@ -71,3 +71,6 @@ dist/*.zip
 
 # Generated plugin resource bundle (built by tools/make_plugin_resources.ps1)
 src/Supervertaler.Trados/Resources/generated/
+
+# Claude Code machine-local permissions
+.claude/settings.local.json
