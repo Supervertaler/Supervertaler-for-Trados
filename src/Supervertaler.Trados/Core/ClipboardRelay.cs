@@ -83,7 +83,8 @@ namespace Supervertaler.Trados.Core
             // the source line back, so the contract itself is not appended here. The
             // paste is checked the same way (ReplyCheck), without the second chance.
             sb.AppendLine("- Do NOT add commentary, explanations, or notes, with one exception: if something must be "
-                + "brought to the translator's attention (a defect in the source, a real ambiguity), end that "
+                + "brought to the translator's attention (a defect in the source, a real ambiguity, an error you "
+                + "corrected in a 100% translation memory match), end that "
                 + "segment's translation with ONE marker on the same line, [[TC: <text>]], 5 to 20 words written "
                 + "as the translator's comment to the client, in English unless the instructions above say otherwise. "
                 + "A segment with nothing to flag gets no marker. "
