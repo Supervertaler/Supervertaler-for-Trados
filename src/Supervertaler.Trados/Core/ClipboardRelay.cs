@@ -46,6 +46,17 @@ namespace Supervertaler.Trados.Core
             sb.AppendLine("---");
             sb.AppendLine();
 
+            // #116: the TM matches, in the block and the words a ▶ Translate run
+            // sends them in, from the same function. Ahead of the segment list
+            // rather than inside it: the blocks below are what the web LLM is told
+            // to reproduce and what Paste from Clipboard parses. A match's
+            // "Segment N – 70% match" line has no colon after the number, so the
+            // parser cannot take it for a segment header even if a model echoes it.
+            var promptInputs = new List<BatchSegmentInput>(segments.Count);
+            for (int i = 0; i < segments.Count; i++)
+                promptInputs.Add(BatchTranslator.ToPromptInput(segments[i], i + 1, structureContext));
+            sb.Append(TranslationPrompt.BuildMemoryBlock(promptInputs));
+
             // Use short language labels for per-segment lines to save tokens.
             // The full names (with region) are already stated in the system prompt.
             var srcLabel = LanguageUtils.GetBaseLanguageName(sourceLang);

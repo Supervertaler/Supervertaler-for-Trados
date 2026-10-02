@@ -7673,7 +7673,8 @@ namespace Supervertaler.Trados
         /// on an exact match, and taking a lower-scoring one would be a downgrade.</para>
         /// </summary>
         private static int ApplyTmMatches(
-            TmLookupPlan plan, List<BatchSegment> segments, CancellationToken ct)
+            TmLookupPlan plan, List<BatchSegment> segments, CancellationToken ct,
+            Action<int, int> progress = null)
         {
             if (plan == null || segments == null || segments.Count == 0) return 0;
 
@@ -7681,7 +7682,7 @@ namespace Supervertaler.Trados
             foreach (var s in segments) texts.Add(s.SourceText);
 
             var matches = Core.TmFuzzyLookup.FindBest(
-                plan.Tms, texts, plan.SourceCulture, plan.MinScore, null, ct);
+                plan.Tms, texts, plan.SourceCulture, plan.MinScore, progress, ct);
 
             int applied = 0;
             for (int i = 0; i < segments.Count && i < matches.Length; i++)
@@ -10822,6 +10823,86 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
         // ─── Clipboard Mode ──────────────────────────────────────
 
+        /// <summary>
+        /// #116 for Clipboard Mode: searches the project's memories for the
+        /// segments about to be copied or previewed, then runs
+        /// <paramref name="then"/>, which formats the prompt, back on the UI
+        /// thread. With no memory to search, <paramref name="then"/> runs at once.
+        ///
+        /// <para>The search runs off the UI thread because a clipboard scope is
+        /// often the whole document: at ~12 ms a segment cold (#116, a 3.5 GB
+        /// .sdltm), a thousand segments searched in line would freeze Studio for
+        /// twelve seconds. The formatting cannot go with it - it reads each
+        /// segment's properties from the Trados model.</para>
+        ///
+        /// <para>The panel is locked for the search as for a run, and Paste from
+        /// Clipboard with it: a paste pumps the message queue while it writes, and
+        /// a copy finishing in the middle would swap its segment list.</para>
+        /// </summary>
+        private void WithClipboardTmMatches(
+            Controls.BatchTranslateControl batchControl, AiSettings aiSettings,
+            List<BatchSegment> segments, Action then)
+        {
+            var plan = PrepareTmLookup(aiSettings);
+            if (plan == null) { then(); return; }
+
+            // A second click during the search, or a run: SetRunning(false) below
+            // would otherwise unlock the panel under the other one.
+            if (Controls.BatchTranslateControl.IsAnyRunning)
+            {
+                batchControl.AppendLog("Wait for the current operation to finish, then try again.", true);
+                return;
+            }
+
+            var document = _activeDocument;
+            batchControl.SetRunning(true);
+            batchControl.EnablePasteButton(false);
+            batchControl.AppendLog("Searching the project's translation memories for matches...");
+
+            Task.Run(() =>
+            {
+                var found = 0;
+                Exception error = null;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    found = ApplyTmMatches(plan, segments, CancellationToken.None,
+                        (done, total) => SafeInvoke(() => batchControl.ReportProgress(done, total, null, false)));
+                }
+                catch (Exception ex) { error = ex; }
+                sw.Stop();
+
+                SafeInvoke(() =>
+                {
+                    // Whatever happened: a failed search must not leave the panel locked.
+                    batchControl.SetRunning(false);
+                    batchControl.EnablePasteButton(_clipboardSegments != null && _clipboardSegments.Count > 0);
+
+                    if (error != null)
+                    {
+                        Core.DiagnosticLog.Log("TmFuzzy", "Clipboard lookup failed: " + error.Message);
+                        batchControl.AppendLog("The TM search failed (" + error.Message
+                            + ") – continuing without TM matches.", true);
+                    }
+                    else
+                    {
+                        batchControl.AppendLog(found + " of " + segments.Count + " segment(s) have a TM match at "
+                            + plan.MinScore + "% or better (" + sw.ElapsedMilliseconds + " ms).");
+                    }
+
+                    // The segments belong to the document the search started in.
+                    if (!ReferenceEquals(document, _activeDocument))
+                    {
+                        batchControl.AppendLog(
+                            "The active document changed during the TM search – nothing was copied. Click again.", true);
+                        return;
+                    }
+
+                    then();
+                });
+            });
+        }
+
         private void OnCopyToClipboardRequested(object sender, EventArgs e)
         {
             SafeInvoke(() =>
@@ -10831,6 +10912,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 if (_activeDocument == null)
                 {
                     batchControl.AppendLog("No document open.", true);
+                    return;
+                }
+
+                // A paste writes through _clipboardSegments while it pumps the
+                // message queue; a copy replacing them half way through would send
+                // the rest of the paste to the wrong segments.
+                if (_clipboardPasteInProgress)
+                {
+                    batchControl.AppendLog("A clipboard paste is still running – wait for it to finish, then copy again.", true);
                     return;
                 }
 
@@ -10902,19 +10992,22 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // document context the API path uses, so the clipboard text really
                 // is "what would be sent to the AI". Translate mode keeps its
                 // source-only document context (target text doesn't exist yet).
-                string clipboardText;
                 if (batchControl.CurrentMode == BatchMode.Proofread)
                 {
                     var bilingualDocSegments = includeDocContext
                         ? CollectBilingualDocumentContext()
                         : null;
 
-                    clipboardText = ClipboardRelay.FormatForProofreading(
-                        segments, sourceLang, targetLang,
-                        customPromptContent, termbaseTerms, customSystemPrompt,
-                        bilingualDocSegments, includeTermMeta);
+                    CopyClipboardText(batchControl, segments, "proofreading",
+                        ClipboardRelay.FormatForProofreading(
+                            segments, sourceLang, targetLang,
+                            customPromptContent, termbaseTerms, customSystemPrompt,
+                            bilingualDocSegments, includeTermMeta));
+                    return;
                 }
-                else
+
+                // Translate: the TM matches first (#116), then the prompt.
+                WithClipboardTmMatches(batchControl, aiSettings, segments, () =>
                 {
                     List<string> docSegments = null;
                     if (includeDocContext)
@@ -10923,28 +11016,29 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         docSegments = docCtx.Item1;
                     }
 
-                    clipboardText = ClipboardRelay.FormatForTranslation(
-                        segments, sourceLang, targetLang,
-                        customPromptContent, termbaseTerms, customSystemPrompt,
-                        docSegments, maxDocSegs, includeTermMeta,
-                        structureContext: structureMode);
-                }
-
-                // Copy to clipboard
-                System.Windows.Forms.Clipboard.SetText(clipboardText);
-
-                // Store segments for paste
-                _clipboardSegments = segments;
-
-                // Enable paste button
-                batchControl.EnablePasteButton(true);
-
-                var mode = batchControl.CurrentMode == BatchMode.Proofread
-                    ? "proofreading" : "translation";
-                batchControl.AppendLog(
-                    $"Copied {segments.Count} segments to clipboard for {mode}. " +
-                    $"Paste into your LLM, then copy the response and click \u201cPaste from Clipboard\u201d.");
+                    CopyClipboardText(batchControl, segments, "translation",
+                        ClipboardRelay.FormatForTranslation(
+                            segments, sourceLang, targetLang,
+                            customPromptContent, termbaseTerms, customSystemPrompt,
+                            docSegments, maxDocSegs, includeTermMeta,
+                            structureContext: structureMode));
+                });
             });
+        }
+
+        private void CopyClipboardText(
+            Controls.BatchTranslateControl batchControl, List<BatchSegment> segments,
+            string mode, string clipboardText)
+        {
+            System.Windows.Forms.Clipboard.SetText(clipboardText);
+
+            // Kept for Paste from Clipboard, which maps the reply's numbers back onto them.
+            _clipboardSegments = segments;
+            batchControl.EnablePasteButton(true);
+
+            batchControl.AppendLog(
+                $"Copied {segments.Count} segments to clipboard for {mode}. " +
+                $"Paste into your LLM, then copy the response and click \u201cPaste from Clipboard\u201d.");
         }
 
         /// <summary>
@@ -12186,11 +12280,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                     if (batchControl.IsClipboardMode)
                     {
-                        promptText = ClipboardRelay.FormatForTranslation(
-                            segments, sourceLang, targetLang,
-                            customPromptContent, termbaseTerms, customSystemPrompt,
-                            docSegments, maxDocSegs, includeTermMeta,
-                            structureContext: structureMode);
+                        // #116: what Copy to Clipboard would copy, TM matches
+                        // included - so the same search first, then the dialog.
+                        WithClipboardTmMatches(batchControl, aiSettings, segments, () =>
+                            ShowPromptPreview(batchControl, aiSettings, segments.Count,
+                                ClipboardRelay.FormatForTranslation(
+                                    segments, sourceLang, targetLang,
+                                    customPromptContent, termbaseTerms, customSystemPrompt,
+                                    docSegments, maxDocSegs, includeTermMeta,
+                                    structureContext: structureMode)));
+                        return;
                     }
                     else
                     {
@@ -12259,35 +12358,44 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     }
                 }
 
-                var modeLabel = batchControl.CurrentMode == BatchMode.Proofread
-                    ? "proofreading" : "translation";
-                var title = $"Prompt preview \u2013 {modeLabel} ({segments.Count} segments)";
-                // The scope is split into several requests, and this shows ONE of
-                // them. Saying so at the top matters: the request carries ~50 of the
-                // segments while the system prompt above it carries all of them, so
-                // a reader looking for a particular segment in the numbered list can
-                // easily conclude it was dropped when it is simply in request 12.
-                var previewBatchSize = aiSettings != null && aiSettings.BatchSize > 0
-                    ? aiSettings.BatchSize : 20;
-                var requestCount = (segments.Count + previewBatchSize - 1) / previewBatchSize;
-                var scopeNote = requestCount > 1
-                    ? "This is request 1 of " + requestCount + ", carrying "
-                      + Math.Min(previewBatchSize, segments.Count) + " of the "
-                      + segments.Count + " segments in scope. The system prompt is identical in "
-                      + "every request; only the numbered list at the end changes. "
-                    : "";
-
-                var headerText = scopeNote +
-                    "This is exactly what will be sent to the AI: the assembled system prompt " +
-                    "(including the active custom prompt, termbase entries, language-specific " +
-                    "checks, and the full bilingual document context for proofread), followed by " +
-                    "the numbered segment list. No LLM call is made by this preview.";
-
-                using (var dlg = new Controls.PromptPreviewDialog(title, headerText, promptText))
-                {
-                    dlg.ShowDialog();
-                }
+                ShowPromptPreview(batchControl, aiSettings, segments.Count, promptText);
             });
+        }
+
+        private void ShowPromptPreview(
+            Controls.BatchTranslateControl batchControl, AiSettings aiSettings,
+            int segmentCount, string promptText)
+        {
+            var modeLabel = batchControl.CurrentMode == BatchMode.Proofread
+                ? "proofreading" : "translation";
+            var title = $"Prompt preview \u2013 {modeLabel} ({segmentCount} segments)";
+            // The scope is split into several requests, and this shows ONE of
+            // them. Saying so at the top matters: the request carries ~50 of the
+            // segments while the system prompt above it carries all of them, so
+            // a reader looking for a particular segment in the numbered list can
+            // easily conclude it was dropped when it is simply in request 12.
+            // Clipboard Mode copies the whole scope in one go, so it has no requests.
+            var previewBatchSize = aiSettings != null && aiSettings.BatchSize > 0
+                ? aiSettings.BatchSize : 20;
+            var requestCount = batchControl.IsClipboardMode
+                ? 1 : (segmentCount + previewBatchSize - 1) / previewBatchSize;
+            var scopeNote = requestCount > 1
+                ? "This is request 1 of " + requestCount + ", carrying "
+                  + Math.Min(previewBatchSize, segmentCount) + " of the "
+                  + segmentCount + " segments in scope. The system prompt is identical in "
+                  + "every request; only the numbered list at the end changes. "
+                : "";
+
+            var headerText = scopeNote +
+                "This is exactly what will be sent to the AI: the assembled system prompt " +
+                "(including the active custom prompt, termbase entries, language-specific " +
+                "checks, and the full bilingual document context for proofread), followed by " +
+                "the numbered segment list. No LLM call is made by this preview.";
+
+            using (var dlg = new Controls.PromptPreviewDialog(title, headerText, promptText))
+            {
+                dlg.ShowDialog();
+            }
         }
 
         // Guards the clipboard paste-back writeback against re-entrancy: like the
