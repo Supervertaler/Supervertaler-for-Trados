@@ -617,9 +617,10 @@ namespace Supervertaler.Trados.Controls
             _nudTmFuzzyMinScore = SmallNud(50, 100, 70, 5);
             var fuzzyTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
             fuzzyTip.SetToolTip(_nudTmFuzzyMinScore,
-                "Batch Translate searches the project's translation memories and sends\r\n" +
-                "each segment's closest approved translation to the AI. This is the\r\n" +
-                "lowest match percentage worth sending.\r\n\r\n" +
+                "Batch Translate and Clipboard Mode search the project's translation\r\n" +
+                "memories and send each segment's closest match to the AI as a reference,\r\n" +
+                "which it checks before using. This is the lowest match percentage worth\r\n" +
+                "sending.\r\n\r\n" +
                 "A match is always sent together with the source it was made for, so\r\n" +
                 "the AI can see which words differ rather than assuming the wording\r\n" +
                 "fits. That is what makes a fuzzy safe to send at all.\r\n\r\n" +
@@ -643,8 +644,9 @@ namespace Supervertaler.Trados.Controls
             var tcTip = new ToolTip { AutoPopDelay = 20000, InitialDelay = 300 };
             tcTip.SetToolTip(_chkTcAsComments,
                 "When the AI needs to flag something in a segment – a defect in the source, a real\r\n" +
-                "ambiguity, a deliberate departure from the TM or the termbase – it adds one short note\r\n" +
-                "at the end of that segment's translation, written as your comment to the client:\r\n" +
+                "ambiguity, an error it corrected in a 100% TM match, a deliberate departure from the\r\n" +
+                "termbase – it adds one short note at the end of that segment's translation, written\r\n" +
+                "as your comment to the client:\r\n" +
                 "[[TC: …]].\r\n\r\n" +
                 "Unticked (the default): the note stays at the end of the target, where you see it while\r\n" +
                 "you review. Remove it before you confirm the segment, or turn it into a comment yourself.\r\n\r\n" +

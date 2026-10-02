@@ -297,7 +297,9 @@ namespace Supervertaler.Trados.Controls
             var tmTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
             tmTip.SetToolTip(_chkSendTmMatches,
                 "Search the project's translation memories for each segment and send the\r\n" +
-                "closest approved translation to the AI as the wording to follow.\r\n\r\n" +
+                "closest match to the AI as a reference, which it checks before using: a\r\n" +
+                "memory can hold translations from other documents, products or clients,\r\n" +
+                "and they can be wrong, even at 100%.\r\n\r\n" +
                 "A fuzzy match is sent together with the source it was made for, so the AI\r\n" +
                 "can see exactly which words differ instead of assuming the wording fits.\r\n" +
                 "It is never sent on its own. The lowest percentage worth sending is set in\r\n" +
