@@ -772,7 +772,7 @@ namespace Supervertaler.Trados.Core
             bool sourceHasTextNewlines,
             HashSet<int> usedTagNumbers)
         {
-            var normalised = text.Replace("\r\n", "\n").Replace("\r", "\n");
+            var normalised = NormaliseLineBreaks(text);
 
             if (sourceHasTextNewlines)
             {
@@ -840,6 +840,16 @@ namespace Supervertaler.Trados.Core
                 }
                 DiagnosticMessage?.Invoke(sb.ToString());
             }
+        }
+
+        /// <summary>
+        /// Every line break as a plain LF: CR LF, a CR doubled in front of an LF
+        /// (a CRLF reply joined with CR LF), and a lone CR each become one LF.
+        /// </summary>
+        public static string NormaliseLineBreaks(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('\r') < 0) return text;
+            return Regex.Replace(text, "\r*\n", "\n").Replace('\r', '\n');
         }
 
         private static void AddTextPiece(IAbstractMarkupDataContainer container, IText textTemplate, string text)

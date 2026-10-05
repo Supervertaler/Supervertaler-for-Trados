@@ -3269,7 +3269,7 @@ namespace Supervertaler.Trados
 
             try
             {
-                _activeDocument.Selection.Target.Replace(e.TargetTerm, "TermLens");
+                _activeDocument.Selection.Target.Replace(Core.SegmentTagHandler.NormaliseLineBreaks(e.TargetTerm), "TermLens");
             }
             catch (Exception)
             {
@@ -3985,7 +3985,7 @@ namespace Supervertaler.Trados
             if (instance?._activeDocument == null || string.IsNullOrEmpty(text)) return;
             try
             {
-                instance._activeDocument.Selection.Target.Replace(text, "TermLens");
+                instance._activeDocument.Selection.Target.Replace(Core.SegmentTagHandler.NormaliseLineBreaks(text), "TermLens");
             }
             catch (Exception)
             {
@@ -4355,7 +4355,7 @@ namespace Supervertaler.Trados
                 var textToInsert = matchedViaAbbreviation && !string.IsNullOrEmpty(entry.PrimaryTargetAbbreviation)
                     ? entry.PrimaryTargetAbbreviation
                     : TermCaseAdapter.Adapt(matchedSourceText, entry.SourceTerm, entry.TargetTerm);
-                _activeDocument.Selection.Target.Replace(textToInsert, "TermLens");
+                _activeDocument.Selection.Target.Replace(Core.SegmentTagHandler.NormaliseLineBreaks(textToInsert), "TermLens");
             }
             catch (Exception)
             {
@@ -4391,7 +4391,7 @@ namespace Supervertaler.Trados
                         try
                         {
                             instance._activeDocument.Selection.Target.Replace(
-                                dlg.SelectedTargetTerm, "TermLens");
+                                Core.SegmentTagHandler.NormaliseLineBreaks(dlg.SelectedTargetTerm), "TermLens");
                         }
                         catch (Exception)
                         {

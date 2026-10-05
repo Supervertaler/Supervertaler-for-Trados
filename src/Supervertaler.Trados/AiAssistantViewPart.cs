@@ -1035,7 +1035,7 @@ namespace Supervertaler.Trados
 
             try
             {
-                _activeDocument.Selection.Target.Replace(text, "Supervertaler AI");
+                _activeDocument.Selection.Target.Replace(SegmentTagHandler.NormaliseLineBreaks(text), "Supervertaler AI");
             }
             catch (Exception)
             {
@@ -1317,7 +1317,7 @@ namespace Supervertaler.Trados
 
             try
             {
-                _activeDocument.Selection.Target.Replace(text, "Supervertaler");
+                _activeDocument.Selection.Target.Replace(SegmentTagHandler.NormaliseLineBreaks(text), "Supervertaler");
                 return null;
             }
             catch (Exception ex)
