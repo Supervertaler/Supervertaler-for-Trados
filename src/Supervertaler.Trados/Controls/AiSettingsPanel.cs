@@ -947,7 +947,7 @@ namespace Supervertaler.Trados.Controls
                     settings.DeepSeekModel = modelId ?? "deepseek-v4-pro";
                     break;
                 case LlmModels.ProviderOpenRouter:
-                    settings.OpenRouterModel = modelId ?? "anthropic/claude-sonnet-5";
+                    settings.OpenRouterModel = modelId ?? "anthropic/claude-sonnet-5.5";
                     break;
                 case LlmModels.ProviderOllama:
                     settings.OllamaModel = modelId ?? "translategemma:12b";
