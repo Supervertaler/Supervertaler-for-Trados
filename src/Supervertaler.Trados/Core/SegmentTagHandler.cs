@@ -453,9 +453,9 @@ namespace Supervertaler.Trados.Core
                     return false;
                 }
 
-                // Check whether the source stores line breaks as literal \n in IText nodes
-                // (e.g. Visio, Excel) rather than as separate IPlaceholderTag elements (DOCX).
-                bool sourceHasTextNewlines = SourceTextContainsNewlines(sourceSegment);
+                // The line breaks the source keeps as characters in its text (Word,
+                // Excel, Visio), handed to the target's in order - see SourceBreaks.
+                var sourceBreaks = new SourceBreaks(sourceSegment);
 
                 // Comments live only on the target, and Clear() below would take
                 // them with it – see CaptureCommentMarkers. Capture, then rebuild
@@ -480,7 +480,7 @@ namespace Supervertaler.Trados.Core
                 // Add parsed elements to the target (inside the comment markers
                 // when the segment carried any).
                 AddElementsToContainer(destination, elements, tagMap, textTemplate,
-                    sourceHasTextNewlines, usedTagNumbers);
+                    sourceBreaks, usedTagNumbers);
 
                 return true;
             }
@@ -645,7 +645,7 @@ namespace Supervertaler.Trados.Core
             List<ParsedElement> elements,
             Dictionary<int, TagInfo> tagMap,
             IText textTemplate,
-            bool sourceHasTextNewlines = false,
+            SourceBreaks sourceBreaks = null,
             HashSet<int> usedTagNumbers = null)
         {
             foreach (var element in elements)
@@ -658,7 +658,7 @@ namespace Supervertaler.Trados.Core
                         // split it and re-insert the appropriate line-break tag from the source.
                         if (pt.Text.IndexOf('\n') >= 0 || pt.Text.IndexOf('\r') >= 0)
                             InsertTextWithLineBreaks(container, pt.Text, tagMap, textTemplate,
-                                sourceHasTextNewlines, usedTagNumbers);
+                                sourceBreaks, usedTagNumbers);
                         else
                         {
                             var textClone = (IText)textTemplate.Clone();
@@ -697,7 +697,7 @@ namespace Supervertaler.Trados.Core
                             tagContainer.Clear();
                             // Add child elements inside the cloned tag pair
                             AddElementsToContainer(tagContainer, ot.Children, tagMap, textTemplate,
-                                sourceHasTextNewlines, usedTagNumbers);
+                                sourceBreaks, usedTagNumbers);
                         }
 
                         container.Add(clone);
@@ -708,7 +708,7 @@ namespace Supervertaler.Trados.Core
                         // content (skip the tag wrapper). Losing one bold run beats
                         // writing a duplicate tag id, which fails verification.
                         AddElementsToContainer(container, ot.Children, tagMap, textTemplate,
-                            sourceHasTextNewlines, usedTagNumbers);
+                            sourceBreaks, usedTagNumbers);
                     }
                 }
             }
@@ -739,21 +739,23 @@ namespace Supervertaler.Trados.Core
                 return;
             }
             InsertTextWithLineBreaks(container, text, tagMap, textTemplate,
-                SourceTextContainsNewlines(sourceSegment), null);
+                new SourceBreaks(sourceSegment), null);
         }
 
         /// <summary>
         /// Writes text containing line breaks. A line break becomes, in this order:
         /// <list type="number">
-        /// <item>a line-break character, when the source itself stores its line
-        /// breaks as characters in the text (Excel, Visio, plain text) - the file
-        /// type writes those back as they came;</item>
+        /// <item>when the source keeps its line breaks as characters in the text
+        /// (Word, Excel, Visio), the source's own line break, in order: a soft
+        /// return (LF) stays soft, a hard return inside a segment (CR) stays hard,
+        /// and a break beyond the source's last is a soft return;</item>
         /// <item>the source's next unused line-break tag (a Word soft return, ↵),
         /// each used once, so no tag id is ever duplicated;</item>
         /// <item>otherwise a space, or nothing where the break sits next to a tag or
         /// whitespace.</item>
         /// </list>
-        /// Above all, no carriage return ever reaches a target. Measured in Studio 2026
+        /// Above all, no carriage return reaches a target unless the source has one
+        /// in the same place. Measured in Studio 2026
         /// on a Word file (2026-10-05): a target written with a Windows line break
         /// (CR LF) shows as a pilcrow, a HARD return, in the editor and is saved as
         /// w:cr + w:br, where the source's soft return was a plain LF (shown as an
@@ -769,16 +771,18 @@ namespace Supervertaler.Trados.Core
             string text,
             Dictionary<int, TagInfo> tagMap,
             IText textTemplate,
-            bool sourceHasTextNewlines,
+            SourceBreaks sourceBreaks,
             HashSet<int> usedTagNumbers)
         {
             var normalised = NormaliseLineBreaks(text);
 
-            if (sourceHasTextNewlines)
+            if (sourceBreaks != null && sourceBreaks.Any)
             {
-                var textClone = (IText)textTemplate.Clone();
-                textClone.Properties.Text = normalised;
-                container.Add(textClone);
+                var pieces = normalised.Split('\n');
+                var joined = new StringBuilder(pieces[0]);
+                for (int i = 1; i < pieces.Length; i++)
+                    joined.Append(sourceBreaks.Next()).Append(pieces[i]);
+                AddTextPiece(container, textTemplate, joined.ToString());
                 return;
             }
 
@@ -973,24 +977,43 @@ namespace Supervertaler.Trados.Core
         // ─── Helpers ─────────────────────────────────────────
 
         /// <summary>
-        /// Returns true if any IText node in the source segment contains a literal
-        /// newline character (\n or \r). This indicates the file format (e.g. Visio,
-        /// Excel) stores line breaks as text content rather than as separate
-        /// IPlaceholderTag elements (as DOCX does with w:br).
+        /// The line breaks a source segment keeps as characters in its text, in
+        /// order - LF (a soft return), CR LF or CR (a hard return inside the
+        /// segment) - handed out one by one to the line breaks of the target, so
+        /// each keeps the kind it had in the source. Present in Word (Studio 2026's
+        /// file type keeps a soft return as an LF), Excel and Visio; absent where a
+        /// file type keeps soft returns as tags. One instance per target written:
+        /// the order runs across the tags between the breaks.
         /// </summary>
-        private static bool SourceTextContainsNewlines(ISegment segment)
+        private sealed class SourceBreaks
         {
-            if (segment == null) return false;
-            foreach (var item in segment.AllSubItems)
+            private readonly List<string> _breaks = new List<string>();
+            private int _next;
+
+            public SourceBreaks(ISegment source)
             {
-                if (item is IText textItem)
+                if (source == null) return;
+                foreach (var item in source.AllSubItems)
                 {
-                    var t = textItem.Properties.Text;
-                    if (t != null && (t.IndexOf('\n') >= 0 || t.IndexOf('\r') >= 0))
-                        return true;
+                    var t = (item as IText)?.Properties?.Text;
+                    if (string.IsNullOrEmpty(t)) continue;
+                    for (int i = 0; i < t.Length; i++)
+                    {
+                        if (t[i] == '\n') _breaks.Add("\n");
+                        else if (t[i] == '\r')
+                        {
+                            bool crlf = i + 1 < t.Length && t[i + 1] == '\n';
+                            _breaks.Add(crlf ? "\r\n" : "\r");
+                            if (crlf) i++;
+                        }
+                    }
                 }
             }
-            return false;
+
+            public bool Any => _breaks.Count > 0;
+
+            /// <summary>The source's next line break; past its last, a soft return.</summary>
+            public string Next() => _next < _breaks.Count ? _breaks[_next++] : "\n";
         }
 
         /// <summary>
