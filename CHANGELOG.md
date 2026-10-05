@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.199 / 19.20.199] – Unreleased
+
+### Fixed
+- **Soft returns no longer come back as hard returns.** A line break in an AI translation could reach the target as a Windows line break (a carriage return), which Trados shows as a pilcrow (¶) and saves as a hard return, where the source had a soft return (↵). The client receiving the file then sees hard returns that are not in the source. It happened wherever the translation was written as plain text: segments without tags, Clipboard Mode pastes (the Windows clipboard uses Windows line breaks), and any segment whose tags could not be rebuilt, in Batch Translate, Translate segment, `update_segments` and bilingual re-import. Every line break in a translation is now written the way the source writes its own: as a soft return, as the source's line-break tag, or, where the source has no line break left to match, as a space, so the AI can no longer add line breaks the source does not have. A segment with two line-break tags also no longer gets the first one twice, which the Tag Verifier reported as a duplicated tag.
+
 ## [18.20.198 / 19.20.198] – 2026-10-05
 
 ### Added

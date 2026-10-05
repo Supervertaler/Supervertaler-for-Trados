@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Sdl.FileTypeSupport.Framework.BilingualApi;
@@ -657,7 +658,7 @@ namespace Supervertaler.Trados.Core
                         // split it and re-insert the appropriate line-break tag from the source.
                         if (pt.Text.IndexOf('\n') >= 0 || pt.Text.IndexOf('\r') >= 0)
                             InsertTextWithLineBreaks(container, pt.Text, tagMap, textTemplate,
-                                sourceHasTextNewlines);
+                                sourceHasTextNewlines, usedTagNumbers);
                         else
                         {
                             var textClone = (IText)textTemplate.Clone();
@@ -714,97 +715,139 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// Splits text at newline characters and inserts a cloned source line-break tag
-        /// between each piece. Called when the LLM emits a literal '\n' instead of the
-        /// &lt;tN/&gt; placeholder for a soft return.
-        ///
-        /// If the source segment contained no line-break tags, the newlines are simply
-        /// dropped (no bare '\n' is ever written into an IText node).
+        /// Writes translated text that carries no tag markers into
+        /// <paramref name="container"/> - the plain-text fallback of every write
+        /// path, and the untagged segments - applying the same line-break rule as
+        /// <see cref="ReconstructTarget"/>. Never write translated text into a
+        /// segment by setting an IText's text directly: see
+        /// <see cref="InsertTextWithLineBreaks"/> for what a bare line break does.
+        /// </summary>
+        /// <param name="tagMap">The source's tags, or null for an untagged segment.</param>
+        public static void AppendText(
+            IAbstractMarkupDataContainer container,
+            string text,
+            ISegment sourceSegment,
+            Dictionary<int, TagInfo> tagMap,
+            IText textTemplate)
+        {
+            if (container == null || textTemplate == null || string.IsNullOrEmpty(text)) return;
+            if (text.IndexOf('\n') < 0 && text.IndexOf('\r') < 0)
+            {
+                var textClone = (IText)textTemplate.Clone();
+                textClone.Properties.Text = text;
+                container.Add(textClone);
+                return;
+            }
+            InsertTextWithLineBreaks(container, text, tagMap, textTemplate,
+                SourceTextContainsNewlines(sourceSegment), null);
+        }
+
+        /// <summary>
+        /// Writes text containing line breaks. A line break becomes, in this order:
+        /// <list type="number">
+        /// <item>a line-break character, when the source itself stores its line
+        /// breaks as characters in the text (Excel, Visio, plain text) - the file
+        /// type writes those back as they came;</item>
+        /// <item>the source's next unused line-break tag (a Word soft return, ↵),
+        /// each used once, so no tag id is ever duplicated;</item>
+        /// <item>otherwise a space, or nothing where the break sits next to a tag or
+        /// whitespace.</item>
+        /// </list>
+        /// Above all, no carriage return ever reaches a target. Measured in Studio 2026
+        /// on a Word file (2026-10-05): a target written with a Windows line break
+        /// (CR LF) shows as a pilcrow, a HARD return, in the editor and is saved as
+        /// w:cr + w:br, where the source's soft return was a plain LF (shown as an
+        /// arrow, saved as w:br). A paying user's client reported exactly that: soft
+        /// returns in the source, hard returns in the delivered file. CR LF is what the
+        /// Windows clipboard and WinForms text boxes produce. A plain LF where the
+        /// source has no line break at all is saved as an extra soft return, so it
+        /// becomes a space; in a file type that keeps soft returns as tags, it would not
+        /// be the tag either.
         /// </summary>
         private static void InsertTextWithLineBreaks(
             IAbstractMarkupDataContainer container,
             string text,
             Dictionary<int, TagInfo> tagMap,
             IText textTemplate,
-            bool sourceHasTextNewlines = false)
+            bool sourceHasTextNewlines,
+            HashSet<int> usedTagNumbers)
         {
-            // Find the first line-break tag in the source tag map
-            TagInfo lineBreakInfo = null;
-            foreach (var kv in tagMap)
+            var normalised = text.Replace("\r\n", "\n").Replace("\r", "\n");
+
+            if (sourceHasTextNewlines)
             {
-                if (kv.Value.IsLineBreak)
-                {
-                    lineBreakInfo = kv.Value;
-                    break;
-                }
+                var textClone = (IText)textTemplate.Clone();
+                textClone.Properties.Text = normalised;
+                container.Add(textClone);
+                return;
             }
 
-            if (lineBreakInfo == null)
+            var used = usedTagNumbers ?? new HashSet<int>();
+            var lineBreakTags = new List<KeyValuePair<int, TagInfo>>();
+            if (tagMap != null)
+                foreach (var kv in tagMap.OrderBy(kv => kv.Key))
+                    if (kv.Value.IsLineBreak && kv.Value.OriginalMarkup != null)
+                        lineBreakTags.Add(kv);
+
+            var parts = normalised.Split('\n');
+            var pending = new StringBuilder(parts[0]);
+            int notWritten = 0;
+            for (int i = 1; i < parts.Length; i++)
             {
-                // Check whether the source had any standalone tags at all.
-                bool hasAnyStandalone = false;
-                foreach (var kv in tagMap)
+                int tagNumber = -1;
+                foreach (var kv in lineBreakTags)
+                    if (!used.Contains(kv.Key)) { tagNumber = kv.Key; break; }
+
+                if (tagNumber >= 0)
                 {
-                    if (kv.Value.TagType == TagType.Standalone)
+                    used.Add(tagNumber);
+                    AddTextPiece(container, textTemplate, pending.ToString());
+                    container.Add((IAbstractMarkupData)tagMap[tagNumber].OriginalMarkup.Clone());
+                    pending.Clear().Append(parts[i]);
+                    continue;
+                }
+
+                notWritten++;
+                bool joinWithSpace = pending.Length > 0 && !char.IsWhiteSpace(pending[pending.Length - 1])
+                                     && parts[i].Length > 0 && !char.IsWhiteSpace(parts[i][0]);
+                if (joinWithSpace) pending.Append(' ');
+                pending.Append(parts[i]);
+            }
+            AddTextPiece(container, textTemplate, pending.ToString());
+
+            if (notWritten > 0)
+            {
+                var sb = new StringBuilder("[LineBreak] ").Append(notWritten)
+                    .Append(" line break(s) in the translation had no line-break tag left in the source, ")
+                    .Append("and the file keeps none as text; written as a space so Trados does not save a new paragraph.");
+                if (lineBreakTags.Count == 0 && tagMap != null)
+                {
+                    // Standalone tags but none recognised as a line break: list them,
+                    // so a soft return the detection misses can be added to it.
+                    bool any = false;
+                    foreach (var kv in tagMap)
                     {
-                        hasAnyStandalone = true;
-                        break;
+                        if (kv.Value.TagType != TagType.Standalone) continue;
+                        if (!any) { sb.Append(" Standalone tags in the source: "); any = true; }
+                        var markup = kv.Value.OriginalMarkup;
+                        if (markup is IPlaceholderTag ph)
+                            sb.Append($"t{kv.Key}=IPlaceholderTag({DescribePlaceholderTag(ph)}) ");
+                        else if (markup != null)
+                            sb.Append($"t{kv.Key}={markup.GetType().Name}(no props) ");
+                        else
+                            sb.Append($"t{kv.Key}=null ");
                     }
                 }
-
-                if (!hasAnyStandalone || sourceHasTextNewlines)
-                {
-                    // Either no standalone tags exist, or the source IText nodes already
-                    // contain literal \n characters (e.g. Visio, Excel, plain text).
-                    // In both cases, the file format stores line breaks as text content,
-                    // not as separate placeholder tags. Preserve the \n so the file type
-                    // handler can write it back correctly to the target format.
-                    var textClone = (IText)textTemplate.Clone();
-                    textClone.Properties.Text = text.Replace("\r\n", "\n").Replace("\r", "\n");
-                    container.Add(textClone);
-                    return;
-                }
-
-                // Standalone tags exist but none were identified as line breaks,
-                // and the source text didn't have embedded newlines either.
-                // Emit a diagnostic so we can tune detection, and drop the bare \n
-                // (better to lose the line break than write a \n into IText for a DOCX
-                // segment, which Trados would convert to a paragraph break).
-                var sb2 = new StringBuilder("[LineBreak diag] No IsLineBreak tag found. Standalone tags in map: ");
-                foreach (var kv in tagMap)
-                {
-                    if (kv.Value.TagType != TagType.Standalone) continue;
-                    var markup = kv.Value.OriginalMarkup;
-                    if (markup is IPlaceholderTag ph)
-                        sb2.Append($"t{kv.Key}=IPlaceholderTag({DescribePlaceholderTag(ph)}) ");
-                    else if (markup != null)
-                        sb2.Append($"t{kv.Key}={markup.GetType().Name}(no props) ");
-                    else
-                        sb2.Append($"t{kv.Key}=null ");
-                }
-                DiagnosticMessage?.Invoke(sb2.ToString());
+                DiagnosticMessage?.Invoke(sb.ToString());
             }
+        }
 
-            // Normalise \r\n and bare \r to \n, then split
-            var normalised = text.Replace("\r\n", "\n").Replace("\r", "\n");
-            var parts = normalised.Split('\n');
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (!string.IsNullOrEmpty(parts[i]))
-                {
-                    var textClone = (IText)textTemplate.Clone();
-                    textClone.Properties.Text = parts[i];
-                    container.Add(textClone);
-                }
-
-                // Insert line-break tag between parts – not after the last one
-                if (i < parts.Length - 1 && lineBreakInfo != null)
-                {
-                    var tagClone = (IAbstractMarkupData)lineBreakInfo.OriginalMarkup.Clone();
-                    container.Add(tagClone);
-                }
-            }
+        private static void AddTextPiece(IAbstractMarkupDataContainer container, IText textTemplate, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            var textClone = (IText)textTemplate.Clone();
+            textClone.Properties.Text = text;
+            container.Add(textClone);
         }
 
         // ─── Tracked Changes ────────────────────────────────

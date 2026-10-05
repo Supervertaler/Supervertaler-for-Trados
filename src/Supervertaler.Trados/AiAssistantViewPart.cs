@@ -1964,9 +1964,7 @@ namespace Supervertaler.Trados
                                         sp.Target.Clear();
                                         var dest = Core.SegmentTagHandler.OpenCommentMarkers(
                                             sp.Target, keptComments);
-                                        var clone = (IText)textTpl.Clone();
-                                        clone.Properties.Text = plain;
-                                        dest.Add(clone);
+                                        Core.SegmentTagHandler.AppendText(dest, plain, sp.Source, tagMap, textTpl);
                                     }
                                 }
 
@@ -10665,9 +10663,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                     if (textTemplate != null && !string.IsNullOrEmpty(plainTranslation))
                                     {
                                         sp.Target.Clear();
-                                        var textClone = (IText)textTemplate.Clone();
-                                        textClone.Properties.Text = plainTranslation;
-                                        sp.Target.Add(textClone);
+                                        SegmentTagHandler.AppendText(sp.Target, plainTranslation, sp.Source, e.TagMap, textTemplate);
                                         // EditLens: we wrote this, so we know the proposal.
                                         Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                     }
@@ -10683,9 +10679,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             if (textTpl != null && !string.IsNullOrEmpty(translation))
                             {
                                 sp.Target.Clear();
-                                var textClone = (IText)textTpl.Clone();
-                                textClone.Properties.Text = translation;
-                                sp.Target.Add(textClone);
+                                SegmentTagHandler.AppendText(sp.Target, translation, sp.Source, e.TagMap, textTpl);
                                 // EditLens: we wrote this, so we know the proposal.
                                 Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                             }
@@ -12553,9 +12547,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                                 if (textTemplate != null && !string.IsNullOrEmpty(plainTranslation))
                                                 {
                                                     sp.Target.Clear();
-                                                    var textClone = (IText)textTemplate.Clone();
-                                                    textClone.Properties.Text = plainTranslation;
-                                                    sp.Target.Add(textClone);
+                                                    SegmentTagHandler.AppendText(sp.Target, plainTranslation, sp.Source, seg.TagMap, textTemplate);
                                                     // EditLens: we wrote this, so we know the proposal.
                                                     Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                                 }
@@ -12567,9 +12559,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                             if (textTpl != null && !string.IsNullOrEmpty(translation))
                                             {
                                                 sp.Target.Clear();
-                                                var textClone = (IText)textTpl.Clone();
-                                                textClone.Properties.Text = translation;
-                                                sp.Target.Add(textClone);
+                                                SegmentTagHandler.AppendText(sp.Target, translation, sp.Source, seg.TagMap, textTpl);
                                                 // EditLens: we wrote this, so we know the proposal.
                                                 Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                             }
@@ -14520,9 +14510,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                                         if (textTpl != null)
                                                         {
                                                             sp.Target.Clear();
-                                                            var textClone = (IText)textTpl.Clone();
-                                                            textClone.Properties.Text = translation;
-                                                            sp.Target.Add(textClone);
+                                                            SegmentTagHandler.AppendText(sp.Target, translation, sp.Source, capturedTagMap, textTpl);
                                                             // EditLens: we wrote this, so we know the proposal.
                                                             Core.EditCapture.CaptureController.NoteProposal(sp, _currentInstance?._activeDocument);
                                                         }
@@ -15010,9 +14998,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             if (tpl != null && !string.IsNullOrEmpty(plain))
                             {
                                 sp.Target.Clear();
-                                var clone = (IText)tpl.Clone();
-                                clone.Properties.Text = plain;
-                                sp.Target.Add(clone);
+                                SegmentTagHandler.AppendText(sp.Target, plain, sp.Source, e.TagMap, tpl);
                             }
                         }
                         // Declared on the tagged path too: ReconstructTarget writes through
@@ -15025,9 +15011,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     if (textTpl != null && !string.IsNullOrEmpty(translation))
                     {
                         sp.Target.Clear();
-                        var clone = (IText)textTpl.Clone();
-                        clone.Properties.Text = translation;
-                        sp.Target.Add(clone);
+                        SegmentTagHandler.AppendText(sp.Target, translation, sp.Source, e.TagMap, textTpl);
                     }
                     Core.EditCapture.CaptureController.NoteProposal(sp, doc);
                 });
@@ -16741,9 +16725,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                         if (textTpl != null)
                                         {
                                             sp.Target.Clear();
-                                            var clone = (IText)textTpl.Clone();
-                                            clone.Properties.Text = plain;
-                                            sp.Target.Add(clone);
+                                            Core.SegmentTagHandler.AppendText(sp.Target, plain, sp.Source, Core.SegmentTagHandler.Serialize(sp.Source).TagMap, textTpl);
                                         }
                                     }
                                     Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
