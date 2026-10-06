@@ -419,7 +419,6 @@ namespace Supervertaler.Trados.Settings
             SpanG(root, ref row, _chkSuperSearchInTab);
             SpanG(root, ref row, NoteG("(restart required)"));
 
-            // ─── Team folder ───
             Func<string, Button> mkSmallButton = (txt) => new Button
             {
                 Text = txt,
@@ -429,6 +428,46 @@ namespace Supervertaler.Trados.Settings
                 Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3)),
                 Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
             };
+
+            // ─── Data folder ───
+            // Shown, not changed: the first-run SetupDialog is the only place that
+            // sets it, and moving it means moving the licence and the termbase DB.
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Data folder"));
+            var dataFolder = Settings.UserDataPath.Root;
+            var txtDataFolder = new TextBox
+            {
+                Width = UiScale.Pixels(300),
+                ReadOnly = true,
+                Text = dataFolder,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3))
+            };
+            tips.SetToolTip(txtDataFolder,
+                "Chosen when Supervertaler was first set up, and shared by every Supervertaler product on this computer.\n" +
+                "To move it: close Trados Studio, move the folder, then change \"user_data_path\" in\n" +
+                "%APPDATA%\\Supervertaler\\config.json to the new location.");
+            var btnOpenDataFolder = mkSmallButton("Open");
+            btnOpenDataFolder.Click += (s, e) =>
+            {
+                try
+                {
+                    if (System.IO.Directory.Exists(dataFolder))
+                        System.Diagnostics.Process.Start("explorer.exe", "\"" + dataFolder + "\"");
+                    else
+                        MessageBox.Show("The data folder cannot be found:\n" + dataFolder,
+                            "Data folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                catch { }
+            };
+            RowG(root, ref row, "Data folder:", FlowG(txtDataFolder, btnOpenDataFolder));
+            var dataNote = NoteG(
+                "Your licence, settings, API keys and termbases are kept here, and so are your memory banks " +
+                "and prompts unless a team folder is set.");
+            dataNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
+            SpanG(root, ref row, dataNote);
+
+            // ─── Team folder ───
             SpanG(root, ref row, SeparatorG());
             SpanG(root, ref row, HeaderG("Team folder"));
             var teamNote = NoteG(
