@@ -62,6 +62,9 @@ namespace Supervertaler.Trados.Settings
         private CheckBox _chkCaseSensitive;
         private CheckBox _chkAdaptCasing;
         private CheckBox _chkUsageStats;
+        private TextBox _txtTeamFolder;
+        private string _teamFolderPending;   // what OK will save; null = none
+        private bool _copyToTeamFolder;      // copy this computer's banks and prompts there on OK
         private CheckBox _chkSuperSearchInTab;
         private CheckBox _chkDiagnosticLogging;
         private NumericUpDown _nudFontSize;
@@ -415,6 +418,63 @@ namespace Supervertaler.Trados.Settings
                 "Assistant licence (without one, SuperSearch stays in its own panel).");
             SpanG(root, ref row, _chkSuperSearchInTab);
             SpanG(root, ref row, NoteG("(restart required)"));
+
+            // ─── Team folder ───
+            Func<string, Button> mkSmallButton = (txt) => new Button
+            {
+                Text = txt,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlatStyle = FlatStyle.System,
+                Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3)),
+                Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
+            };
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Team folder"));
+            var teamNote = NoteG(
+                "Share memory banks and the prompt library with colleagues: point everyone's team folder " +
+                "at the same folder on your file server. Your licence, settings, API keys and termbases " +
+                "stay in your own data folder.");
+            teamNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
+            SpanG(root, ref row, teamNote);
+
+            _teamFolderPending = Settings.UserDataPath.ConfiguredTeamFolder;
+            _txtTeamFolder = new TextBox
+            {
+                Width = UiScale.Pixels(300),
+                ReadOnly = true,
+                Text = _teamFolderPending ?? "",
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3))
+            };
+            var btnTeamBrowse = mkSmallButton("Browse…");
+            btnTeamBrowse.Click += (s, e) => BrowseTeamFolder();
+            var btnTeamClear = mkSmallButton("Clear");
+            btnTeamClear.Click += (s, e) =>
+            {
+                _teamFolderPending = null;
+                _copyToTeamFolder = false;
+                _txtTeamFolder.Text = "";
+            };
+            RowG(root, ref row, "Team folder:", FlowG(_txtTeamFolder, btnTeamBrowse, btnTeamClear));
+            SpanG(root, ref row, NoteG("(restart required)"));
+
+            var teamProblem = Supervertaler.Core.SupervertalerPaths.TeamFolderProblem;
+            var teamInUse = Supervertaler.Core.SupervertalerPaths.TeamFolder;
+            if (teamProblem != null)
+            {
+                var warn = NoteG("⚠ " + teamProblem);
+                warn.ForeColor = Color.FromArgb(176, 80, 0);
+                warn.Font = new Font("Segoe UI", UiScale.FontSize(8f), FontStyle.Regular);
+                warn.MaximumSize = new Size(UiScale.Pixels(520), 0);
+                SpanG(root, ref row, warn);
+            }
+            else if (teamInUse != null)
+            {
+                var ok = NoteG("In use: memory banks and prompts come from the team folder.");
+                ok.MaximumSize = new Size(UiScale.Pixels(520), 0);
+                SpanG(root, ref row, ok);
+            }
 
             // ─── Diagnostics ───
             SpanG(root, ref row, SeparatorG());
@@ -1885,8 +1945,85 @@ namespace Supervertaler.Trados.Settings
             }
         }
 
+        /// <summary>Picks a team folder. When it holds no memory banks or prompts
+        /// yet, offers to copy this computer's there - the colleague who sets the
+        /// folder up seeds it; everyone after them just points at it.</summary>
+        private void BrowseTeamFolder()
+        {
+            {
+                var chosen = Supervertaler.Trados.Controls.FolderPicker.Show(this,
+                    "Choose the team folder for shared memory banks and prompts", _teamFolderPending);
+                if (string.IsNullOrWhiteSpace(chosen)) return;
+                var dataRoot = Settings.UserDataPath.Root;
+                if (string.Equals(System.IO.Path.GetFullPath(chosen).TrimEnd('\\'),
+                        System.IO.Path.GetFullPath(dataRoot).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show(this, "That is your own data folder. Choose a folder your colleagues can reach, " +
+                        "such as one on your file server.", "Team folder", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                _teamFolderPending = chosen;
+                _txtTeamFolder.Text = chosen;
+                _copyToTeamFolder = false;
+
+                bool teamIsEmpty = !System.IO.Directory.Exists(System.IO.Path.Combine(chosen, "memory-banks"))
+                                   && !System.IO.Directory.Exists(System.IO.Path.Combine(chosen, "prompt_library"));
+                bool haveOwn = System.IO.Directory.Exists(Settings.UserDataPath.MemoryBanksRoot)
+                               || System.IO.Directory.Exists(Settings.UserDataPath.PromptLibraryDir);
+                if (teamIsEmpty && haveOwn)
+                {
+                    _copyToTeamFolder = MessageBox.Show(this,
+                        "This folder has no memory banks or prompts yet.\n\n" +
+                        "Copy your memory banks and prompt library into it, so your colleagues start with them? " +
+                        "Your own copies stay where they are.",
+                        "Team folder", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+                }
+            }
+        }
+
+        /// <summary>Saves the team folder when it changed. False when it could
+        /// not be saved, after telling the user.</summary>
+        private bool SaveTeamFolderIfChanged()
+        {
+            var before = Settings.UserDataPath.ConfiguredTeamFolder;
+            var after = string.IsNullOrWhiteSpace(_teamFolderPending) ? null : _teamFolderPending.Trim();
+            if (string.Equals(before ?? "", after ?? "", StringComparison.OrdinalIgnoreCase) && !_copyToTeamFolder)
+                return true;
+            try
+            {
+                int copied = 0;
+                if (after != null && _copyToTeamFolder)
+                {
+                    Cursor = Cursors.WaitCursor;
+                    try { copied = Settings.UserDataPath.CopySharedContentTo(after); }
+                    finally { Cursor = Cursors.Default; }
+                }
+                Settings.UserDataPath.SaveTeamFolder(after);
+                MessageBox.Show(this,
+                    (after == null
+                        ? "The team folder is cleared. Memory banks and prompts will come from your own data folder"
+                        : (copied > 0 ? "Copied " + copied + " file(s) to the team folder. " : "") +
+                          "Memory banks and prompts will come from the team folder") +
+                    " the next time you start Trados Studio.",
+                    "Team folder", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "The team folder could not be saved:\n" + ex.Message,
+                    "Team folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+        }
+
         private void OnOKClick(object sender, EventArgs e)
         {
+            if (!SaveTeamFolderIfChanged())
+            {
+                DialogResult = DialogResult.None;   // keep the dialog open
+                return;
+            }
+
             // TermLens settings
             _settings.TermbasePath = _txtTermbasePath.Text.Trim();
             _settings.AutoLoadOnStartup = _chkAutoLoad.Checked;

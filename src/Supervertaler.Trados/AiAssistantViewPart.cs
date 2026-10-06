@@ -385,6 +385,20 @@ namespace Supervertaler.Trados
             StartInboxWatcher();
             StartSupervertalerBridge();
 
+            // A team folder that could not be reached at start-up means this
+            // session's banks and prompts are the user's own, not the team's.
+            // Say so where they will see it: falling back silently would let the
+            // AI work from different banks than the user believes it does.
+            var teamProblem = global::Supervertaler.Core.SupervertalerPaths.TeamFolderProblem;
+            if (teamProblem != null)
+            {
+                Core.DiagnosticLog.WriteAlways("TeamFolder", teamProblem);
+                try { AddNoticeMessage("Team folder: " + teamProblem); } catch { }
+            }
+            else if (global::Supervertaler.Core.SupervertalerPaths.TeamFolder != null)
+                Core.DiagnosticLog.WriteAlways("TeamFolder",
+                    "Memory banks and prompts come from the team folder " + global::Supervertaler.Core.SupervertalerPaths.TeamFolder);
+
             // Check the already-active bank at start-up too. If the user has
             // a bank (e.g. one created before template bundling shipped, or
             // pre-existing from Step 5i) that is missing canonical template

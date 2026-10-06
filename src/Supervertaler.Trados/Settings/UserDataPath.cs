@@ -154,10 +154,117 @@ namespace Supervertaler.Trados.Settings
         };
 
         /// <summary>
-        /// Root folder containing all memory banks: <c>&lt;Root&gt;/memory-banks/</c>.
+        /// Root folder containing all memory banks: <c>&lt;Root&gt;/memory-banks/</c>,
+        /// or the team folder's when one is set (see SupervertalerPaths.ContentRoot).
         /// Individual banks live in subfolders named after their sanitized bank name.
         /// </summary>
-        public static string MemoryBanksRoot => Path.Combine(Root, "memory-banks");
+        public static string MemoryBanksRoot => SupervertalerPaths.MemoryBanksDir;
+
+        // ── Team folder ──────────────────────────────────────────────
+
+        /// <summary>
+        /// The team folder as config.json says now (null when none), read fresh -
+        /// for the settings dialog. What this session actually uses is
+        /// SupervertalerPaths.ContentRoot, fixed at start-up.
+        /// </summary>
+        public static string ConfiguredTeamFolder
+        {
+            get
+            {
+                try
+                {
+                    if (!File.Exists(ConfigFile)) return null;
+                    var v = ExtractJsonString(File.ReadAllText(ConfigFile, Encoding.UTF8), "team_folder");
+                    return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+                }
+                catch { return null; }
+            }
+        }
+
+        /// <summary>
+        /// Saves the team folder (null or blank clears it) in config.json, keeping
+        /// every other key. Takes effect at the next start of Trados Studio. The
+        /// file also points every Supervertaler product at the data folder, so it
+        /// is written to a temporary file first and swapped in: a crash part-way
+        /// through must never leave the user's data folder pointer half-written.
+        /// </summary>
+        public static void SaveTeamFolder(string path)
+        {
+            var dir = Path.GetDirectoryName(ConfigFile);
+            if (dir != null) Directory.CreateDirectory(dir);
+            var existing = File.Exists(ConfigFile) ? File.ReadAllText(ConfigFile, Encoding.UTF8) : "";
+            var updated = SetJsonString(existing, "team_folder", (path ?? "").Trim(), Root);
+            var tmp = ConfigFile + ".tmp";
+            File.WriteAllText(tmp, updated, new UTF8Encoding(false));   // no BOM: Workbench (Python) reads this file too
+            if (File.Exists(ConfigFile)) File.Replace(tmp, ConfigFile, null);
+            else File.Move(tmp, ConfigFile);
+        }
+
+        /// <summary>
+        /// Sets one string value in a flat JSON object, keeping everything else as
+        /// it is: replaces the value if the key is there, adds the key if not, and
+        /// writes a fresh object (with user_data_path, so the data folder is not
+        /// lost) when there is nothing to edit.
+        /// </summary>
+        internal static string SetJsonString(string json, string key, string value, string rootForNewFile)
+        {
+            string Esc(string v) => (v ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var quotedKey = "\"" + key + "\"";
+            if (string.IsNullOrWhiteSpace(json) || json.IndexOf('{') < 0 || json.LastIndexOf('}') < 0)
+                return "{\n  \"user_data_path\": \"" + Esc(rootForNewFile) + "\",\n  " +
+                       quotedKey + ": \"" + Esc(value) + "\"\n}";
+
+            var idx = json.IndexOf(quotedKey, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                var colon = json.IndexOf(':', idx + quotedKey.Length);
+                var valStart = colon < 0 ? -1 : json.IndexOf('"', colon + 1);
+                var valEnd = -1;
+                for (int i = valStart + 1; valStart >= 0 && i < json.Length; i++)
+                {
+                    if (json[i] == '\\') { i++; continue; }
+                    if (json[i] == '"') { valEnd = i; break; }
+                }
+                if (valEnd > valStart)
+                    return json.Substring(0, valStart + 1) + Esc(value) + json.Substring(valEnd);
+            }
+
+            var close = json.LastIndexOf('}');
+            var body = json.Substring(0, close).TrimEnd();
+            var comma = body.EndsWith("{") ? "" : ",";
+            return body + comma + "\n  " + quotedKey + ": \"" + Esc(value) + "\"\n" + json.Substring(close);
+        }
+
+        /// <summary>
+        /// Copies this computer's memory banks and prompt library into
+        /// <paramref name="teamFolder"/>, for the colleague who sets the team
+        /// folder up. Never overwrites: a file already in the team folder is the
+        /// team's and wins. Copies, so the user's own folders stay as they were.
+        /// Returns the number of files copied.
+        /// </summary>
+        public static int CopySharedContentTo(string teamFolder)
+        {
+            int copied = 0;
+            foreach (var name in new[] { "memory-banks", "prompt_library" })
+            {
+                var from = Path.Combine(SupervertalerPaths.ContentRoot, name);
+                var to = Path.Combine(teamFolder, name);
+                if (!Directory.Exists(from) || string.Equals(Path.GetFullPath(from).TrimEnd('\\'),
+                        Path.GetFullPath(to).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                    continue;
+                foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+                {
+                    var rel = file.Substring(from.Length).TrimStart('\\', '/');
+                    if (rel.StartsWith(".trash", StringComparison.OrdinalIgnoreCase)) continue;
+                    var dest = Path.Combine(to, rel);
+                    if (File.Exists(dest)) continue;
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                    File.Copy(file, dest);
+                    copied++;
+                }
+            }
+            return copied;
+        }
 
         /// <summary>
         /// Resolves the on-disk path for a specific memory bank. The returned path
@@ -1316,7 +1423,7 @@ namespace Supervertaler.Trados.Settings
                     updated = "{\n  \"user_data_path\": \"" + escaped + "\"\n}";
                 }
 
-                File.WriteAllText(ConfigFile, updated, Encoding.UTF8);
+                File.WriteAllText(ConfigFile, updated, new UTF8Encoding(false));   // no BOM: Workbench (Python) reads this file too
             }
             catch { }
         }
