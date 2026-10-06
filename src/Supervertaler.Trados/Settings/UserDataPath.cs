@@ -188,12 +188,29 @@ namespace Supervertaler.Trados.Settings
         /// is written to a temporary file first and swapped in: a crash part-way
         /// through must never leave the user's data folder pointer half-written.
         /// </summary>
-        public static void SaveTeamFolder(string path)
+        public static void SaveTeamFolder(string path) => SaveConfigString("team_folder", (path ?? "").Trim());
+
+        /// <summary>
+        /// The data folder as config.json says now, read fresh - differs from
+        /// <see cref="Root"/> after a move (or a hand edit) until Trados Studio restarts.
+        /// </summary>
+        public static string ConfiguredDataFolder => ResolveRoot();
+
+        /// <summary>
+        /// Points config.json at a data folder that DataFolderMover has already
+        /// copied, for the next start. Deliberately not <see cref="SetRoot"/>: this
+        /// session keeps the folder it has open, and unlike SetRoot this throws
+        /// when the file cannot be written, so a move is never reported done
+        /// without it.
+        /// </summary>
+        public static void SaveDataFolder(string path) => SaveConfigString("user_data_path", path);
+
+        private static void SaveConfigString(string key, string value)
         {
             var dir = Path.GetDirectoryName(ConfigFile);
             if (dir != null) Directory.CreateDirectory(dir);
             var existing = File.Exists(ConfigFile) ? File.ReadAllText(ConfigFile, Encoding.UTF8) : "";
-            var updated = SetJsonString(existing, "team_folder", (path ?? "").Trim(), Root);
+            var updated = SetJsonString(existing, key, value, Root);
             var tmp = ConfigFile + ".tmp";
             File.WriteAllText(tmp, updated, new UTF8Encoding(false));   // no BOM: Workbench (Python) reads this file too
             if (File.Exists(ConfigFile)) File.Replace(tmp, ConfigFile, null);
@@ -211,8 +228,10 @@ namespace Supervertaler.Trados.Settings
             string Esc(string v) => (v ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
             var quotedKey = "\"" + key + "\"";
             if (string.IsNullOrWhiteSpace(json) || json.IndexOf('{') < 0 || json.LastIndexOf('}') < 0)
-                return "{\n  \"user_data_path\": \"" + Esc(rootForNewFile) + "\",\n  " +
-                       quotedKey + ": \"" + Esc(value) + "\"\n}";
+                return string.Equals(key, "user_data_path", StringComparison.OrdinalIgnoreCase)
+                    ? "{\n  \"user_data_path\": \"" + Esc(value) + "\"\n}"
+                    : "{\n  \"user_data_path\": \"" + Esc(rootForNewFile) + "\",\n  " +
+                      quotedKey + ": \"" + Esc(value) + "\"\n}";
 
             var idx = json.IndexOf(quotedKey, StringComparison.OrdinalIgnoreCase);
             if (idx >= 0)

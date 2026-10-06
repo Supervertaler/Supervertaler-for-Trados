@@ -65,6 +65,8 @@ namespace Supervertaler.Trados.Settings
         private TextBox _txtTeamFolder;
         private string _teamFolderPending;   // what OK will save; null = none
         private bool _copyToTeamFolder;      // copy this computer's banks and prompts there on OK
+        private Label _lblDataFolderMove;
+        private string _dataFolderMoveTarget; // where OK will copy the data folder; null = no move
         private CheckBox _chkSuperSearchInTab;
         private CheckBox _chkDiagnosticLogging;
         private NumericUpDown _nudFontSize;
@@ -430,8 +432,7 @@ namespace Supervertaler.Trados.Settings
             };
 
             // ─── Data folder ───
-            // Shown, not changed: the first-run SetupDialog is the only place that
-            // sets it, and moving it means moving the licence and the termbase DB.
+            // Chosen by the first-run SetupDialog; Move… copies it elsewhere (on OK).
             SpanG(root, ref row, SeparatorG());
             SpanG(root, ref row, HeaderG("Data folder"));
             var dataFolder = Settings.UserDataPath.Root;
@@ -444,9 +445,7 @@ namespace Supervertaler.Trados.Settings
                 Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3))
             };
             tips.SetToolTip(txtDataFolder,
-                "Chosen when Supervertaler was first set up, and shared by every Supervertaler product on this computer.\n" +
-                "To move it: close Trados Studio, move the folder, then change \"user_data_path\" in\n" +
-                "%APPDATA%\\Supervertaler\\config.json to the new location.");
+                "Chosen when Supervertaler was first set up, and shared by every Supervertaler product on this computer.");
             var btnOpenDataFolder = mkSmallButton("Open");
             btnOpenDataFolder.Click += (s, e) =>
             {
@@ -460,12 +459,29 @@ namespace Supervertaler.Trados.Settings
                 }
                 catch { }
             };
-            RowG(root, ref row, "Data folder:", FlowG(txtDataFolder, btnOpenDataFolder));
+            var btnMoveDataFolder = mkSmallButton("Move…");
+            btnMoveDataFolder.Click += (s, e) => ChooseDataFolderMove();
+            RowG(root, ref row, "Data folder:", FlowG(txtDataFolder, btnOpenDataFolder, btnMoveDataFolder));
             var dataNote = NoteG(
                 "Your licence, settings, API keys and termbases are kept here, and so are your memory banks " +
                 "and prompts unless a team folder is set.");
             dataNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
             SpanG(root, ref row, dataNote);
+
+            _lblDataFolderMove = NoteG("");
+            _lblDataFolderMove.ForeColor = Color.FromArgb(176, 80, 0);
+            _lblDataFolderMove.MaximumSize = new Size(UiScale.Pixels(520), 0);
+            _lblDataFolderMove.Visible = false;
+            SpanG(root, ref row, _lblDataFolderMove);
+            // A move done earlier this session (or a hand edit) takes effect at the
+            // next start; until then, moving again would copy the folder still in use.
+            var configured = Settings.UserDataPath.ConfiguredDataFolder;
+            if (!SamePath(configured, dataFolder))
+            {
+                _lblDataFolderMove.Text = "From the next start of Trados Studio: " + configured;
+                _lblDataFolderMove.Visible = true;
+                btnMoveDataFolder.Enabled = false;
+            }
 
             // ─── Team folder ───
             SpanG(root, ref row, SeparatorG());
@@ -2020,6 +2036,142 @@ namespace Supervertaler.Trados.Settings
             }
         }
 
+        private static bool SamePath(string a, string b)
+        {
+            try
+            {
+                return string.Equals(System.IO.Path.GetFullPath(a).TrimEnd('\\'),
+                    System.IO.Path.GetFullPath(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return string.Equals(a, b, StringComparison.OrdinalIgnoreCase); }
+        }
+
+        /// <summary>Picks where to move the data folder. The copy itself waits for
+        /// OK, after everything else in this dialog is saved, so the copy has it.</summary>
+        private void ChooseDataFolderMove()
+        {
+            const string caption = "Move data folder";
+            var current = Settings.UserDataPath.Root;
+            var chosen = Supervertaler.Trados.Controls.FolderPicker.Show(this,
+                "Choose where to move your data folder", System.IO.Path.GetDirectoryName(current));
+            if (string.IsNullOrWhiteSpace(chosen)) return;
+
+            var problem = DataFolderMover.Problem(current, chosen);
+            bool hasEntries;
+            try { hasEntries = System.IO.Directory.Exists(chosen) && System.IO.Directory.EnumerateFileSystemEntries(chosen).Any(); }
+            catch { hasEntries = false; }   // unreadable: Problem has already said why
+            // Picking the parent ("E:\Work") is the natural slip: offer a folder inside it.
+            if (problem != null && hasEntries)
+            {
+                var inside = System.IO.Path.Combine(chosen, "Supervertaler");
+                if (DataFolderMover.Problem(current, inside) == null &&
+                    MessageBox.Show(this, chosen + " already has files in it, and the data folder needs an empty folder.\n\n" +
+                        "Move it to " + inside + " instead?", caption,
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    chosen = inside;
+                    problem = null;
+                }
+                else if (DataFolderMover.Problem(current, inside) == null)
+                {
+                    return;
+                }
+            }
+            if (problem != null)
+            {
+                MessageBox.Show(this, problem, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (DataFolderMover.IsNetworkPath(chosen) &&
+                MessageBox.Show(this, chosen + " is on a network drive. Supervertaler's termbase database does not work " +
+                    "reliably over a network, so a folder on this computer is strongly recommended.\n\nUse it anyway?",
+                    caption, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+
+            if (MessageBox.Show(this,
+                    "Move your data folder to " + chosen + "?\n\n" +
+                    "When you click OK in Settings, Supervertaler copies everything in " + current +
+                    " to the new folder, and uses it from the next start of Trados Studio. Your current folder is " +
+                    "left exactly as it is, so you can check the new one before you delete the old one.\n\n" +
+                    "Close Supervertaler Workbench, and memoQ if you use Supervertaler for memoQ, before you click OK.",
+                    caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            _dataFolderMoveTarget = chosen;
+            _lblDataFolderMove.Text = "Moves to " + chosen + " when you click OK (restart required).";
+            _lblDataFolderMove.Visible = true;
+        }
+
+        /// <summary>
+        /// Copies the data folder to <see cref="_dataFolderMoveTarget"/> and points
+        /// config.json at it for the next start. Runs last in OK, after every
+        /// setting is saved. Any failure leaves the current folder in use and
+        /// removes the partial copy.
+        /// </summary>
+        private void MoveDataFolderOnOK()
+        {
+            const string caption = "Move data folder";
+            var from = Settings.UserDataPath.Root;
+            var to = _dataFolderMoveTarget;
+            var unchanged = "\n\nNothing has changed: Supervertaler still uses " + from + ".";
+
+            // Checked again: the folder may have filled up since it was chosen.
+            var problem = DataFolderMover.Problem(from, to);
+            if (problem != null)
+            {
+                MessageBox.Show(this, "Your data folder was not moved: " + problem + unchanged,
+                    caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            DataFolderMover.Result result;
+            using (var dlg = new DataFolderMoveForm(to, (progress, ct) => DataFolderMover.Copy(from, to, progress, ct)))
+            {
+                dlg.ShowDialog(this);
+                if (dlg.Error is OperationCanceledException)
+                {
+                    MessageBox.Show(this, "The move was cancelled." + unchanged,
+                        caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                if (dlg.Error != null)
+                {
+                    Core.DiagnosticLog.WriteAlways("DataFolder", "Move to " + to + " failed: " + dlg.Error);
+                    MessageBox.Show(this, "Your data folder could not be moved:\n" + dlg.Error.Message + unchanged,
+                        caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                result = dlg.Result;
+            }
+
+            try
+            {
+                Settings.UserDataPath.SaveDataFolder(System.IO.Path.GetFullPath(to));
+            }
+            catch (Exception ex)
+            {
+                bool removed = DataFolderMover.RemoveCopy(to, result.CreatedTarget);
+                Core.DiagnosticLog.WriteAlways("DataFolder", "Copied to " + to + " but config.json failed: " + ex);
+                MessageBox.Show(this, "Your data folder was copied, but Supervertaler could not record the new location:\n" +
+                    ex.Message + unchanged + (removed ? "" : "\n\nThe copy in " + to + " can be deleted."),
+                    caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            Core.DiagnosticLog.WriteAlways("DataFolder", string.Format(
+                "Moved {0} -> {1}: {2} files, {3} databases, {4} settings files repointed",
+                from, to, result.Files, result.Databases, result.RewrittenFiles));
+            MessageBox.Show(this,
+                "Your data folder has been copied to " + to + " (" + result.Files.ToString("N0") + " files, " +
+                DataFolderMover.FormatBytes(result.Bytes) + ").\n\n" +
+                "Restart Trados Studio now to start using it. Until you do, Supervertaler keeps using " + from +
+                ", and anything you change before restarting is saved there, not in the new folder.\n\n" +
+                "Your old folder has not been changed. Once you have checked that everything is in the new one, " +
+                "you can delete it.",
+                caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
         /// <summary>Saves the team folder when it changed. False when it could
         /// not be saved, after telling the user.</summary>
         private bool SaveTeamFolderIfChanged()
@@ -2185,6 +2337,10 @@ namespace Supervertaler.Trados.Settings
                 ProjectSettings.Save(projectPath,
                     _settings.ExtractProjectSettings(projectPath, projectName));
             }
+
+            // Last, so the copy includes everything saved above.
+            if (_dataFolderMoveTarget != null)
+                MoveDataFolderOnOK();
         }
 
         private void OnExportSettingsClick(object sender, EventArgs e)
