@@ -67,6 +67,7 @@ namespace Supervertaler.Trados.Settings
         private bool _copyToTeamFolder;      // copy this computer's banks and prompts there on OK
         private Label _lblDataFolderMove;
         private string _dataFolderMoveTarget; // where OK will copy the data folder; null = no move
+        private bool _dataFolderSwitchOnly;   // the target already holds a data folder: switch, copy nothing
         private CheckBox _chkSuperSearchInTab;
         private CheckBox _chkDiagnosticLogging;
         private NumericUpDown _nudFontSize;
@@ -2057,6 +2058,24 @@ namespace Supervertaler.Trados.Settings
             if (string.IsNullOrWhiteSpace(chosen)) return;
 
             var problem = DataFolderMover.Problem(current, chosen);
+
+            // A folder that already holds a data folder (the old one after a move,
+            // a restored backup) is switched to as it is, not refused as non-empty.
+            if (problem != null && DataFolderMover.SwitchProblem(current, chosen) == null)
+            {
+                if (MessageBox.Show(this,
+                        chosen + " already holds a Supervertaler data folder.\n\n" +
+                        "Use it as it is, instead of your current one? Nothing is copied: from the next start of " +
+                        "Trados Studio, Supervertaler uses what is in " + chosen + ", and " + current +
+                        " is left as it is.", caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                    return;
+                _dataFolderMoveTarget = chosen;
+                _dataFolderSwitchOnly = true;
+                _lblDataFolderMove.Text = "Switches to " + chosen + " when you click OK (restart required).";
+                _lblDataFolderMove.Visible = true;
+                return;
+            }
+
             bool hasEntries;
             try { hasEntries = System.IO.Directory.Exists(chosen) && System.IO.Directory.EnumerateFileSystemEntries(chosen).Any(); }
             catch { hasEntries = false; }   // unreadable: Problem has already said why
@@ -2099,6 +2118,7 @@ namespace Supervertaler.Trados.Settings
                 return;
 
             _dataFolderMoveTarget = chosen;
+            _dataFolderSwitchOnly = false;
             _lblDataFolderMove.Text = "Moves to " + chosen + " when you click OK (restart required).";
             _lblDataFolderMove.Visible = true;
         }
@@ -2115,6 +2135,29 @@ namespace Supervertaler.Trados.Settings
             var from = Settings.UserDataPath.Root;
             var to = _dataFolderMoveTarget;
             var unchanged = "\n\nNothing has changed: Supervertaler still uses " + from + ".";
+
+            if (_dataFolderSwitchOnly)
+            {
+                var switchProblem = DataFolderMover.SwitchProblem(from, to);
+                try
+                {
+                    if (switchProblem != null) throw new InvalidOperationException(switchProblem);
+                    Settings.UserDataPath.SaveDataFolder(System.IO.Path.GetFullPath(to));
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Supervertaler could not switch to " + to + ":\n" + ex.Message + unchanged,
+                        caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                Core.DiagnosticLog.WriteAlways("DataFolder", "Switched " + from + " -> " + to + " (existing folder, nothing copied)");
+                MessageBox.Show(this,
+                    "From the next start of Trados Studio, Supervertaler uses the data folder in " + to + ".\n\n" +
+                    "Restart Trados Studio now. Until you do, Supervertaler keeps using " + from +
+                    ", and anything you change before restarting is saved there.",
+                    caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
 
             // Checked again: the folder may have filled up since it was chosen.
             var problem = DataFolderMover.Problem(from, to);

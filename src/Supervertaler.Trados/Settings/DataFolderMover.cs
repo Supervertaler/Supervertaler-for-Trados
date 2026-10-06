@@ -60,6 +60,42 @@ namespace Supervertaler.Trados.Settings
             return null;
         }
 
+        /// <summary>
+        /// True when <paramref name="folder"/> already holds a Supervertaler data
+        /// folder - the old one after a move, a restored backup, one copied from
+        /// another computer - so Move can offer to switch to it as it is, instead
+        /// of refusing it for not being empty.
+        /// </summary>
+        internal static bool LooksLikeDataFolder(string folder)
+        {
+            try
+            {
+                return new[] { "trados", "licence", "workbench", "memoq" }.Any(d => Directory.Exists(Path.Combine(folder, d)))
+                       || File.Exists(Path.Combine(folder, "resources", "supervertaler.db"));
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Why the data folder at <paramref name="from"/> cannot be
+        /// switched to the existing one at <paramref name="to"/>, or null.</summary>
+        internal static string SwitchProblem(string from, string to)
+        {
+            if (string.IsNullOrWhiteSpace(to) || !Regex.IsMatch(to.Trim(), @"^([A-Za-z]:\\|\\\\)"))
+                return "Choose a full path, such as E:\\Work\\Supervertaler.";
+            try
+            {
+                var f = Normalise(from);
+                var t = Normalise(to.Trim());
+                if (string.Equals(f, t, StringComparison.OrdinalIgnoreCase)) return "That is your data folder already.";
+                if (t.StartsWith(WithSeparator(f), StringComparison.OrdinalIgnoreCase) ||
+                    f.StartsWith(WithSeparator(t), StringComparison.OrdinalIgnoreCase))
+                    return "One data folder cannot be inside the other.";
+                if (!LooksLikeDataFolder(t)) return t + " does not hold a Supervertaler data folder.";
+                return null;
+            }
+            catch (Exception ex) { return "That folder cannot be used: " + ex.Message; }
+        }
+
         /// <summary>True for a UNC path or a mapped network drive: the termbase
         /// database is not reliable over a network share.</summary>
         internal static bool IsNetworkPath(string path)
