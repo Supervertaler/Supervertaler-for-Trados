@@ -15,6 +15,9 @@ namespace Supervertaler.Trados.Licensing
         private const string PurchaseUrl = "https://supervertaler-for-trados.lemonsqueezy.com/checkout/buy/86e8dcb3-2a38-4396-aa38-9a67e5c72204";
         private const string ManageUrl = "https://supervertaler-for-trados.lemonsqueezy.com/billing";
 
+        private const int LeftPad = 16;
+        private const int ContentWidth = 480;
+
         private Label _lblStatus;
         private Panel _statusBanner;
         private Label _statusText;
@@ -45,6 +48,12 @@ namespace Supervertaler.Trados.Licensing
         {
             BackColor = Color.White;
             Dock = DockStyle.Fill;
+
+            // The width the controls are laid out for, set before any is added.
+            // A control anchored to the right keeps the distance to the right
+            // edge it had when it was added; built on the default 150 x 150 the
+            // status banner kept a negative one and ran 346 px past the edge.
+            Size = new Size(2 * LeftPad + ContentWidth, 400);
             BuildUI();
             RefreshDisplay();
 
@@ -87,8 +96,8 @@ namespace Supervertaler.Trados.Licensing
             var valueColor = Color.FromArgb(40, 40, 40);
 
             int y = 16;
-            int leftPad = 16;
-            int contentWidth = 480;
+            int leftPad = LeftPad;
+            int contentWidth = ContentWidth;
 
             // ─── Status banner ──────────────────────────────────────
             _statusBanner = new Panel
