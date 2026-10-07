@@ -50,6 +50,13 @@ namespace Supervertaler.Trados.Licensing
             // customer out, and it would otherwise say nothing about why.
             if (_licence.DamagedFileFound && _licence.State != LicenceState.Licensed)
                 ShowDamagedFileMessage(thisSession: _licence.State == LicenceState.Unknown);
+
+            // Said at every start while it matters - the session that meets it,
+            // and once nothing else is running - but not through a trial of the
+            // person's own, when the Licence page says it instead.
+            else if (_licence.ForeignActivationFound
+                     && (_licence.State == LicenceState.Unknown || _licence.State == LicenceState.Expired))
+                ShowForeignActivationMessage(thisSession: _licence.State == LicenceState.Unknown);
         }
 
         /// <summary>
@@ -120,6 +127,21 @@ namespace Supervertaler.Trados.Licensing
         /// <summary>Last successful validation time (UTC).</summary>
         public DateTime LastValidatedAt => _licence.LastValidatedUtc;
 
+        /// <summary>
+        /// The licence in the data folder was activated for another computer or
+        /// Windows account - this one under an earlier name, say - and this one
+        /// has no activation of its own. A licence counts only for the computer
+        /// and account that activated it; re-entering the key activates it here.
+        /// </summary>
+        public bool ForeignActivationFound => _licence.ForeignActivationFound;
+
+        /// <summary>The Licence page's explanation of <see cref="ForeignActivationFound"/>.</summary>
+        internal const string ForeignActivationNote =
+            "The licence in your data folder was activated for another computer or Windows account – " +
+            "for example this computer under an earlier name, or before Windows was reinstalled. " +
+            "A licence counts only for the computer and account that activated it. " +
+            "If it is yours, enter its key below to activate it here.";
+
         // ─── Initialization ─────────────────────────────────────────
 
         /// <summary>
@@ -166,8 +188,15 @@ namespace Supervertaler.Trados.Licensing
         /// </summary>
         public static void ShowLicenseRequiredMessage()
         {
+            var foreign = false;
+            try { foreign = Instance.ForeignActivationFound; } catch { }
+
             MessageBox.Show(
                 "Your trial has expired. Please enter a licence key in Settings → Licence to continue using Supervertaler for Trados.\n\n" +
+                (foreign
+                    ? "The licence in your data folder was activated for another computer or Windows account, so it does not count here. " +
+                      "If it is yours, entering its key activates it here.\n\n"
+                    : "") +
                 "Visit supervertaler.com/trados/ for pricing and purchase options.\n\n" +
                 "Cost shouldn’t be a barrier: if the price is a problem for you, get in touch via beijer.uk/contact and we’ll work something out.",
                 "Licence Required",
@@ -195,6 +224,28 @@ namespace Supervertaler.Trados.Licensing
                     "Supervertaler – Licence File Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
+            }
+            catch
+            {
+                // UI not available yet – the log has it.
+            }
+        }
+
+        private static void ShowForeignActivationMessage(bool thisSession)
+        {
+            try
+            {
+                MessageBox.Show(
+                    "The Supervertaler licence in your data folder was activated for another computer or Windows account " +
+                    "– for example this computer under an earlier name, or before Windows was reinstalled.\n\n" +
+                    "A licence counts only for the computer and account that activated it. If the licence is yours, " +
+                    "please re-enter your licence key in Settings → Licence to activate it here." +
+                    (thisSession
+                        ? " Everything stays available until you next start Trados Studio."
+                        : ""),
+                    "Supervertaler – Licence",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
             }
             catch
             {

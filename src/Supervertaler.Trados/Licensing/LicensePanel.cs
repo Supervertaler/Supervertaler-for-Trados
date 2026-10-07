@@ -21,6 +21,7 @@ namespace Supervertaler.Trados.Licensing
 
         // Trial / no-key state
         private Panel _activationPanel;
+        private Label _lblForeignNote;
         private TextBox _txtLicenseKey;
         private Button _btnActivate;
         private LinkLabel _lnkBuy;
@@ -121,25 +122,51 @@ namespace Supervertaler.Trados.Licensing
             _activationPanel = new Panel
             {
                 Location = new Point(leftPad, y),
-                Size = new Size(contentWidth, 170),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(contentWidth, 0),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Visible = false
+            };
+
+            // Auto-sized rows, like the licensed panel below: the note takes
+            // room only when it is shown, and nothing is placed by pixel.
+            var activationGrid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                GrowStyle = TableLayoutPanelGrowStyle.AddRows,
+                Margin = Padding.Empty
+            };
+            activationGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+
+            _lblForeignNote = new Label
+            {
+                Text = LicenseManager.ForeignActivationNote,
+                AutoSize = true,
+                MaximumSize = new Size(contentWidth, 0),
+                Font = font,
+                ForeColor = Color.FromArgb(140, 100, 0),
+                Margin = new Padding(0, 0, 0, 12),
                 Visible = false
             };
 
             var lblEnterKey = new Label
             {
                 Text = "Licence key",
-                Location = new Point(0, 0),
                 AutoSize = true,
                 Font = headingFont,
-                ForeColor = Color.FromArgb(50, 50, 50)
+                ForeColor = Color.FromArgb(50, 50, 50),
+                Margin = new Padding(0, 0, 0, 6)
             };
 
             _txtLicenseKey = new TextBox
             {
-                Location = new Point(0, 24),
-                Width = contentWidth,
-                Font = new Font("Consolas", 9.5f)
+                Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                Font = new Font("Consolas", 9.5f),
+                Margin = new Padding(0, 0, 0, 8)
             };
             _txtLicenseKey.KeyDown += (s, e) =>
             {
@@ -156,7 +183,8 @@ namespace Supervertaler.Trados.Licensing
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 Padding = new Padding(12, 4, 12, 4),
-                Location = new Point(0, 56),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, 0, 16, 0),
                 FlatStyle = FlatStyle.System
             };
             _btnActivate.Click += async (s, e) => await ActivateAsync();
@@ -164,12 +192,28 @@ namespace Supervertaler.Trados.Licensing
             _lnkBuy = new LinkLabel
             {
                 Text = "Buy a licence \u2192",
-                Location = new Point(100, 62),
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
+                Margin = Padding.Empty,
                 Font = font,
                 LinkColor = Color.FromArgb(40, 100, 180),
                 ActiveLinkColor = Color.FromArgb(30, 80, 160)
             };
+
+            // Two auto-sized cells, so the link sits centred beside the button
+            // at any scaling.
+            var activateRow = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = Padding.Empty
+            };
+            activateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            activateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            activateRow.Controls.Add(_btnActivate, 0, 0);
+            activateRow.Controls.Add(_lnkBuy, 1, 0);
             _lnkBuy.LinkClicked += (s, e) =>
             {
                 try { Process.Start(new ProcessStartInfo(PurchaseUrl) { UseShellExecute = true }); }
@@ -180,8 +224,8 @@ namespace Supervertaler.Trados.Licensing
             var lnkHardship = new LinkLabel
             {
                 Text = "Cost shouldn’t be a barrier – if the price is a problem for you, get in touch and we’ll work something out.",
-                Location = new Point(0, 92),
                 MaximumSize = new Size(contentWidth, 0),
+                Margin = new Padding(0, 14, 0, 0),
                 AutoSize = true,
                 Font = font,
                 LinkColor = Color.FromArgb(40, 100, 180),
@@ -195,10 +239,12 @@ namespace Supervertaler.Trados.Licensing
                 catch { }
             };
 
-            _activationPanel.Controls.AddRange(new Control[]
-            {
-                lblEnterKey, _txtLicenseKey, _btnActivate, _lnkBuy, lnkHardship
-            });
+            activationGrid.Controls.Add(_lblForeignNote, 0, 0);
+            activationGrid.Controls.Add(lblEnterKey, 0, 1);
+            activationGrid.Controls.Add(_txtLicenseKey, 0, 2);
+            activationGrid.Controls.Add(activateRow, 0, 3);
+            activationGrid.Controls.Add(lnkHardship, 0, 4);
+            _activationPanel.Controls.Add(activationGrid);
             Controls.Add(_activationPanel);
 
             // ─── Licensed panel (shown when key is active) ──────────
@@ -321,6 +367,9 @@ namespace Supervertaler.Trados.Licensing
             var mgr = LicenseManager.Instance;
             var tier = mgr.CurrentTier;
 
+            // Shown with the key box in every state that has one.
+            _lblForeignNote.Visible = mgr.ForeignActivationFound;
+
             switch (tier)
             {
                 case LicenseTier.Trial:
@@ -332,7 +381,7 @@ namespace Supervertaler.Trados.Licensing
                     break;
 
                 case LicenseTier.Unknown:
-                    ShowUnknownState();
+                    ShowUnknownState(mgr.ForeignActivationFound);
                     break;
 
                 case LicenseTier.None:
@@ -405,13 +454,16 @@ namespace Supervertaler.Trados.Licensing
             _licensedPanel.Visible = false;
         }
 
-        // The licence file could not be read. Everything stays available; the
-        // activation panel is shown so a key can be re-entered if it was lost.
-        private void ShowUnknownState()
+        // The licence file could not be read, or this is the first session to
+        // find another account's activation in it. Everything stays available;
+        // the activation panel is shown so a key can be (re-)entered.
+        private void ShowUnknownState(bool foreignActivation)
         {
             _statusBanner.BackColor = Color.FromArgb(255, 245, 215);
             _statusBanner.Invalidate();
-            _statusText.Text = "⚠  Licence could not be read";
+            _statusText.Text = foreignActivation
+                ? "⚠  Licence activated for another computer or account"
+                : "⚠  Licence could not be read";
             _statusText.ForeColor = Color.FromArgb(140, 100, 0);
 
             _activationPanel.Visible = true;
