@@ -241,7 +241,7 @@ namespace Supervertaler.Trados.Licensing
                     "A licence counts only for the computer and account that activated it. If the licence is yours, " +
                     "please re-enter your licence key in Settings → Licence to activate it here." +
                     (thisSession
-                        ? " Everything stays available until you next start Trados Studio."
+                        ? " Everything stays available today, so you can finish what you are working on first."
                         : ""),
                     "Supervertaler – Licence",
                     MessageBoxButtons.OK,
