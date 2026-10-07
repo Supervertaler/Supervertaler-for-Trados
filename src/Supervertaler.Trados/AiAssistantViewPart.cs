@@ -981,7 +981,7 @@ namespace Supervertaler.Trados
                                 $"Prompt size: ~{tokensEst:N0} tokens ({promptCharCount:N0} chars)\n" +
                                 $"Max output tokens: {capturedMaxTokens}\n\n" +
                                 $"If the model is slow or reasoning-heavy, try a faster one " +
-                                $"(e.g. GPT-5.4 Mini or Claude Sonnet 5.5), or send less context." +
+                                $"(e.g. GPT-6 Luna or Claude Sonnet 5.5), or send less context." +
                                 detail);
 
                             // Always log it: an AI failure that leaves nothing in the

@@ -15,12 +15,11 @@ namespace Supervertaler.Trados.Settings
         public string SelectedProvider { get; set; } = "openai";
 
         [DataMember(Name = "openaiModel")]
-        // By id, not position: this was OpenAiModels[1], meant as GPT-5.4 Mini, and
-        // each addition to the top of the list silently moved the default - to
-        // GPT-5.6 Terra in 18.20.144, and to GPT-5.6 Sol at twice Terra's price
-        // had GPT-6.1 Sol been added the same way. Terra is what a new
-        // install has been getting since 144, so it stays until chosen otherwise.
-        public string OpenAiModel { get; set; } = "gpt-5.6-terra";
+        // Named, not taken by position: this was OpenAiModels[1], meant as GPT-5.4
+        // Mini, and each addition to the top of the list silently moved it (to
+        // GPT-5.6 Terra in 18.20.144). The OpenAI list is now ordered by price,
+        // so its default is the middle entry, GPT-6.1 Sol (Michael, 2026-10-07).
+        public string OpenAiModel { get; set; } = LlmModels.DefaultOpenAiModelId;
 
         [DataMember(Name = "claudeModel")]
         public string ClaudeModel { get; set; } = LlmModels.ClaudeModels[0].Id;

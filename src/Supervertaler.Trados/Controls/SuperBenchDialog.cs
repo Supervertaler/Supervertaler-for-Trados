@@ -91,7 +91,7 @@ namespace Supervertaler.Trados.Controls
             var defaults = new[]
             {
                 (LlmModels.ProviderClaude, "claude-opus-5-5"),
-                (LlmModels.ProviderOpenAi, "gpt-5.6-sol"),
+                (LlmModels.ProviderOpenAi, "gpt-6.1-sol"),
                 (LlmModels.ProviderGemini, "gemini-3.1-pro-preview"),
             };
             for (int i = 0; i < 3; i++)
@@ -199,7 +199,13 @@ namespace Supervertaler.Trados.Controls
                 model.Items.Clear();
                 var key = (provider.SelectedItem as ProviderItem)?.Key;
                 foreach (var m in ModelCatalog.ModelsFor(key, _settings)) model.Items.Add(new ModelItem { Info = m });
-                if (model.Items.Count > 0) model.SelectedIndex = 0;
+                // The provider's default, not simply the first entry: for OpenAI
+                // that is GPT-6 Astra, the dearest OpenAI model.
+                var defaultId = LlmModels.DefaultModelId(key);
+                int pick = 0;
+                for (int i = 0; i < model.Items.Count; i++)
+                    if (string.Equals(((ModelItem)model.Items[i]).Info.Id, defaultId, StringComparison.OrdinalIgnoreCase)) { pick = i; break; }
+                if (model.Items.Count > 0) model.SelectedIndex = pick;
                 UpdateEstimate();
             };
             model.SelectedIndexChanged += (s, e) => UpdateEstimate();

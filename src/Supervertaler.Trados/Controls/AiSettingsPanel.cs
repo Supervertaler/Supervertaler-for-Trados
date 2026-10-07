@@ -929,7 +929,7 @@ namespace Supervertaler.Trados.Controls
             switch (provider)
             {
                 case LlmModels.ProviderOpenAi:
-                    settings.OpenAiModel = modelId ?? "gpt-5.4-mini";
+                    settings.OpenAiModel = modelId ?? LlmModels.DefaultOpenAiModelId;
                     break;
                 case LlmModels.ProviderClaude:
                     settings.ClaudeModel = modelId ?? "claude-sonnet-5-5";
@@ -1058,7 +1058,8 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>
         /// Fills the model dropdown for a provider from the merged catalogue, keeping
-        /// <paramref name="keepId"/> selected if it is present, else the first entry.
+        /// <paramref name="keepId"/> selected if it is present, else the provider's
+        /// default - not simply the first entry, which for OpenAI is the dearest.
         /// </summary>
         private void PopulateModels(string providerKey, string keepId)
         {
@@ -1070,16 +1071,17 @@ namespace Supervertaler.Trados.Controls
             AutoSizeDropDown(_cmbModel);
 
             if (_cmbModel.Items.Count == 0) return;
-            _cmbModel.SelectedIndex = 0;
-            if (string.IsNullOrEmpty(keepId)) return;
-            for (int i = 0; i < _cmbModel.Items.Count; i++)
+            int IndexOf(string id)
             {
-                if (string.Equals(((ModelItem)_cmbModel.Items[i]).Id, keepId, StringComparison.OrdinalIgnoreCase))
-                {
-                    _cmbModel.SelectedIndex = i;
-                    return;
-                }
+                if (string.IsNullOrEmpty(id)) return -1;
+                for (int i = 0; i < _cmbModel.Items.Count; i++)
+                    if (string.Equals(((ModelItem)_cmbModel.Items[i]).Id, id, StringComparison.OrdinalIgnoreCase))
+                        return i;
+                return -1;
             }
+            var index = IndexOf(keepId);
+            if (index < 0) index = IndexOf(LlmModels.DefaultModelId(providerKey));
+            _cmbModel.SelectedIndex = index < 0 ? 0 : index;
         }
 
         /// <summary>#106: ask the provider for its model list and add what is new.</summary>
@@ -1395,7 +1397,7 @@ namespace Supervertaler.Trados.Controls
                 return customId;
             var modelItem = _cmbModel.SelectedItem as ModelItem;
             if (modelItem != null) return modelItem.Id;
-            return "gpt-5.4-mini";
+            return LlmModels.DefaultOpenAiModelId;
         }
 
         private string GetEffectiveApiKey()
