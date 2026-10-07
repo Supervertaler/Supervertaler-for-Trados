@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -230,49 +231,100 @@ namespace Supervertaler.Trados.Core
             }
         }
 
-        /// <summary>
-        /// Returns the Packages directory (…\Plugins\Packages) for the install
-        /// scope where Supervertaler currently lives. This lets updates write
-        /// back to whichever scope the user originally chose during Trados
-        /// Plugin Installer (Roaming, LocalAppData, or ProgramData) instead of
-        /// hard-coding Roaming and creating orphan duplicates. Falls back to
-        /// Roaming if no existing install is found.
-        /// </summary>
-        internal static string FindCurrentInstallScopePackagesDir()
+        /// <summary>Where the running copy is installed.</summary>
+        internal sealed class Install
         {
-            foreach (var dir in AllPackagesRoots())
+            public string StudioKey;    // "18" (Studio 2024) or "19" (Studio 2026)
+            public string PackagesDir;  // ...\Trados Studio\<key>\Plugins\Packages
+            public string PackagePath;  // the .sdlplugin this copy was unpacked from
+            public string UnpackedDir;  // ...\Plugins\Unpacked\<package name>, where this DLL runs
+            public bool AllUsers;       // under ProgramData: "This computer for all users"
+        }
+
+        /// <summary>
+        /// Where the running copy came from. Studio unpacks
+        /// &lt;Plugins&gt;\Packages\&lt;name&gt;.sdlplugin into &lt;Plugins&gt;\Unpacked\&lt;name&gt;\,
+        /// so the folder this DLL runs from names the Studio version, the install
+        /// scope and the package's real file name. All three used to be guessed
+        /// ("18" and "Supervertaler for Trados.sdlplugin" hard-coded), which sent a
+        /// Studio 2026 update into Studio 2024's folder - on a computer with both
+        /// Studios, overwriting the 2024 copy with a build 2024 cannot load. Null
+        /// when not running from an Unpacked folder (a test harness, a copied DLL).
+        /// </summary>
+        internal static Install RunningInstall() =>
+            InstallFor(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+
+        internal static Install InstallFor(string asmDir)
+        {
+            try
             {
-                var pkg = Path.Combine(dir, PluginFileName);
-                if (File.Exists(pkg))
-                    return dir;
+                var unpackedRoot = Path.GetDirectoryName(asmDir);
+                if (unpackedRoot == null ||
+                    !string.Equals(Path.GetFileName(unpackedRoot), "Unpacked", StringComparison.OrdinalIgnoreCase))
+                    return null;
+                var pluginsRoot = Path.GetDirectoryName(unpackedRoot);
+                var studioDir = pluginsRoot == null ? null : Path.GetDirectoryName(pluginsRoot);
+                if (studioDir == null) return null;
+                var packagesDir = Path.Combine(pluginsRoot, "Packages");
+                var common = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData).TrimEnd('\\') + "\\";
+                return new Install
+                {
+                    StudioKey = Path.GetFileName(studioDir),
+                    PackagesDir = packagesDir,
+                    PackagePath = Path.Combine(packagesDir, Path.GetFileName(asmDir) + ".sdlplugin"),
+                    UnpackedDir = asmDir,
+                    AllUsers = asmDir.StartsWith(common, StringComparison.OrdinalIgnoreCase)
+                };
             }
-            return AllPackagesRoots()[0]; // Roaming fallback
+            catch { return null; }
+        }
+
+        /// <summary>The Packages folders of the three install scopes (Roaming,
+        /// Local, ProgramData) for one Studio version folder ("18", "19").</summary>
+        internal static string[] PackagesDirs(string studioKey) => new[]
+        {
+            Environment.SpecialFolder.ApplicationData,
+            Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolder.CommonApplicationData,
+        }.Select(f => Path.Combine(Environment.GetFolderPath(f), "Trados", "Trados Studio", studioKey, "Plugins", "Packages"))
+         .ToArray();
+
+        /// <summary>
+        /// The Studio version folder this build belongs to when the install cannot
+        /// be read from where it runs: its own major (18 = Studio 2024, 19 = Studio
+        /// 2026), or the running Studio's for a legacy 4.x build.
+        /// </summary>
+        internal static string BuildStudioKey()
+        {
+            ParseVersion(GetCurrentVersion() ?? "", out int major, out _, out _, out _);
+            if (major < FirstStudioAlignedMajor) major = DetectRunningStudioMajor() ?? FirstStudioAlignedMajor;
+            return major.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         /// <summary>
-        /// Companion to <see cref="FindCurrentInstallScopePackagesDir"/> –
-        /// returns the sibling Unpacked directory for the same install scope.
+        /// Whether this Windows user may replace <paramref name="path"/>: opens it
+        /// for writing without changing it, or, if it does not exist yet, makes and
+        /// drops a probe file beside it. Only a refusal counts as no - a file that is
+        /// merely in use is a different problem, reported when it happens. On a
+        /// "for all users" install it is the normal answer for anyone but the
+        /// administrator.
         /// </summary>
-        internal static string FindCurrentInstallScopeUnpackedDir()
+        internal static bool CanReplace(string path)
         {
-            var pkgDir = FindCurrentInstallScopePackagesDir();
-            var pluginsRoot = Path.GetDirectoryName(pkgDir);
-            return Path.Combine(pluginsRoot, "Unpacked");
-        }
-
-        private const string PluginFileName = "Supervertaler for Trados.sdlplugin";
-
-        private static string[] AllPackagesRoots()
-        {
-            return new[]
+            try
             {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
-            };
+                if (File.Exists(path))
+                {
+                    using (new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { }
+                    return true;
+                }
+                var probe = Path.Combine(Path.GetDirectoryName(path), ".sv-write-test-" + Guid.NewGuid().ToString("N"));
+                using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
+                return true;
+            }
+            catch (UnauthorizedAccessException) { return false; }
+            catch (System.Security.SecurityException) { return false; }
+            catch (IOException) { return true; }
         }
 
         // --- Cache -----------------------------------------------------------

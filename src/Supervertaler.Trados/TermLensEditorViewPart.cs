@@ -4929,7 +4929,10 @@ namespace Supervertaler.Trados
             IWin32Window owner = null)
         {
             var currentVersion = UpdateChecker.GetCurrentVersion();
-            bool canOneClick = !string.IsNullOrEmpty(pluginDownloadUrl);
+            // Installs in place of the package this copy was unpacked from - the
+            // right Studio, scope and file name - so it needs to know which that is.
+            var install = UpdateChecker.RunningInstall();
+            bool canOneClick = !string.IsNullOrEmpty(pluginDownloadUrl) && install != null;
 
             using (var form = new Form())
             {
@@ -4963,17 +4966,16 @@ namespace Supervertaler.Trados
                 };
 
                 // Link to open the Unpacked plugins folder – fallback for
-                // Mac/Parallels users or if automatic install fails.
-                // Scope-aware: targets whichever install scope the existing
-                // plugin lives in (Roaming / LocalAppData / ProgramData),
-                // matching the user's original Trados Plugin Installer choice.
-                var unpackedPath = UpdateChecker.FindCurrentInstallScopeUnpackedDir();
+                // Mac/Parallels users or if automatic install fails. The folder
+                // this copy runs from, so the right Studio and install scope.
+                var unpackedPath = install != null ? System.IO.Path.GetDirectoryName(install.UnpackedDir) : null;
                 var lnkFolder = new LinkLabel
                 {
                     Text = "Open Plugins folder (manual install)",
                     Location = new System.Drawing.Point(16, 118),
                     Size = new System.Drawing.Size(400, 18),
-                    AutoSize = false
+                    AutoSize = false,
+                    Visible = unpackedPath != null
                 };
                 lnkFolder.LinkClicked += (s, ev) =>
                 {
@@ -5043,6 +5045,35 @@ namespace Supervertaler.Trados
                         return;
                     }
 
+                    // A user who may not replace the package - anyone but the
+                    // administrator on a "for all users" install - is told who
+                    // can, instead of a failed download and a web page.
+                    void ExplainNotAllowed()
+                    {
+                        lblStatus.Visible = true;
+                        lblStatus.ForeColor = System.Drawing.SystemColors.GrayText;
+                        lblStatus.Text = install.AllUsers ? "Installed for all users – ask your administrator." : "This update cannot be installed from here.";
+                        btnInstall.Enabled = false;
+                        btnSkip.Enabled = true;
+                        btnLater.Enabled = true;
+                        MessageBox.Show(form,
+                            install.AllUsers
+                                ? "Supervertaler is installed for all users of this computer, so updates are installed by " +
+                                  "whoever looks after it – usually your IT administrator.\n\n" +
+                                  $"Please ask them to install version {newVersion}. Everyone gets it the next time they " +
+                                  "start Trados Studio."
+                                : "Supervertaler cannot replace its own plugin file:\n" + install.PackagePath + "\n\n" +
+                                  $"Please install version {newVersion} from the RWS App Store in Trados Studio instead " +
+                                  "(Add-Ins → RWS App Store).",
+                            "Update Available", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+
+                    if (!UpdateChecker.CanReplace(install.PackagePath))
+                    {
+                        ExplainNotAllowed();
+                        return;
+                    }
+
                     // One-click install: download, clean up, prompt restart
                     btnInstall.Enabled = false;
                     btnSkip.Enabled = false;
@@ -5050,22 +5081,25 @@ namespace Supervertaler.Trados
                     lblStatus.Visible = true;
                     lblStatus.Text = "Downloading update...";
 
+                    var downloadPath = install.PackagePath + ".download";
                     try
                     {
-                        // 1. Download .sdlplugin to the Packages folder of the
-                        // install scope that already has Supervertaler (so we
-                        // don't create an orphan duplicate in a different scope).
-                        var packagesDir = UpdateChecker.FindCurrentInstallScopePackagesDir();
-                        System.IO.Directory.CreateDirectory(packagesDir);
-
-                        var pluginPath = System.IO.Path.Combine(packagesDir, "Supervertaler for Trados.sdlplugin");
-
-                        await UpdateChecker.DownloadFileAsync(pluginDownloadUrl, pluginPath);
+                        // 1. Download beside the package, then swap it in: the
+                        // package this copy came from, so the same Studio, scope
+                        // and file name (a second copy under another name would
+                        // load the plugin twice). Downloading straight over it
+                        // left a truncated package behind when a download failed.
+                        System.IO.Directory.CreateDirectory(install.PackagesDir);
+                        await UpdateChecker.DownloadFileAsync(pluginDownloadUrl, downloadPath);
+                        if (System.IO.File.Exists(install.PackagePath))
+                            System.IO.File.Replace(downloadPath, install.PackagePath, null);
+                        else
+                            System.IO.File.Move(downloadPath, install.PackagePath);
 
                         // 2. Rename current Unpacked folder to .old so Trados
                         //    re-extracts from the new package on next start
                         lblStatus.Text = "Preparing update...";
-                        var unpackedDir = System.IO.Path.Combine(unpackedPath, "Supervertaler for Trados");
+                        var unpackedDir = install.UnpackedDir;
                         var oldDir = unpackedDir + ".old";
 
                         // Clean up any leftover .old folder from a previous update
@@ -5148,9 +5182,16 @@ namespace Supervertaler.Trados
                             form.DialogResult = DialogResult.Yes;
                         }
                     }
+                    catch (UnauthorizedAccessException)
+                    {
+                        // Refused after all (the check above opens the package,
+                        // the swap also needs the folder): same answer.
+                        ExplainNotAllowed();
+                    }
                     catch (Exception ex)
                     {
                         // Download failed – fall back to opening the release page
+                        Core.DiagnosticLog.Log("UpdateChecker", "One-click update failed: " + ex.Message);
                         lblStatus.ForeColor = System.Drawing.Color.FromArgb(192, 0, 0);
                         lblStatus.Text = "Download failed. Opening release page instead...";
                         btnInstall.Enabled = true;
@@ -5159,6 +5200,11 @@ namespace Supervertaler.Trados
 
                         try { System.Diagnostics.Process.Start(releaseUrl); }
                         catch { }
+                    }
+                    finally
+                    {
+                        // A failed or refused download leaves no half-written file.
+                        try { if (System.IO.File.Exists(downloadPath)) System.IO.File.Delete(downloadPath); } catch { }
                     }
                 };
 

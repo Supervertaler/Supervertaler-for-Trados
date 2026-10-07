@@ -496,8 +496,7 @@ namespace Supervertaler.Trados
 
         // ── Stale-plugin detection ───────────────────────────────────
 
-        private const string PluginFolderName = "Supervertaler for Trados";
-        private const string PluginFileName   = "Supervertaler for Trados.sdlplugin";
+        private const string PluginFilePattern = "Supervertaler*.sdlplugin";
 
         /// <summary>
         /// Detects if a newer .sdlplugin package has been installed but Trados
@@ -516,8 +515,9 @@ namespace Supervertaler.Trados
                 var unpackedRoot = Path.GetDirectoryName(asmDir);   // ...\Plugins\Unpacked\
                 if (unpackedRoot == null) return false;
 
-                // 1. Clean up .old folder from a previous update cycle
-                var oldDir = Path.Combine(unpackedRoot, PluginFolderName + ".old");
+                // 1. Clean up .old folder from a previous update cycle - named
+                //    after the folder we run from, as the update dialog names it
+                var oldDir = asmDir + ".old";
                 if (Directory.Exists(oldDir))
                 {
                     try { Directory.Delete(oldDir, true); } catch { }
@@ -543,14 +543,23 @@ namespace Supervertaler.Trados
                 if (UpdateChecker.CompareVersions(packageVersion, currentVersion) <= 0)
                     return false;
 
-                // 6. Package is newer - rename Unpacked folder and prompt restart
+                // 6. Package is newer - rename Unpacked folder and prompt restart.
+                //    If it cannot be set aside, carry on with the running copy:
+                //    a restart would load it again, so prompting for one (and
+                //    skipping init, which returning true does) would lock the
+                //    user out of a working version at every start. On a "for
+                //    all users" install that is what happens to anyone without
+                //    write access to the shared folder.
                 try
                 {
                     Directory.Move(asmDir, oldDir);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Rename failed (rare) - still show the restart message
+                    Core.DiagnosticLog.WriteAlways("Update",
+                        "v" + packageVersion + " is installed but the running v" + currentVersion +
+                        " could not be set aside (" + ex.Message + "); carrying on with v" + currentVersion + ".");
+                    return false;
                 }
 
                 MessageAtStartup(
@@ -568,29 +577,22 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
-        /// Searches all three Trados plugin Packages folders for our .sdlplugin
-        /// and returns the path to the one with the newest version.
+        /// Searches the three Packages folders (Roaming, Local, ProgramData) of
+        /// the Studio we run in for our .sdlplugin and returns the newest. The
+        /// Studio version folder comes from where we run ("18" was hard-coded, so
+        /// Studio 2026 never looked in its own "19"), and the file is matched by
+        /// prefix: the App Store and build.sh name it differently.
         /// </summary>
         private static string FindNewestPackage()
         {
-            var locations = new[]
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                    "Trados", "Trados Studio", "18", "Plugins", "Packages"),
-            };
+            var studioKey = UpdateChecker.RunningInstall()?.StudioKey ?? UpdateChecker.BuildStudioKey();
 
             string bestPath = null;
             string bestVersion = null;
 
-            foreach (var dir in locations)
+            foreach (var dir in UpdateChecker.PackagesDirs(studioKey))
+            foreach (var pkg in Directory.Exists(dir) ? Directory.GetFiles(dir, PluginFilePattern) : new string[0])
             {
-                var pkg = Path.Combine(dir, PluginFileName);
-                if (!File.Exists(pkg)) continue;
-
                 var ver = ReadPackageVersion(pkg);
                 if (string.IsNullOrEmpty(ver)) continue;
 
