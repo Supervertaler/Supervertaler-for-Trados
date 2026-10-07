@@ -254,14 +254,39 @@ namespace Supervertaler.Trados.Settings
         {
             // Pooling off: a pooled connection keeps the file open after Dispose,
             // which would block removing the copy if a later step fails.
-            var src = new SqliteConnectionStringBuilder { DataSource = source, Mode = SqliteOpenMode.ReadOnly, Pooling = false };
             var dst = new SqliteConnectionStringBuilder { DataSource = destination, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false };
-            using (var s = new SqliteConnection(src.ToString()))
+            using (var s = OpenSource(source))
             using (var d = new SqliteConnection(dst.ToString()))
             {
-                s.Open();
                 d.Open();
                 s.BackupDatabase(d);
+            }
+        }
+
+        /// <summary>
+        /// Opens a database to copy from, read-write although nothing is written:
+        /// a READ-ONLY connection to a WAL-mode database nobody else has open
+        /// creates its -wal and -shm files and cannot remove them on close, which
+        /// left them behind in the old folder (seen on Michael's real data). As the
+        /// last connection, a read-write one removes them. (SQLite itself opens a
+        /// write-protected file read-only; the fallback is for any other refusal.)
+        /// </summary>
+        private static SqliteConnection OpenSource(string source)
+        {
+            var rw = new SqliteConnection(new SqliteConnectionStringBuilder
+                { DataSource = source, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
+            try
+            {
+                rw.Open();
+                return rw;
+            }
+            catch (SqliteException)
+            {
+                rw.Dispose();
+                var ro = new SqliteConnection(new SqliteConnectionStringBuilder
+                    { DataSource = source, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+                ro.Open();
+                return ro;
             }
         }
 
