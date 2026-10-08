@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.200 / 19.20.200] – Unreleased
+
+### Added
+- ★ **Supervertaler for Trados now also runs in Trados Studio 2022.** A third build, numbered 17.20.200, joins the Studio 2024 and 2026 builds with the same features, including MultiTerm `.sdltb` termbases, which Studio 2022 reads the same way as 2024. Install it from the RWS App Store inside Studio 2022, as with the other builds. One licence covers every Studio version you use on the same computer and Windows account, and all of them share one data folder, so your settings, termbases, memory banks and prompts are the same in each. RWS ends its own support for Studio 2022 on 31 December 2026.
+
 ## [18.20.199 / 19.20.199] – Unreleased
 
 ### Added
