@@ -136,13 +136,15 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         /// <summary>
         /// First plugin major that encodes its target Studio generation
-        /// (18 = Studio 2024, 19 = Studio 2026). Anything below this is from the
-        /// old single 4.x sequence, which covered both generations.
+        /// (17 = Studio 2022, 18 = Studio 2024, 19 = Studio 2026). Anything below
+        /// this is from the old single 4.x sequence, which covered 2024 and 2026.
+        /// It was 18 before there was a Studio 2022 build; at 18 a 2022 build
+        /// counted as legacy and was offered the Studio 2024 update.
         /// </summary>
-        private const int FirstStudioAlignedMajor = 18;
+        private const int FirstStudioAlignedMajor = 17;
 
         /// <summary>
-        /// Major version of the Trados Studio actually running (18 or 19), read
+        /// Major version of the Trados Studio actually running (17, 18 or 19), read
         /// from the host executable, or null if it can't be determined.
         ///
         /// Needed only for legacy 4.x plugin builds: their own version says
@@ -234,7 +236,7 @@ namespace Supervertaler.Trados.Core
         /// <summary>Where the running copy is installed.</summary>
         internal sealed class Install
         {
-            public string StudioKey;    // "18" (Studio 2024) or "19" (Studio 2026)
+            public string StudioKey;    // "17" (Studio 2022), "18" (Studio 2024) or "19" (Studio 2026)
             public string PackagesDir;  // ...\Trados Studio\<key>\Plugins\Packages
             public string PackagePath;  // the .sdlplugin this copy was unpacked from
             public string UnpackedDir;  // ...\Plugins\Unpacked\<package name>, where this DLL runs
