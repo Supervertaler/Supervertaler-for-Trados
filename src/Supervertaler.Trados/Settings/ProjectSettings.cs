@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Security.Cryptography;
@@ -272,7 +273,7 @@ namespace Supervertaler.Trados.Settings
                     try
                     {
                         ProjectSettings ps;
-                        var json = File.ReadAllText(file, Encoding.UTF8);
+                        var json = Supervertaler.Core.AtomicFile.ReadAllText(file);
                         using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                         {
                             var serializer = new DataContractJsonSerializer(typeof(ProjectSettings));
@@ -351,7 +352,7 @@ namespace Supervertaler.Trados.Settings
             {
                 try
                 {
-                    return Parse(File.ReadAllText(path, Encoding.UTF8));
+                    return Parse(Supervertaler.Core.AtomicFile.ReadAllText(path));
                 }
                 catch (IOException) when (attempt < 3 && File.Exists(path))
                 {
@@ -422,7 +423,7 @@ namespace Supervertaler.Trados.Settings
             foreach (var file in Directory.GetFiles(ProjectsDir, "*.json"))
             {
                 string text;
-                try { text = File.ReadAllText(file, Encoding.UTF8); }
+                try { text = Supervertaler.Core.AtomicFile.ReadAllText(file); }
                 catch { continue; }
                 if (text.IndexOf(projectId, StringComparison.OrdinalIgnoreCase) < 0) continue;
 
@@ -490,7 +491,6 @@ namespace Supervertaler.Trados.Settings
         public static void Save(string projectFilePath, ProjectSettings ps,
             [System.Runtime.CompilerServices.CallerMemberName] string via = "")
         {
-            string tmp = null;
             try
             {
                 var key = GetProjectKey(projectFilePath);
@@ -536,16 +536,18 @@ namespace Supervertaler.Trados.Settings
                     catch { }
                 }
 
-                tmp = targetPath + ".tmp";
-                File.WriteAllText(tmp, json, Encoding.UTF8);
-                if (File.Exists(targetPath))
+                // Swapped in by a rename that works while someone else - the other
+                // Studio, a scanner, a sync tool - is reading the file, waiting
+                // out a brief lock. File.Replace refused outright whenever the
+                // file was open anywhere: 6 of 21 saves on 7 October 2026.
+                // UTF-8 with a BOM, as File.WriteAllText wrote them before.
+                var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(json)).ToArray();
+                if (Supervertaler.Core.AtomicFile.Write(targetPath, bytes, replaceExisting: true,
+                        m => Supervertaler.Trados.Core.DiagnosticLog.Log("Overlay", m))
+                    != Supervertaler.Core.AtomicFile.Outcome.Written)
                 {
-                    try { File.Replace(tmp, targetPath, null); }
-                    catch (PlatformNotSupportedException) { File.Copy(tmp, targetPath, true); }
-                }
-                else
-                {
-                    File.Move(tmp, targetPath);
+                    Supervertaler.Trados.Core.DiagnosticLog.Log("Overlay", "write FAILED for " + (ps.ProjectName ?? projectFilePath) + " via " + via + "; the previous settings are unchanged.");
+                    return;
                 }
 
                 // Only now that the new file is in place: this project's file under an older name.
@@ -561,13 +563,6 @@ namespace Supervertaler.Trados.Settings
             {
                 try { Supervertaler.Trados.Core.DiagnosticLog.Log("Overlay", "write FAILED for " + (ps?.ProjectName ?? projectFilePath) + " via " + via + ": " + ex.Message); }
                 catch { }
-            }
-            finally
-            {
-                if (tmp != null && File.Exists(tmp))
-                {
-                    try { File.Delete(tmp); } catch { }
-                }
             }
         }
 
