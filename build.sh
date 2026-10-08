@@ -1,9 +1,11 @@
 #!/bin/bash
 # Build, package, and deploy Supervertaler for Trados.
-# Produces TWO .sdlplugin artefacts from one source tree:
+# Produces up to THREE .sdlplugin artefacts from one source tree:
+#   - Studio 2022 (Studio17): x86, .sdltb via JET OleDb
 #   - Studio 2024 (Studio18): x86, .sdltb via JET OleDb
 #   - Studio 2026 (Studio19): x64, .ttb via SQLite
-# The Studio 19 build is skipped if Studio19Beta is not installed on this machine.
+# Each build is skipped if that Studio is not installed on this machine: it
+# compiles against the Studio's own Sdl.* assemblies.
 # Trados Studio must be CLOSED before running this script.
 set -e
 
@@ -12,11 +14,24 @@ PROJECT_DIR="$SCRIPT_DIR/src/Supervertaler.Trados"
 DIST_DIR="$SCRIPT_DIR/dist"
 DOTNET="${HOME}/.dotnet/dotnet"
 
+STUDIO17_INSTALL="/c/Program Files (x86)/Trados/Trados Studio/Studio17"
 STUDIO18_INSTALL="/c/Program Files (x86)/Trados/Trados Studio/Studio18"
 STUDIO19_INSTALL="/c/Program Files/Trados/Trados Studio/Studio19"
 
+BUILD_DIR_17="$PROJECT_DIR/bin/Studio17/Release"
 BUILD_DIR_18="$PROJECT_DIR/bin/Studio18/Release"
 BUILD_DIR_19="$PROJECT_DIR/bin/Studio19/Release"
+
+# NuGet restore downloads the ARM64 native SQLite binary but MSBuild only copies
+# x64/x86/arm to the output, so each build copies it in. Needed for Windows on
+# ARM (Parallels on Apple Silicon, Surface Pro X, etc.).
+ARM64_SRC="$USERPROFILE/.nuget/packages/sqlitepclraw.lib.e_sqlite3/2.1.6/runtimes/win-arm64/native/e_sqlite3.dll"
+
+# Studio 2022 deploys like 2024: Local, the "This computer for me only" scope.
+PACKAGES_DIR_17="$LOCALAPPDATA/Trados/Trados Studio/17/Plugins/Packages"
+UNPACKED_ROOT_17="$LOCALAPPDATA/Trados/Trados Studio/17/Plugins/Unpacked"
+STALE_ROAMING_17_DIR="$APPDATA/Trados/Trados Studio/17/Plugins/Packages"
+STALE_ROAMING_17_UNPACKED_ROOT="$APPDATA/Trados/Trados Studio/17/Plugins/Unpacked"
 
 PACKAGES_DIR_18="$LOCALAPPDATA/Trados/Trados Studio/18/Plugins/Packages"
 UNPACKED_DIR_18="$LOCALAPPDATA/Trados/Trados Studio/18/Plugins/Unpacked/Supervertaler for Trados"
@@ -47,6 +62,7 @@ OLD_UNPACKED_DIR_18="$LOCALAPPDATA/Trados/Trados Studio/18/Plugins/Unpacked/Term
 OLD_ROAMING_PACKAGES_18="$APPDATA/Trados/Trados Studio/18/Plugins/Packages"
 OLD_ROAMING_UNPACKED_18="$APPDATA/Trados/Trados Studio/18/Plugins/Unpacked/Supervertaler for Trados"
 
+PLUGIN_FILENAME_17="Supervertaler for Trados (Studio 2022).sdlplugin"
 PLUGIN_FILENAME_18="Supervertaler for Trados.sdlplugin"
 PLUGIN_FILENAME_19="Supervertaler for Trados (Studio 2026).sdlplugin"
 
@@ -63,31 +79,37 @@ major_of() { echo "$1" | cut -d. -f1; }
 CSPROJ_TAIL=$(sed -n 's|.*<Version>\$(TradosStudioVersion)\.\([0-9][0-9.]*\)</Version>.*|\1|p' "$PROJECT_DIR/Supervertaler.Trados.csproj" | head -1)
 MANIFEST_VER=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' "$PROJECT_DIR/pluginpackage.manifest.xml")
 MANIFEST_VER_19=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' "$PROJECT_DIR/pluginpackage.manifest.19.xml")
+MANIFEST_VER_17=$(sed -n 's/.*<Version>\([0-9.]*\)<\/Version>.*/\1/p' "$PROJECT_DIR/pluginpackage.manifest.17.xml")
 PLUGIN_VER=$(python "$SCRIPT_DIR/tools/read_plugin_version.py" "$PROJECT_DIR/Supervertaler.Trados.plugin.xml" 2>/dev/null || echo "?")
 
 MANIFEST_TAIL=$(tail_of "$MANIFEST_VER")
 MANIFEST_TAIL_19=$(tail_of "$MANIFEST_VER_19")
+MANIFEST_TAIL_17=$(tail_of "$MANIFEST_VER_17")
 PLUGIN_TAIL=$(tail_of "$PLUGIN_VER")
 
 if [ -z "$CSPROJ_TAIL" ] \
    || [ "$CSPROJ_TAIL" != "$MANIFEST_TAIL" ] \
    || [ "$CSPROJ_TAIL" != "$MANIFEST_TAIL_19" ] \
+   || [ "$CSPROJ_TAIL" != "$MANIFEST_TAIL_17" ] \
    || [ "$CSPROJ_TAIL" != "$PLUGIN_TAIL" ] \
-   || [ "$(major_of "$MANIFEST_VER")" = "$(major_of "$MANIFEST_VER_19")" ]; then
+   || [ "$(major_of "$MANIFEST_VER")" = "$(major_of "$MANIFEST_VER_19")" ] \
+   || [ "$(major_of "$MANIFEST_VER_17")" = "$(major_of "$MANIFEST_VER")" ] \
+   || [ "$(major_of "$MANIFEST_VER_17")" = "$(major_of "$MANIFEST_VER_19")" ]; then
     echo ""
     echo "  ERROR: Version mismatch detected!"
     echo "    .csproj tail: ${CSPROJ_TAIL:-<none>}"
+    echo "    manifest 17:  $MANIFEST_VER_17  (tail ${MANIFEST_TAIL_17:-<none>})"
     echo "    manifest 18:  $MANIFEST_VER  (tail ${MANIFEST_TAIL:-<none>})"
     echo "    manifest 19:  $MANIFEST_VER_19  (tail ${MANIFEST_TAIL_19:-<none>})"
     echo "    plugin.xml:   $PLUGIN_VER  (tail ${PLUGIN_TAIL:-<none>})"
     echo ""
-    echo "  All four must share one MINOR.PATCH tail, and the two manifests must"
-    echo "  carry different majors (18 vs 19)."
+    echo "  All five must share one MINOR.PATCH tail, and the three manifests must"
+    echo "  carry different majors (17, 18, 19)."
     echo "  Run: python bump_version.py ${CSPROJ_TAIL:-<minor>.<patch>}"
     echo ""
     exit 1
 fi
-echo "  Version check passed: Studio 2024 $MANIFEST_VER / Studio 2026 $MANIFEST_VER_19"
+echo "  Version check passed: Studio 2022 $MANIFEST_VER_17 / Studio 2024 $MANIFEST_VER / Studio 2026 $MANIFEST_VER_19"
 echo ""
 
 # Guard the help docs' MCP tool table (Supervertaler-Help repo,
@@ -250,10 +272,6 @@ if [ -d "$STUDIO18_INSTALL" ]; then
     echo "=== [Studio18] Building Supervertaler for Trados 2024 ==="
     "$DOTNET" build "$PROJECT_DIR/Supervertaler.Trados.csproj" -c Release -p:TradosStudioVersion=18
 
-    # Ensure ARM64 native SQLite binary is in the build output.
-    # NuGet restore downloads it but MSBuild only copies x64/x86/arm to the output.
-    # Needed for Windows on ARM (Parallels on Apple Silicon, Surface Pro X, etc.).
-    ARM64_SRC="$USERPROFILE/.nuget/packages/sqlitepclraw.lib.e_sqlite3/2.1.6/runtimes/win-arm64/native/e_sqlite3.dll"
     ARM64_DST_18="$BUILD_DIR_18/runtimes/win-arm64/native"
     if [ -f "$ARM64_SRC" ] && [ ! -f "$ARM64_DST_18/e_sqlite3.dll" ]; then
         echo "  Copying win-arm64 native e_sqlite3.dll..."
@@ -370,6 +388,50 @@ if [ -d "$STUDIO19_INSTALL" ]; then
 else
     echo "  [Studio19] Trados Studio 2026 not installed at $STUDIO19_INSTALL — skipping 19 build."
     echo "  Install Studio 2026 to ${STUDIO19_INSTALL/\/c\//C:\\} to enable the 19 build."
+    echo ""
+fi
+
+# ============================================================================
+#  Studio 17 build (Trados Studio 2022)
+# ============================================================================
+# Tested for a DLL, not the folder: an uninstalled Studio 2022 can leave its
+# Studio17 folder behind with a stray tool in it, and the build needs the Sdl.*
+# assemblies themselves.
+if [ -f "$STUDIO17_INSTALL/Sdl.Desktop.IntegrationApi.dll" ]; then
+    echo "=== [Studio17] Building Supervertaler for Trados 2022 ==="
+    "$DOTNET" build "$PROJECT_DIR/Supervertaler.Trados.csproj" -c Release -p:TradosStudioVersion=17
+
+    ARM64_DST_17="$BUILD_DIR_17/runtimes/win-arm64/native"
+    if [ -f "$ARM64_SRC" ] && [ ! -f "$ARM64_DST_17/e_sqlite3.dll" ]; then
+        echo "  Copying win-arm64 native e_sqlite3.dll..."
+        mkdir -p "$ARM64_DST_17"
+        cp "$ARM64_SRC" "$ARM64_DST_17/e_sqlite3.dll"
+    fi
+
+    echo ""
+    echo "=== [Studio17] Packaging $PLUGIN_FILENAME_17 (OPC format) ==="
+    mkdir -p "$DIST_DIR"
+    rm -f "$DIST_DIR/$PLUGIN_FILENAME_17"
+    python "$SCRIPT_DIR/package_plugin.py" "$BUILD_DIR_17" "$DIST_DIR/$PLUGIN_FILENAME_17"
+
+    # Staged by tools/appstore_release.py, not here - see the note above.
+
+    echo "=== [Studio17] Deploying to Trados Studio 2022 ==="
+
+    # Any Supervertaler copy in the Roaming scope (an App Store install made with
+    # "All your domain computers") would load alongside ours: same crash as two
+    # packages in one folder. Both scopes are claimed the safe way, so a running
+    # Studio 2022 - whichever scope it loaded from - is left exactly as it is.
+    if claim_unpacked "$STALE_ROAMING_17_UNPACKED_ROOT" "Trados Studio 2022" \
+       && claim_unpacked "$UNPACKED_ROOT_17" "Trados Studio 2022"; then
+        sweep_other_packages "$STALE_ROAMING_17_DIR" ""
+        sweep_other_packages "$PACKAGES_DIR_17" "$PLUGIN_FILENAME_17"
+        install_package "$DIST_DIR/$PLUGIN_FILENAME_17" "$PACKAGES_DIR_17/$PLUGIN_FILENAME_17" \
+            && echo "  Installed: $PACKAGES_DIR_17/$PLUGIN_FILENAME_17"
+    fi
+    echo ""
+else
+    echo "  [Studio17] Trados Studio 2022 not installed at $STUDIO17_INSTALL — skipping 17 build."
     echo ""
 fi
 

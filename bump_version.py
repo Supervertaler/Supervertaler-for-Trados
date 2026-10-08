@@ -1,8 +1,8 @@
 """Bump the Supervertaler.Trados version across all version files.
 
 The plugin uses "Option 3" versioning: the MAJOR version tracks the Trados
-Studio major it targets (Studio 2024 = 18, Studio 2026 = 19), and both builds
-share the same MINOR.PATCH tail. This script bumps only that shared tail; each
+Studio major it targets (Studio 2022 = 17, Studio 2024 = 18, Studio 2026 = 19),
+and every build shares the same MINOR.PATCH tail. This script bumps only that shared tail; each
 file keeps its own major, so the two builds can never collide in the App Store.
 
 Usage:
@@ -16,10 +16,12 @@ Updates (major preserved per file, only the shared tail changes):
       kept as $(TradosStudioVersion).<tail> so the major resolves to the Studio major
     - pluginpackage.manifest.xml     (Studio 2024, major 18): <Version>18.<tail>.0
     - pluginpackage.manifest.19.xml  (Studio 2026, major 19): <Version>19.<tail>.0
+    - pluginpackage.manifest.17.xml  (Studio 2022, major 17): <Version>17.<tail>.0
     - plugin.xml (UTF-16 LE, canonical Studio 2024 copy, major 18):
       the <plugin version="..."> attribute + Supervertaler.Trados assembly bindings.
       (The Studio 2026 build's copy is rewritten to 19.<tail>.0 at build time by
-       tools/patch_plugin_xml_for_studio19.py.)
+       tools/patch_plugin_xml_for_studio19.py, and the Studio 2022 build's to
+       17.<tail>.0 by the same script.)
 """
 import os
 import sys
@@ -30,6 +32,8 @@ SRC_DIR = os.path.join(BASE_DIR, "src", "Supervertaler.Trados")
 PLUGIN_XML = os.path.join(SRC_DIR, "Supervertaler.Trados.plugin.xml")
 MANIFEST_XML = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
 MANIFEST_XML_19 = os.path.join(SRC_DIR, "pluginpackage.manifest.19.xml")
+MANIFEST_XML_17 = os.path.join(SRC_DIR, "pluginpackage.manifest.17.xml")
+MANIFESTS = (MANIFEST_XML, MANIFEST_XML_19, MANIFEST_XML_17)
 CSPROJ = os.path.join(SRC_DIR, "Supervertaler.Trados.csproj")
 
 
@@ -59,7 +63,7 @@ def bump_csproj(tail):
 
 def bump_manifest(tail):
     """Set <Version> in each manifest, preserving that file's own major."""
-    for path in (MANIFEST_XML, MANIFEST_XML_19):
+    for path in MANIFESTS:
         if not os.path.exists(path):
             print(f"  WARNING: manifest not found: {path}")
             continue
@@ -121,7 +125,9 @@ def verify(tail):
             errors.append(f".csproj <{tag}> tail is '{m.group(1)}', expected '{tail}'")
 
     majors = {}
-    for path in (MANIFEST_XML, MANIFEST_XML_19):
+    for path in MANIFESTS:
+        if not os.path.exists(path):
+            continue
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
         m = re.search(r"<Version>(\d+)\.(\d+\.\d+)\.\d+</Version>", text)
@@ -152,12 +158,13 @@ def verify(tail):
             errors.append(f"plugin.xml stale assembly binding Version={v}")
             break
 
-    # Sanity: the two manifests must NOT share a major (that shared major was the
+    # Sanity: no two manifests may share a major (that shared major was the
     # exact App Store collision this scheme exists to prevent).
     m18 = majors.get("pluginpackage.manifest.xml")
     m19 = majors.get("pluginpackage.manifest.19.xml")
-    if m18 and m19 and m18 == m19:
-        errors.append(f"both manifests share major {m18} - they must differ (18 vs 19)")
+    m17 = majors.get("pluginpackage.manifest.17.xml")
+    if len(set(majors.values())) != len(majors):
+        errors.append(f"manifests share a major ({majors}) - each must differ (17, 18, 19)")
 
     if errors:
         print("\nERROR: Version check failed after bump!")
@@ -165,7 +172,7 @@ def verify(tail):
             print(f"  - {e}")
         sys.exit(1)
     print(f"\nVerified shared tail {tail}  "
-          f"(Studio 2024: {m18}.{tail}.0 / Studio 2026: {m19}.{tail}.0)")
+          f"(Studio 2022: {m17}.{tail}.0 / Studio 2024: {m18}.{tail}.0 / Studio 2026: {m19}.{tail}.0)")
 
 
 def main():
