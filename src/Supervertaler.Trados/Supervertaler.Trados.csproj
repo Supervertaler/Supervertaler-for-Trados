@@ -23,6 +23,8 @@
   <!--
     Trados Studio target selection. Pass /p:TradosStudioVersion=18 (default,
     Trados Studio 2024) or /p:TradosStudioVersion=19 (Trados Studio 2026).
+    /p:TradosStudioVersion=17 (Trados Studio 2022) is an experiment, on the
+    studio-2022 branch only: it needs Studio 2022 installed to compile.
     The 18 build is x86/AnyCPU and uses JET OleDb for .sdltb termbases.
     The 19 build is x64-only and uses SQLite for .ttb termbases — Studio 2026
     is a 64-bit application and dropped the MultiTerm install.
@@ -45,6 +47,14 @@
     <TradosStudioPath>C:\Program Files (x86)\Trados\Trados Studio\Studio18</TradosStudioPath>
     <PluginManifestFile>pluginpackage.manifest.xml</PluginManifestFile>
     <BaseOutputPath>bin\Studio18\</BaseOutputPath>
+  </PropertyGroup>
+
+  <!-- Trados Studio 2022: 32-bit like 2024, referencing its own Sdl.* assemblies. -->
+  <PropertyGroup Condition="'$(TradosStudioVersion)' == '17'">
+    <TradosStudioPath>C:\Program Files (x86)\Trados\Trados Studio\Studio17</TradosStudioPath>
+    <PluginManifestFile>pluginpackage.manifest.17.xml</PluginManifestFile>
+    <BaseOutputPath>bin\Studio17\</BaseOutputPath>
+    <DefineConstants>$(DefineConstants);STUDIO17</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TradosStudioVersion)' == '19'">
@@ -201,6 +211,7 @@
   <ItemGroup>
     <None Include="pluginpackage.manifest.xml" />
     <None Include="pluginpackage.manifest.19.xml" />
+    <None Include="pluginpackage.manifest.17.xml" />
   </ItemGroup>
 
   <!-- Plugin resources — the bundle Trados reads for pane names and pane icons,
@@ -300,6 +311,11 @@
        source plugin.xml stays canonical (18 refs); we patch the build artefact. -->
   <Target Name="PatchPluginXmlForStudio19" AfterTargets="CopyPluginResources" Condition="'$(TradosStudioVersion)' == '19'">
     <Exec Command="python &quot;$(MSBuildThisFileDirectory)..\..\tools\patch_plugin_xml_for_studio19.py&quot; &quot;$(OutputPath)Supervertaler.Trados.plugin.xml&quot;" />
+  </Target>
+
+  <!-- Studio 2022 build: the same rewrite, with major 17. -->
+  <Target Name="PatchPluginXmlForStudio17" AfterTargets="CopyPluginResources" Condition="'$(TradosStudioVersion)' == '17'">
+    <Exec Command="python &quot;$(MSBuildThisFileDirectory)..\..\tools\patch_plugin_xml_for_studio19.py&quot; &quot;$(OutputPath)Supervertaler.Trados.plugin.xml&quot; 17" />
   </Target>
 
   <!-- Shared Supervertaler code, compiled in from the core/ submodule rather

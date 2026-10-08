@@ -16,17 +16,21 @@ Two rewrites are applied to the build-output copy only (never the source tree):
       shared tail intact. This keeps the manifest version, the plugin.xml version
       and the compiled assembly identity all consistent at 19.<tail>.0.
 
-Invoked from the .csproj as a post-build step when TradosStudioVersion=19.
-Operates on the file in the build output directory, never on the source-tree copy.
+Invoked from the .csproj as a post-build step when TradosStudioVersion=19, and
+with a target major of 17 for the experimental Trados Studio 2022 build (the
+same two rewrites, 18 -> 17). Operates on the file in the build output
+directory, never on the source-tree copy.
 
 Usage:
-    python patch_plugin_xml_for_studio19.py <path/to/output/Supervertaler.Trados.plugin.xml>
+    python patch_plugin_xml_for_studio19.py <path/to/output/Supervertaler.Trados.plugin.xml> [major]
+
+major defaults to 19.
 """
 import re
 import sys
 
 
-def patch(path: str) -> None:
+def patch(path: str, major: int = 19) -> None:
     with open(path, "rb") as f:
         raw = f.read()
 
@@ -46,15 +50,15 @@ def patch(path: str) -> None:
     # (a) Sdl.* framework refs: 18.0.0.0 -> 19.0.0.0. Matches only Sdl.* refs so
     #     the plugin's own 18.<tail>.0 version (handled below) is left for (b).
     sdl_re = re.compile(r"(Sdl\.[A-Za-z0-9_.]+, Version=)18\.0\.0\.0(,)")
-    text, count = sdl_re.subn(r"\g<1>19.0.0.0\g<2>", text)
+    text, count = sdl_re.subn(r"\g<1>%d.0.0.0\g<2>" % major, text)
 
     # (b) The plugin's own version: 18.<tail>.0 -> 19.<tail>.0 on the <plugin>
     #     attribute and the Supervertaler.Trados assembly bindings. Only the
     #     leading major changes; the shared tail is preserved.
     ver_re = re.compile(r'(<plugin\s[^>]*?version=")18\.(\d+\.\d+\.\d+)(")')
-    text, cver = ver_re.subn(r"\g<1>19.\g<2>\g<3>", text)
+    text, cver = ver_re.subn(r"\g<1>%d.\g<2>\g<3>" % major, text)
     asm_re = re.compile(r"(Supervertaler\.Trados, Version=)18\.(\d+\.\d+\.\d+)(,)")
-    text, casm = asm_re.subn(r"\g<1>19.\g<2>\g<3>", text)
+    text, casm = asm_re.subn(r"\g<1>%d.\g<2>\g<3>" % major, text)
 
     if count == 0 and cver == 0 and casm == 0:
         print(f"  [patch_plugin_xml] WARNING: nothing to patch (no 18.* refs) in {path}")
@@ -69,11 +73,11 @@ def patch(path: str) -> None:
         f.write(out)
 
     print(f"  [patch_plugin_xml] Rewrote {count} Sdl.* refs + {cver} plugin version "
-          f"+ {casm} assembly bindings (major 18 -> 19)")
+          f"+ {casm} assembly bindings (major 18 -> {major})")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         print(__doc__)
         sys.exit(1)
-    patch(sys.argv[1])
+    patch(sys.argv[1], int(sys.argv[2]) if len(sys.argv) == 3 else 19)
