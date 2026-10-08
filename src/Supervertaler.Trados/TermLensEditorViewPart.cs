@@ -586,7 +586,14 @@ namespace Supervertaler.Trados
                                         // Use the single-argument overload — the two-argument
                                         // (Uri, ITerminologyProviderCredentialStore) form is obsolete
                                         // in Studio 2024 and removed in Studio 2026.
+#if STUDIO17
+                                        // Studio 2022 has only the two-argument form, with no default
+                                        // for the credential store; the 2024 build binds the call above
+                                        // to that same method with null, so pass null here too.
+                                        provider = factory.CreateTerminologyProvider(uri, null);
+#else
                                         provider = factory.CreateTerminologyProvider(uri);
+#endif
                                         if (provider != null) break;
                                     }
                                 }
