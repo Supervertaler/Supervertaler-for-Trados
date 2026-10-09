@@ -339,7 +339,7 @@
       "writeWhen": [
         "save"
       ],
-      "description": "Extract the tracked changes (revisions) from the open document as (before, after) pairs per segment: 'before' is the target as it was offered (e.g. an AI draft or fuzzy match), 'after' is the reviewed final. These pairs show how the user actually corrects drafts \u2013 raw material for learning their style and terminology preferences. Only exists where Track Changes was switched ON in Studio while the edits were made; target-side text changes only (formatting-only edits are excluded). Pass save=true to ALSO write the FULL harvest (independent of 'limit', so the file is complete even when the response is truncated) as a Markdown note into the active SuperMemory bank's reference/ folder, where it is kept as source material. Nothing reads it automatically: to make it useful, read the harvest and add the recurring decisions to the bank's terminology.md table and style.md \u2013 typically once at the end of a review pass, and only when the user asked for it or agreed. Check with list_supermemory_banks that the right bank (client) is active before saving.",
+      "description": "Extract the tracked changes (revisions) from the open document as (before, after) pairs per segment: 'before' is the target as it was offered (e.g. an AI draft or fuzzy match), 'after' is the reviewed final. These pairs show how the user actually corrects drafts \u2013 raw material for learning their style and terminology preferences. Only exists where Track Changes was switched ON in Studio while the edits were made; target-side text changes only (formatting-only edits are excluded). Pass save=true to ALSO write the FULL harvest (independent of 'limit', so the file is complete even when the response is truncated) as a Markdown note into the active SuperMemory bank's reference/ folder, where it is kept as source material. Nothing reads it automatically: to make it useful, read the harvest and add the recurring decisions to the bank's terminology.md table (append_terminology_row) and style.md (update_supermemory_section) \u2013 typically once at the end of a review pass, and only when the user asked for it or agreed. Check with list_supermemory_banks that the right bank (client) is active before saving.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1331,7 +1331,7 @@
     {
       "name": "search_supermemory",
       "access": "read",
-      "description": "Free-text search across the user's active SuperMemory memory bank AND their '_shared' bank of house defaults, which is loaded on top of whichever bank is active. Use this to answer 'what did I decide about X?' or 'have I translated this term before, and why that way?'. Where get_supermemory_context loads what is relevant to the whole project, this finds specific passages by keyword. Searches each bank's brief, terminology and style files; the reference/ folder holds raw source material and is deliberately not indexed. Returns each hit's bank, path, title, score and a snippet showing why it matched - check the bank field, because where the two disagree the active bank overrides '_shared'. The response also lists every bank actually searched, so a zero-hit answer can be reported accurately. Read a full file with the standard filesystem tools if you need more.",
+      "description": "Free-text search across the user's active SuperMemory memory bank AND their '_shared' bank of house defaults, which is loaded on top of whichever bank is active. Use this to answer 'what did I decide about X?' or 'have I translated this term before, and why that way?'. Where get_supermemory_context loads what is relevant to the whole project, this finds specific passages by keyword. Searches each bank's brief, terminology and style files; the reference/ folder holds raw source material and is deliberately not indexed. Returns each hit's bank, path, title, score and a snippet showing why it matched - check the bank field, because where the two disagree the active bank overrides '_shared'. The response also lists every bank actually searched, so a zero-hit answer can be reported accurately. Read a whole file with read_supermemory_file.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1371,6 +1371,173 @@
       },
       "method": "GET",
       "path": "/v1/supermemory-banks",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "read_supermemory_file",
+      "access": "read",
+      "description": "Read one file of a SuperMemory memory bank in full, exactly as it is on disk, together with its 'version'. Read a file before changing it: write_supermemory_file and update_supermemory_section take that version as 'ifVersion', so that a change made since you read it - by the user in Obsidian or Supervertaler's Library tab, by a colleague sharing the bank through a team folder, or by the other Supervertaler plugin - is never overwritten. 'path' is a file at the bank root (brief.md, terminology.md, style.md, or any other .md there) or in reference/, which holds source material and can be read but not written. A file over 512 KB is not returned, but its version still is. To find which file holds something, use search_supermemory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bank": {
+            "type": "string",
+            "description": "The memory bank, by folder name (see list_supermemory_banks). Always required: it never defaults to the active bank, and an unknown name is an error. Banks are not created here."
+          },
+          "path": {
+            "type": "string",
+            "description": "Bank-relative path, e.g. \"terminology.md\" or \"reference/style-guide.md\"."
+          }
+        },
+        "required": [
+          "bank",
+          "path"
+        ]
+      },
+      "method": "GET",
+      "path": "/v1/supermemory-file",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "write_supermemory_file",
+      "access": "write",
+      "description": "Create or replace one Markdown file at the root of a SuperMemory memory bank. Where they fit, prefer update_supermemory_section (one section) or append_terminology_row (one term): they change less, so the user can see what changed. To replace a file, pass the 'version' from read_supermemory_file as 'ifVersion'; to create one, pass \"new\". If the file has changed since you read it, nothing is written and the response carries conflict: true with the file's current content and version - merge your change into that content and call again with the new version. Use ordinary Markdown and let paragraphs run as single long lines - do not hard-wrap prose at a fixed column. Only write to a bank when the user asked for it or agreed: a bank is their record of a client's decisions. Rules: 'bank' is always required; only .md files at the bank root can be written, never reference/ (unmodified source material); '_shared' needs allowShared: true. The file keeps its own line endings and encoding, and the previous version is saved to the user's backups folder (named in 'backup'). Every response names the bank, the path and the file's version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bank": {
+            "type": "string",
+            "description": "The memory bank, by folder name (see list_supermemory_banks). Always required: it never defaults to the active bank, and an unknown name is an error. Banks are not created here."
+          },
+          "path": {
+            "type": "string",
+            "description": "File name at the bank root, e.g. \"style.md\" or \"figures.md\"."
+          },
+          "content": {
+            "type": "string",
+            "description": "The whole new file, in Markdown."
+          },
+          "ifVersion": {
+            "type": "string",
+            "description": "The 'version' read_supermemory_file returned for this file, or \"new\" to create it. If the file has changed since, nothing is written and the response carries its current content and version."
+          },
+          "allowShared": {
+            "type": "boolean",
+            "description": "Must be true to write to '_shared', the bank of house defaults loaded under every other bank. Ask the user first. Default false.",
+            "default": false
+          }
+        },
+        "required": [
+          "bank",
+          "path",
+          "content",
+          "ifVersion"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/supermemory-write",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "update_supermemory_section",
+      "access": "write",
+      "description": "Replace the body of one '## heading' section of a memory-bank file, leaving every other line of the file exactly as it was. If the file has no such section, it is added at the end of the file. 'heading' is the heading's text, with or without the leading '## '; letter case does not matter. A section runs to the next # or ## heading, so ### subsections inside it are part of what you replace: include them in 'content' if they should stay. 'content' is the new body only - it may contain ### subheadings, but not a # or ## heading of its own. Pass the version from read_supermemory_file as 'ifVersion' (\"new\" to create the file); a conflict is handled as for write_supermemory_file. Use ordinary Markdown and let paragraphs run as single long lines - do not hard-wrap prose at a fixed column. Only write to a bank when the user asked for it or agreed: a bank is their record of a client's decisions. Rules: 'bank' is always required; only .md files at the bank root can be written, never reference/ (unmodified source material); '_shared' needs allowShared: true. The file keeps its own line endings and encoding, and the previous version is saved to the user's backups folder (named in 'backup'). Every response names the bank, the path and the file's version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bank": {
+            "type": "string",
+            "description": "The memory bank, by folder name (see list_supermemory_banks). Always required: it never defaults to the active bank, and an unknown name is an error. Banks are not created here."
+          },
+          "path": {
+            "type": "string",
+            "description": "File name at the bank root, e.g. \"style.md\"."
+          },
+          "heading": {
+            "type": "string",
+            "description": "The ## heading whose section to replace, e.g. \"Numbers and units\"."
+          },
+          "content": {
+            "type": "string",
+            "description": "The new body of the section, without its heading."
+          },
+          "ifVersion": {
+            "type": "string",
+            "description": "The 'version' read_supermemory_file returned for this file, or \"new\" to create it. If the file has changed since, nothing is written and the response carries its current content and version."
+          },
+          "allowShared": {
+            "type": "boolean",
+            "description": "Must be true to write to '_shared', the bank of house defaults loaded under every other bank. Ask the user first. Default false.",
+            "default": false
+          }
+        },
+        "required": [
+          "bank",
+          "path",
+          "heading",
+          "content",
+          "ifVersion"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/supermemory-section",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "append_terminology_row",
+      "access": "write",
+      "description": "Record one terminology decision as a new row in a memory bank's terminology.md: in the first table that has a Scope column, after its last row. Refused when any table in the file already has a row for the same source term (ignoring letter case); the response then carries that row and the heading it sits under. The rule is one row per decision, so change the existing row with update_supermemory_section rather than adding a second. 'scope' says how far the decision travels: 'project' (this job only), 'client' (all of this client's work) or 'domain' (true of the subject in general, so a candidate for the '_shared' bank). Put the reason for the choice in 'note': the reasoning is what a TM or termbase cannot store. No version is needed - the row is added to the file as it is at that moment. If terminology.md has no table with a Scope column, nothing is written and the response lists the tables and headings it does have; ask the user where the row belongs. Only write to a bank when the user asked for it or agreed: a bank is their record of a client's decisions. Rules: 'bank' is always required; only .md files at the bank root can be written, never reference/ (unmodified source material); '_shared' needs allowShared: true. The file keeps its own line endings and encoding, and the previous version is saved to the user's backups folder (named in 'backup'). Every response names the bank, the path and the file's version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bank": {
+            "type": "string",
+            "description": "The memory bank, by folder name (see list_supermemory_banks). Always required: it never defaults to the active bank, and an unknown name is an error. Banks are not created here."
+          },
+          "source": {
+            "type": "string",
+            "description": "The source-language term."
+          },
+          "target": {
+            "type": "string",
+            "description": "The approved target-language rendering."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "project",
+              "client",
+              "domain"
+            ],
+            "description": "How far the decision applies."
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional: why this rendering, what was rejected, where it was confirmed."
+          },
+          "allowShared": {
+            "type": "boolean",
+            "description": "Must be true to write to '_shared', the bank of house defaults loaded under every other bank. Ask the user first. Default false.",
+            "default": false
+          }
+        },
+        "required": [
+          "bank",
+          "source",
+          "target",
+          "scope"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/supermemory-term-row",
       "paramMap": {},
       "fixedQuery": {},
       "fixedBody": {}

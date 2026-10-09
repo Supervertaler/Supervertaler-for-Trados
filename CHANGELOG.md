@@ -7,6 +7,15 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.200 / 19.20.200] – Unreleased
+
+### Added
+- **An AI assistant connected through the MCP server can now keep your memory banks up to date.** Four new tools let it record a decision you reach together during a job, instead of leaving it behind in the chat: `append_terminology_row` adds a term to a bank's terminology table, with its scope and the reason for it; `update_supermemory_section` rewrites one section of a file, such as a rule in your style guide, and leaves the rest of the file exactly as it was; `write_supermemory_file` creates or replaces a whole file; and `read_supermemory_file` reads one. The assistant writes only when you ask or agree, and always names the bank: a write never goes to the active bank by default, and a bank that does not exist is an error, not a new bank. A file that has changed since the assistant read it – in Obsidian, in the Library tab, by a colleague in the team folder or by Supervertaler for memoQ – is not overwritten; the assistant is given the file as it now stands. A term that already has a row is refused, and the assistant is shown that row. The `reference/` folder is never written, and the `_shared` bank only when you have agreed. Each file keeps its own line endings, so a change of one row shows as one row in Obsidian's or Git's history. The previous version of every changed file is kept in your data folder under `backups\memory-banks`, one copy per file, and never in the bank folder itself. While a team folder set in Settings could not be reached when Trados Studio started, the assistant cannot change memory banks at all.
+
+### Fixed
+- **Quick Add to SuperMemory no longer rewrites your whole terminology file, and puts the row in the right table.** Adding a term rewrote every line break in `terminology.md` as a Windows line break, so in a file with Unix line breaks – and many are – one new row showed in Obsidian and in Git as a change to every line. It also put the row after the last table row anywhere in the file, which in a file with several tables, such as a table of rejected variants at the end, is the wrong table. It now changes only the row it adds, puts it in the first table with a Scope column, and refuses a term that already has a row, showing you the one there is. If the file has no table with a Scope column, it says so rather than starting a new table. The previous version is kept in the backups folder.
+- **The Library tab's editor saves memory-bank files safely.** It wrote the file in place, so a crash during the save, or a program reading the file at that moment, could meet a half-written file. It now saves in one step, keeps the previous version in the backups folder, and notices a change made by someone else from the file's content rather than its time stamp.
+
 ## [18.20.199 / 19.20.199] – Unreleased
 
 ### Added

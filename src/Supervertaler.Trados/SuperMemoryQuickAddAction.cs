@@ -151,13 +151,20 @@ namespace Supervertaler.Trados
                 var vaultPath = UserDataPath.GetMemoryBankDir(bankName);
 
                 bool mdWritten;
+                BankFileResult row = null;
                 if (dlg.SaveAsRawNote)
                 {
                     mdWritten = WriteRawNote(vaultPath, dlg.Term, dlg.Correction, dlg.Notes);
                 }
                 else
                 {
-                    mdWritten = AppendTerminologyRow(vaultPath, dlg.Term, dlg.Correction, dlg.Notes);
+                    // Through the same code as the MCP tool append_terminology_row,
+                    // so a row added here and one added by an AI land in the same
+                    // table, keep the file's line endings, and refuse a term that
+                    // already has a row. _shared is allowed: the person picked it.
+                    row = BankFileStore.ForUser().AppendTerminologyRow(
+                        bankName, dlg.Term, dlg.Correction, "client", dlg.Notes, allowShared: true);
+                    mdWritten = row.Ok;
                 }
 
                 // ── 2. Append to active prompt (if requested) ────────
@@ -179,13 +186,19 @@ namespace Supervertaler.Trados
                     if (dlg.SaveAsRawNote)
                         msg.AppendLine($"\u2713  Saved note to reference/ in memory bank \"{bankName}\".");
                     else
-                        msg.AppendLine($"\u2713  Added a row to terminology.md in memory bank \"{bankName}\".");
+                        msg.AppendLine($"\u2713  Added a row to terminology.md in memory bank \"{bankName}\""
+                            + (string.IsNullOrEmpty(row?.Section) ? "." : $", under \"{row.Section}\"."));
                     if (isShared)
                         msg.AppendLine("   This bank is loaded alongside every other one, so it applies to all your jobs.");
                 }
                 else
                 {
                     msg.AppendLine($"\u26A0  Could not write to memory bank \"{bankName}\".");
+                    if (!string.IsNullOrEmpty(row?.Error))
+                    {
+                        msg.AppendLine();
+                        msg.AppendLine(row.Error);
+                    }
                 }
 
                 if (dlg.AppendToPrompt && !dlg.SaveAsRawNote)
@@ -219,105 +232,14 @@ namespace Supervertaler.Trados
         }
 
         // ══════════════════════════════════════════════════════════════
-        //  Write a terminology .md article to the vault
-        // ══════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// Appends one row to the bank's <c>terminology.md</c> table.
-        ///
-        /// This used to write a whole .md article per term into 02_TERMINOLOGY.
-        /// That is the pattern the bank redesign removed: it produced 136 files
-        /// for what is a 136-row table, and a wrong entry among 136 files is
-        /// effectively invisible. One row in one table can be scanned, sorted and
-        /// corrected in seconds - which is the only reason errors ever get found.
-        ///
-        /// The row is inserted after the LAST existing table row, so successive
-        /// quick-adds accumulate in the table rather than scattering. If the file
-        /// has no table yet (a bank converted from the old layout is prose), one
-        /// is created at the end under its own heading.
-        /// </summary>
-        private static bool AppendTerminologyRow(string vaultPath, string term, string correction, string notes)
-        {
-            try
-            {
-                Directory.CreateDirectory(vaultPath);
-                var path = Path.Combine(vaultPath, MemoryBankReader.TerminologyFile);
-
-                var row = "| " + EscapeCell(term) + " | " + EscapeCell(correction) +
-                          " | client | " + EscapeCell(notes) + " |";
-
-                if (!File.Exists(path))
-                {
-                    var fresh = new StringBuilder();
-                    fresh.AppendLine("# Terminology");
-                    fresh.AppendLine();
-                    fresh.AppendLine("| Source | Target | Scope | Note |");
-                    fresh.AppendLine("|---|---|---|---|");
-                    fresh.AppendLine(row);
-                    File.WriteAllText(path, fresh.ToString(), new UTF8Encoding(false));
-                    return true;
-                }
-
-                var lines = new List<string>(File.ReadAllLines(path));
-
-                int lastRow = -1;
-                for (int i = 0; i < lines.Count; i++)
-                {
-                    var t = lines[i].Trim();
-                    if (t.StartsWith("|") && t.EndsWith("|") && t.Length > 1)
-                        lastRow = i;
-                }
-
-                if (lastRow < 0)
-                {
-                    // Prose file (typically a converted bank): start a table at the
-                    // end rather than trying to guess where one belongs.
-                    lines.Add("");
-                    lines.Add("## Quick-added terms");
-                    lines.Add("");
-                    lines.Add("| Source | Target | Scope | Note |");
-                    lines.Add("|---|---|---|---|");
-                    lines.Add(row);
-                }
-                else
-                {
-                    // The skeleton ships an empty placeholder row; fill it instead
-                    // of leaving a blank line in the middle of the table.
-                    var existing = lines[lastRow].Replace("|", "").Trim();
-                    if (existing.Length == 0)
-                        lines[lastRow] = row;
-                    else
-                        lines.Insert(lastRow + 1, row);
-                }
-
-                File.WriteAllLines(path, lines, new UTF8Encoding(false));
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>Makes text safe for a Markdown table cell: a raw pipe would
-        /// end the cell early and silently shift every column after it.</summary>
-        private static string EscapeCell(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return "";
-            return text.Replace("|", "\\|")
-                       .Replace("\r", " ")
-                       .Replace("\n", " ")
-                       .Trim();
-        }
-
-        // ══════════════════════════════════════════════════════════════
         //  Write a background note to the bank's reference/ folder
         // ══════════════════════════════════════════════════════════════
 
         /// <summary>
         /// Creates a plain Markdown note in the bank's reference/ folder.
         ///
-        /// <para>The unstructured alternative to <see cref="AppendTerminologyRow"/>.
+        /// <para>The unstructured alternative to a terminology row
+        /// (<see cref="BankFileStore.AppendTerminologyRow"/>).
         /// Nothing reads reference/ into a prompt - it is the audit trail, so a
         /// derived claim can be checked against what it came from. This doc used
         /// to say 00_INBOX and promise that Process Inbox would compile the note;
