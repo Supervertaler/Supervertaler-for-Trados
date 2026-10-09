@@ -27,7 +27,7 @@ release; the two channels deliberately use different baselines.
 
 Usage:
     python tools/github_release.py              # write release-body-v<ver>.md, print, no mutations
-    python tools/github_release.py --zip-only   # just (re)build the two zips in dist/ (build.sh uses this)
+    python tools/github_release.py --zip-only   # just (re)build the zips in dist/ (build.sh uses this)
     python tools/github_release.py --create      # body + `gh release create` with the MCP assets attached
                                                  # (the plugin zips are built into dist/ but NOT attached)
     python tools/github_release.py --since 4.20.44 --create   # override the auto-detected baseline
@@ -46,6 +46,7 @@ CHANGELOG = os.path.join(BASE_DIR, "CHANGELOG.md")
 SRC_DIR = os.path.join(BASE_DIR, "src", "Supervertaler.Trados")
 MANIFEST_18 = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
 MANIFEST_19 = os.path.join(SRC_DIR, "pluginpackage.manifest.19.xml")
+MANIFEST_17 = os.path.join(SRC_DIR, "pluginpackage.manifest.17.xml")
 DIST_DIR = os.path.join(BASE_DIR, "dist")
 
 # Claude Desktop extension (built by tools/build_mcpb.py). Attached to every
@@ -66,6 +67,9 @@ PLUGINS = [
     ("Supervertaler for Trados (Studio 2026).sdlplugin",
      "Supervertaler-for-Trados-Studio-2026.zip",
      "Trados Studio 2026"),
+    ("Supervertaler for Trados (Studio 2022).sdlplugin",
+     "Supervertaler-for-Trados-Studio-2022.zip",
+     "Trados Studio 2022"),
 ]
 
 
@@ -88,6 +92,11 @@ def read_current_version():
 def read_current_version_19():
     """The Studio 2026 (major 19) number — shown alongside in the release body."""
     return _read_manifest_three(MANIFEST_19)
+
+
+def read_current_version_17():
+    """The Studio 2022 (major 17) number, or None where there is no 2022 build."""
+    return _read_manifest_three(MANIFEST_17) if os.path.exists(MANIFEST_17) else None
 
 
 def last_github_tag(exclude=None):
@@ -137,9 +146,10 @@ def select_entries(entries, since):
     return selected, versions
 
 
-def build_body(version, version19, selected):
+def build_body(version, version19, selected, version17=None):
     span = (f"{selected[-1][0]} → {selected[0][0]}"
             if len(selected) > 1 else selected[0][0]) if selected else version
+    also_2022 = f" / **v{version17}** (Studio 2022)" if version17 else ""
 
     table = f"| `{MCPB_NAME}` | AI assistant extension for Claude Desktop (optional, see below) |"
     table += f"\n| `{MCPB_EXE_ZIP}` | AI assistant server for other local MCP clients, e.g. Claude Code (optional, see below) |"
@@ -153,7 +163,7 @@ def build_body(version, version19, selected):
 > inside Studio) and it will check there from then on, and stop warning you about an
 > unsigned plug-in at every start.
 
-Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026). Covers {span}.
+Supervertaler for Trados **v{version}** (Studio 2024) / **v{version19}** (Studio 2026){also_2022}. Covers {span}.
 
 ## 📦 How to install
 
@@ -207,7 +217,7 @@ def build_mcpb(version):
 
 
 def make_zips():
-    """(Re)create the two release zips in dist/. Returns the list of zip paths."""
+    """(Re)create the release zips in dist/, one per build found there. Returns the list of zip paths."""
     paths = []
     for sdl_name, zip_name, _label in PLUGINS:
         sdl_path = os.path.join(DIST_DIR, sdl_name)
@@ -256,7 +266,7 @@ def main():
     print(f"v{version}: baseline = {since or '(none)'}, "
           f"{len(selected)} changelog version(s): {', '.join(v for v, _ in selected) or '—'}")
 
-    body = build_body(version, version19, selected)
+    body = build_body(version, version19, selected, read_current_version_17())
     body_file = os.path.join(BASE_DIR, f"release-body-v{version}.md")
     with open(body_file, "w", encoding="utf-8") as f:
         f.write(body)

@@ -1,7 +1,8 @@
 """Generate RWS App Store Manager release info from CHANGELOG.md and build artifacts.
 
 Produces a single Markdown file with the fields needed for the App Store Manager
-form, covering BOTH builds (Studio 2024 = major 18, Studio 2026 = major 19):
+form, covering every build (Studio 2022 = major 17 where there is one,
+Studio 2024 = major 18, Studio 2026 = major 19):
 version numbers, min/max studio versions, checksums, and the combined changelog.
 
 Usage:
@@ -36,6 +37,16 @@ MANIFEST_18 = os.path.join(SRC_DIR, "pluginpackage.manifest.xml")
 MANIFEST_19 = os.path.join(SRC_DIR, "pluginpackage.manifest.19.xml")
 SDLPLUGIN_18 = os.path.join(BASE_DIR, "dist", "Supervertaler for Trados.sdlplugin")
 SDLPLUGIN_19 = os.path.join(BASE_DIR, "dist", "Supervertaler for Trados (Studio 2026).sdlplugin")
+MANIFEST_17 = os.path.join(SRC_DIR, "pluginpackage.manifest.17.xml")
+SDLPLUGIN_17 = os.path.join(BASE_DIR, "dist", "Supervertaler for Trados (Studio 2022).sdlplugin")
+
+# (label, manifest, built package), oldest Studio first. The Studio 2022 build
+# exists only where its manifest does.
+BUILDS = [b for b in (
+    ("Studio 2022", MANIFEST_17, SDLPLUGIN_17),
+    ("Studio 2024", MANIFEST_18, SDLPLUGIN_18),
+    ("Studio 2026", MANIFEST_19, SDLPLUGIN_19),
+) if os.path.exists(b[1])]
 OUTPUT_DIR = os.path.join(BASE_DIR, "RWS AppStore")
 
 
@@ -190,17 +201,17 @@ def main():
         sys.exit(1)
 
     ver18_four = read_manifest_version(MANIFEST_18)
-    ver19_four = read_manifest_version(MANIFEST_19)
     if not ver18_four:
         print("ERROR: Could not read version from pluginpackage.manifest.xml")
         sys.exit(1)
     # 3-part Studio 2024 number, used for changelog filtering and the filename.
     ver18_three = ver18_four[:-2] if ver18_four.endswith(".0") else ver18_four
 
-    min18, max18 = read_studio_versions(MANIFEST_18)
-    min19, max19 = read_studio_versions(MANIFEST_19)
-    checksum18 = compute_checksum(SDLPLUGIN_18)
-    checksum19 = compute_checksum(SDLPLUGIN_19)
+    # Per build: label, 4-part version, min and max Studio, checksum, package.
+    builds = []
+    for label, manifest, package in BUILDS:
+        lo, hi = read_studio_versions(manifest)
+        builds.append((label, read_manifest_version(manifest), lo, hi, compute_checksum(package), package))
 
     if len(sys.argv) == 3:
         from_version = sys.argv[1]
@@ -254,17 +265,16 @@ def main():
     output_lines = []
     output_lines.append(f"# RWS App Store Manager - v{ver18_three}")
     output_lines.append("")
-    output_lines.append("Two builds ship from this one release (identical feature set, distinct")
+    count = {2: "Two", 3: "Three"}.get(len(builds), str(len(builds)))
+    output_lines.append(f"{count} builds ship from this one release (identical feature set, distinct")
     output_lines.append("version numbers so the App Store never sees a collision):")
     output_lines.append("")
     output_lines.append("| Build | Version number | Min studio | Max studio | Checksum (SHA-256) |")
     output_lines.append("|-------|----------------|------------|------------|--------------------|")
-    output_lines.append(
-        f"| Studio 2024 | `{ver18_four}` | `{min18 or '?'}` | `{max18 or '?'}` | `{checksum18 or build_not_found}` |"
-    )
-    output_lines.append(
-        f"| Studio 2026 | `{ver19_four or '?'}` | `{min19 or '?'}` | `{max19 or '?'}` | `{checksum19 or build_not_found}` |"
-    )
+    for label, ver, lo, hi, cs, _package in builds:
+        output_lines.append(
+            f"| {label} | `{ver or '?'}` | `{lo or '?'}` | `{hi or '?'}` | `{cs or build_not_found}` |"
+        )
     output_lines.append("")
     output_lines.append("---")
     output_lines.append("")
@@ -294,11 +304,11 @@ def main():
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(full_output)
 
-    print(f"Release notes for v{ver18_three} (Studio 2024 {ver18_four} / Studio 2026 {ver19_four}); changes: {version_range}")
+    print(f"Release notes for v{ver18_three} (" + " / ".join(f"{b[0]} {b[1]}" for b in builds) + f"); changes: {version_range}")
     # Stage the binaries the checksums were just taken from. Doing it here,
     # rather than on every build, is what stops the notes and the files beside
     # them drifting apart: they leave this function together or not at all.
-    for label, src in (("Studio 2024", SDLPLUGIN_18), ("Studio 2026", SDLPLUGIN_19)):
+    for label, _ver, _lo, _hi, _cs, src in builds:
         if not os.path.exists(src):
             continue
         dst = os.path.join(OUTPUT_DIR, os.path.basename(src))
@@ -307,7 +317,7 @@ def main():
 
     print(f"  Written to: {output_file}")
     print(f"  {len(added)} added, {len(changed)} changed, {len(fixed)} fixed items")
-    for label, cs, sp in (("Studio 2024", checksum18, SDLPLUGIN_18), ("Studio 2026", checksum19, SDLPLUGIN_19)):
+    for label, _ver, _lo, _hi, cs, sp in builds:
         if not cs:
             print(f"  WARNING: {sp} not found - run bash build.sh first ({label})")
 

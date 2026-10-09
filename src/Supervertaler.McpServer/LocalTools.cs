@@ -40,12 +40,12 @@ public static class LocalTools
         yield return (SelectInstance,
             "Choose which running Trados Studio this conversation works with, when more than one is "
             + "open. Editing tools refuse to run while the choice is ambiguous, so call this after "
-            + "asking the user which project they mean. The selector is \"2024\" or \"2026\" for a "
+            + "asking the user which project they mean. The selector is \"2022\", \"2024\" or \"2026\" for a "
             + "Studio version, or part of a project name (case-insensitive). It matches on what the "
             + "Studio IS, so it keeps working if that Studio is restarted. Pass an empty string to "
             + "clear the choice. Lasts for this chat session.",
             Schema("{\"type\":\"object\",\"properties\":{\"instance\":{\"type\":\"string\","
-                 + "\"description\":\"\\\"2024\\\", \\\"2026\\\", part of a project name, or \\\"\\\" to clear.\"}},"
+                 + "\"description\":\"\\\"2022\\\", \\\"2024\\\", \\\"2026\\\", part of a project name, or \\\"\\\" to clear.\"}},"
                  + "\"required\":[\"instance\"],\"additionalProperties\":false}"));
     }
 
@@ -124,7 +124,7 @@ public static class LocalTools
                 ok = false,
                 error = $"No running Trados Studio matches \"{selector}\".",
                 instances = live.Select(Describe),
-                hint = "Use \"2024\", \"2026\", or part of one of the project names above.",
+                hint = "Use \"2022\", \"2024\", \"2026\", or part of one of the project names above.",
             });
 
         if (matches.Count > 1)

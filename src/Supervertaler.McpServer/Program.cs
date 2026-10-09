@@ -277,7 +277,7 @@ static string RefuseAmbiguousWrite(string toolName, BridgeSelection sel)
         error = $"Refusing to run '{toolName}': {sel.Candidates.Count} Trados Studio instances are running "
               + "and nothing says which one to write to. Writing to the wrong one would edit the wrong "
               + "project's document. Ask the user which project they mean, then call "
-              + "select_trados_instance with \"2024\", \"2026\", or part of the project name – and run "
+              + "select_trados_instance with \"2022\", \"2024\", \"2026\", or part of the project name – and run "
               + "this tool again. Closing the other Studio works too.",
         instances,
         note = "Read-only tools still work and report which instance answered.",
@@ -307,7 +307,7 @@ static JsonElement WithInstanceParam(JsonElement schema)
         {
             ["type"] = "string",
             ["description"] =
-                "Which Trados Studio this call is for: \"2024\", \"2026\", or part of the project name. "
+                "Which Trados Studio this call is for: \"2022\", \"2024\", \"2026\", or part of the project name. "
                 + "It is checked against the Studio the call would actually go to, and the call is refused "
                 + "if they differ. The choice made with select_trados_instance is shared by every chat on "
                 + "this machine, so a chat that always passes its own Studio here can never write into "
@@ -348,7 +348,7 @@ static string RefuseNoSuchInstance(string toolName, string wanted, BridgeSelecti
         ok = false,
         error = $"Refusing to run '{toolName}': this call says it is for \"{wanted}\", but no running Trados "
               + "Studio matches that. Nothing was written. Check which Studios are open (list_trados_instances) "
-              + "and that the one meant is running with its project open; \"2024\", \"2026\" or part of the "
+              + "and that the one meant is running with its project open; \"2022\", \"2024\", \"2026\" or part of the "
               + "project name all work as the instance.",
         running = sel.Live
             .Select(i => new { studioVersion = i.StudioVersion, project = i.ProjectName, activeFile = i.ActiveFile })

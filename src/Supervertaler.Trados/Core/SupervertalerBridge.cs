@@ -205,8 +205,8 @@ namespace Supervertaler.Trados.Core
         // All EmitDefaultValue = false, so a plain bridge.json written by this
         // build is byte-identical to the old one when no project is open.
 
-        /// <summary>"2024" or "2026" – derived from the plugin build major
-        /// (18.x targets Studio 2024, 19.x targets Studio 2026).</summary>
+        /// <summary>"2022", "2024" or "2026" – derived from the plugin build major
+        /// (17.x targets Studio 2022, 18.x Studio 2024, 19.x Studio 2026).</summary>
         [DataMember(Name = "studioVersion", Order = 5, EmitDefaultValue = false)] public string StudioVersion { get; set; }
 
         /// <summary>Full plugin assembly version, so a client can report a mismatch.</summary>
@@ -4338,9 +4338,12 @@ namespace Supervertaler.Trados.Core
                 // that started last. Observed before it was fixed: a handshake
                 // 18 seconds "newer" than its own bridge.
                 StartedAt = _startedAtUtc ?? DateTime.UtcNow.ToString("o"),
-                // 18.x targets Studio 2024, 19.x targets Studio 2026 – the same
-                // mapping the update check uses to keep the two generations apart.
+                // 17.x targets Studio 2022, 18.x Studio 2024, 19.x Studio 2026 – the
+                // same mapping the update check uses to keep the generations apart.
+                // A generation missing here reports null, and the MCP server can
+                // then not select that Studio by version.
                 StudioVersion = asmVersion == null ? null
+                    : asmVersion.Major == 17 ? "2022"
                     : asmVersion.Major == 18 ? "2024"
                     : asmVersion.Major == 19 ? "2026"
                     : null,
