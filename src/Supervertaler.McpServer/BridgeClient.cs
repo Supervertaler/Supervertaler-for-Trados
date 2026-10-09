@@ -83,7 +83,7 @@ public sealed record BridgeSelection(
 /// The handshake is re-read on every call: Trados may start/stop between
 /// tool calls, and ports/tokens change per session.
 ///
-/// Two Studio versions can run side by side (Studio 2024 and 2026), each with
+/// Several Studio versions can run side by side (Studio 2022, 2024, 2026), each with
 /// its own bridge on its own port. When several are live, the newest by
 /// StartedAt is chosen — the same instance the old single-file discovery would
 /// have landed on, since the last to start was the last to write bridge.json.
@@ -237,7 +237,9 @@ public sealed class BridgeClient
 
     /// <summary>
     /// Does this instance answer to <paramref name="selector"/>?
-    ///   "2024" / "2026"  – the Studio generation
+    ///   "2022" / "2024" / "2026" – the Studio generation. Checked BEFORE the
+    ///                      project-name match, so "2022" can never pick a
+    ///                      2024 project that happens to have 2022 in its name
     ///   "pid:1234"       – one exact process, deliberately awkward to type: it
     ///                      stops working the moment that Studio restarts
     ///   anything else    – case-insensitive substring of the project name
@@ -249,7 +251,7 @@ public sealed class BridgeClient
         if (selector.StartsWith("pid:", StringComparison.OrdinalIgnoreCase))
             return int.TryParse(selector[4..], out var pid) && pid == inst.Pid;
 
-        if (selector is "2024" or "2026")
+        if (selector is "2022" or "2024" or "2026")
             return string.Equals(inst.StudioVersion, selector, StringComparison.OrdinalIgnoreCase);
 
         return inst.ProjectName is { Length: > 0 } p
@@ -426,7 +428,7 @@ public sealed class BridgeClient
         using (proc)
         {
             // DO NOT call proc.HasExited: it throws "Access is denied" across the
-            // 32/64-bit boundary (Studio 2024 is 32-bit, Studio 2026 is 64-bit),
+            // 32/64-bit boundary (Studio 2022 and 2024 are 32-bit, 2026 is 64-bit),
             // which would report a perfectly live Studio as gone. ProcessName and
             // StartTime work fine there; HasExited does not. Same trap as the
             // plugin side — see SupervertalerBridge.IsInstanceAlive.
