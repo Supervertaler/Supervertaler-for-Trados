@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Drawing;
 using System.IO;
-using System.Text;
 using System.Windows.Forms;
 
 namespace Supervertaler.Trados.Controls
@@ -19,29 +18,24 @@ namespace Supervertaler.Trados.Controls
     /// Name box would imply it renames the file.</para>
     ///
     /// <para><b>Two hazards this exists to handle.</b> These files are also
-    /// written by Obsidian and the Python Supervertaler assistant, and nothing
-    /// locks them — so the file can change between opening this dialog and
-    /// saving it. And the bank files do not agree on line endings: some are
-    /// CRLF, <c>_shared/brief.md</c> is LF-only. Writing back with whatever
+    /// written by Obsidian, by AI clients over the MCP tools and by the memoQ
+    /// plugin, and nothing locks them — so the file can change between opening
+    /// this dialog and saving it. And the bank files do not agree on line
+    /// endings: some are CRLF, many are LF-only. Writing back with whatever
     /// WinForms produced would rewrite every line of such a file, turning a
     /// one-word edit into a whole-file diff in the user's sync and version
-    /// history.</para>
+    /// history. Both are handled by <see cref="BankFileStore"/>, the same code
+    /// the MCP write tools use, which also writes atomically and keeps the
+    /// previous version in the backups folder.</para>
     /// </summary>
     internal class BankFileEditorDialog : Form
     {
         private readonly string _filePath;
         private TextBox _txt;
 
-        /// <summary>What the file looked like when we opened it, so a
-        /// concurrent write can be detected rather than silently clobbered.</summary>
-        private DateTime _openedWriteTimeUtc;
-
-        /// <summary>The file's own newline, preserved on save.</summary>
-        private string _newline = Environment.NewLine;
-
-        /// <summary>Whether the file ended with a newline. Adding or removing
-        /// one shows up as a change in every diff tool.</summary>
-        private bool _trailingNewline;
+        /// <summary>The file's version when we opened it, so a concurrent write
+        /// is noticed rather than silently clobbered.</summary>
+        private string _version;
 
         public BankFileEditorDialog(string filePath, string bankName, bool readIntoPrompts)
         {
@@ -136,78 +130,72 @@ namespace Supervertaler.Trados.Controls
 
         private void LoadFile()
         {
-            try
+            var opened = BankFileStore.ForUser().Load(_filePath);
+            if (!opened.Ok)
             {
-                var raw = File.ReadAllText(_filePath);
-                _openedWriteTimeUtc = File.GetLastWriteTimeUtc(_filePath);
-
-                // Whichever ending dominates is the file's convention. Counting
-                // rather than sniffing the first one: a file edited by two tools
-                // can be mixed, and the majority is the safer thing to restore.
-                var crlf = CountOccurrences(raw, "\r\n");
-                var lf = CountOccurrences(raw, "\n");
-                _newline = (crlf > 0 && crlf >= lf - crlf) ? "\r\n" : "\n";
-                _trailingNewline = raw.EndsWith("\n");
-
-                // The TextBox needs CRLF to show line breaks at all.
-                _txt.Text = raw.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
-                _txt.Select(0, 0);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Could not open this file:\n\n" + ex.Message,
+                MessageBox.Show(this, "Could not open this file:\n\n" + opened.Error,
                     "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.Cancel;
                 Close();
+                return;
             }
-        }
 
-        private static int CountOccurrences(string haystack, string needle)
-        {
-            int n = 0, i = 0;
-            while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
-            return n;
+            _version = opened.Version;
+            // The TextBox needs CRLF to show line breaks at all. The file's own
+            // endings are restored on save.
+            _txt.Text = opened.Content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+            _txt.Select(0, 0);
         }
 
         private void OnSave(object sender, EventArgs e)
         {
             try
             {
-                // Somebody else may have written this file while the dialog was
-                // open - Obsidian, or the Python assistant. Saying so
-                // beats silently winning.
-                var now = File.Exists(_filePath) ? File.GetLastWriteTimeUtc(_filePath) : _openedWriteTimeUtc;
-                if (now != _openedWriteTimeUtc)
-                {
-                    var answer = MessageBox.Show(this,
-                        "Something else wrote to this file while you had it open.\n\n"
-                        + "That would be Obsidian or another editor, or the Supervertaler "
-                        + "assistant. Saving now replaces what they wrote with the text in "
-                        + "this window.\n\n"
-                        + "Choose No to go back \u2013 your text stays in the editor, so you can "
-                        + "copy it somewhere safe and compare before deciding.\n\n"
-                        + "Save anyway?",
-                        "File changed on disk",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-                    if (answer != DialogResult.Yes) return;
-                }
-
-                var text = _txt.Text.Replace("\r\n", "\n");
-                if (_trailingNewline && !text.EndsWith("\n")) text += "\n";
-                if (!_trailingNewline && text.EndsWith("\n")) text = text.TrimEnd('\n');
-                if (_newline != "\n") text = text.Replace("\n", _newline);
-
-                // No BOM: these files are shared with tools that do not write one.
-                File.WriteAllText(_filePath, text, new UTF8Encoding(false));
-
-                DialogResult = DialogResult.OK;
-                Close();
+                Save();
             }
             catch (Exception ex)
             {
+                // BankFileStore reports failures rather than throwing; this is for
+                // the unforeseen, which must not escape a click handler into Studio.
                 MessageBox.Show(this, "Could not save this file:\n\n" + ex.Message,
                     "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private void Save()
+        {
+            var store = BankFileStore.ForUser();
+            var saved = store.Save(_filePath, _txt.Text, _version);
+
+            // Somebody else wrote this file while the dialog was open. Saying
+            // so beats silently winning.
+            if (saved.Conflict)
+            {
+                var answer = MessageBox.Show(this,
+                    "Something else wrote to this file while you had it open.\n\n"
+                    + "That would be Obsidian or another editor, an AI assistant connected "
+                    + "through the MCP server, or Supervertaler for memoQ. Saving now replaces "
+                    + "what they wrote with the text in this window.\n\n"
+                    + "Choose No to go back \u2013 your text stays in the editor, so you can "
+                    + "copy it somewhere safe and compare before deciding.\n\n"
+                    + "Save anyway?",
+                    "File changed on disk",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                if (answer != DialogResult.Yes) return;
+
+                // Over the file as it is now; a file deleted meanwhile is recreated.
+                saved = store.Save(_filePath, _txt.Text, saved.Version ?? BankFileStore.NewFile);
+            }
+
+            if (!saved.Ok)
+            {
+                MessageBox.Show(this, "Could not save this file:\n\n" + saved.Error,
+                    "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            DialogResult = DialogResult.OK;
+            Close();
         }
     }
 }

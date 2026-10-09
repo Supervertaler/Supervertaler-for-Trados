@@ -1003,6 +1003,62 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 4, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    /// <summary>The three memory-bank writes (/supermemory-write, -section,
+    /// -term-row). One type: each endpoint reads the members it needs.</summary>
+    [DataContract]
+    internal class BridgeBankWriteRequest
+    {
+        [DataMember(Name = "bank")] public string Bank { get; set; }
+        [DataMember(Name = "path")] public string Path { get; set; }
+        [DataMember(Name = "content")] public string Content { get; set; }
+        [DataMember(Name = "ifVersion")] public string IfVersion { get; set; }
+        [DataMember(Name = "heading")] public string Heading { get; set; }
+        [DataMember(Name = "source")] public string Source { get; set; }
+        [DataMember(Name = "target")] public string Target { get; set; }
+        [DataMember(Name = "scope")] public string Scope { get; set; }
+        [DataMember(Name = "note")] public string Note { get; set; }
+        /// <summary>Nullable: a client may send null rather than leave it out.</summary>
+        [DataMember(Name = "allowShared")] public bool? AllowShared { get; set; }
+    }
+
+    /// <summary>A <see cref="Supervertaler.Core.BankFileResult"/> on the wire.
+    /// Every answer names the bank, the path and the version, written or not.</summary>
+    [DataContract]
+    public class BridgeBankFileResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "conflict", Order = 2, EmitDefaultValue = false)] public bool Conflict { get; set; }
+        [DataMember(Name = "bank", Order = 3, EmitDefaultValue = false)] public string Bank { get; set; }
+        [DataMember(Name = "path", Order = 4, EmitDefaultValue = false)] public string Path { get; set; }
+        [DataMember(Name = "version", Order = 5, EmitDefaultValue = false)] public string Version { get; set; }
+        [DataMember(Name = "created", Order = 6, EmitDefaultValue = false)] public bool Created { get; set; }
+        [DataMember(Name = "unchanged", Order = 7, EmitDefaultValue = false)] public bool Unchanged { get; set; }
+        [DataMember(Name = "section", Order = 8, EmitDefaultValue = false)] public string Section { get; set; }
+        [DataMember(Name = "row", Order = 9, EmitDefaultValue = false)] public string Row { get; set; }
+        [DataMember(Name = "backup", Order = 10, EmitDefaultValue = false)] public string Backup { get; set; }
+        [DataMember(Name = "note", Order = 11, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>Last, because it is the long one.</summary>
+        [DataMember(Name = "content", Order = 12, EmitDefaultValue = false)] public string Content { get; set; }
+
+        internal static BridgeBankFileResponse From(Supervertaler.Core.BankFileResult r) => new BridgeBankFileResponse
+        {
+            Ok = r.Ok,
+            Error = r.Error,
+            Conflict = r.Conflict,
+            Bank = r.Bank,
+            Path = r.Path,
+            Version = r.Version,
+            Created = r.Created,
+            Unchanged = r.Unchanged,
+            Section = r.Section,
+            Row = r.Row,
+            Backup = r.Backup,
+            Note = r.Note,
+            Content = r.Content,
+        };
+    }
+
     [DataContract]
     public class BridgeGoToRequest
     {
@@ -2338,6 +2394,30 @@ namespace Supervertaler.Trados.Core
                 HandleSuperMemoryBanks(context);
                 return;
             }
+            if (method == "GET" && path == "/v1/supermemory-file")
+            {
+                var q = QueryUtf8(context.Request);
+                RespondBankFile(context, () => BankFileStore.ForAgent().Read(q["bank"], q["path"]));
+                return;
+            }
+            if (method == "POST" && path == "/v1/supermemory-write")
+            {
+                HandleBankWrite(context, (store, q) =>
+                    store.Write(q.Bank, q.Path, q.Content, q.IfVersion, q.AllowShared == true));
+                return;
+            }
+            if (method == "POST" && path == "/v1/supermemory-section")
+            {
+                HandleBankWrite(context, (store, q) =>
+                    store.ReplaceSection(q.Bank, q.Path, q.Heading, q.Content, q.IfVersion, q.AllowShared == true));
+                return;
+            }
+            if (method == "POST" && path == "/v1/supermemory-term-row")
+            {
+                HandleBankWrite(context, (store, q) =>
+                    store.AppendTerminologyRow(q.Bank, q.Source, q.Target, q.Scope, q.Note, q.AllowShared == true));
+                return;
+            }
 
             TryWriteError(context, 404, "not found");
         }
@@ -2435,6 +2515,61 @@ namespace Supervertaler.Trados.Core
             }
 
             WriteJson(context, 200, response);
+        }
+
+        // ── Memory-bank files (read_supermemory_file and the three writes) ───
+        //
+        // Pure disk work, like the prompt library: no editor state, so no hop
+        // to the UI thread. Every rule - path guards, version check, line
+        // endings, backup, refusing writes while the team folder is missing -
+        // lives in core's BankFileStore, which the memoQ plugin's bridge calls
+        // the same way.
+        //
+        // Nothing to refresh after a write: search_supermemory and the bank list
+        // read the files afresh on every call, the cached reader behind
+        // get_supermemory_context reads the files themselves rather than its
+        // index, and the translation cache is keyed on their write times.
+
+        private void HandleBankWrite(HttpListenerContext context,
+            Func<BankFileStore, BridgeBankWriteRequest, BankFileResult> write)
+        {
+            BridgeBankWriteRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    var body = reader.ReadToEnd();
+                    req = string.IsNullOrWhiteSpace(body) ? null : DeserializeJson<BridgeBankWriteRequest>(body);
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeBankFileResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+            if (req == null)
+            {
+                WriteJson(context, 400, new BridgeBankFileResponse { Ok = false, Error = "empty body" });
+                return;
+            }
+
+            RespondBankFile(context, () => write(BankFileStore.ForAgent(), req));
+        }
+
+        private void RespondBankFile(HttpListenerContext context, Func<BankFileResult> operation)
+        {
+            BankFileResult result;
+            try
+            {
+                result = operation();
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] memory-bank file operation threw: {ex.Message}");
+                WriteJson(context, 200, new BridgeBankFileResponse { Ok = false, Error = "failed: " + ex.Message });
+                return;
+            }
+            WriteJson(context, 200, BridgeBankFileResponse.From(result));
         }
 
         private void HandleGetActiveContext(HttpListenerContext context)
