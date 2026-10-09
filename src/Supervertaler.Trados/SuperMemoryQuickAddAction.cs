@@ -123,8 +123,8 @@ namespace Supervertaler.Trados
                     (string.IsNullOrEmpty(dlg.Term) || string.IsNullOrEmpty(dlg.Correction)))
                 {
                     MessageBox.Show(
-                        "Both the source term and the target term are required for a structured article.\n\n" +
-                        "If you want to save a free-form note instead, tick the \"Save as raw note\" checkbox.",
+                        "Fill in both the source term and the target term: a row in terminology.md needs both.\n\n" +
+                        "To save a free-form note instead, tick \"Save as background reference instead\".",
                         "Supervertaler \u2013 SuperMemory",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
@@ -190,6 +190,19 @@ namespace Supervertaler.Trados
                             + (string.IsNullOrEmpty(row?.Section) ? "." : $", under \"{row.Section}\"."));
                     if (isShared)
                         msg.AppendLine("   This bank is loaded alongside every other one, so it applies to all your jobs.");
+                }
+                else if (row != null && row.Row != null)
+                {
+                    // A refusal by design, not a failure: the term already has a
+                    // row. Show that row on its own and say where to change it.
+                    msg.AppendLine($"\u26A0  Not added: \"{dlg.Term}\" already has a row in terminology.md "
+                        + $"in memory bank \"{bankName}\""
+                        + (string.IsNullOrEmpty(row.Section) ? ":" : $", under \"{row.Section}\":"));
+                    msg.AppendLine();
+                    msg.AppendLine("      " + row.Row);
+                    msg.AppendLine();
+                    msg.AppendLine("One row per decision. To change it, edit that row: Settings \u2192 Library \u2192 "
+                        + $"SuperMemory \u2192 {bankName} \u2192 terminology.md \u2192 Edit.");
                 }
                 else
                 {
