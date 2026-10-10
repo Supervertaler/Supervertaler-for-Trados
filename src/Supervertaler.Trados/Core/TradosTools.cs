@@ -168,7 +168,7 @@ namespace Supervertaler.Trados.Core
   },
   {
     ""name"": ""studio_list_project_templates"",
-    ""description"": ""Lists all project templates available in Trados Studio. Use when the user asks about their templates or wants to know which templates are available."",
+    ""description"": ""Lists the project templates Trados Studio offers under New Project > Use Settings from - every registered template, wherever the file is stored - plus any in the Project Templates folders. Use when the user asks about their templates or wants to know which templates are available."",
     ""parameters"": {
       ""type"": ""object"",
       ""properties"": {},
@@ -542,33 +542,119 @@ namespace Supervertaler.Trados.Core
             return sb.ToString();
         }
 
-        private static string ListProjectTemplates()
-        {
-            var templateFolders = GetStudioDocumentFolders()
-                .Select(f => Path.Combine(f, "Project Templates"))
-                .ToArray();
+        /// <summary>
+        /// Every project template Studio offers under New Project > "Use Settings
+        /// from", plus any .sdltpl sitting in the default folders.
+        ///
+        /// Studio's list is the REGISTERED templates: each version's projects.xml,
+        /// &lt;ProjectTemplates&gt;&lt;ProjectTemplateListItem ProjectTemplateFilePath=…&gt;.
+        /// They can live anywhere – a template the user browsed to in a backup or
+        /// synced folder is registered where it is – so scanning only
+        /// Documents\Studio …\Project Templates missed exactly the templates people
+        /// use for recurring jobs (10 Oct 2026: none of Michael's client templates
+        /// were in that folder). The folder scan stays as a fallback for a template
+        /// copied in but never registered. A registered file that no longer exists
+        /// is listed with missing:true rather than dropped: Studio still shows it,
+        /// and the user should hear why it fails.
+        /// </summary>
+        private static string ListProjectTemplates() => ListProjectTemplates(GetStudioDocumentFolders());
 
-            var templates = new List<string>();
-            foreach (var folder in templateFolders)
+        /// <summary>The same, over given Studio document folders (newest first) –
+        /// so .dev/list-templates-test.ps1 can run it on fixture folders.</summary>
+        internal static string ListProjectTemplates(IList<string> studioFolders)
+        {
+            // One entry per file, in discovery order: registered templates, newest
+            // Studio first, then unregistered ones found by the folder scan.
+            var byPath = new Dictionary<string, TemplateListing>(StringComparer.OrdinalIgnoreCase);
+            var ordered = new List<TemplateListing>();
+            TemplateListing For(string path)
             {
-                if (Directory.Exists(folder))
+                // Normalise, so "…\Projects\..\Project Templates\X.sdltpl" from a
+                // registry and the folder scan's "…\Project Templates\X.sdltpl"
+                // are one entry, not two.
+                try { path = Path.GetFullPath(path); } catch { }
+                if (!byPath.TryGetValue(path, out var t))
                 {
-                    templates.AddRange(Directory.GetFiles(folder, "*.sdltpl", SearchOption.AllDirectories));
+                    t = new TemplateListing(path);
+                    byPath[path] = t;
+                    ordered.Add(t);
+                }
+                return t;
+            }
+
+            foreach (var xmlPath in ProjectsXmlPathsIn(studioFolders))
+            {
+                XDocument doc;
+                try { doc = XDocument.Load(xmlPath); }
+                catch { continue; }   // one unreadable registry must not hide the others
+                var studio = StudioLabelFromXmlPath(xmlPath);
+
+                foreach (var item in doc.Descendants("ProjectTemplateListItem"))
+                {
+                    var path = ResolveProjectPath(item.Attribute("ProjectTemplateFilePath")?.Value, xmlPath);
+                    if (string.IsNullOrEmpty(path)) continue;
+                    var t = For(path);
+                    t.AddStudio(t.RegisteredIn, studio);
+
+                    // Studio's own templates carry a resource reference
+                    // ("assembly://…"), not a description a person wrote.
+                    var desc = item.Element("ProjectTemplateInfo")?.Attribute("Description")?.Value;
+                    if (t.Description == null && !string.IsNullOrWhiteSpace(desc)
+                        && !desc.StartsWith("assembly://", StringComparison.OrdinalIgnoreCase))
+                        t.Description = desc;
+                }
+            }
+
+            foreach (var folder in studioFolders)
+            {
+                var templatesDir = Path.Combine(folder, "Project Templates");
+                if (!Directory.Exists(templatesDir)) continue;
+                string[] files;
+                try { files = Directory.GetFiles(templatesDir, "*.sdltpl", SearchOption.AllDirectories); }
+                catch { continue; }
+                var studio = Path.GetFileName(folder);
+                foreach (var f in files)
+                {
+                    var t = For(f);
+                    t.AddStudio(t.FoundIn, studio);
                 }
             }
 
             var sb = new StringBuilder();
             sb.Append("{\"projectTemplates\":[");
-            for (int i = 0; i < templates.Count; i++)
+            for (int i = 0; i < ordered.Count; i++)
             {
+                var t = ordered[i];
+                bool registered = t.RegisteredIn.Count > 0;
                 if (i > 0) sb.Append(",");
-                var name = Path.GetFileNameWithoutExtension(templates[i]);
-                sb.Append("{\"name\":").Append(JsonStr(name));
-                sb.Append(",\"path\":").Append(JsonStr(templates[i]));
+                sb.Append("{\"name\":").Append(JsonStr(Path.GetFileNameWithoutExtension(t.Path)));
+                sb.Append(",\"path\":").Append(JsonStr(t.Path));
+                sb.Append(",\"studio\":").Append(JsonStr(string.Join(", ", registered ? t.RegisteredIn : t.FoundIn)));
+                sb.Append(",\"registered\":").Append(registered ? "true" : "false");
+                if (t.Description != null)
+                    sb.Append(",\"description\":").Append(JsonStr(t.Description));
+                if (!File.Exists(t.Path))
+                    sb.Append(",\"missing\":true");
                 sb.Append("}");
             }
-            sb.Append("],\"total\":").Append(templates.Count).Append("}");
+            sb.Append("],\"total\":").Append(ordered.Count).Append("}");
             return sb.ToString();
+        }
+
+        /// <summary>One template file for <see cref="ListProjectTemplates"/>: the
+        /// Studio versions that register it, and those whose folder holds it.</summary>
+        private sealed class TemplateListing
+        {
+            public TemplateListing(string path) { Path = path; }
+            public string Path { get; }
+            public string Description { get; set; }
+            public List<string> RegisteredIn { get; } = new List<string>();
+            public List<string> FoundIn { get; } = new List<string>();
+
+            public void AddStudio(List<string> list, string studio)
+            {
+                if (!string.IsNullOrEmpty(studio) && !list.Contains(studio)) list.Add(studio);
+            }
         }
 
         /// <summary>
@@ -1311,10 +1397,12 @@ namespace Supervertaler.Trados.Core
         /// answers "what projects are there" must read every one of them – reading
         /// only the first misses projects registered under another version.
         /// </summary>
-        private static List<string> GetProjectsXmlPaths()
+        private static List<string> GetProjectsXmlPaths() => ProjectsXmlPathsIn(GetStudioDocumentFolders());
+
+        private static List<string> ProjectsXmlPathsIn(IEnumerable<string> studioFolders)
         {
             var result = new List<string>();
-            foreach (var folder in GetStudioDocumentFolders())
+            foreach (var folder in studioFolders)
             {
                 var p = Path.Combine(folder, "Projects", "projects.xml");
                 if (File.Exists(p)) result.Add(p);

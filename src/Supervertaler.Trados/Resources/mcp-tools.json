@@ -881,7 +881,7 @@
     {
       "name": "list_project_templates",
       "access": "read",
-      "description": "List the Trados Studio project templates (.sdltpl) on this machine, from every Studio version's Project Templates folder, with name and path. Useful when discussing how the user sets up new projects.",
+      "description": "List the Trados Studio project templates (.sdltpl) the user can create projects from: every template registered in each Studio version - what New Project > 'Use Settings from' offers, wherever the file is stored - plus any .sdltpl in the Project Templates folders. Each has name, path, studio (the version(s) that register it, or whose folder holds it), registered (false = in a folder but not in Studio's list), an optional description, and missing:true if a registered file no longer exists. Useful when discussing how the user sets up new projects, and to suggest the template a recurring job uses.",
       "inputSchema": {
         "type": "object",
         "properties": {}
