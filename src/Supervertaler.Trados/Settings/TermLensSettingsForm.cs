@@ -2381,6 +2381,8 @@ namespace Supervertaler.Trados.Settings
             _promptManagerPanel.ApplyToSettings(_settings.AiSettings);
 
             SettingsService.Save();
+            // After the save: settings.json first, then the locked key file.
+            _aiSettingsPanel.SaveLockedProfileKeys();
 
             // Also save per-project settings if a Trados project is active
             var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();

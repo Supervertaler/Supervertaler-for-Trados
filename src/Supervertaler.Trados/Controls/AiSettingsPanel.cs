@@ -40,6 +40,16 @@ namespace Supervertaler.Trados.Controls
         // API Key
         private TextBox _txtApiKey;
         private Label _lblKeyHint;   // #108: "this does not look like an OpenAI key"
+        // Under each key box: why it is empty when the stored key cannot be read on
+        // this computer (design note §7, M1). Under the provider box, otherwise, the
+        // start-up notice about a damaged locked key file. See UpdateKeyNotes.
+        private Label _lblKeyNote, _lblCustomKeyNote;
+        private Label _keyNoteSpacer, _customKeyNoteSpacer;
+        // Provider → M1, for the providers whose shared key cannot be read here.
+        private readonly Dictionary<string, string> _unreadableKeyNotes = new Dictionary<string, string>();
+        // The endpoint profiles' names as loaded: a name gone at OK was renamed or
+        // removed, and its key leaves the locked file (SaveLockedProfileKeys).
+        private List<string> _profileNamesLoaded = new List<string>();
 
         private Button _btnShowKey;
         private Button _btnTestConnection;
@@ -281,6 +291,23 @@ namespace Supervertaler.Trados.Controls
             // under the field column with no label.
             Label NoLabel() => new Label { AutoSize = true, Margin = Padding.Empty };
 
+            // A note under a key box. Unlike the one-line hint, it wraps: "can't be
+            // read" needs the whole sentence, what happened and what to do. Hidden,
+            // with its placeholder, until there is something to say (UpdateKeyNotes),
+            // so an ordinary dialog keeps its layout.
+            void KeyNote(TableLayoutPanel t, ref int r, out Label spacer, out Label note)
+            {
+                spacer = NoLabel();
+                spacer.Visible = false;
+                note = new Label
+                {
+                    AutoSize = true, Visible = false, Anchor = AnchorStyles.Left,
+                    ForeColor = Color.FromArgb(180, 90, 0),
+                    Font = new Font("Segoe UI", 8.5f), Margin = new Padding(0, 0, 0, UiScale.Pixels(6)),
+                };
+                Pair(t, ref r, spacer, note);
+            }
+
             // ── root grid ───────────────────────────────────────────────────
             var root = NewGrid();
             root.Dock = DockStyle.Top;
@@ -382,6 +409,10 @@ namespace Supervertaler.Trados.Controls
             };
             Pair(root, ref row, NoLabel(), _lblKeyHint);
             _txtApiKey.TextChanged += (s, e) => UpdateKeyHint();
+            KeyNote(root, ref row, out _keyNoteSpacer, out _lblKeyNote);
+            _txtApiKey.TextChanged += (s, e) => UpdateKeyNotes();
+            // The note wraps at the width of the key's row, known only once laid out.
+            _txtApiKey.Parent.SizeChanged += (s, e) => UpdateKeyNotes();
 
             _btnTestConnection = TextButton("Test Connection");
             _btnTestConnection.Click += OnTestConnectionClick;
@@ -482,6 +513,10 @@ namespace Supervertaler.Trados.Controls
             Pair(root, ref row, lblCustomApiKey, customKeyHost);
             _customRows.Add(lblCustomApiKey);
             _customRows.Add(customKeyHost);
+            // Not one of _customRows: shown only when this profile's key cannot be read.
+            KeyNote(root, ref row, out _customKeyNoteSpacer, out _lblCustomKeyNote);
+            _txtCustomApiKey.TextChanged += (s, e) => UpdateKeyNotes();
+            customKeyHost.SizeChanged += (s, e) => UpdateKeyNotes();
 
             // ===== Time limit for a server on this computer (Ollama and Custom) =====
             // Below both sections so it sits last in either. The setting keeps its
@@ -831,40 +866,6 @@ namespace Supervertaler.Trados.Controls
 
         // ─── Settings Population ─────────────────────────────────────
 
-        /// <summary>
-        /// Once per session: if a stored key cannot be decrypted on this machine,
-        /// say so plainly.
-        ///
-        /// <para>#115. DPAPI ciphertext is bound to the Windows user and the
-        /// machine that wrote it, so a settings file restored from a backup,
-        /// synced from another PC, or written under a different Windows account
-        /// yields nothing. Without this the field simply looks empty, the user
-        /// assumes the key is still there, and the first thing they see is an
-        /// authentication failure from the provider - sending them to check their
-        /// billing rather than to paste the key again.</para>
-        ///
-        /// <para>Warn once, not per panel construction: the settings dialog is
-        /// opened repeatedly in a session and a repeated modal would be worse
-        /// than the problem.</para>
-        /// </summary>
-        private static bool _warnedUnreadableKeys;
-        private static void WarnIfKeysUnreadable(AiApiKeys keys)
-        {
-            if (_warnedUnreadableKeys || keys == null || !keys.HasUnreadableKeys) return;
-            _warnedUnreadableKeys = true;
-            try
-            {
-                MessageBox.Show(
-                    "One or more of your saved API keys could not be read on this computer.\n\n" +
-                    "API keys are encrypted for the Windows account that entered them, so they " +
-                    "do not travel with a settings file copied from a backup or another PC.\n\n" +
-                    "Please paste the affected key(s) in again below. Nothing else is affected.",
-                    "Supervertaler - please re-enter your API key",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch { /* a warning must never take the settings dialog down with it */ }
-        }
-
         public void PopulateFromSettings(AiSettings settings)
         {
             // #106: the cached provider lists, so the dropdown shows them from the start.
@@ -878,11 +879,22 @@ namespace Supervertaler.Trados.Controls
 
             // Load ALL provider API keys into the dictionary so switching preserves them
             var keys = settings.ApiKeys ?? new AiApiKeys();
-            // #115: keys are DPAPI-encrypted and bound to this Windows user on this
-            // machine, so a settings file from a backup or another PC decrypts to
-            // nothing. Say so, once - see WarnIfKeysUnreadable below.
-            // #108: the shared key file wins; the plugin's own key is the fallback.
-            string Shared(string provider, string own) => Supervertaler.Core.ApiKeyStore.Get(provider) ?? own ?? "";
+            // #108: the shared keys win; the plugin's own key is the fallback where
+            // they have none. A shared key this Windows account cannot unlock is not
+            // replaced by that older copy: its box stays empty, and the note under it
+            // says why and what to do (design note §7, M1). That note replaces the
+            // one-off "could not be read" warning, which looked only at the plugin's
+            // own copies and so said nothing on a second PC even when it mattered.
+            _unreadableKeyNotes.Clear();
+            string Shared(string provider, string own)
+            {
+                var key = Supervertaler.Core.ApiKeyStore.Get(provider);
+                if (key != null) return key;
+                var note = Supervertaler.Core.ApiKeyStore.UnreadableKeyNote(provider);
+                if (note == null) return own ?? "";
+                _unreadableKeyNotes[provider] = note;
+                return "";
+            }
             _providerApiKeys[LlmModels.ProviderOpenAi] = Shared(LlmModels.ProviderOpenAi, keys.OpenAi);
             _providerApiKeys[LlmModels.ProviderClaude] = Shared(LlmModels.ProviderClaude, keys.Claude);
             _providerApiKeys[LlmModels.ProviderGemini] = Shared(LlmModels.ProviderGemini, keys.Gemini);
@@ -892,8 +904,6 @@ namespace Supervertaler.Trados.Controls
             _providerApiKeys[LlmModels.ProviderOpenRouter] = Shared(LlmModels.ProviderOpenRouter, keys.OpenRouter);
             _providerApiKeys[LlmModels.ProviderCustomOpenAi] = keys.CustomOpenAi ?? "";
             _providerApiKeys[LlmModels.ProviderOllama] = ""; // Ollama doesn't use API keys
-
-            WarnIfKeysUnreadable(keys);
 
             // Select provider (this triggers OnProviderChanged which loads the right key)
             _lastProviderKey = null; // reset so first switch doesn't save empty string
@@ -916,6 +926,7 @@ namespace Supervertaler.Trados.Controls
 
             // Custom OpenAI profiles
             PopulateCustomProfiles(settings);
+            UpdateKeyNotes();
 
             // AI Context
             _chkIncludeTmMatches.Checked = settings.IncludeTmMatches;
@@ -1092,6 +1103,7 @@ namespace Supervertaler.Trados.Controls
             _lblStatus.Text = "";
 
             _lastProviderKey = providerKey;
+            UpdateKeyNotes();
         }
 
         /// <summary>
@@ -1206,6 +1218,42 @@ namespace Supervertaler.Trados.Controls
             {
                 _btnTestConnection.Enabled = true;
             }
+        }
+
+        /// <summary>
+        /// The notes under the key boxes. Under a box that is empty because its
+        /// stored key cannot be read on this computer, that sentence (design note
+        /// §7, M1) - until something is typed, which is the remedy. Under the
+        /// provider box when there is no such key, the start-up notice about a
+        /// damaged locked key file, if there was one this session.
+        /// </summary>
+        private void UpdateKeyNotes()
+        {
+            if (_lblKeyNote == null || _lblCustomKeyNote == null) return;
+            var provider = GetSelectedProviderKey();
+
+            string note = null;
+            if (_txtApiKey.Text.Trim().Length == 0) _unreadableKeyNotes.TryGetValue(provider, out note);
+            ShowKeyNote(_lblKeyNote, _keyNoteSpacer, _txtApiKey.Parent, note ?? TradosApiKeys.StartupNotice);
+
+            string customNote = null;
+            if (provider == LlmModels.ProviderCustomOpenAi && _txtCustomApiKey.Text.Trim().Length == 0)
+                customNote = (_cmbCustomProfile.SelectedItem as CustomProfileItem)?.UnreadableNote;
+            ShowKeyNote(_lblCustomKeyNote, _customKeyNoteSpacer, _txtCustomApiKey.Parent, customNote);
+        }
+
+        private static void ShowKeyNote(Label note, Label spacer, Control row, string text)
+        {
+            var show = !string.IsNullOrEmpty(text);
+            if (show)
+            {
+                // Wraps at the width of the key's row, as tall as the text needs.
+                var width = Math.Max(UiScale.Pixels(240), row?.Width ?? 0);
+                if (note.MaximumSize.Width != width) note.MaximumSize = new Size(width, 0);
+                if (note.Text != text) note.Text = text;
+            }
+            if (note.Visible != show) note.Visible = show;
+            if (spacer.Visible != show) spacer.Visible = show;
         }
 
         /// <summary>#108: says when the key in the box plainly belongs to another service.</summary>
@@ -1415,6 +1463,7 @@ namespace Supervertaler.Trados.Controls
             }
 
             _lastCustomProfileIndex = _cmbCustomProfile.SelectedIndex;
+            UpdateKeyNotes();
         }
 
         // ─── Helpers ─────────────────────────────────────────────────
@@ -1484,16 +1533,28 @@ namespace Supervertaler.Trados.Controls
         private void PopulateCustomProfiles(AiSettings settings)
         {
             _cmbCustomProfile.Items.Clear();
+            _profileNamesLoaded = new List<string>();
             if (settings.CustomOpenAiProfiles != null)
             {
                 foreach (var p in settings.CustomOpenAiProfiles)
                 {
-                    _cmbCustomProfile.Items.Add(new CustomProfileItem(p.Name)
+                    var item = new CustomProfileItem(p.Name)
                     {
                         Endpoint = p.Endpoint,
                         Model = p.Model,
                         ApiKey = p.ApiKey
-                    });
+                    };
+                    // Step 1: the profile's own key decides; the locked file's copy
+                    // is used only where settings.json has none (TradosApiKeys).
+                    if (string.IsNullOrWhiteSpace(p.ApiKey))
+                    {
+                        var id = TradosApiKeys.ProfileId(p.Name);
+                        var locked = Supervertaler.Core.ApiKeyStore.Get(id);
+                        if (locked != null) item.ApiKey = item.LockedKey = locked;
+                        else item.UnreadableNote = Supervertaler.Core.ApiKeyStore.UnreadableKeyNote(id);
+                    }
+                    _cmbCustomProfile.Items.Add(item);
+                    _profileNamesLoaded.Add(p.Name);
                 }
             }
 
@@ -1529,9 +1590,27 @@ namespace Supervertaler.Trados.Controls
                     Name = item.Name,
                     Endpoint = item.Endpoint,
                     Model = item.Model,
-                    ApiKey = item.ApiKey
+                    // A key shown from the locked file, unchanged, stays out of
+                    // settings.json: an OK that changed nothing must not put a key
+                    // back into the data folder.
+                    ApiKey = item.LockedKey != null && item.ApiKey == item.LockedKey ? "" : item.ApiKey
                 });
             }
+        }
+
+        /// <summary>
+        /// After settings.json has been saved: each endpoint profile's key into the
+        /// locked file, and the entries of profiles renamed or removed out of it
+        /// (<see cref="TradosApiKeys.SaveProfileKeys"/>). Called by the settings
+        /// form after its save, so settings.json is written first, as for every key.
+        /// </summary>
+        public void SaveLockedProfileKeys()
+        {
+            var now = new List<(string Name, string Key)>();
+            foreach (CustomProfileItem item in _cmbCustomProfile.Items)
+                now.Add((item.Name, item.ApiKey));
+            TradosApiKeys.SaveProfileKeys(now, _profileNamesLoaded);
+            _profileNamesLoaded = now.Select(p => p.Name).ToList();
         }
 
         private bool ProfileExists(string name)
@@ -1572,6 +1651,10 @@ namespace Supervertaler.Trados.Controls
             public string Endpoint { get; set; } = "";
             public string Model { get; set; } = "";
             public string ApiKey { get; set; } = "";
+            /// <summary>The key as read from the locked file, when settings.json had none; else null.</summary>
+            public string LockedKey { get; set; }
+            /// <summary>M1, when the locked file holds this profile's key but it cannot be read here.</summary>
+            public string UnreadableNote { get; set; }
             public CustomProfileItem(string name) { Name = name; }
             public override string ToString() => Name;
         }

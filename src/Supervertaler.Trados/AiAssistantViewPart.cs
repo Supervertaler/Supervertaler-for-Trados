@@ -800,7 +800,7 @@ namespace Supervertaler.Trados
             }
 
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-            string apiKey;
+            string apiKey, keyProblem = null;
             string baseUrl = null;
             string model = aiSettings.GetSelectedModel();
 
@@ -817,18 +817,18 @@ namespace Supervertaler.Trados
                     AddErrorMessage("No custom OpenAI profile configured.");
                     return;
                 }
-                apiKey = profile.ApiKey;
+                apiKey = TradosApiKeys.For(profile, out keyProblem);
                 baseUrl = profile.Endpoint;
                 model = profile.Model;
             }
             else
             {
-                apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
             }
 
             if (string.IsNullOrEmpty(apiKey))
             {
-                AddErrorMessage($"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.");
+                AddErrorMessage(keyProblem);
                 return;
             }
 
@@ -7124,7 +7124,7 @@ namespace Supervertaler.Trados
 
                 // Resolve provider/API key
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                string apiKey;
+                string apiKey, keyProblem = null;
                 string baseUrl = null;
                 string model = aiSettings.GetSelectedModel();
 
@@ -7141,18 +7141,18 @@ namespace Supervertaler.Trados
                         AddErrorMessage("No custom OpenAI profile configured.");
                         return;
                     }
-                    apiKey = profile.ApiKey;
+                    apiKey = TradosApiKeys.For(profile, out keyProblem);
                     baseUrl = profile.Endpoint;
                     model = profile.Model;
                 }
                 else
                 {
-                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
 
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    AddErrorMessage($"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.");
+                    AddErrorMessage(keyProblem);
                     return;
                 }
 
@@ -9907,7 +9907,7 @@ namespace Supervertaler.Trados
             }
 
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-            string apiKey;
+            string apiKey, keyProblem = null;
             string baseUrl = null;
             string model = aiSettings.GetSelectedModel();
 
@@ -9924,18 +9924,18 @@ namespace Supervertaler.Trados
                     AddErrorMessage("No custom OpenAI profile configured.");
                     return;
                 }
-                apiKey = profile.ApiKey;
+                apiKey = TradosApiKeys.For(profile, out keyProblem);
                 baseUrl = profile.Endpoint;
                 model = profile.Model;
             }
             else
             {
-                apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
             }
 
             if (string.IsNullOrEmpty(apiKey))
             {
-                AddErrorMessage($"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.");
+                AddErrorMessage(keyProblem);
                 return;
             }
 
@@ -10384,7 +10384,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Resolve API key
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                string apiKey;
+                string apiKey, keyProblem = null;
                 string baseUrl = null;
                 string model = aiSettings.GetSelectedModel();
 
@@ -10401,19 +10401,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         batchControl.AppendLog("No custom OpenAI profile configured.", true);
                         return;
                     }
-                    apiKey = profile.ApiKey;
+                    apiKey = TradosApiKeys.For(profile, out keyProblem);
                     baseUrl = profile.Endpoint;
                     model = profile.Model;
                 }
                 else
                 {
-                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
 
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    batchControl.AppendLog(
-                        $"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.", true);
+                    batchControl.AppendLog(keyProblem, true);
                     return;
                 }
 
@@ -11431,7 +11430,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
             var model = aiSettings.GetSelectedModel();
-            string apiKey;
+            string apiKey, keyProblem = null;
             string baseUrl = null;
 
             if (provider == LlmModels.ProviderOllama)
@@ -11443,19 +11442,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 var profile = aiSettings.GetActiveCustomProfile();
                 if (profile == null) { error = "No custom OpenAI profile configured."; return null; }
-                apiKey = profile.ApiKey;
+                apiKey = TradosApiKeys.For(profile, out keyProblem);
                 baseUrl = profile.Endpoint;
                 model = profile.Model;
             }
             else
             {
-                apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
             }
 
             if (string.IsNullOrEmpty(apiKey))
             {
-                error = "No API key configured for " + provider
-                      + ". Open Settings > AI Settings to add one.";
+                error = keyProblem;
                 return null;
             }
 
@@ -12835,7 +12833,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Resolve API key (same pattern as batch translate)
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                string apiKey;
+                string apiKey, keyProblem = null;
                 string baseUrl = null;
                 string model = aiSettings.GetSelectedModel();
 
@@ -12852,19 +12850,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         batchControl.AppendLog("No custom OpenAI profile configured.", true);
                         return;
                     }
-                    apiKey = profile.ApiKey;
+                    apiKey = TradosApiKeys.For(profile, out keyProblem);
                     baseUrl = profile.Endpoint;
                     model = profile.Model;
                 }
                 else
                 {
-                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
 
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    batchControl.AppendLog(
-                        $"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.", true);
+                    batchControl.AppendLog(keyProblem, true);
                     return;
                 }
 
@@ -13662,10 +13659,19 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
             var model = aiSettings.GetSelectedModel();
-            var apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
-            string baseUrl = null;
+            string apiKey = null, baseUrl = null;
             if (provider == LlmModels.ProviderOllama)
                 baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
+            else
+            {
+                // No key to use means no register, never a call without one.
+                apiKey = TradosApiKeys.For(provider, aiSettings, out var keyProblem);
+                if (apiKey == null)
+                {
+                    Core.DiagnosticLog.WriteAlways("Gloss", "No register built: " + keyProblem);
+                    return null;
+                }
+            }
 
             var rows = new List<GlossRegister.Row>();
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -14703,7 +14709,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                     // Resolve provider (same logic as batch translate)
                     var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                    string apiKey;
+                    string apiKey, keyProblem = null;
                     string baseUrl = null;
                     string model = aiSettings.GetSelectedModel();
 
@@ -14721,19 +14727,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 "No custom OpenAI profile configured.", true);
                             return;
                         }
-                        apiKey = profile.ApiKey;
+                        apiKey = TradosApiKeys.For(profile, out keyProblem);
                         baseUrl = profile.Endpoint;
                         model = profile.Model;
                     }
                     else
                     {
-                        apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                        apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                     }
 
                     if (string.IsNullOrEmpty(apiKey))
                     {
-                        _control.Value.BatchTranslateControl.AppendLog(
-                            $"No API key configured for {provider}. Open Settings \u2192 AI Settings to add one.", true);
+                        _control.Value.BatchTranslateControl.AppendLog(keyProblem, true);
                         return;
                     }
 
@@ -14907,7 +14912,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
 
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                string apiKey;
+                string apiKey, keyProblem = null;
                 string baseUrl = null;
                 string model = aiSettings.GetSelectedModel();
                 if (provider == LlmModels.ProviderOllama)
@@ -14924,16 +14929,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
-                    apiKey = profile.ApiKey; baseUrl = profile.Endpoint; model = profile.Model;
+                    apiKey = TradosApiKeys.For(profile, out keyProblem); baseUrl = profile.Endpoint; model = profile.Model;
                 }
                 else
                 {
-                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     MessageBox.Show(
-                        $"No API key configured for {provider}.\n\nOpen Settings → AI Settings to add one.",
+                        keyProblem,
                         "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
@@ -15167,7 +15172,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Resolve provider/model/key
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                string apiKey;
+                string apiKey, keyProblem = null;
                 string baseUrl = null;
                 string model = aiSettings.GetSelectedModel();
                 if (provider == LlmModels.ProviderOllama)
@@ -15184,16 +15189,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             "AutoTagger", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
-                    apiKey = profile.ApiKey; baseUrl = profile.Endpoint; model = profile.Model;
+                    apiKey = TradosApiKeys.For(profile, out keyProblem); baseUrl = profile.Endpoint; model = profile.Model;
                 }
                 else
                 {
-                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     MessageBox.Show(
-                        $"No API key configured for {provider}.\n\nOpen Settings → AI Settings to add one.",
+                        keyProblem,
                         "AutoTagger", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }

@@ -7,6 +7,15 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.204 / 19.20.204] – Unreleased
+
+### Changed
+- **Your API keys are now also kept locked to your Windows sign-in – the first of two steps towards keeping them out of your Supervertaler data folder.** Keys are still saved in `settings\api-keys.json` in the data folder exactly as before, so Supervertaler for memoQ, Sidekick and older versions keep working. Each key is now also kept in your Windows profile (`%APPDATA%\Supervertaler\api-keys.locked.json`), locked by Windows so that only your Windows account can read it. There is nothing to do: your existing keys, and the keys of your OpenAI-compatible endpoints, are locked when Trados Studio starts, and renaming an endpoint takes its key with it. If that file is ever damaged, it is set aside, your keys are locked again from the data folder, and AI Settings says so. A later version will stop keeping the keys in the data folder.
+- **A key that cannot be read on this computer is now reported by name, with what to do.** If a stored key was saved under another Windows sign-in, or Windows can no longer unlock it after an administrator reset your password, AI Settings says so under that provider's key box – or the endpoint's – instead of showing an empty box, and an AI action says "Can't use your Anthropic key – it can't be read on this computer…" instead of calling the provider. Pasting the key in again puts it right. This replaces the one-off "could not be read" message that appeared when Settings opened.
+
+### Fixed
+- **No AI request goes out without a key.** Batch Translate, Proofread and SuperBench now stop before the first request when the key is missing or cannot be read, and say why: SuperBench's contenders used to call the provider without a key and come back with its "invalid key" error. A key that cannot be read is also no longer replaced by an older copy kept elsewhere, which the provider would reject in the same way.
+
 ## [18.20.203 / 19.20.203] – 2026-10-29
 
 ### Changed

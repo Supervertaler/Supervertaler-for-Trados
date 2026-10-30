@@ -164,7 +164,7 @@ namespace Supervertaler.Trados.Core
         private static async Task Judge(SuperBenchInputs inputs, SuperBench.Run run, ModelChoice judge, CancellationToken ct)
         {
             var settings = inputs.AiSettings;
-            string apiKey, baseUrl = null;
+            string apiKey, keyProblem = null, baseUrl = null;
             if (judge.Provider == LlmModels.ProviderOllama)
             {
                 apiKey = "ollama";
@@ -173,15 +173,15 @@ namespace Supervertaler.Trados.Core
             else if (judge.Provider == LlmModels.ProviderCustomOpenAi)
             {
                 var profile = settings.CustomOpenAiProfiles?.FirstOrDefault(p => p.Name == judge.Model) ?? settings.GetActiveCustomProfile();
-                apiKey = profile?.ApiKey; baseUrl = profile?.Endpoint;
+                apiKey = TradosApiKeys.For(profile, out keyProblem); baseUrl = profile?.Endpoint;
             }
             else
             {
-                apiKey = LlmClient.ResolveApiKey(judge.Provider, settings.ApiKeys);
+                apiKey = TradosApiKeys.For(judge.Provider, settings, out keyProblem);
             }
             if (string.IsNullOrEmpty(apiKey))
             {
-                run.JudgeError = "no API key for " + judge.Provider;
+                run.JudgeError = keyProblem;
                 return;
             }
 

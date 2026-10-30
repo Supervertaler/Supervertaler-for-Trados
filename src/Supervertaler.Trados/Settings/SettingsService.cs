@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
@@ -68,24 +69,29 @@ namespace Supervertaler.Trados.Settings
                 var existing = Volatile.Read(ref _current);
                 if (existing != null) return existing;
 
+                AiApiKeys ownKeys = null;
+                List<(string Name, string Key)> profileKeys = null;
                 lock (_gate)
                 {
                     if (_current == null)
                     {
                         _current = LoadOrDefault();
                         DiagnosticLog.Log(LogCategory, "Settings loaded into the shared instance");
-                        // #108: the shared key file takes over from the keys in this file.
-                        // Fill it from them where it has none, once, so nothing is retyped.
-                        try
-                        {
-                            var added = Supervertaler.Core.ApiKeyStore.MigrateFrom(_current.AiSettings?.ApiKeys);
-                            if (added > 0)
-                                DiagnosticLog.Log(LogCategory, $"Copied {added} API key(s) into {Supervertaler.Core.ApiKeyStore.FilePath}");
-                        }
-                        catch { /* a key file that cannot be written is a nuisance, not a reason to fail start-up */ }
+                        ownKeys = _current.AiSettings?.ApiKeys ?? new AiApiKeys();
+                        profileKeys = TradosApiKeys.ProfileKeys(_current.AiSettings);
                     }
-                    return _current;
+                    existing = _current;
                 }
+
+                // Once per session, with the settings just loaded: the shared key
+                // file is filled from this file's keys where it has none (#108), and
+                // the keys are locked to this computer (step 1 of the API-key lock).
+                // Outside the lock: it reads and writes two files, waiting up to a
+                // second for another product holding one, and the bridge threads
+                // reading settings need not wait for that. Never throws.
+                if (ownKeys != null)
+                    TradosApiKeys.SyncAtStartup(ownKeys, profileKeys);
+                return existing;
             }
         }
 

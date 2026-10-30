@@ -332,8 +332,7 @@ namespace Supervertaler.Trados.Core
             // Resolve provider settings
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
             var model = aiSettings.GetSelectedModel();
-            var apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
-            string baseUrl = null;
+            string apiKey = null, keyProblem = null, baseUrl = null;
 
             if (provider == LlmModels.ProviderOllama)
                 baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
@@ -344,8 +343,24 @@ namespace Supervertaler.Trados.Core
                 {
                     baseUrl = profile.Endpoint;
                     model = profile.Model;
-                    apiKey = profile.ApiKey;
                 }
+                apiKey = TradosApiKeys.For(profile, out keyProblem);
+            }
+            else
+                apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
+
+            // No key to use stops the run before any request, with the reason as its
+            // one error - a provider is never sent a blank key. Callers check first,
+            // but SuperBench's contenders and a key removed since come straight here.
+            if (apiKey == null && provider != LlmModels.ProviderOllama)
+            {
+                RaiseProgress(0, segments.Count, keyProblem, true, sw.Elapsed);
+                Completed?.Invoke(this, new BatchCompletedEventArgs
+                {
+                    Failed = segments.Count,
+                    TotalTime = sw.Elapsed
+                });
+                return;
             }
 
             // Determine max tokens based on batch size

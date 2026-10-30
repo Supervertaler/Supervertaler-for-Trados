@@ -224,7 +224,7 @@ namespace Supervertaler.Trados
                 if (aiSettings == null) return null;
 
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-                string apiKey;
+                string apiKey, keyProblem = null;
                 string baseUrl = null;
                 string model = aiSettings.GetSelectedModel();
 
@@ -237,16 +237,22 @@ namespace Supervertaler.Trados
                 {
                     var profile = aiSettings.GetActiveCustomProfile();
                     if (profile == null) return null;
-                    apiKey = profile.ApiKey;
+                    apiKey = TradosApiKeys.For(profile, out keyProblem);
                     baseUrl = profile.Endpoint;
                     model = profile.Model;
                 }
                 else
                 {
-                    apiKey = LlmClient.ResolveApiKey(provider, aiSettings.ApiKeys);
+                    apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
 
-                if (string.IsNullOrEmpty(apiKey)) return null;
+                if (string.IsNullOrEmpty(apiKey))
+                {
+                    // The plain selection is used, as for any failure here; the reason
+                    // goes to the log rather than in front of a dialog.
+                    DiagnosticLog.Log("AddTermWithAbbreviation", "Extraction not run: " + keyProblem);
+                    return null;
+                }
 
                 var userPrompt = AbbreviationTermExtractor.BuildUserPrompt(
                     fullSource, fullTarget, sourceLang, targetLang, srcSelection, tgtSelection);
