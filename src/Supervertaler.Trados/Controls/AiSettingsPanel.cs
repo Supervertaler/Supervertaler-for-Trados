@@ -1145,6 +1145,13 @@ namespace Supervertaler.Trados.Controls
             try
             {
                 var apiKey = GetEffectiveApiKey();
+                var keyProblem = KeyBoxProblem(provider, apiKey, test: false);
+                if (keyProblem != null)
+                {
+                    _lblStatus.Text = "✗ " + keyProblem;
+                    _lblStatus.ForeColor = Color.FromArgb(180, 60, 60);
+                    return;
+                }
                 string baseUrl = null;
                 if (provider == LlmModels.ProviderOllama) baseUrl = _txtOllamaEndpoint.Text.Trim();
                 else if (provider == LlmModels.ProviderCustomOpenAi) baseUrl = _txtCustomEndpoint.Text.Trim();
@@ -1187,6 +1194,13 @@ namespace Supervertaler.Trados.Controls
                 var provider = GetSelectedProviderKey();
                 var model = GetEffectiveModel();
                 var apiKey = GetEffectiveApiKey();
+                var keyProblem = KeyBoxProblem(provider, apiKey, test: true);
+                if (keyProblem != null)
+                {
+                    _lblStatus.Text = "✗ " + keyProblem;
+                    _lblStatus.ForeColor = Color.FromArgb(180, 60, 60);
+                    return;
+                }
                 string baseUrl = null;
 
                 if (provider == LlmModels.ProviderOllama)
@@ -1240,6 +1254,24 @@ namespace Supervertaler.Trados.Controls
             if (provider == LlmModels.ProviderCustomOpenAi && _txtCustomApiKey.Text.Trim().Length == 0)
                 customNote = (_cmbCustomProfile.SelectedItem as CustomProfileItem)?.UnreadableNote;
             ShowKeyNote(_lblCustomKeyNote, _customKeyNoteSpacer, _txtCustomApiKey.Parent, customNote);
+        }
+
+        /// <summary>
+        /// Why Test Connection or Fetch list must not call the provider with what is
+        /// in the key box, or null. A box left empty because the stored key cannot
+        /// be read here is never sent in its place (design note §2) - the same rule
+        /// as memoQ's dialogs. Nor, for a test, is an empty box for a cloud
+        /// provider, which can only fail. Fetch list may go without a key: some
+        /// providers publish their list openly, and so may an endpoint on this computer.
+        /// </summary>
+        private string KeyBoxProblem(string provider, string apiKey, bool test)
+        {
+            if (!string.IsNullOrEmpty(apiKey) || provider == LlmModels.ProviderOllama) return null;
+            var unreadable = provider == LlmModels.ProviderCustomOpenAi
+                ? (_cmbCustomProfile.SelectedItem as CustomProfileItem)?.UnreadableNote != null
+                : _unreadableKeyNotes.ContainsKey(provider);
+            if (unreadable) return "The stored key can't be read on this computer – paste it in again first.";
+            return test && provider != LlmModels.ProviderCustomOpenAi ? "Enter an API key first." : null;
         }
 
         private static void ShowKeyNote(Label note, Label spacer, Control row, string text)

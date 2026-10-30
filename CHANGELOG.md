@@ -14,7 +14,7 @@
 - **A key that cannot be read on this computer is now reported by name, with what to do.** If a stored key was saved under another Windows sign-in, or Windows can no longer unlock it after an administrator reset your password, AI Settings says so under that provider's key box – or the endpoint's – instead of showing an empty box, and an AI action says "Can't use your Anthropic key – it can't be read on this computer…" instead of calling the provider. Pasting the key in again puts it right. This replaces the one-off "could not be read" message that appeared when Settings opened.
 
 ### Fixed
-- **No AI request goes out without a key.** Batch Translate, Proofread and SuperBench now stop before the first request when the key is missing or cannot be read, and say why: SuperBench's contenders used to call the provider without a key and come back with its "invalid key" error. A key that cannot be read is also no longer replaced by an older copy kept elsewhere, which the provider would reject in the same way.
+- **No AI request goes out without a key.** Batch Translate, Proofread and SuperBench now stop before the first request when the key is missing or cannot be read, and say why: SuperBench's contenders used to call the provider without a key and come back with its "invalid key" error. In AI Settings, **Test Connection** with an empty key box now asks for a key instead of sending none, and neither it nor **Fetch list** sends an empty box in place of a key that cannot be read. A key that cannot be read is also no longer replaced by an older copy kept elsewhere, which the provider would reject in the same way.
 
 ## [18.20.203 / 19.20.203] – 2026-10-29
 

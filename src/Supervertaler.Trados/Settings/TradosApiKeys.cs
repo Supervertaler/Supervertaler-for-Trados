@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Supervertaler.Trados.Core;
 
@@ -72,9 +71,10 @@ namespace Supervertaler.Trados.Settings
         }
 
         /// <summary>
-        /// Set by the start-up sync when it had to set aside a damaged locked file;
-        /// null otherwise. Shown in AI Settings for the rest of the session, and
-        /// already in the log.
+        /// Core's sentence (design note §7, M6) when the start-up sync had to set
+        /// aside a damaged locked file; null otherwise. Shown in AI Settings for the
+        /// rest of the session; core has already logged it. The wording is core's,
+        /// so every product says the same.
         /// </summary>
         internal static string StartupNotice => _startupNotice;
         private static volatile string _startupNotice;
@@ -122,44 +122,20 @@ namespace Supervertaler.Trados.Settings
                 if (sync.Locked > 0)
                     DiagnosticLog.Log(LogCategory, $"Locked {sync.Locked} API key(s) to this computer");
 
-                var failed = sync.Failed;
+                if (sync.Notice != null) _startupNotice = sync.Notice;
+
                 foreach (var profile in profiles ?? new List<(string Name, string Key)>())
                 {
                     if (string.IsNullOrWhiteSpace(profile.Key)) continue;
                     if (!Supervertaler.Core.ApiKeyStore.Set(ProfileId(profile.Name), profile.Key))
-                    {
-                        failed = true;
                         DiagnosticLog.WriteAlways(LogCategory, "The key of endpoint profile \"" + profile.Name
                             + "\" could not be locked to this computer; the next start tries again.");
-                    }
-                }
-
-                if (sync.Notice != null)
-                {
-                    _startupNotice = DamagedNotice(failed);
-                    DiagnosticLog.WriteAlways(LogCategory, _startupNotice);
                 }
             }
             catch (Exception ex)
             {
                 DiagnosticLog.WriteAlways(LogCategory, "API keys not synced at start-up: " + ex.GetType().Name + ": " + ex.Message);
             }
-        }
-
-        /// <summary>
-        /// Design note §7, M6, as it reads in step 1. Core's sentence asks for every
-        /// key again; in step 1 the plain file still has them, the sync has just
-        /// locked them again from it, and the profiles' keys from settings.json.
-        /// </summary>
-        private static string DamagedNotice(bool failed)
-        {
-            var folder = Path.GetDirectoryName(Supervertaler.Core.ApiKeyStore.LockedFilePath);
-            var plain = Supervertaler.Core.ApiKeyStore.FilePath;
-            var first = "The file holding your locked API keys was damaged; a copy has been kept in " + folder + ". ";
-            return failed
-                ? first + "Your keys still work from " + plain + ", and locking them to this computer will be tried again at the next start."
-                : first + "Your keys were locked again from " + plain + ", so nothing needs doing. "
-                        + "If an AI action says a key is missing, paste it in again in " + SettingsPlace + ".";
         }
 
         /// <summary>
