@@ -1,7 +1,7 @@
 # Machine-translation engines: DeepL, Google and Microsoft in SuperBench (and maybe Batch Translate)
 
-**Status:** PLAN ONLY, written 30 Oct 2026 for Michael's approval. No code. Six decisions at the end, to be put to
-Michael one at a time.
+**Status:** Decisions taken 30 Oct 2026; SuperBench with MT to be built after API-key step 1 is merged into core;
+Batch Translate deferred. No code yet. Michael's six answers are in §12.
 **Source:** Michael's proposal of 30 Oct 2026 – classic MT engines as SuperBench contenders (firm), and possibly in
 Batch Translate (undecided) – passed on by the orchestrator.
 **Line numbers:** Trados as of `63c9715`, core as of `85af3b2`, memoQ `348a864`, Sidekick `0cf5d4b`, Workbench
@@ -16,10 +16,12 @@ Batch Translate (undecided) – passed on by the orchestrator.
 B = GPT with your prompt, C = DeepL, on the first 20 segments of your document, and the judge compares the three blind,
 as now. What you would see:
 
-- In the dialog, under a slot set to DeepL: *"DeepL gets the source text only – no prompt, termbase or document
-  context."*
+- In the dialog, under a slot set to DeepL: *"DeepL gets no prompt or termbase – only the source text, and the
+  neighbouring segments as context when document context is on."*
 - In the results table and the report: DeepL's translations beside the AI's, with the tags in the same places, so the
   judge cannot tell from the tags which one is the MT engine.
+- The judge marks DeepL against your prompt and termbase like every other candidate ("judge by the job"), and the
+  report says plainly that DeepL never saw them.
 - In the report's Contenders table: DeepL's cost and the number of characters it was charged for, instead of tokens,
   and the time it took (seconds, where an AI model takes a minute).
 
@@ -35,8 +37,9 @@ characters beyond what a plan includes:
 Within a free allowance, or the characters a DeepL plan includes, you pay nothing extra. Supervertaler cannot see which
 plan you have, so it shows the list price and says so.
 
-**Batch Translate with DeepL – what it would and wouldn't do.** If you say yes to it later, you could pick DeepL in the
-Batch Translate tab instead of an AI model:
+**Batch Translate with DeepL – what it would and wouldn't do.** You chose "Later": decide after a few weeks of using
+SuperBench with MT. Kept here so the facts are in front of you then. If you say yes, you could pick DeepL in the Batch
+Translate tab instead of an AI model:
 
 - **It would still:** keep repetitions consistent, write the backup TMX, refuse to overwrite segments with tracked changes
   nobody has accepted, save the project at the end, and log the cost.
@@ -48,25 +51,26 @@ Batch Translate tab instead of an AI model:
   Batch Translate would not do any of that. What Batch Translate would add: no second plugin to install and set up; one
   key shared with Sidekick (you type it once); DeepL's free key works, if DeepL's terms allow it (RWS's DeepL plugin
   says "DeepL API Free is not supported"); and Supervertaler's repetitions, backup and tracked-change protection.
-- **memoQ:** nothing to add. Supervertaler for memoQ is itself an MT plugin, and memoQ already ships its own DeepL plugin
-  in the same MT settings.
+- **memoQ:** no, in any case (your answer). Supervertaler for memoQ is itself an MT plugin, and memoQ already ships its
+  own DeepL plugin in the same MT settings.
 
-**ModernMT:** not worth adding. Its site says it "will sunset by the end of 2026", new registrations are closed, and
-existing keys stop working on 31 December 2026.
+**ModernMT:** not added (your answer: DeepL, Google and Microsoft only). Its site says it "will sunset by the end of
+2026", new registrations are closed, and existing keys stop working on 31 December 2026.
 
-**A local engine (OPUS-MT):** not worth building now. It is free and offline, but an older, smaller kind of engine than
-DeepL. A free plugin that runs it in Trados already exists (OPUS-CAT). For "free and offline" in SuperBench you can
-already pick a local AI model through Ollama, which, unlike OPUS-MT, can read your prompt.
+**A local engine (OPUS-MT):** not now (your answer); revisit if users ask. It is free and offline, but an older,
+smaller kind of engine than DeepL. A free plugin that runs it in Trados already exists (OPUS-CAT). For "free and
+offline" in SuperBench you can already pick a local AI model through Ollama, which, unlike OPUS-MT, can read your
+prompt.
 
 **Your keys.** Sidekick already keeps MT keys in `D:\Supervertaler\settings\api-keys.json`. Your file holds a `google`
 key today, but none for DeepL or Microsoft. Trados would read the same entries, so a key entered in Sidekick or Trados
 works in both. They follow the API-key lock plan exactly like the AI keys: once it is built, they are locked to your
 Windows sign-in.
 
-**When it can be built.** The shared part belongs in Plugin Core, which another worker holds now (API keys step 1).
-SuperBench with MT is built after that work lands in core. Nothing here touches core until then.
+**When it can be built.** The shared part belongs in Plugin Core, where the API-key work (step 1) is under way now.
+SuperBench with MT is built after that work is merged into core. Nothing here touches core until then.
 
-The six decisions are at the end (§12).
+Your six answers of 30 Oct 2026 are at the end (§12).
 
 ---
 
@@ -123,9 +127,10 @@ Flagged rather than silently built on:
 2. **Batch Translate passes language *names*, not codes.** `GetDocumentTargetLanguage` returns
    `Language.DisplayName`, e.g. "English (United Kingdom)" (`AiAssistantViewPart.cs:15493-15510`). Fine for a prompt,
    useless to an MT API. MT needs `Language.CultureInfo.Name` (`en-GB`) alongside, in `SuperBenchInputs` too.
-3. **`ApiKeyStore`'s comment lists `google` as an accepted alias**, for Gemini (`core\src\ApiKeyStore.cs:20-22`). The
-   code no longer maps it (`:36-42`), and Sidekick stores the *Google Translate* key under `google`. Anyone who made the
-   code match the comment would hand Gemini a Cloud Translation key. Correct the comment at the next core change.
+3. **`ApiKeyStore`'s comment listed `google` as an accepted alias**, for Gemini (`core\src\ApiKeyStore.cs:20-22` at
+   `85af3b2`), although the code no longer maps it and Sidekick stores the *Google Translate* key under `google`.
+   **Already fixed** in core `9eb5379` (branch `api-key-lock-step1`), which drops `google` from that comment. Nothing
+   left for the MT build; it only must never add `google` as an alias.
 4. **Workbench names its MT keys differently:** `google_translate`, `microsoft_translate`,
    `microsoft_translate_region` (`Supervertaler.py:66298, 66426-66428`). The key lock plan's decision 1 (Workbench joins
    the shared keys) has to map these to `google` and `microsoft`, or Workbench and the plugins keep two Google keys. For
@@ -194,9 +199,9 @@ through the same `Deliver` (`BatchTranslator.cs:856`). So:
 
 - **SuperBench (A)** calls it with a capture handler, as it calls `TranslateAsync` today. No AI settings are switched:
   `SetProviderAndModel("deepl", …)` would hand `LlmClient` a provider it does not know.
-- **Batch Translate (B)**, if built, calls it with the real write handler. Repetitions, the TMX backup, the
-  tracked-change refusal and the end-of-run save then apply with no new code. Only the panel and the origin label are
-  new (§7).
+- **Batch Translate (B)**, deferred (decision 4, "Later"), would call it with the real write handler. Repetitions, the
+  TMX backup, the tracked-change refusal and the end-of-run save then apply with no new code. Only the panel and the
+  origin label would be new (§7). (A) is built so that this stays true.
 
 MT ids never enter `LlmModels.AllProviderKeys`, so they never appear in AI Settings' provider list, the chat or
 AutoPrompt. SuperBench adds them to its own dropdown.
@@ -271,10 +276,11 @@ and one HTTP set-up shared with `LlmClient` (proxy, TLS).
 
 - **`context`** – text DeepL reads but does not translate, and "Characters included in the context parameter will not be
   counted toward billing." When the run has document context on, DeepL gets the neighbouring source segments (up to
-  about 2,000 characters before the chunk), for free. Google and Microsoft have nothing equivalent. Decision 2.
-- **Glossary** (`glossary_id`): would carry the termbase to DeepL. Not in the first version. A glossary has to be
-  created and deleted through the API per language pair, Developer keys may hold only one, and it does nothing for
-  Google or Microsoft. Worth revisiting if SuperBench shows DeepL losing mainly on terms.
+  about 2,000 characters before the chunk), for free. Google and Microsoft have nothing equivalent. **Decided**
+  (decision 2, "Neighbours as context").
+- **Glossary** (`glossary_id`): would carry the termbase to DeepL. **Not for now** (decision 2); later only if SuperBench
+  shows DeepL losing mainly on terminology. A glossary has to be created and deleted through the API per language pair,
+  Developer keys may hold only one, and it does nothing for Google or Microsoft.
 - **`custom_instructions`**: "Up to 10 custom instructions … each with a maximum of 300 characters" – too small to carry
   a Supervertaler prompt. Not used.
 - **`formality`**: not used. No setting until someone asks.
@@ -294,14 +300,15 @@ What each contender gets, stated in the dialog and the report, so nobody misread
 | Document context | yes, if on | DeepL: neighbouring segments as `context`, if on (decision 2); Google, Microsoft: no |
 | SuperMemory | yes, if on | no |
 
-- **The report's Settings line** gains: "MT engines (DeepL) got the source text only." The Contenders table names the
-  engine as, e.g., "DeepL (machine translation)" with its characters instead of tokens.
-- **The judge's yardstick.** Today the judge reads "TRANSLATION INSTRUCTIONS THE CANDIDATES WERE GIVEN" and "APPROVED
-  TERMS THE CANDIDATES WERE GIVEN" (`SuperBench.cs:103, 109`). With an MT contender that heading would be false. Saying
-  which candidate did *not* get them would unblind the judge. Proposal: headings "THE PROJECT'S TRANSLATION
-  INSTRUCTIONS" and "THE PROJECT'S APPROVED TERMS". Every candidate is judged against what the project needs, which
-  is the question Michael asked – "is AI with my prompt better than DeepL *on my text*?". The report, not the judge,
-  says that DeepL was never given them. Decision 3.
+- **The report's Settings line** gains, e.g.: "MT engines got no prompt or termbase; DeepL got the neighbouring
+  segments as context." The Contenders table names the engine as, e.g., "DeepL (machine translation)" with its
+  characters instead of tokens.
+- **The judge's yardstick – decided (decision 3, "Yes, judge by the job").** Today the judge reads "TRANSLATION
+  INSTRUCTIONS THE CANDIDATES WERE GIVEN" and "APPROVED TERMS THE CANDIDATES WERE GIVEN" (`SuperBench.cs:103, 109`).
+  With an MT contender that heading would be false. Saying which candidate did *not* get them would unblind the judge.
+  So the headings become "THE PROJECT'S TRANSLATION INSTRUCTIONS" and "THE PROJECT'S APPROVED TERMS". Every candidate
+  is judged against what the project needs, which is the question Michael asked – "is AI with my prompt better than
+  DeepL *on my text*?". The report, not the judge, says plainly that the MT contenders never saw them.
 - **No change to blindness.** Labels stay shuffled. The one thing a judge might still notice is DeepL's style, which
   nothing can hide.
 
@@ -370,7 +377,8 @@ whichever applies.
 
 ## 7. (B) Batch Translate with an MT engine
 
-**Built only if Michael says yes (decision 4).** Most of it would already exist after (A).
+**Deferred (decision 4, "Later"):** Michael decides after a few weeks of using SuperBench with MT. This section is
+kept so that decision can be made with the facts and costs in front of him. Most of it would already exist after (A).
 
 ### What stops applying, and how the panel says so
 
@@ -394,7 +402,7 @@ Scopes and the segment limit. Consistent repetitions (`Deliver`). The backup TMX
 note. The refusal of segments with unaccepted tracked changes (`SegmentWriteCheck`). The project save at the end. The
 cost log and the budget pre-flight.
 
-### Origin label (decision 5)
+### Origin label (decision 5 – not asked; deferred with decision 4)
 
 Since 20 Oct 2026 every Supervertaler write is labelled "interactive", Michael's choice for AI output too, with no
 setting. For raw output of an MT engine the case is different:
@@ -404,7 +412,8 @@ setting. For raw output of an MT engine the case is different:
 - **What happens once the translator edits the segment:** Studio relabels it "interactive", with "nmt" kept as the
   previous origin – exactly as it does after RWS's DeepL plugin.
 
-So the proposal is "nmt" plus the engine name, for MT-engine writes only. AI writes stay "interactive". This needs one
+So the proposal, to be put to Michael if he says yes to (B), is "nmt" plus the engine name, for MT-engine writes only.
+AI writes stay "interactive". This needs one
 live probe, like consistent repetitions' "auto-propagated" probe: does Studio keep "nmt" when a plugin sets it after a
 `ProcessSegmentPair` write? Studio labels such writes "interactive" by itself (`SegmentOrigin.cs:36-44`).
 
@@ -455,8 +464,8 @@ Supervertaler for memoQ is itself an MT plugin (`src\Supervertaler.MemoQ\Superve
 own DeepL MT plugin – Supervertaler's prompt editor already recognises rows it filled ("DeepL MT Plugin",
 `src\Supervertaler.PromptEditor\MtMarks.cs:126`). Its Addins folder also has Lara, Globalese and NiuTrans plugins
 (`C:\Program Files\memoQ\memoQ-12\Addins\`). A memoQ user picks DeepL in the same MT settings where they pick
-Supervertaler, and memoQ's Pre-translate uses it. **(B) would add nothing there; recommended no.** The core layer would
-let a future memoQ SuperBench include MT engines with no further engine work.
+Supervertaler, and memoQ's Pre-translate uses it. **(B) would add nothing there; Michael: no (decision 4).** The core
+layer would let a future memoQ SuperBench include MT engines with no further engine work.
 
 ---
 
@@ -476,15 +485,16 @@ let a future memoQ SuperBench include MT engines with no further engine work.
   drop Sidekick's DeepL key", §3). MT keys get M1/M2 when unreadable and the locked file after step 2, like any other.
   The MT build therefore comes after key step 1 is in core, and reads keys only through `ApiKeyStore`, resolved once
   per run, never cached.
-- **Two things for the key-plan session** (findings 3 and 4): Workbench's `google_translate` and `microsoft_translate`
-  must map to `google` and `microsoft` when Workbench joins the shared keys, and `google` must never become a Gemini
-  alias.
+- **One thing for the key-plan session** (finding 4): Workbench's `google_translate` and `microsoft_translate` must map
+  to `google` and `microsoft` when Workbench joins the shared keys. (The `google` alias comment, finding 3, is already
+  fixed in core `9eb5379`.)
 
 ---
 
 ## 9. Build order and tests
 
-**Step 0 – this note, Michael's decisions.**
+**Step 0 – this note, Michael's decisions.** Done: decisions taken 30 Oct 2026 (§12). The orchestrator sets the build
+timing.
 
 **Step 1 – a small live spike, before any product code.** With Michael's go and three keys: a free DeepL Developer
 key, a free Microsoft F0 resource, and his existing Google key (if it is a Cloud Translation key).
@@ -497,14 +507,13 @@ key, a free Microsoft F0 resource, and his existing Google key (if it is a Cloud
 This costs nothing within the free allowances. The script is run as `powershell -NoProfile -File`, keeps keys out of
 its text, and lives in the gitignored `.dev\`.
 
-**Step 2 – core, when the core slot is free and key step 1 is in core:**
+**Step 2 – core, after API-key step 1 is merged into core and the core slot is free:**
 
 - `MachineTranslation.cs`;
-- the tag conversions;
+- the tag conversions, and DeepL's `context` from the neighbouring segments (decision 2);
 - the `"mt"` price section;
 - `PromptLogEntry.Characters` and `SuperBench.Contender.Characters`;
-- the judge headings (decision 3);
-- the `ApiKeyStore` comment fix.
+- the judge headings (decision 3).
 
 A memoQ handoff note says nothing changes for memoQ's behaviour.
 
@@ -519,7 +528,8 @@ A memoQ handoff note says nothing changes for memoQ's behaviour.
 
 Then one Studio-slot live check: SuperBench with DeepL on the example project.
 
-**Step 4 – Trados (B), only on Michael's yes:** §7.
+**Step 4 – Trados (B): deferred** (decision 4, "Later"). Built only if Michael says yes after a few weeks of SuperBench
+with MT (§7); decision 5 is put to him then.
 
 ### Offline tests (core `tests\` and Trados `.dev\`; no network, a fake HTTP handler)
 
@@ -564,7 +574,7 @@ segments (about 1.5 million characters) in one run:
 
 ---
 
-## 10. A local engine (OPUS-MT): recommendation, not a build
+## 10. A local engine (OPUS-MT): not now
 
 - **What it is:** Helsinki-NLP's OPUS-MT – one small neural model per language direction (Marian NMT), runnable on an
   ordinary CPU.
@@ -582,13 +592,12 @@ segments (about 1.5 million characters) in one run:
   only with open models such as NLLB. These are 2019–2024 neural models of the classic kind, far smaller than the
   commercial engines, so they should not be expected to beat DeepL. Against the local AI models Supervertaler already reaches
   through Ollama, they lose the prompt, termbase and context. In return they need no GPU.
-- **Recommendation:**
-  - Build nothing now.
+- **Decided (decision 6, "No, not now"):**
+  - Build nothing now; revisit if users ask.
   - For "free and offline" in SuperBench, an Ollama model is already a contender.
   - If users ask for OPUS-MT, the cheapest route is a SuperBench contender that calls a running OPUS-CAT engine, the
     way Ollama is called. That only works if OPUS-CAT's local service is open to other programs, which has not been
     checked.
-  - Decision 6.
 
 ---
 
@@ -623,30 +632,31 @@ DeepL bills tags; Google's bad-key and unsupported-pair replies.
 
 ---
 
-## 12. Decisions for Michael
+## 12. Decisions taken (30 Oct 2026)
 
-To be put to him **one at a time**, each with its recommendation. None is taken yet.
+Put to Michael one at a time by the orchestrator, each with its recommendation; his answers in his words.
 
-1. **Which engines go into SuperBench?**
-   - DeepL, Google Translate and Microsoft Translator, but not ModernMT, which closes at the end of 2026.
-   - *Recommendation:* all three. They share one layer, so the second and third cost little, and Microsoft's free
-     2 million characters a month make it the cheapest to try.
-2. **What DeepL may use in SuperBench.**
-   - (a) Source text only.
-   - (b) Also the neighbouring segments as context when document context is on. DeepL does not charge for this.
-   - (c) Also the termbase as a DeepL glossary.
-   - *Recommendation:* (b) now. (c) later, if SuperBench shows DeepL losing mainly on terminology.
-3. **Should the judge mark DeepL against your prompt and termbase, which DeepL never saw?**
-   - *Recommendation:* yes. Judge every candidate against what the project needs – that is your question, "which gives
-     me the best text for this job?" The report says plainly that DeepL was not given them.
-4. **Batch Translate with MT engines: yes, no, or later?**
-   - *Recommendation:* later. Build SuperBench with MT first and use it for a few weeks. If DeepL wins on some of your
-     jobs, Batch Translate with DeepL is worth its upkeep. If not, RWS's free plugins already do plain MT better inside
-     Studio's own Pre-translate.
-   - In memoQ: no, in any case.
-5. **Only if 4 is yes: how should a segment DeepL wrote be labelled?**
-   - *Recommendation:* as machine translation ("nmt") with DeepL's name, as Studio's own DeepL plugin does, after one
-     live probe. AI writes stay "interactive", your choice of 20 October.
-6. **A local MT engine (OPUS-MT): build it?**
-   - *Recommendation:* no, not now. Ollama already gives SuperBench a free, offline contender that reads your prompt.
-     Revisit OPUS-CAT if users ask.
+1. **Which engines go into SuperBench?** – **"Yes, all three".**
+   - DeepL, Google Translate and Microsoft Translator. No ModernMT, which closes at the end of 2026.
+   - (Recommended: all three. They share one layer, so the second and third cost little, and Microsoft's free
+     2 million characters a month make it the cheapest to try.)
+2. **What DeepL may use in SuperBench.** – **"Neighbours as context".**
+   - Option (b): the neighbouring segments as context when document context is on. DeepL does not charge for this.
+   - No glossary for now. Option (c), the termbase as a DeepL glossary, only later, and only if SuperBench shows DeepL
+     losing mainly on terminology.
+   - (Options were (a) source text only, (b) and (c). Recommended: (b) now, (c) later.)
+3. **Should the judge mark DeepL against your prompt and termbase, which DeepL never saw?** – **"Yes, judge by the
+   job".**
+   - The judge marks MT contenders against the project's prompt and termbase, like every other candidate. The report
+     says plainly that they never saw them (§4).
+4. **Batch Translate with MT engines: yes, no, or later?** – **"Later".**
+   - Decided after a few weeks of using SuperBench with MT. §7 stays in this note for that decision.
+   - memoQ: no.
+   - (Recommended: later. If DeepL wins on some of his jobs, Batch Translate with DeepL is worth its upkeep. If not,
+     RWS's free plugins already do plain MT better inside Studio's own Pre-translate.)
+5. **Only if 4 is yes: how should a segment DeepL wrote be labelled?** – **Not asked: deferred with decision 4.**
+   - To be put to Michael if he says yes to (B). Recommendation then: machine translation ("nmt") with the engine's
+     name, as Studio's own DeepL plugin does, after one live probe. AI writes stay "interactive", his choice of
+     20 October.
+6. **A local MT engine (OPUS-MT): build it?** – **"No, not now".**
+   - Revisit if users ask. Ollama already gives SuperBench a free, offline contender that reads the prompt.
