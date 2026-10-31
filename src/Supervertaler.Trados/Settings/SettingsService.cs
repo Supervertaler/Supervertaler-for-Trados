@@ -62,37 +62,45 @@ namespace Supervertaler.Trados.Settings
         /// because every caller of this today assumes a usable object and a null
         /// here would turn a corrupt settings file into a crash on start-up.
         /// </summary>
-        public static TermLensSettings Current
+        public static TermLensSettings Current => EnsureLoaded();
+
+        /// <summary>
+        /// The shared instance, loaded by the session's first call of any entry
+        /// point - <see cref="Current"/>, <see cref="Save"/>, <see cref="Update"/>,
+        /// <see cref="UpdateIf"/> or <see cref="Reload"/>. Whichever comes first
+        /// also runs the once-per-session key sync: in Studio that is
+        /// AppInitializer's UpdateIf, so a first load inside Current alone never
+        /// ran there (found in the step-1 live check, 31 Oct 2026; the #108
+        /// migration had been skipped the same way since it shipped).
+        /// </summary>
+        private static TermLensSettings EnsureLoaded()
         {
-            get
+            var existing = Volatile.Read(ref _current);
+            if (existing != null) return existing;
+
+            AiApiKeys ownKeys = null;
+            List<(string Name, string Key)> profileKeys = null;
+            lock (_gate)
             {
-                var existing = Volatile.Read(ref _current);
-                if (existing != null) return existing;
-
-                AiApiKeys ownKeys = null;
-                List<(string Name, string Key)> profileKeys = null;
-                lock (_gate)
+                if (_current == null)
                 {
-                    if (_current == null)
-                    {
-                        _current = LoadOrDefault();
-                        DiagnosticLog.Log(LogCategory, "Settings loaded into the shared instance");
-                        ownKeys = _current.AiSettings?.ApiKeys ?? new AiApiKeys();
-                        profileKeys = TradosApiKeys.ProfileKeys(_current.AiSettings);
-                    }
-                    existing = _current;
+                    _current = LoadOrDefault();
+                    DiagnosticLog.Log(LogCategory, "Settings loaded into the shared instance");
+                    ownKeys = _current.AiSettings?.ApiKeys ?? new AiApiKeys();
+                    profileKeys = TradosApiKeys.ProfileKeys(_current.AiSettings);
                 }
-
-                // Once per session, with the settings just loaded: the shared key
-                // file is filled from this file's keys where it has none (#108), and
-                // the keys are locked to this computer (step 1 of the API-key lock).
-                // Outside the lock: it reads and writes two files, waiting up to a
-                // second for another product holding one, and the bridge threads
-                // reading settings need not wait for that. Never throws.
-                if (ownKeys != null)
-                    TradosApiKeys.SyncAtStartup(ownKeys, profileKeys);
-                return existing;
+                existing = _current;
             }
+
+            // Once per session, with the settings just loaded: the shared key file
+            // is filled from this file's keys where it has none (#108), and the keys
+            // are locked to this computer (step 1 of the API-key lock). Outside the
+            // lock: it reads and writes two files, waiting up to a second for
+            // another product holding one, and the bridge threads reading settings
+            // need not wait for that. Never throws.
+            if (ownKeys != null)
+                TradosApiKeys.SyncAtStartup(ownKeys, profileKeys);
+            return existing;
         }
 
         /// <summary>
@@ -105,10 +113,10 @@ namespace Supervertaler.Trados.Settings
         /// </summary>
         public static void Save()
         {
+            EnsureLoaded();
             lock (_gate)
             {
-                var settings = _current ?? (_current = LoadOrDefault());
-                settings.Save();
+                _current.Save();
             }
             RaiseChanged();
         }
@@ -118,9 +126,15 @@ namespace Supervertaler.Trados.Settings
         /// <see cref="Changed"/>. For the case where something outside the plugin
         /// edited <c>settings.json</c> — the user with a text editor, or the
         /// Workbench, which shares this file.
+        ///
+        /// <para>If nothing has loaded settings yet this session, the first load
+        /// and its key sync happen first. A reload does not sync the keys again:
+        /// in step 1 the plain copies decide what is read, and the next start
+        /// locks whatever changed.</para>
         /// </summary>
         public static void Reload()
         {
+            EnsureLoaded();
             lock (_gate)
             {
 #pragma warning disable 618
@@ -148,9 +162,10 @@ namespace Supervertaler.Trados.Settings
         public static void Update(Action<TermLensSettings> mutate)
         {
             if (mutate == null) return;
+            EnsureLoaded();
             lock (_gate)
             {
-                var settings = _current ?? (_current = LoadOrDefault());
+                var settings = _current;
                 mutate(settings);
                 settings.Save();
             }
@@ -174,9 +189,10 @@ namespace Supervertaler.Trados.Settings
         {
             if (mutate == null) return false;
             bool changed;
+            EnsureLoaded();
             lock (_gate)
             {
-                var settings = _current ?? (_current = LoadOrDefault());
+                var settings = _current;
                 changed = mutate(settings);
                 if (changed) settings.Save();
             }

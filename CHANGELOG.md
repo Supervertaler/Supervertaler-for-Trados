@@ -15,6 +15,7 @@
 
 ### Fixed
 - **No AI request goes out without a key.** Batch Translate, Proofread and SuperBench now stop before the first request when the key is missing or cannot be read, and say why: SuperBench's contenders used to call the provider without a key and come back with its "invalid key" error. In AI Settings, **Test Connection** with an empty key box now asks for a key instead of sending none, and neither it nor **Fetch list** sends an empty box in place of a key that cannot be read. A key that cannot be read is also no longer replaced by an older copy kept elsewhere, which the provider would reject in the same way.
+- **Keys kept in Trados's own settings are copied to the shared key file at start-up again.** Since 18.20.190 that start-up step was skipped, so a key entered in a version before 18.20.187 reached Supervertaler for memoQ and Sidekick only once AI Settings had been saved with **OK**. Trados itself kept using the key throughout.
 
 ## [18.20.203 / 19.20.203] – 2026-10-29
 
