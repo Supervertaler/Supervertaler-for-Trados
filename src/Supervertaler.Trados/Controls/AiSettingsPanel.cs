@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Supervertaler.Trados.Core;
 using Supervertaler.Trados.Models;
@@ -54,6 +55,16 @@ namespace Supervertaler.Trados.Controls
         private Button _btnShowKey;
         private Button _btnTestConnection;
         private Label _lblStatus;
+
+        // Machine-translation engines (SuperBench contenders; docs/design/mt-engines.md
+        // §8): one key box each, in the shared key file under the engine's id - the
+        // ids Sidekick uses - with M1 under a box whose stored key cannot be read here.
+        private readonly Dictionary<string, TextBox> _mtKeyBoxes = new Dictionary<string, TextBox>();
+        private readonly Dictionary<string, Label> _mtKeyNotes = new Dictionary<string, Label>();
+        private readonly Dictionary<string, Label> _mtKeyNoteSpacers = new Dictionary<string, Label>();
+        private readonly Dictionary<string, string> _mtUnreadableNotes = new Dictionary<string, string>();
+        private TextBox _txtMicrosoftRegion;
+        private Label _lblMtStatus;
 
         // Provider-specific rows (toggled in OnProviderChanged). Hiding both
         // cells of a TableLayoutPanel row collapses it, so the rest reflows.
@@ -551,6 +562,58 @@ namespace Supervertaler.Trados.Controls
             foreach (var c in _customRows) c.Visible = false;
             foreach (var c in _localServerRows) c.Visible = false;
 
+            // ===== Machine translation (SuperBench contenders) =====
+            Span(root, ref row, Header("Machine translation (SuperBench)"));
+            Span(root, ref row, new Label
+            {
+                Text = "DeepL, Google Translate and Microsoft Translator can be SuperBench contenders. "
+                     + "The keys are shared with Sidekick: a key entered here is entered there too.",
+                AutoSize = true, ForeColor = Color.FromArgb(110, 110, 110),
+                MaximumSize = new Size(UiScale.Pixels(560), 0), Margin = new Padding(0, 0, 0, UiScale.Pixels(6)),
+            });
+            foreach (var engine in Supervertaler.Core.MachineTranslation.Engines)
+            {
+                var box = FillBox(password: true);
+                var show = TextButton("Show");
+                show.Click += (s, e) => box.UseSystemPasswordChar = !box.UseSystemPasswordChar;
+                var test = TextButton("Test");
+                test.Margin = new Padding(UiScale.Pixels(6), UiScale.Pixels(3), 0, UiScale.Pixels(3));
+                var engineId = engine;
+                test.Click += async (s, e) => await OnTestEngineClick(engineId, test);
+                var host = KeyRow(box, show);
+                host.ColumnCount = 3;
+                host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                host.Controls.Add(test, 2, 0);
+                Row(root, ref row, Supervertaler.Core.MachineTranslation.DisplayName(engine) + " key:", host);
+                KeyNote(root, ref row, out var spacer, out var note);
+                _mtKeyBoxes[engine] = box;
+                _mtKeyNotes[engine] = note;
+                _mtKeyNoteSpacers[engine] = spacer;
+                box.TextChanged += (s, e) => UpdateMtKeyNotes();
+                host.SizeChanged += (s, e) => UpdateMtKeyNotes();
+            }
+            _txtMicrosoftRegion = new TextBox { Width = UiScale.Pixels(160), Anchor = AnchorStyles.Left, Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3)) };
+            var regionHint = new Label
+            {
+                Text = "empty for a Global resource, else e.g. westeurope",
+                AutoSize = true, ForeColor = Color.Gray, Font = HintFont(), Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(6), 0, 0),
+            };
+            var regionHost = new FlowLayoutPanel
+            {
+                AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false, Margin = Padding.Empty,
+            };
+            regionHost.Controls.Add(_txtMicrosoftRegion);
+            regionHost.Controls.Add(regionHint);
+            Row(root, ref row, "Microsoft region:", regionHost);
+            _lblMtStatus = new Label
+            {
+                AutoSize = true, ForeColor = Color.FromArgb(100, 100, 100), Anchor = AnchorStyles.Left,
+                MaximumSize = new Size(UiScale.Pixels(560), 0), Margin = new Padding(0, UiScale.Pixels(2), 0, UiScale.Pixels(4)),
+            };
+            Pair(root, ref row, NoLabel(), _lblMtStatus);
+
             // ===== AI context (Batch operations, Chat and QuickLauncher) =====
             _lblAiContextHeader = Header("Context layers (Batch operations, Chat and QuickLauncher)");
             Span(root, ref row, _lblAiContextHeader);
@@ -928,6 +991,23 @@ namespace Supervertaler.Trados.Controls
             PopulateCustomProfiles(settings);
             UpdateKeyNotes();
 
+            // Machine-translation keys: the shared file only - Trados never kept its
+            // own. One this account cannot unlock leaves its box empty, with M1 under it.
+            _mtUnreadableNotes.Clear();
+            foreach (var engine in _mtKeyBoxes.Keys)
+            {
+                var key = Supervertaler.Core.ApiKeyStore.Get(engine);
+                if (key == null)
+                {
+                    var note = Supervertaler.Core.ApiKeyStore.UnreadableKeyNote(engine);
+                    if (note != null) _mtUnreadableNotes[engine] = note;
+                }
+                _mtKeyBoxes[engine].Text = key ?? "";
+            }
+            _txtMicrosoftRegion.Text = settings.MicrosoftTranslatorRegion ?? "";
+            _lblMtStatus.Text = "";
+            UpdateMtKeyNotes();
+
             // AI Context
             _chkIncludeTmMatches.Checked = settings.IncludeTmMatches;
             _nudTmFuzzyMinScore.Value = Math.Min(100, Math.Max(50, settings.TmFuzzyMinScore));
@@ -1025,6 +1105,17 @@ namespace Supervertaler.Trados.Controls
                 if (!string.Equals(typed, stored, StringComparison.Ordinal))
                     Supervertaler.Core.ApiKeyStore.Set(keyProvider, typed);
             }
+
+            // The engines' keys the same way. An empty box over a key this account
+            // cannot read is not a change (Get gives null), so OK keeps that key.
+            foreach (var kv in _mtKeyBoxes)
+            {
+                var typed = kv.Value.Text.Trim();
+                var stored = Supervertaler.Core.ApiKeyStore.Get(kv.Key) ?? "";
+                if (!string.Equals(typed, stored, StringComparison.Ordinal))
+                    Supervertaler.Core.ApiKeyStore.Set(kv.Key, typed);
+            }
+            settings.MicrosoftTranslatorRegion = _txtMicrosoftRegion.Text.Trim();
 
             // Ollama endpoint + timeout
             settings.OllamaEndpoint = _txtOllamaEndpoint.Text.Trim();
@@ -1231,6 +1322,60 @@ namespace Supervertaler.Trados.Controls
             finally
             {
                 _btnTestConnection.Enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Test beside an engine's key box: what is in the box, never a blank in
+        /// place of a key that cannot be read (the same rule as Test Connection).
+        /// DeepL is asked for its usage, which is free; Google and Microsoft
+        /// translate one word, four characters.
+        /// </summary>
+        private async Task OnTestEngineClick(string engine, Button button)
+        {
+            var name = Supervertaler.Core.MachineTranslation.DisplayName(engine);
+            var key = _mtKeyBoxes[engine].Text.Trim();
+            if (key.Length == 0)
+            {
+                _lblMtStatus.Text = "✗ " + name + ": " + (_mtUnreadableNotes.ContainsKey(engine)
+                    ? "the stored key can't be read on this computer – paste it in again first."
+                    : "enter an API key first.");
+                _lblMtStatus.ForeColor = Color.FromArgb(180, 60, 60);
+                return;
+            }
+
+            button.Enabled = false;
+            _lblMtStatus.Text = "Testing " + name + "…";
+            _lblMtStatus.ForeColor = Color.FromArgb(100, 100, 100);
+            try
+            {
+                string accepted = null;
+                var failure = await Supervertaler.Core.MachineTranslation.CheckKeyAsync(engine, key,
+                    _txtMicrosoftRegion.Text.Trim(), TradosApiKeys.SettingsPlace, CancellationToken.None, line => accepted = line);
+                if (IsDisposed) return;
+                _lblMtStatus.Text = failure == null ? "✓ " + (accepted ?? name + " accepted the key.") : "✗ " + failure.Message;
+                _lblMtStatus.ForeColor = failure == null ? Color.FromArgb(30, 130, 60) : Color.FromArgb(180, 60, 60);
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed) return;
+                _lblMtStatus.Text = "✗ " + name + ": " + ex.Message;
+                _lblMtStatus.ForeColor = Color.FromArgb(180, 60, 60);
+            }
+            finally
+            {
+                if (!button.IsDisposed) button.Enabled = true;
+            }
+        }
+
+        /// <summary>M1 under an engine's key box while it is empty because its stored key cannot be read here.</summary>
+        private void UpdateMtKeyNotes()
+        {
+            foreach (var kv in _mtKeyBoxes)
+            {
+                string note = null;
+                if (kv.Value.Text.Trim().Length == 0) _mtUnreadableNotes.TryGetValue(kv.Key, out note);
+                ShowKeyNote(_mtKeyNotes[kv.Key], _mtKeyNoteSpacers[kv.Key], kv.Value.Parent, note);
             }
         }
 

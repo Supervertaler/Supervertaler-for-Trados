@@ -123,6 +123,15 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "keepRepetitionsConsistent")]
         public bool KeepRepetitionsConsistent { get; set; } = true;
 
+        /// <summary>
+        /// The region of the user's Microsoft Translator resource ("westeurope"), or
+        /// empty for a Global one, which needs none. Not a secret, so here and not
+        /// in the key file; Sidekick keeps its own copy in its settings.ini
+        /// (docs/design/mt-engines.md §8).
+        /// </summary>
+        [DataMember(Name = "microsoftTranslatorRegion")]
+        public string MicrosoftTranslatorRegion { get; set; } = "";
+
         [DataMember(Name = "selectedCustomProfileName")]
         public string SelectedCustomProfileName { get; set; } = "";
 

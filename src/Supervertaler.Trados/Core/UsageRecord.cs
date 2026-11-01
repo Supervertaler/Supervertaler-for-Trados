@@ -47,5 +47,7 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "duration_s", Order = 20)] public double DurationS { get; set; }
         [DataMember(Name = "ok", Order = 21)] public bool Ok { get; set; }
         [DataMember(Name = "error", Order = 22)] public string Error { get; set; }
+        /// <summary>A machine-translation engine's charged characters (no tokens then); absent for an AI call.</summary>
+        [DataMember(Name = "chars", Order = 23, EmitDefaultValue = false)] public int? Characters { get; set; }
     }
 }

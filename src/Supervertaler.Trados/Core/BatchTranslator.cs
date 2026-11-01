@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Supervertaler.Core;
@@ -147,6 +148,15 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>The repetitions line for the log, or null when the run did not keep them consistent.</summary>
         public string RepetitionSummary { get; set; }
+
+        /// <summary>
+        /// The run's one usage entry - the one also fired through
+        /// <see cref="LlmClient.PromptCompleted"/> for the Reports tab and the usage
+        /// log - or null when the run sent nothing. SuperBench takes a contender's
+        /// cost from here: listening on the global event, it also counted a Batch
+        /// Translate run on the same model that happened to finish meanwhile.
+        /// </summary>
+        public PromptLogEntry Usage { get; set; }
     }
 
     public class BatchSegmentResultEventArgs : EventArgs
@@ -803,6 +813,7 @@ namespace Supervertaler.Trados.Core
 
             // Fire a single aggregated log entry for the entire Batch Translate operation -
             // also when nothing came back, so a failure is on record (see lastError).
+            PromptLogEntry usage = null;
             if (aggInputTokens > 0 || aggOutputTokens > 0 || aggHasError)
             {
                 var aggModelInfo = LlmModels.FindModel(model);
@@ -840,6 +851,7 @@ namespace Supervertaler.Trados.Core
                 }
 
                 LlmClient.FirePromptCompleted(aggEntry);
+                usage = aggEntry;
             }
 
             Completed?.Invoke(this, new BatchCompletedEventArgs
@@ -849,7 +861,126 @@ namespace Supervertaler.Trados.Core
                 Skipped = skipped,
                 TotalTime = sw.Elapsed,
                 WasCancelled = cancellationToken.IsCancellationRequested,
-                RepetitionSummary = Repetitions?.Summary()
+                RepetitionSummary = Repetitions?.Summary(),
+                Usage = usage
+            });
+        }
+
+        /// <summary>
+        /// Translates the segments with a machine-translation engine - DeepL, Google
+        /// or Microsoft (core <see cref="MachineTranslation"/>, docs/design/mt-engines.md)
+        /// - instead of an AI model, and reports exactly as <see cref="TranslateAsync"/>
+        /// does: <see cref="SegmentTranslated"/> for each segment, through the same
+        /// <see cref="Deliver"/> (so consistent repetitions, the write handler and its
+        /// backup apply alike), <see cref="Progress"/>, one usage entry, and
+        /// <see cref="Completed"/>. SuperBench captures from it now; Batch Translate
+        /// can write from it, should Michael decide to offer engines there.
+        ///
+        /// <para>No prompt, termbase, SuperMemory, TM match or list marker reaches an
+        /// engine: it takes the source text alone. DeepL may get
+        /// <paramref name="contextSources"/> (decision 2), which it reads without
+        /// translating or charging for it. Segments are written as each request
+        /// returns, in document order.</para>
+        /// </summary>
+        /// <param name="sourceLanguage">BCP 47, as Trados has it: "en-GB".</param>
+        /// <param name="contextSources">Source texts in document order, for DeepL's context; null for none.</param>
+        public async Task TranslateWithEngineAsync(List<BatchSegment> segments, string engine, string apiKey, string region,
+            string sourceLanguage, string targetLanguage, IList<string> contextSources, string settingsPlace,
+            CancellationToken cancellationToken)
+        {
+            var sw = Stopwatch.StartNew();
+            segments = segments ?? new List<BatchSegment>();
+            int translated = 0;
+            var groupsFixed = new HashSet<string>(StringComparer.Ordinal);
+            var name = MachineTranslation.DisplayName(engine);
+
+            if (segments.Count == 0)
+            {
+                Completed?.Invoke(this, new BatchCompletedEventArgs { TotalTime = sw.Elapsed });
+                return;
+            }
+
+            RaiseProgress(0, segments.Count, $"Translating {segments.Count} segment(s) with {name}...", false, TimeSpan.Zero);
+            var job = new MtJob
+            {
+                Engine = engine,
+                ApiKey = apiKey,
+                Region = region,
+                SourceLanguage = sourceLanguage,
+                TargetLanguage = targetLanguage,
+                Texts = segments.Select(s => s.SourceText ?? "").ToList(),
+                SettingsPlace = settingsPlace,
+                ContextFor = contextSources == null || contextSources.Count == 0 ? null
+                    : (Func<int, int, string>)((start, count) => MachineTranslation.ContextAround(contextSources, start, count)),
+            };
+
+            // Called as each request comes back, on the thread that awaited it;
+            // Deliver raises SegmentTranslated synchronously, as the write handler needs.
+            // Repetitions as in TranslateAsync: one left empty waits for its group.
+            var handedOver = new bool[segments.Count];
+            var awaitingGroup = new List<BatchSegment>();
+            void ChunkDone(int start, string[] chunk)
+            {
+                for (int i = 0; i < chunk.Length; i++)
+                {
+                    handedOver[start + i] = true;
+                    var delivered = Deliver(segments[start + i], chunk[i], false, groupsFixed);
+                    if (delivered == DeliveryOutcome.Written) translated++;
+                    else if (delivered == DeliveryOutcome.NothingToWrite) AwaitGroup(segments[start + i], awaitingGroup);
+                }
+                translated += FillFromGroups(awaitingGroup, groupsFixed, null, false);
+                RaiseProgress(start + chunk.Length, segments.Count, null, false, sw.Elapsed);
+            }
+
+            var outcome = await MachineTranslation.TranslateAsync(job, ChunkDone, cancellationToken).ConfigureAwait(false);
+
+            // A repetition in a request that failed, or was never sent, gets its
+            // group's translation when the group has one (consistent repetitions,
+            // decision 3) - as TranslateAsync does for a failed batch.
+            if (Repetitions != null && !outcome.Cancelled)
+            {
+                for (int i = 0; i < segments.Count; i++)
+                    if (!handedOver[i] && Deliver(segments[i], null, false, groupsFixed) == DeliveryOutcome.Written) translated++;
+            }
+            sw.Stop();
+
+            if (outcome.Failure != null)
+            {
+                DiagnosticLog.Log("MT", $"{name}: {outcome.Failure.Kind}, HTTP {outcome.Failure.HttpStatus}; "
+                    + (outcome.Failure.EngineMessage ?? "(nothing said)"));
+                // The sentence alone, as a missing key is reported: SuperBench shows it
+                // in its report as the contender's error, and the log marks it red.
+                RaiseProgress(translated, segments.Count, outcome.Failure.Message, true, sw.Elapsed);
+            }
+
+            // One entry for the run, as TranslateAsync fires: characters in place of
+            // tokens, and their cost at list price. Fired also for a run that failed
+            // before anything came back, so the failure is on record.
+            var usage = new PromptLogEntry
+            {
+                Timestamp = DateTime.Now,
+                Feature = PromptLogFeature.BatchTranslate,
+                PromptName = segments.Count + " segments",
+                Provider = engine,
+                Model = MachineTranslation.ModelName(engine),
+                DisplayModel = name,
+                Characters = outcome.BilledCharacters,
+                EstimatedCost = outcome.Cost,
+                IsCostKnown = true,
+                Duration = sw.Elapsed,
+                IsError = outcome.Failure != null,
+                ErrorMessage = outcome.Failure?.Message,
+            };
+            LlmClient.FirePromptCompleted(usage);
+
+            Completed?.Invoke(this, new BatchCompletedEventArgs
+            {
+                Translated = translated,
+                Failed = segments.Count - translated,
+                TotalTime = sw.Elapsed,
+                WasCancelled = outcome.Cancelled || cancellationToken.IsCancellationRequested,
+                RepetitionSummary = Repetitions?.Summary(),
+                Usage = usage
             });
         }
 

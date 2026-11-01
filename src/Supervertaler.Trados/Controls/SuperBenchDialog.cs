@@ -34,6 +34,7 @@ namespace Supervertaler.Trados.Controls
         private readonly ComboBox _cboJudgeProvider, _cboJudgeModel;
         private readonly NumericUpDown _nudSegments;
         private readonly Label _lblEstimate;
+        private readonly Label _lblMtNote;   // what a machine-translation contender is given
         private readonly Button _btnRun, _btnCancel, _btnSave, _btnFolder, _btnClose;
         private readonly Label _lblStatus;
         private readonly SplitContainer _split;
@@ -43,12 +44,16 @@ namespace Supervertaler.Trados.Controls
         private sealed class ProviderItem
         {
             public string Key;
-            public override string ToString() => LlmModels.GetProviderDisplayName(Key);
+            public override string ToString() => MachineTranslation.IsEngine(Key)
+                ? MachineTranslation.DisplayName(Key)
+                : LlmModels.GetProviderDisplayName(Key);
         }
         private sealed class ModelItem
         {
             public LlmModelInfo Info;
-            public override string ToString() => Info.DisplayName;
+            /// <summary>What the dropdown shows, when not the model's name: an engine's one entry.</summary>
+            public string Label;
+            public override string ToString() => Label ?? Info.DisplayName;
         }
 
         /// <summary>For the layout probe.</summary>
@@ -70,10 +75,10 @@ namespace Supervertaler.Trados.Controls
             ClientSize = new Size(1000, 700);
             MinimumSize = new Size(760, 520);
 
-            _layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 9, Padding = new Padding(12) };
+            _layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 10, Padding = new Padding(12) };
             _layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            for (int i = 0; i < 7; i++) _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            for (int i = 0; i < 8; i++) _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));   // results
             _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));        // status
 
@@ -83,11 +88,14 @@ namespace Supervertaler.Trados.Controls
                 AutoSize = true, MaximumSize = new Size(ClientSize.Width - 24, 0), Margin = new Padding(0, 0, 0, 8),
                 Text = $"Translate the first segments of “{documentName}” with three models under exactly the settings a batch would use " +
                        "– the selected prompt, the termbase terms that occur, document context – then have a judge compare the three " +
-                       "blind and say which to use for this project. Nothing is written to the document.",
+                       "blind and say which to use for this project. A slot can also hold DeepL, Google Translate or Microsoft Translator. " +
+                       "Nothing is written to the document.",
             };
             _layout.Controls.Add(_lblIntro, 0, row); _layout.SetColumnSpan(_lblIntro, 2); row++;
 
             var providerKeys = LlmModels.AllProviderKeys.Where(k => k != LlmModels.ProviderCustomOpenAi).ToList();
+            // A contender may be a machine-translation engine; the judge is always an AI model.
+            var slotKeys = providerKeys.Concat(MachineTranslation.Engines).ToList();
             var defaults = new[]
             {
                 (LlmModels.ProviderClaude, "claude-opus-5-5"),
@@ -96,11 +104,18 @@ namespace Supervertaler.Trados.Controls
             };
             for (int i = 0; i < 3; i++)
             {
-                var pair = MakeModelRow(providerKeys, defaults[i].Item1, defaults[i].Item2);
+                var pair = MakeModelRow(slotKeys, defaults[i].Item1, defaults[i].Item2);
                 _slots.Add(pair);
                 _layout.Controls.Add(L("Model " + (char)('A' + i) + ":"), 0, row);
                 _layout.Controls.Add(Host(pair.provider, pair.model), 1, row); row++;
             }
+            _lblMtNote = new Label
+            {
+                AutoSize = true, Visible = false, ForeColor = Color.FromArgb(100, 100, 100),
+                MaximumSize = new Size(ClientSize.Width - 240, 0), Margin = new Padding(0, 0, 0, 4),
+            };
+            _layout.Controls.Add(_lblMtNote, 1, row); row++;
+            UpdateMtNote();
             var judge = MakeModelRow(providerKeys, LlmModels.ProviderClaude, "claude-fable-5-1");
             _cboJudgeProvider = judge.provider; _cboJudgeModel = judge.model;
             _layout.Controls.Add(L("Judge:"), 0, row);
@@ -167,6 +182,7 @@ namespace Supervertaler.Trados.Controls
             {
                 _lblIntro.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 0);
                 _lblStatus.MaximumSize = _lblIntro.MaximumSize;
+                _lblMtNote.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 240), 0);
             };
             Shown += (s, e) =>
             {
@@ -198,7 +214,14 @@ namespace Supervertaler.Trados.Controls
             {
                 model.Items.Clear();
                 var key = (provider.SelectedItem as ProviderItem)?.Key;
-                foreach (var m in ModelCatalog.ModelsFor(key, _settings)) model.Items.Add(new ModelItem { Info = m });
+                if (MachineTranslation.IsEngine(key))
+                    model.Items.Add(new ModelItem
+                    {
+                        Info = new LlmModelInfo { Id = MachineTranslation.ModelName(key), DisplayName = MachineTranslation.DisplayName(key) },
+                        Label = "Machine translation – source text only",
+                    });
+                else
+                    foreach (var m in ModelCatalog.ModelsFor(key, _settings)) model.Items.Add(new ModelItem { Info = m });
                 // The provider's default, not simply the first entry: for OpenAI
                 // that is GPT-6 Astra, the dearest OpenAI model.
                 var defaultId = LlmModels.DefaultModelId(key);
@@ -207,6 +230,7 @@ namespace Supervertaler.Trados.Controls
                     if (string.Equals(((ModelItem)model.Items[i]).Info.Id, defaultId, StringComparison.OrdinalIgnoreCase)) { pick = i; break; }
                 if (model.Items.Count > 0) model.SelectedIndex = pick;
                 UpdateEstimate();
+                UpdateMtNote();
             };
             model.SelectedIndexChanged += (s, e) => UpdateEstimate();
             int idx = providerKeys.IndexOf(defaultProvider);
@@ -254,11 +278,34 @@ namespace Supervertaler.Trados.Controls
             if (_lblEstimate == null || _inputs == null) return;
             try
             {
-                var est = SuperBenchRunner.EstimateCost(_inputs.Take((int)_nudSegments.Value), Contenders(), JudgeChoice(), out var upperBound);
+                var contenders = Contenders();
+                var est = SuperBenchRunner.EstimateCost(_inputs.Take((int)_nudSegments.Value), contenders, JudgeChoice(), out var upperBound);
                 _lblEstimate.Text = $"of {_inputs.Segments.Count} in the document · estimated cost {(upperBound ? "up to" : "about")} ${est:0.00} for the three runs and the judge"
-                    + (upperBound ? " (a model not in the price list is counted at the dearest listed rate)" : "");
+                    + (upperBound ? " (a model not in the price list is counted at the dearest listed rate)" : "")
+                    + (contenders.Any(c => MachineTranslation.IsEngine(c.Provider))
+                        ? " (machine translation at list price; nothing extra within your plan or free allowance)" : "");
             }
             catch { _lblEstimate.Text = ""; }
+        }
+
+        /// <summary>
+        /// Under the slots, what each machine-translation contender is given - no
+        /// prompt, no termbase - so nobody reads its result as a like-for-like run.
+        /// Hidden when every slot holds an AI model.
+        /// </summary>
+        private void UpdateMtNote()
+        {
+            if (_lblMtNote == null) return;
+            var engines = _slots.Select(s => (s.provider.SelectedItem as ProviderItem)?.Key)
+                .Where(MachineTranslation.IsEngine).Distinct().ToList();
+            var withContext = _settings.IncludeDocumentContext;
+            var lines = engines.Select(e => e == MachineTranslation.DeepL
+                ? "DeepL gets no prompt or termbase – only the source text" + (withContext ? ", and the neighbouring segments as context." : ".")
+                : MachineTranslation.DisplayName(e) + " gets no prompt or termbase – only the source text.").ToList();
+            if (lines.Count > 0)
+                lines.Add("The judge marks " + (engines.Count == 1 ? "it" : "them") + " against your prompt and termbase all the same; the report says so.");
+            _lblMtNote.Text = string.Join(Environment.NewLine, lines);
+            _lblMtNote.Visible = lines.Count > 0;
         }
 
         private async Task RunAsync()

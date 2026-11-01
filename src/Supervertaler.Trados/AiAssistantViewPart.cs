@@ -13194,6 +13194,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 StructureContext = structureMode,
                 SourceLang = sourceLang,
                 TargetLang = targetLang,
+                SourceCode = GetDocumentLanguageCode(source: true),
+                TargetCode = GetDocumentLanguageCode(source: false),
                 DocumentName = GetActiveFileNameSafe(),
                 AiSettings = aiSettings,
                 TermbaseTerms = termbaseTerms,
@@ -15512,6 +15514,22 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
             catch (Exception) { }
             return _cachedTargetLang;
+        }
+
+        /// <summary>
+        /// The document's source or target language as a code ("en-GB"), for a
+        /// machine-translation engine; the two above give names, for a prompt. Null
+        /// when Studio does not say.
+        /// </summary>
+        private string GetDocumentLanguageCode(bool source)
+        {
+            try
+            {
+                var file = _activeDocument?.ActiveFile;
+                var lang = source ? file?.SourceFile?.Language : file?.Language;
+                return lang?.CultureInfo?.Name ?? lang?.IsoAbbreviation;
+            }
+            catch (Exception) { return null; }
         }
 
         private static string Truncate(string text, int maxLength)

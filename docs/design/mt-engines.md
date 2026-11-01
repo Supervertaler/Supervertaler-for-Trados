@@ -1,7 +1,8 @@
 # Machine-translation engines: DeepL, Google and Microsoft in SuperBench (and maybe Batch Translate)
 
-**Status:** Decisions taken 30 Oct 2026; SuperBench with MT to be built after API-key step 1 is merged into core;
-Batch Translate deferred. No code yet. Michael's six answers are in §12.
+**Status:** Decisions taken 30 Oct 2026. SuperBench with MT BUILT on 1 Nov 2026 (core branch `mt-engines`, Trados
+branch `claude/mt-engines-plan`), awaiting the Studio-slot live check; Microsoft's live spike waits for its key. Batch
+Translate deferred. Michael's six answers are in §12; what the spike changed is in §9, step 1.
 **Source:** Michael's proposal of 30 Oct 2026 – classic MT engines as SuperBench contenders (firm), and possibly in
 Batch Translate (undecided) – passed on by the orchestrator.
 **Line numbers:** Trados as of `63c9715`, core as of `85af3b2`, memoQ `348a864`, Sidekick `0cf5d4b`, Workbench
@@ -227,7 +228,9 @@ mode, and the reply is turned back into `<tN>` before anything else sees it:
   and punctuation).
 - **Shorter is cheaper.** Google and Microsoft bill every character sent, markup included (Google: "If you translate
   `<p>こんにちは</p>` to English, it counts as 12 characters"; Microsoft's FAQ counts "all markup"). `<t1>` costs 4
-  characters, `<span id="t1">` costs 14. The notation used is the shortest one that survives (§9, step 1).
+  characters, `<span id="t1">` costs 14. The plan was the shortest notation that survives; the spike (§9, step 1)
+  overturned that for Google, whose translation is far worse around elements it does not know. DeepL charges the text
+  without its tags, so for DeepL the notation costs nothing.
 - **When the tags do not survive**, the existing rules apply unchanged. `ReplyCheck.TagDifference` logs it, and the
   writer falls back to plain text (`AiAssistantViewPart.cs:10742-10760`). Nothing new is refused.
 
@@ -245,13 +248,18 @@ printed in the report ("English (Canada) sent to DeepL as EN-GB"):
 | en-US | EN-US | en | en |
 | any other en-* | EN-GB | en | en |
 | pt-BR | PT-BR | pt (Brazil is Google's default) | pt |
-| any other pt-* | PT-PT | pt-PT, if Google's list has it | pt-pt |
+| any other pt-* | PT-PT | pt-PT | pt-PT |
 | zh-CN, zh-SG, zh-Hans* | ZH-HANS | zh-CN | zh-Hans |
 | zh-TW, zh-HK, zh-MO, zh-Hant* | ZH-HANT | zh-TW | zh-Hant |
-| es-419, es-MX and other Latin American Spanish | ES-419, if DeepL's list has it; else ES | es | es |
-| nb-NO, no | NB | no | nb |
-| sr-Latn-*, sr-Cyrl-* | SR, if DeepL's list has it | sr | sr-Latn / sr-Cyrl |
+| es-419, es-MX and other Latin American Spanish | ES-419 | es | es (es-MX for es-MX) |
+| fr-CA | FR-CA | fr-CA | fr-CA |
+| de-CH, de-LI | DE-CH | de | de |
+| nb-NO, nn-NO, no | NB | no | nb |
+| sr-Latn-*, sr-Cyrl-* | SR | sr | sr-Latn / sr-Cyrl |
+| fil-PH | TL | tl | fil |
 | everything else | base code, upper case | base code | base code |
+
+*Settled on 1 Nov 2026 against each engine's own list (§9, step 1).*
 
 - **DeepL sources** carry no variant (EN, PT, ZH).
 - **Plain EN or PT is never sent as a DeepL target.** DeepL's own language list shows `en` with
@@ -275,9 +283,15 @@ and one HTTP set-up shared with `LlmClient` (proxy, TLS).
 ### 3.4 DeepL's extras: context, glossary, custom instructions
 
 - **`context`** – text DeepL reads but does not translate, and "Characters included in the context parameter will not be
-  counted toward billing." When the run has document context on, DeepL gets the neighbouring source segments (up to
-  about 2,000 characters before the chunk), for free. Google and Microsoft have nothing equivalent. **Decided**
-  (decision 2, "Neighbours as context").
+  counted toward billing." When the run has document context on, DeepL gets the neighbouring source segments, for
+  free. Google and Microsoft have nothing equivalent. **Decided** (decision 2, "Neighbours as context").
+  - **As built:** DeepL translates each text of a request on its own, so the context of a request is the request's
+    own segments plus their neighbours on both sides, tags left out, up to 5,000 characters
+    (`MachineTranslation.ContextAround`). With context on, a DeepL request carries 10 segments, not 50, so the context
+    stays close to each one.
+  - **In SuperBench** the neighbours are the sample's own segments, which are the first segments of the document in
+    order. The AI contenders still see the whole document when document context is on; DeepL sees its neighbours
+    within the sample.
 - **Glossary** (`glossary_id`): would carry the termbase to DeepL. **Not for now** (decision 2); later only if SuperBench
   shows DeepL losing mainly on terminology. A glossary has to be created and deleted through the API per language pair,
   Developer keys may hold only one, and it does nothing for Google or Microsoft.
@@ -506,6 +520,23 @@ key, a free Microsoft F0 resource, and his existing Google key (if it is a Cloud
 
 This costs nothing within the free allowances. The script is run as `powershell -NoProfile -File`, keeps keys out of
 its text, and lives in the gitignored `.dev\`.
+
+**What the spike found (1 Nov 2026; replies in `.dev\mt-spike\`):**
+- **Google** (Michael's existing `google` key, a working Cloud Translation key): every tag kept in all three notations
+  tried, but around its own element names (`<t1>`) Google translated as if they were words – "Press Start" came back
+  "Pers Begin", "See Figure 3" "Zien Figuur 3" – while with `<span>`/`<img>` it gave "Druk op Start", "Zie afbeelding
+  3". **Spans chosen**, at about a third more characters. Google also puts spaces around tags ("( 10 )", "PROJ-001
+  ."); they are taken out, except before ; : ! ? (French spacing).
+- **DeepL** (Michael's free key): the `:fx` key goes to `api-free.deepl.com`, as Sidekick assumed. XML tags kept in 11
+  of 12 segments with clean spacing; one pair around a lone number was dropped ("claim `<t1>1</t1>`"), which the
+  plugin then writes as plain text. DeepL's best model ("quality_optimized") was used for English to Dutch. **DeepL
+  bills the text without its tags** (607 characters for 812 sent). Its target list has, besides the variants in §3.2,
+  **DE-CH** (Swiss spelling, "ss" for "ß") and **FR-CA**, now mapped; ES-419 is confirmed.
+- **Microsoft**: its language list (fetched without a key) and its bad-key reply are recorded; the tag test waits for
+  Michael's key. Spans are used until then, as for Google.
+- **Language codes**: every code the mapping produces for 34 common Trados languages is checked against the recorded
+  lists in core's tests. Found: core's `LanguageCodes` turns Filipino "fil" into "tl", which Microsoft rejects; mapped
+  back.
 
 **Step 2 – core, after API-key step 1 is merged into core and the core slot is free:**
 

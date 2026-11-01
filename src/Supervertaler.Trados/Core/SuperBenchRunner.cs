@@ -18,6 +18,8 @@ namespace Supervertaler.Trados.Core
     {
         public List<BatchSegment> Segments = new List<BatchSegment>();
         public string SourceLang, TargetLang, DocumentName;
+        /// <summary>The languages as codes ("en-GB"), for a machine-translation engine; SourceLang and TargetLang are names.</summary>
+        public string SourceCode, TargetCode;
         public AiSettings AiSettings;
         public List<TermEntry> TermbaseTerms = new List<TermEntry>();
         public int BatchSize = 20;
@@ -53,6 +55,13 @@ namespace Supervertaler.Trados.Core
     /// per contender - the pipeline the real batch uses, so the prompt, the filtered
     /// termbase, the context and the batch size are identical and only the model
     /// varies - capturing the translations instead of writing them, then the judge.
+    ///
+    /// <para>A contender may also be a machine-translation engine - DeepL, Google
+    /// Translate, Microsoft Translator (docs/design/mt-engines.md). It goes through
+    /// the batch translator's engine path, which takes the source text alone: no
+    /// prompt, termbase or SuperMemory, and the report says so. When document
+    /// context is on, DeepL reads the neighbouring segments of the sample, free of
+    /// charge (decision 2).</para>
     /// </summary>
     internal static class SuperBenchRunner
     {
@@ -65,7 +74,8 @@ namespace Supervertaler.Trados.Core
                 SourceLang = inputs.SourceLang,
                 TargetLang = inputs.TargetLang,
                 Sources = inputs.Segments.Select(s => s.SourceText ?? "").ToList(),
-                SettingsSummary = inputs.SettingsSummary,
+                SettingsSummary = inputs.SettingsSummary
+                    + (DeepLGetsContext(inputs, contenders) ? ", DeepL given the neighbouring segments as context" : ""),
                 JudgeProvider = judge?.Provider,
                 JudgeModel = judge?.Model,
                 JudgeDisplayModel = judge?.DisplayModel,
@@ -97,11 +107,12 @@ namespace Supervertaler.Trados.Core
             return run;
         }
 
+        private static bool DeepLGetsContext(SuperBenchInputs inputs, IEnumerable<ModelChoice> contenders) =>
+            inputs.AiSettings?.IncludeDocumentContext == true
+            && (contenders ?? Enumerable.Empty<ModelChoice>()).Any(c => c.Provider == MachineTranslation.DeepL);
+
         private static async Task TranslateWith(SuperBenchInputs inputs, SuperBench.Contender contender, CancellationToken ct)
         {
-            var settings = CloneSettings(inputs.AiSettings);
-            settings.SetProviderAndModel(contender.Provider, contender.Model);
-
             var translator = new BatchTranslator();
             var translations = contender.Translations;
             var sync = new object();
@@ -129,15 +140,39 @@ namespace Supervertaler.Trados.Core
                 lastError = lines.Length > 0 ? lines[lines.Length - 1].Trim() : e.Message.Trim();
             };
 
-            var usage = new UsageCapture(contender.Provider, contender.Model, PromptLogFeature.BatchTranslate);
+            // The run's own usage entry, from its own translator: a Batch Translate run
+            // on the same model finishing meanwhile is not this contender's cost.
+            PromptLogEntry usage = null;
+            translator.Completed += (s, e) => usage = e.Usage;
+
             var sw = Stopwatch.StartNew();
             try
             {
-                usage.Start();
-                await translator.TranslateAsync(inputs.Segments, inputs.SourceLang, inputs.TargetLang, settings,
-                    inputs.TermbaseTerms, inputs.BatchSize, ct, inputs.CustomPromptContent, inputs.CustomSystemPrompt,
-                    inputs.DocSegments, inputs.KbContext, retryUntilComplete: false,
-                    structureContext: inputs.StructureContext).ConfigureAwait(false);
+                if (contender.IsMachineTranslation)
+                {
+                    // The key first: none, or one this computer cannot read, sends nothing.
+                    var key = TradosApiKeys.ForEngine(contender.Provider, out var keyProblem);
+                    if (key == null)
+                    {
+                        contender.Error = keyProblem;
+                        return;
+                    }
+                    var context = contender.Provider == MachineTranslation.DeepL && inputs.AiSettings?.IncludeDocumentContext == true
+                        ? inputs.Segments.Select(s => s.SourceText ?? "").ToList()
+                        : null;
+                    await translator.TranslateWithEngineAsync(inputs.Segments, contender.Provider, key,
+                        inputs.AiSettings?.MicrosoftTranslatorRegion, inputs.SourceCode, inputs.TargetCode, context,
+                        TradosApiKeys.SettingsPlace, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    var settings = CloneSettings(inputs.AiSettings);
+                    settings.SetProviderAndModel(contender.Provider, contender.Model);
+                    await translator.TranslateAsync(inputs.Segments, inputs.SourceLang, inputs.TargetLang, settings,
+                        inputs.TermbaseTerms, inputs.BatchSize, ct, inputs.CustomPromptContent, inputs.CustomSystemPrompt,
+                        inputs.DocSegments, inputs.KbContext, retryUntilComplete: false,
+                        structureContext: inputs.StructureContext).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -146,13 +181,17 @@ namespace Supervertaler.Trados.Core
             }
             finally
             {
-                usage.Stop();
                 sw.Stop();
                 contender.Elapsed = sw.Elapsed;
-                contender.Cost = usage.Cost;
-                contender.CostKnown = usage.CostKnown;
-                contender.InputTokens = usage.InputTokens;
-                contender.OutputTokens = usage.OutputTokens;
+                if (usage != null)
+                {
+                    contender.Cost = CostOf(usage);
+                    contender.CostKnown = usage.IsCostKnown;
+                    contender.Characters = usage.Characters ?? 0;
+                    contender.InputTokens = (usage.ActualRegularInputTokens ?? usage.EstimatedInputTokens)
+                                          + (usage.ActualCacheReadTokens ?? 0) + (usage.ActualCacheWriteTokens ?? 0);
+                    contender.OutputTokens = usage.ActualOutputTokens ?? usage.EstimatedOutputTokens;
+                }
                 if (string.IsNullOrEmpty(contender.Error))
                 {
                     if (lastError != null) contender.Error = lastError;
@@ -236,9 +275,23 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// Sums what the client reported for one provider+model while attached. The
-        /// PromptCompleted event is global; a benchmark runs one model at a time, and
-        /// the filter keeps a stray chat call from being counted against it.
+        /// What one usage entry cost. A model missing from the price list is counted
+        /// at the most it can have cost, and shown as "up to" (IsCostKnown false).
+        /// </summary>
+        private static decimal CostOf(PromptLogEntry e) =>
+            e.IsCostKnown
+                ? e.ActualCost ?? e.EstimatedCost
+                : TokenEstimator.CostCeiling(e.Provider, e.Model,
+                    e.ActualRegularInputTokens ?? e.EstimatedInputTokens,
+                    e.ActualCacheReadTokens ?? 0, e.ActualCacheWriteTokens ?? 0,
+                    e.ActualOutputTokens ?? e.EstimatedOutputTokens);
+
+        /// <summary>
+        /// Sums what the client reported for one provider+model while attached - for
+        /// the judge, whose call is the only one tagged SuperBench. The
+        /// PromptCompleted event is global; the filter keeps a stray chat call from
+        /// being counted against it. A contender's cost comes from its own run
+        /// (<see cref="BatchCompletedEventArgs.Usage"/>) instead.
         /// </summary>
         private sealed class UsageCapture
         {
@@ -262,14 +315,7 @@ namespace Supervertaler.Trados.Core
                 if (!string.IsNullOrEmpty(e.Model) && !string.Equals(e.Model, _model, StringComparison.OrdinalIgnoreCase)) return;
                 lock (_sync)
                 {
-                    // A model missing from the price list is counted at the most it
-                    // can have cost, and shown as "up to" (CostKnown false).
-                    Cost += e.IsCostKnown
-                        ? e.ActualCost ?? e.EstimatedCost
-                        : TokenEstimator.CostCeiling(e.Provider, e.Model,
-                            e.ActualRegularInputTokens ?? e.EstimatedInputTokens,
-                            e.ActualCacheReadTokens ?? 0, e.ActualCacheWriteTokens ?? 0,
-                            e.ActualOutputTokens ?? e.EstimatedOutputTokens);
+                    Cost += CostOf(e);
                     CostKnown &= e.IsCostKnown;
                     InputTokens += (e.ActualRegularInputTokens ?? e.EstimatedInputTokens)
                                  + (e.ActualCacheReadTokens ?? 0) + (e.ActualCacheWriteTokens ?? 0);
@@ -282,7 +328,9 @@ namespace Supervertaler.Trados.Core
         /// A rough cost before running: every contender's batch plus the judge.
         /// A model missing from the price list is counted at the most it can cost
         /// (<see cref="TokenEstimator.CostCeiling"/>), and <paramref name="upperBound"/>
-        /// says so, rather than adding nothing and understating the total.
+        /// says so, rather than adding nothing and understating the total. A
+        /// machine-translation engine is counted by the characters it would be
+        /// sent, at its list price.
         /// </summary>
         public static decimal EstimateCost(SuperBenchInputs inputs, IList<ModelChoice> contenders, ModelChoice judge,
             out bool upperBound)
@@ -315,7 +363,13 @@ namespace Supervertaler.Trados.Core
             int batches = Math.Max(1, (int)Math.Ceiling(inputs.Segments.Count / (double)Math.Max(1, inputs.BatchSize)));
             decimal total = 0m;
             foreach (var c in contenders ?? new List<ModelChoice>())
-                total += Price(c, sys * batches + src, (int)(src * 1.2));
+            {
+                if (MachineTranslation.IsEngine(c.Provider))
+                    total += MachineTranslation.Cost(c.Provider,
+                        inputs.Segments.Sum(x => MachineTranslation.CharactersAsSent(c.Provider, x.SourceText)));
+                else
+                    total += Price(c, sys * batches + src, (int)(src * 1.2));
+            }
             if (judge != null)
             {
                 // The judge reads the instructions and the approved terms as well as

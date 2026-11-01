@@ -45,6 +45,21 @@ namespace Supervertaler.Trados.Settings
             => LlmClient.ResolveApiKey(provider, ai?.ApiKeys, SettingsPlace, out problem);
 
         /// <summary>
+        /// The key for a machine-translation engine (DeepL, Google, Microsoft), or
+        /// null with <paramref name="problem"/> the sentence to show: M2 when it
+        /// cannot be read here, "No API key set …" when there is none. The shared
+        /// key file only, plain then locked, as for every provider - never the
+        /// fallbacks <see cref="For(string, AiSettings, out string)"/> has for the
+        /// AI providers: Trados never kept an engine key of its own, and Workbench's
+        /// settings may hold its Gemini key under "google".
+        /// </summary>
+        internal static string ForEngine(string engine, out string problem)
+        {
+            var status = Supervertaler.Core.ApiKeyStore.Lookup(engine, SettingsPlace, out var key, out problem);
+            return status == Supervertaler.Core.ApiKeyStatus.Present ? key : null;
+        }
+
+        /// <summary>
         /// The key for an OpenAI-compatible profile, or null with
         /// <paramref name="problem"/> the sentence to show: the profile's own key
         /// when it has one (step 1: settings.json decides), else the locked file's.

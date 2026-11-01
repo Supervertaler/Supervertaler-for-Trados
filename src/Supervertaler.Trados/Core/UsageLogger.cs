@@ -77,7 +77,14 @@ namespace Supervertaler.Trados.Core
                     Error = entry.IsError ? entry.ErrorMessage : null,
                 };
 
-                if (entry.HasActualUsage)
+                if (entry.Characters.HasValue)
+                {
+                    // A machine-translation engine: characters, no tokens, cost at list price.
+                    rec.Source = "actual";
+                    rec.Characters = entry.Characters;
+                    rec.CostUsd = entry.EstimatedCost;
+                }
+                else if (entry.HasActualUsage)
                 {
                     rec.Source = "actual";
                     rec.InputRegular = entry.ActualRegularInputTokens ?? 0;
