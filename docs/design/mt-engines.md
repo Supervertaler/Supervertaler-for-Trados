@@ -1,8 +1,9 @@
 # Machine-translation engines: DeepL, Google and Microsoft in SuperBench (and maybe Batch Translate)
 
 **Status:** Decisions taken 30 Oct 2026. SuperBench with MT BUILT on 1 Nov 2026 (core branch `mt-engines`, Trados
-branch `claude/mt-engines-plan`), awaiting the Studio-slot live check; Microsoft's live spike waits for its key. Batch
-Translate deferred. Michael's six answers are in §12; what the spike changed is in §9, step 1.
+branch `claude/mt-engines-plan`), awaiting the Studio-slot live check. Trados offers DeepL and Google only: Microsoft
+is built in core but not offered until a key is available for a live check (decision 7). Batch Translate deferred.
+Michael's answers are in §12; what the spike changed is in §9, step 1.
 **Source:** Michael's proposal of 30 Oct 2026 – classic MT engines as SuperBench contenders (firm), and possibly in
 Batch Translate (undecided) – passed on by the orchestrator.
 **Line numbers:** Trados as of `63c9715`, core as of `85af3b2`, memoQ `348a864`, Sidekick `0cf5d4b`, Workbench
@@ -532,8 +533,8 @@ its text, and lives in the gitignored `.dev\`.
   plugin then writes as plain text. DeepL's best model ("quality_optimized") was used for English to Dutch. **DeepL
   bills the text without its tags** (607 characters for 812 sent). Its target list has, besides the variants in §3.2,
   **DE-CH** (Swiss spelling, "ss" for "ß") and **FR-CA**, now mapped; ES-419 is confirmed.
-- **Microsoft**: its language list (fetched without a key) and its bad-key reply are recorded; the tag test waits for
-  Michael's key. Spans are used until then, as for Google.
+- **Microsoft**: its language list (fetched without a key) and its bad-key reply are recorded; the tag test would wait for
+  Michael's key, and there is none for now (decision 7). Core uses spans for Microsoft, as for Google.
 - **Language codes**: every code the mapping produces for 34 common Trados languages is checked against the recorded
   lists in core's tests. Found: core's `LanguageCodes` turns Filipino "fil" into "tl", which Microsoft rejects; mapped
   back.
@@ -691,3 +692,16 @@ Put to Michael one at a time by the orchestrator, each with its recommendation; 
      20 October.
 6. **A local MT engine (OPUS-MT): build it?** – **"No, not now".**
    - Revisit if users ask. Ollama already gives SuperBench a free, offline contender that reads the prompt.
+
+### Decided 1 Nov 2026, during the build
+
+7. **Microsoft: built in core, not offered in Trados until a key is available for a live check.** – **"Let's skip them
+   for now."**
+   - Michael could not get a Microsoft Translator key: Azure put him in an old client's tenant, and a fresh account was
+     "blocked for security reasons". So no Microsoft live spike happened.
+   - Core keeps its Microsoft code as it is, tested offline against Microsoft's recorded language list and bad-key
+     reply.
+   - Trados offers DeepL and Google only, by one list, `SuperBenchRunner.OfferedEngines`: no Microsoft row or region
+     box in AI Settings, no Microsoft in SuperBench's slots, nothing about Microsoft in Help. A Microsoft key Sidekick
+     saved is left alone. Offering Microsoft later is that one line, plus one live check of its tags (spans, as for
+     Google) and its unsupported-pair reply.

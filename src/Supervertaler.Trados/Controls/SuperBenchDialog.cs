@@ -88,14 +88,14 @@ namespace Supervertaler.Trados.Controls
                 AutoSize = true, MaximumSize = new Size(ClientSize.Width - 24, 0), Margin = new Padding(0, 0, 0, 8),
                 Text = $"Translate the first segments of “{documentName}” with three models under exactly the settings a batch would use " +
                        "– the selected prompt, the termbase terms that occur, document context – then have a judge compare the three " +
-                       "blind and say which to use for this project. A slot can also hold DeepL, Google Translate or Microsoft Translator. " +
+                       "blind and say which to use for this project. A slot can also hold " + SuperBenchRunner.OfferedEngineNames("or") + ". " +
                        "Nothing is written to the document.",
             };
             _layout.Controls.Add(_lblIntro, 0, row); _layout.SetColumnSpan(_lblIntro, 2); row++;
 
             var providerKeys = LlmModels.AllProviderKeys.Where(k => k != LlmModels.ProviderCustomOpenAi).ToList();
             // A contender may be a machine-translation engine; the judge is always an AI model.
-            var slotKeys = providerKeys.Concat(MachineTranslation.Engines).ToList();
+            var slotKeys = providerKeys.Concat(SuperBenchRunner.OfferedEngines).ToList();
             var defaults = new[]
             {
                 (LlmModels.ProviderClaude, "claude-opus-5-5"),

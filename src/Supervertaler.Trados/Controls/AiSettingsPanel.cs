@@ -566,12 +566,12 @@ namespace Supervertaler.Trados.Controls
             Span(root, ref row, Header("Machine translation (SuperBench)"));
             Span(root, ref row, new Label
             {
-                Text = "DeepL, Google Translate and Microsoft Translator can be SuperBench contenders. "
+                Text = SuperBenchRunner.OfferedEngineNames("and") + " can be SuperBench contenders. "
                      + "The keys are shared with Sidekick: a key entered here is entered there too.",
                 AutoSize = true, ForeColor = Color.FromArgb(110, 110, 110),
                 MaximumSize = new Size(UiScale.Pixels(560), 0), Margin = new Padding(0, 0, 0, UiScale.Pixels(6)),
             });
-            foreach (var engine in Supervertaler.Core.MachineTranslation.Engines)
+            foreach (var engine in SuperBenchRunner.OfferedEngines)
             {
                 var box = FillBox(password: true);
                 var show = TextButton("Show");
@@ -592,21 +592,25 @@ namespace Supervertaler.Trados.Controls
                 box.TextChanged += (s, e) => UpdateMtKeyNotes();
                 host.SizeChanged += (s, e) => UpdateMtKeyNotes();
             }
-            _txtMicrosoftRegion = new TextBox { Width = UiScale.Pixels(160), Anchor = AnchorStyles.Left, Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3)) };
-            var regionHint = new Label
+            // Only while Microsoft is offered; null otherwise, and the saved region is left alone.
+            if (SuperBenchRunner.OfferedEngines.Contains(Supervertaler.Core.MachineTranslation.Microsoft))
             {
-                Text = "empty for a Global resource, else e.g. westeurope",
-                AutoSize = true, ForeColor = Color.Gray, Font = HintFont(), Anchor = AnchorStyles.Left,
-                Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(6), 0, 0),
-            };
-            var regionHost = new FlowLayoutPanel
-            {
-                AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false, Margin = Padding.Empty,
-            };
-            regionHost.Controls.Add(_txtMicrosoftRegion);
-            regionHost.Controls.Add(regionHint);
-            Row(root, ref row, "Microsoft region:", regionHost);
+                _txtMicrosoftRegion = new TextBox { Width = UiScale.Pixels(160), Anchor = AnchorStyles.Left, Margin = new Padding(0, UiScale.Pixels(3), 0, UiScale.Pixels(3)) };
+                var regionHint = new Label
+                {
+                    Text = "empty for a Global resource, else e.g. westeurope",
+                    AutoSize = true, ForeColor = Color.Gray, Font = HintFont(), Anchor = AnchorStyles.Left,
+                    Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(6), 0, 0),
+                };
+                var regionHost = new FlowLayoutPanel
+                {
+                    AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight,
+                    WrapContents = false, Margin = Padding.Empty,
+                };
+                regionHost.Controls.Add(_txtMicrosoftRegion);
+                regionHost.Controls.Add(regionHint);
+                Row(root, ref row, "Microsoft region:", regionHost);
+            }
             _lblMtStatus = new Label
             {
                 AutoSize = true, ForeColor = Color.FromArgb(100, 100, 100), Anchor = AnchorStyles.Left,
@@ -1004,7 +1008,7 @@ namespace Supervertaler.Trados.Controls
                 }
                 _mtKeyBoxes[engine].Text = key ?? "";
             }
-            _txtMicrosoftRegion.Text = settings.MicrosoftTranslatorRegion ?? "";
+            if (_txtMicrosoftRegion != null) _txtMicrosoftRegion.Text = settings.MicrosoftTranslatorRegion ?? "";
             _lblMtStatus.Text = "";
             UpdateMtKeyNotes();
 
@@ -1115,7 +1119,7 @@ namespace Supervertaler.Trados.Controls
                 if (!string.Equals(typed, stored, StringComparison.Ordinal))
                     Supervertaler.Core.ApiKeyStore.Set(kv.Key, typed);
             }
-            settings.MicrosoftTranslatorRegion = _txtMicrosoftRegion.Text.Trim();
+            if (_txtMicrosoftRegion != null) settings.MicrosoftTranslatorRegion = _txtMicrosoftRegion.Text.Trim();
 
             // Ollama endpoint + timeout
             settings.OllamaEndpoint = _txtOllamaEndpoint.Text.Trim();
@@ -1351,7 +1355,7 @@ namespace Supervertaler.Trados.Controls
             {
                 string accepted = null;
                 var failure = await Supervertaler.Core.MachineTranslation.CheckKeyAsync(engine, key,
-                    _txtMicrosoftRegion.Text.Trim(), TradosApiKeys.SettingsPlace, CancellationToken.None, line => accepted = line);
+                    _txtMicrosoftRegion?.Text.Trim(), TradosApiKeys.SettingsPlace, CancellationToken.None, line => accepted = line);
                 if (IsDisposed) return;
                 _lblMtStatus.Text = failure == null ? "✓ " + (accepted ?? name + " accepted the key.") : "✗ " + failure.Message;
                 _lblMtStatus.ForeColor = failure == null ? Color.FromArgb(30, 130, 60) : Color.FromArgb(180, 60, 60);

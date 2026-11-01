@@ -65,6 +65,22 @@ namespace Supervertaler.Trados.Core
     /// </summary>
     internal static class SuperBenchRunner
     {
+        /// <summary>
+        /// The engines Trados offers - in SuperBench's slots and in AI Settings' key
+        /// boxes. Core can do all three; Microsoft Translator is left out until a key is
+        /// available for a live check (Michael, 1 Nov 2026: "Let's skip them for now";
+        /// docs/design/mt-engines.md §12). Offering it is this line plus that check.
+        /// </summary>
+        internal static readonly IReadOnlyList<string> OfferedEngines = new[] { MachineTranslation.DeepL, MachineTranslation.Google };
+
+        /// <summary>"DeepL and Google Translate", "DeepL, Google Translate or …": the offered engines by name.</summary>
+        internal static string OfferedEngineNames(string lastJoin)
+        {
+            var names = OfferedEngines.Select(MachineTranslation.DisplayName).ToList();
+            return names.Count <= 1 ? string.Concat(names)
+                : string.Join(", ", names.Take(names.Count - 1)) + " " + lastJoin + " " + names[names.Count - 1];
+        }
+
         public static async Task<SuperBench.Run> RunAsync(SuperBenchInputs inputs, IList<ModelChoice> contenders,
             ModelChoice judge, IProgress<string> progress, CancellationToken ct)
         {
