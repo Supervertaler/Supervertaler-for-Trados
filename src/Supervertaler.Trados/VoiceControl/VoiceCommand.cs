@@ -132,9 +132,10 @@ namespace Supervertaler.Trados.VoiceControl
         /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191),
         /// 6 = select source (20.191), 7 = dictate split into start/stop (20.191),
         /// 8 = select all (20.192), 9 = numbers / source numbers (#128),
-        /// 10 = press enter, 11 = super search / web search (20.198).
+        /// 10 = press enter, 11 = super search / web search (20.198),
+        /// 12 = split segment / merge segments (20.204).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 11;
+        internal const int CurrentDefaultsVersion = 12;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -188,6 +189,13 @@ namespace Supervertaler.Trados.VoiceControl
                 new VoiceCommand { Phrase = "copy source", Aliases = new List<string> { "copy from source" }, ActionType = "keystroke", Action = "ctrl+insert", Description = "Copy source to target", Category = "editing" },
                 new VoiceCommand { Phrase = "select all", Aliases = new List<string> { "select everything" }, ActionType = "keystroke", Action = "ctrl+a", Description = "Select all the text in the active segment (Ctrl+A)", Category = "editing", AddedIn = 8 },
                 new VoiceCommand { Phrase = "clear target", Aliases = new List<string>(), ActionType = "keystroke", Action = "alt+delete", Description = "Clear the target segment", Category = "editing" },
+                // Studio's own Split Segment (Alt+Shift+T) and Merge Segments
+                // (Ctrl+Alt+S). Two words, like "press enter": a bare "split" or
+                // "merge" is one short word competing with every segment's text.
+                // Studio names one singular and the other plural, and people say
+                // either, so both forms are accepted.
+                new VoiceCommand { Phrase = "split segment", Aliases = new List<string> { "split segments" }, ActionType = "keystroke", Action = "alt+shift+t", Description = "Split the segment at the cursor (Studio's Split Segment, Alt+Shift+T)", Category = "editing", AddedIn = 12 },
+                new VoiceCommand { Phrase = "merge segments", Aliases = new List<string> { "merge segment" }, ActionType = "keystroke", Action = "ctrl+alt+s", Description = "Merge the selected segments (Studio's Merge Segments, Ctrl+Alt+S)", Category = "editing", AddedIn = 12 },
                 // Enter, for a dialog's default button. Two-word phrases on purpose:
                 // a bare "enter" or "okay" is ordinary speech and would fire mid-sentence.
                 new VoiceCommand { Phrase = "press enter", Aliases = new List<string> { "hit enter" }, ActionType = "keystroke", Action = "enter", Description = "Press Enter - the default button of an open dialog, or a new line in the editor", Category = "navigation", AddedIn = 10 },
