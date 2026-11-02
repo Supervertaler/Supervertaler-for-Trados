@@ -32,6 +32,15 @@ namespace Supervertaler.Trados.VoiceControl
         [DataMember(Name = "enabled")] public bool Enabled { get; set; } = true;
 
         /// <summary>
+        /// The defaults generation a built-in command first shipped in
+        /// (<see cref="VoiceCommandSet.CurrentDefaultsVersion"/>). Not saved: it only
+        /// decides which defaults a file from an older generation has never been
+        /// offered. 0 for the commands already in the set when saved files began
+        /// recording a generation (3).
+        /// </summary>
+        internal int AddedIn { get; set; }
+
+        /// <summary>
         /// The placeholder that marks an open slot in a spoken form: "select {phrase}".
         /// Everything before it is what the recogniser must hear; everything after it
         /// in the utterance is the argument handed to the action.
@@ -66,7 +75,7 @@ namespace Supervertaler.Trados.VoiceControl
         }
 
         /// <summary>Spoken forms with the slot placeholder still in them.</summary>
-        private IEnumerable<string> AllForms()
+        internal IEnumerable<string> AllForms()
         {
             if (!string.IsNullOrWhiteSpace(Phrase))
                 yield return Phrase.Trim().ToLowerInvariant();
@@ -113,9 +122,11 @@ namespace Supervertaler.Trados.VoiceControl
     public static class VoiceCommandSet
     {
         /// <summary>
-        /// Bump whenever commands are ADDED to Defaults(). Saved files from an
-        /// older generation get the new commands merged in on load, so users
-        /// with customised command sets still receive new defaults.
+        /// Bump whenever commands are ADDED to Defaults(), and give each new
+        /// command AddedIn = the new number - without it, existing users never
+        /// get the command. Saved files from an older generation get the new
+        /// commands merged in on load (NewDefaultsFor), so users with customised
+        /// command sets still receive new defaults.
         /// History: 1 = initial set (20.126), 2 = match 1–9 / escape /
         /// top+bottom / add-term split (20.127), 3 = zoom in/out (20.128),
         /// 4 = undo (20.191), 5 = select / delete that / dictate (20.191),
@@ -144,8 +155,8 @@ namespace Supervertaler.Trados.VoiceControl
                 // #125. "select" carries an open slot: the words after it are matched
                 // against the segment's own target text, which is also what the
                 // recogniser's grammar is built from while that segment is open.
-                new VoiceCommand { Phrase = "select {phrase}", Aliases = new List<string> { "choose {phrase}" }, ActionType = "internal", Action = "select_phrase", Description = "BETA. Select words in the target by saying them. Works for everyday words; the voice model does not know most technical terms, and says so.", Category = "editing", Enabled = false },
-                new VoiceCommand { Phrase = "delete that", Aliases = new List<string> { "delete this", "remove that" }, ActionType = "internal", Action = "delete_selection", Description = "Delete whatever is selected in the target", Category = "editing" },
+                new VoiceCommand { Phrase = "select {phrase}", Aliases = new List<string> { "choose {phrase}" }, ActionType = "internal", Action = "select_phrase", Description = "BETA. Select words in the target by saying them. Works for everyday words; the voice model does not know most technical terms, and says so.", Category = "editing", Enabled = false, AddedIn = 5 },
+                new VoiceCommand { Phrase = "delete that", Aliases = new List<string> { "delete this", "remove that" }, ActionType = "internal", Action = "delete_selection", Description = "Delete whatever is selected in the target", Category = "editing", AddedIn = 5 },
 
                 // #127. The words after "select source" are in the SOURCE language,
                 // which the command model cannot pronounce - they are re-heard against
@@ -153,7 +164,7 @@ namespace Supervertaler.Trados.VoiceControl
                 // for the same reason "dictate" is: it costs a 40 MB download, and an
                 // installation whose source language has no model would only find out
                 // by trying.
-                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source select {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "BETA. Select words in the SOURCE segment by saying them. Needs a voice model for the source language, fetched the first time it is used. Read-only: \"delete that\" refuses a source selection.", Category = "editing", Enabled = false },
+                new VoiceCommand { Phrase = "select source {phrase}", Aliases = new List<string> { "source select {phrase}" }, ActionType = "internal", Action = "select_source_phrase", Description = "BETA. Select words in the SOURCE segment by saying them. Needs a voice model for the source language, fetched the first time it is used. Read-only: \"delete that\" refuses a source selection.", Category = "editing", Enabled = false, AddedIn = 6 },
 
                 // Off by default: it drives an EXTERNAL dictation tool, which most
                 // installations will not have. Enabled on a machine without one, it
@@ -166,23 +177,23 @@ namespace Supervertaler.Trados.VoiceControl
                 // off STARTED it, and every command after that was silently
                 // suppressed by the dictation gate. Saying either of these twice is
                 // now harmless.
-                new VoiceCommand { Phrase = "dictate", Aliases = new List<string> { "start dictating" }, ActionType = "internal", Action = "dictate_on:ctrl+win+space:ZZEND", Description = "Hand over to an external dictation tool. Needs that tool set to start/stop on Ctrl+Win+Space.", Category = "editing", Enabled = false },
-                new VoiceCommand { Phrase = "stop now", Aliases = new List<string> { "stop dictating" }, ActionType = "internal", Action = "dictate_off:ctrl+win+space:ZZEND", Description = "Take dictation back from the external tool. Map this spoken phrase to ZZEND in that tool's dictionary and the marker is removed automatically.", Category = "editing", Enabled = false },
-                new VoiceCommand { Phrase = "undo that", Aliases = new List<string> { "scratch that", "undo" }, ActionType = "keystroke", Action = "ctrl+z", Description = "Undo the last change (Ctrl+Z)", Category = "editing" },
+                new VoiceCommand { Phrase = "dictate", Aliases = new List<string> { "start dictating" }, ActionType = "internal", Action = "dictate_on:ctrl+win+space:ZZEND", Description = "Hand over to an external dictation tool. Needs that tool set to start/stop on Ctrl+Win+Space.", Category = "editing", Enabled = false, AddedIn = 5 },
+                new VoiceCommand { Phrase = "stop now", Aliases = new List<string> { "stop dictating" }, ActionType = "internal", Action = "dictate_off:ctrl+win+space:ZZEND", Description = "Take dictation back from the external tool. Map this spoken phrase to ZZEND in that tool's dictionary and the marker is removed automatically.", Category = "editing", Enabled = false, AddedIn = 7 },
+                new VoiceCommand { Phrase = "undo that", Aliases = new List<string> { "scratch that", "undo" }, ActionType = "keystroke", Action = "ctrl+z", Description = "Undo the last change (Ctrl+Z)", Category = "editing", AddedIn = 4 },
                 new VoiceCommand { Phrase = "confirm", Aliases = new List<string> { "confirm segment" }, ActionType = "keystroke", Action = "ctrl+enter", Description = "Confirm segment and move to next unconfirmed", Category = "editing" },
                 new VoiceCommand { Phrase = "next segment", Aliases = new List<string> { "go down" }, ActionType = "internal", Action = "navigate_next", Description = "Move to the next segment (without confirming)", Category = "navigation" },
                 new VoiceCommand { Phrase = "previous segment", Aliases = new List<string> { "go up" }, ActionType = "internal", Action = "navigate_previous", Description = "Move to the previous segment", Category = "navigation" },
                 new VoiceCommand { Phrase = "go to the top", Aliases = new List<string> { "go to top" }, ActionType = "keystroke", Action = "ctrl+home", Description = "Jump to the first segment (Ctrl+Home)", Category = "navigation" },
                 new VoiceCommand { Phrase = "go to the bottom", Aliases = new List<string> { "go to bottom" }, ActionType = "keystroke", Action = "ctrl+end", Description = "Jump to the last segment (Ctrl+End)", Category = "navigation" },
                 new VoiceCommand { Phrase = "copy source", Aliases = new List<string> { "copy from source" }, ActionType = "keystroke", Action = "ctrl+insert", Description = "Copy source to target", Category = "editing" },
-                new VoiceCommand { Phrase = "select all", Aliases = new List<string> { "select everything" }, ActionType = "keystroke", Action = "ctrl+a", Description = "Select all the text in the active segment (Ctrl+A)", Category = "editing" },
+                new VoiceCommand { Phrase = "select all", Aliases = new List<string> { "select everything" }, ActionType = "keystroke", Action = "ctrl+a", Description = "Select all the text in the active segment (Ctrl+A)", Category = "editing", AddedIn = 8 },
                 new VoiceCommand { Phrase = "clear target", Aliases = new List<string>(), ActionType = "keystroke", Action = "alt+delete", Description = "Clear the target segment", Category = "editing" },
                 // Enter, for a dialog's default button. Two-word phrases on purpose:
                 // a bare "enter" or "okay" is ordinary speech and would fire mid-sentence.
-                new VoiceCommand { Phrase = "press enter", Aliases = new List<string> { "hit enter" }, ActionType = "keystroke", Action = "enter", Description = "Press Enter - the default button of an open dialog, or a new line in the editor", Category = "navigation" },
+                new VoiceCommand { Phrase = "press enter", Aliases = new List<string> { "hit enter" }, ActionType = "keystroke", Action = "enter", Description = "Press Enter - the default button of an open dialog, or a new line in the editor", Category = "navigation", AddedIn = 10 },
                 // #128: selecting by number - the route to words the voice model cannot hear.
-                new VoiceCommand { Phrase = "numbers", Aliases = new List<string> { "show numbers", "number words" }, ActionType = "internal", Action = "number_words", Description = "Number the words of the target, then say \"select 12\" or \"select 12 to 14\". Opens by itself when a word cannot be heard.", Category = "editing" },
-                new VoiceCommand { Phrase = "source numbers", Aliases = new List<string> { "number source words" }, ActionType = "internal", Action = "number_source_words", Description = "Number the words of the SOURCE segment, then say the number to select.", Category = "editing" },
+                new VoiceCommand { Phrase = "numbers", Aliases = new List<string> { "show numbers", "number words" }, ActionType = "internal", Action = "number_words", Description = "Number the words of the target, then say \"select 12\" or \"select 12 to 14\". Opens by itself when a word cannot be heard.", Category = "editing", AddedIn = 9 },
+                new VoiceCommand { Phrase = "source numbers", Aliases = new List<string> { "number source words" }, ActionType = "internal", Action = "number_source_words", Description = "Number the words of the SOURCE segment, then say the number to select.", Category = "editing", AddedIn = 9 },
 
                 // TermLens – direct plugin calls (case-adapted insertion)
                 new VoiceCommand { Phrase = "term one",   ActionType = "internal", Action = "insert_term_1", Description = "Insert TermLens match 1", Category = "termlens" },
@@ -216,8 +227,8 @@ namespace Supervertaler.Trados.VoiceControl
                 // Two words, not "supersearch": the model's lexicon has no such word,
                 // and a grammar word it lacks is dropped in silence (VoiceVocabulary).
                 // Said naturally, "SuperSearch" is heard as these two.
-                new VoiceCommand { Phrase = "super search", ActionType = "keystroke", Action = "alt+s", Description = "SuperSearch the selection across the project's files (Alt+S)", Category = "lookup" },
-                new VoiceCommand { Phrase = "web search", Aliases = new List<string> { "search the web" }, ActionType = "keystroke", Action = "alt+w", Description = "Open the selection in the enabled SuperSearch web resources (Alt+W)", Category = "lookup" },
+                new VoiceCommand { Phrase = "super search", ActionType = "keystroke", Action = "alt+s", Description = "SuperSearch the selection across the project's files (Alt+S)", Category = "lookup", AddedIn = 11 },
+                new VoiceCommand { Phrase = "web search", Aliases = new List<string> { "search the web" }, ActionType = "keystroke", Action = "alt+w", Description = "Open the selection in the enabled SuperSearch web resources (Alt+W)", Category = "lookup", AddedIn = 11 },
 
                 // Editor font size. Studio's font-adaptation actions ship with NO
                 // default shortcut. One-time setup: File > Options > Keyboard
@@ -256,19 +267,12 @@ namespace Supervertaler.Trados.VoiceControl
                             if (c.Aliases == null) c.Aliases = new List<string>();
                         }
 
-                        // File saved under an older defaults generation: merge
-                        // in any default command whose phrase the user doesn't
-                        // have (deliberate deletions of OLD defaults stay
-                        // deleted – only newly shipped defaults are added).
-                        // Persist so the merge runs once per generation.
+                        // File saved under an older defaults generation: add the
+                        // defaults shipped since. Persist so the merge runs once
+                        // per generation.
                         if (data.DefaultsVersion < CurrentDefaultsVersion)
                         {
-                            var known = new HashSet<string>(
-                                data.Commands.Select(c => (c.Phrase ?? "").Trim()),
-                                StringComparer.OrdinalIgnoreCase);
-                            foreach (var def in Defaults())
-                                if (!known.Contains((def.Phrase ?? "").Trim()))
-                                    data.Commands.Add(def);
+                            data.Commands.AddRange(NewDefaultsFor(data.Commands, data.DefaultsVersion));
                             Save(data.Commands);
                         }
                         return data.Commands;
@@ -277,6 +281,33 @@ namespace Supervertaler.Trados.VoiceControl
             }
             catch { /* fall through to defaults */ }
             return Defaults();
+        }
+
+        /// <summary>
+        /// The built-in defaults a command file saved under generation
+        /// <paramref name="savedVersion"/> has never been offered.
+        ///
+        /// <para>Only defaults that shipped AFTER that generation. Until 20.204 every
+        /// default missing from the file was added, so a command the translator had
+        /// deleted - or renamed - came back with each new generation, and the Help
+        /// had to say "untick it rather than delete it". A file with no generation
+        /// (0) predates the mechanism, or is a Workbench export: everything it lacks
+        /// is new to it.</para>
+        ///
+        /// <para>And never one that shares a spoken form with a command the file
+        /// already has, aliases included. The first command to claim a phrase owns
+        /// it (VoiceCommandExecutor.LoadCommands), so a default added beside the
+        /// translator's own "merge segments" would be dead in part and live through
+        /// its other forms - a second command for words they had already given a
+        /// meaning.</para>
+        /// </summary>
+        internal static List<VoiceCommand> NewDefaultsFor(List<VoiceCommand> saved, int savedVersion)
+        {
+            var taken = new HashSet<string>(saved.SelectMany(c => c.AllForms()), StringComparer.OrdinalIgnoreCase);
+            return Defaults()
+                .Where(d => savedVersion == 0 || d.AddedIn > savedVersion)
+                .Where(d => !d.AllForms().Any(taken.Contains))
+                .ToList();
         }
 
         public static void Save(List<VoiceCommand> commands)
