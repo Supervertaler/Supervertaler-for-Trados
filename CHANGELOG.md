@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.205 / 19.20.205] – Unreleased
+
+### Changed
+- **In the TermLens popup (Alt+L), Up now edits the highlighted entry and Down shows its details.** Up and Down used to do the same as Left and Right. Now **Up** opens the highlighted entry for editing, like **E**, and **Down** shows or hides its details, like **I**. Holding Down shows the details once; they don't flicker. **Left**, **Right**, **Tab** and **Shift+Tab** move between the matches, as before, and all other keys work as before. The line at the bottom of the popup now reads "← → cycle · Enter insert · ↑/E edit · ↓/I info · Esc close", and the popup is always wide enough to show all of it.
+
 ## [18.20.204 / 19.20.204] – 2026-11-02
 
 ### Added

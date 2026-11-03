@@ -19,7 +19,9 @@ namespace Supervertaler.Trados.Controls
     ///     AutoTagActiveSegmentAction - so the two files each claimed the same
     ///     key for a different feature.) Re-pressing the open
     ///     shortcut closes the popup (toggle); cycling is keyboard-only inside.
-    ///   - Right / Down / Tab → next; Left / Up / Shift+Tab → previous.
+    ///   - Right / Tab → next; Left / Shift+Tab → previous.
+    ///   - Up / E opens the term editor; Down / I shows or hides the details.
+    ///     (Until 20.205 Up and Down cycled, the same as Left and Right.)
     ///   - Enter inserts the currently-highlighted match into the target segment
     ///     and closes the popup.
     ///   - Escape, click-outside, or focus loss closes without inserting.
@@ -101,7 +103,7 @@ namespace Supervertaler.Trados.Controls
                 Dock = DockStyle.Bottom,
                 AutoSize = false,
                 Height = UiScale.Pixels(18),
-                Text = "← → cycle  ·  Enter insert  ·  E edit  ·  I info  ·  Esc close",
+                Text = "← → cycle  ·  Enter insert  ·  ↑/E edit  ·  ↓/I info  ·  Esc close",
                 ForeColor = Color.FromArgb(120, 120, 120),
                 Font = new Font(Font.FontFamily, Font.Size - 1f, FontStyle.Regular),
                 TextAlign = ContentAlignment.MiddleLeft
@@ -186,7 +188,10 @@ namespace Supervertaler.Trados.Controls
             // Width: shrink to actual content width (so short segments get a
             // small popup), capped at maxAvailableWidth.
             int desiredWidth = Math.Min(pref.Width + chromeH, maxAvailableWidth);
-            int minWidth = UiScale.Pixels(280);
+            // At least wide enough for the key hint, so a one-chip popup does
+            // not cut off its end.
+            int hintWidth = TextRenderer.MeasureText(_hintLabel.Text, _hintLabel.Font).Width + chromeH;
+            int minWidth = Math.Min(Math.Max(UiScale.Pixels(280), hintWidth), maxAvailableWidth);
             desiredWidth = Math.Max(desiredWidth, minWidth);
 
             // Height: shrink to fit, cap at 80 % of the screen height (vs the
@@ -335,13 +340,11 @@ namespace Supervertaler.Trados.Controls
             switch (keyData)
             {
                 case Keys.Right:
-                case Keys.Down:
                 case Keys.Tab:
                     MoveCurrentNext();
                     return true;
 
                 case Keys.Left:
-                case Keys.Up:
                 case Keys.Shift | Keys.Tab:
                     MoveCurrentPrevious();
                     return true;
@@ -351,11 +354,20 @@ namespace Supervertaler.Trados.Controls
                         RequestInsert(_currentIndex + 1);
                     return true;
 
+                // Up and Down only duplicated Left and Right, so from 20.205
+                // they are E and I. Plain keys only, like E and I: Shift+Up and
+                // the like close the popup as any other key does.
                 case Keys.E:
+                case Keys.Up:
                     EditCurrentMatch();
                     return true;
 
                 case Keys.I:
+                case Keys.Down:
+                    // A held Down shows the details once instead of flickering
+                    // them on and off at the key-repeat rate.
+                    if (keyData == Keys.Down && IsAutoRepeat(msg))
+                        return true;
                     ToggleMetadataForCurrent();
                     return true;
 
@@ -375,6 +387,11 @@ namespace Supervertaler.Trados.Controls
             }
             return base.ProcessCmdKey(ref msg, keyData);
         }
+
+        // Bit 30 of a key-down's lParam is set when the key was already down,
+        // i.e. the message is a key repeat.
+        private static bool IsAutoRepeat(Message msg)
+            => ((long)msg.LParam & 0x40000000L) != 0;
 
         private static bool IsPureModifier(Keys keyData)
         {

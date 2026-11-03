@@ -4497,7 +4497,7 @@ namespace Supervertaler.Trados
         /// Opens a borderless floating version of the docked TermLens panel
         /// for the active segment. Acts as a toggle: if the popup is already
         /// open, the second Ctrl-tap closes it. Cycling between matches is
-        /// done with arrow keys / Tab inside the popup, not by re-pressing
+        /// done with Left / Right / Tab inside the popup, not by re-pressing
         /// the open shortcut.
         /// </summary>
         /// <summary>
@@ -4584,7 +4584,7 @@ namespace Supervertaler.Trados
             var instance = _currentInstance;
             if (instance == null || instance._activeDocument == null) return;
 
-            // Already open → close (toggle behaviour). Use arrow keys / Tab
+            // Already open → close (toggle behaviour). Use Left / Right / Tab
             // inside the popup to cycle the highlighted match.
             if (_currentPopup != null && !_currentPopup.IsDisposed)
             {
