@@ -14,8 +14,11 @@ namespace Supervertaler.Trados.Controls
     ///
     /// Lifecycle:
     ///   - Opened via TermLensEditorViewPart.HandleTermLensPopup() – bound to
-    ///     Ctrl-tap. (This said "and Ctrl+Alt+G (fallback)" until 20.184;
-    ///     Ctrl+Alt+G has been the AutoTagger for some time - see
+    ///     Alt+L (TermLensPopupAction). It was a Ctrl tap until the tap was
+    ///     retired; CtrlTapFilter is still registered, with ctrlTapEnabled:
+    ///     false, for its Escape handling only. (This said "and Ctrl+Alt+G
+    ///     (fallback)" until 20.184; Ctrl+Alt+G has been the AutoTagger for
+    ///     some time - see
     ///     AutoTagActiveSegmentAction - so the two files each claimed the same
     ///     key for a different feature.) Re-pressing the open
     ///     shortcut closes the popup (toggle); cycling is keyboard-only inside.
@@ -280,9 +283,9 @@ namespace Supervertaler.Trados.Controls
         //     The editor dialog flow sets _suppressDeactivateClose to keep the
         //     two close paths from racing.
         //   - Any key not handled by ProcessCmdKey closes the popup, except
-        //     pure-modifier presses (Ctrl/Shift/Alt alone) which would
-        //     otherwise close the popup the moment the user releases the
-        //     opening Ctrl-tap.
+        //     pure-modifier presses (Ctrl/Shift/Alt alone), which start every
+        //     modified key - the Shift of Shift+Tab would otherwise close the
+        //     popup before the Tab arrived.
 
         protected override void OnShown(EventArgs e)
         {
@@ -378,8 +381,8 @@ namespace Supervertaler.Trados.Controls
 
             // Any other keypress closes the popup, except pure modifier
             // presses (Ctrl/Shift/Alt on their own). Without this carve-out,
-            // the keyup that follows the opening Ctrl-tap would close the
-            // popup the moment it appeared.
+            // the Shift of Shift+Tab would close the popup before the Tab
+            // arrived.
             if (!IsPureModifier(keyData))
             {
                 Close();
