@@ -6,6 +6,9 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using A = DocumentFormat.OpenXml.Drawing;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 
 namespace Supervertaler.Trados.Core.Export
 {
@@ -34,6 +37,11 @@ namespace Supervertaler.Trados.Core.Export
         private const string SUBTITLE_URL = "https://supervertaler.com/";
         private const string SUBTITLE_DISPLAY = "Supervertaler.com";
 
+        // The blue Sv mark of Supervertaler for Trados (the repo's
+        // sv-icon-512.png, embedded by the .csproj), shown before the title.
+        private const string ICON_RESOURCE = "Supervertaler.Trados.Resources.sv-icon-512.png";
+        private const long ICON_SIZE_EMU = 274320;   // 0.3 inch (914400 EMU = 1 inch)
+
         public void Render(List<ExportSegment> segments, ExportOptions options, string outputPath)
         {
             using (var doc = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document))
@@ -61,7 +69,8 @@ namespace Supervertaler.Trados.Core.Export
         // proofreaders / clients receive a visually consistent document
         // regardless of which Supervertaler product produced it:
         //   - Decorative horizontal line (━ × 50, blue 10pt)
-        //   - "🌐 Supervertaler Bilingual Table" 18pt bold blue, centered
+        //   - Sv icon + "Supervertaler Bilingual Table" 18pt bold blue,
+        //     centered (the Workbench writes a 🌐 there)
         //   - Clickable URL subtitle (10pt blue underlined)
         //   - Decorative horizontal line
         //   - Project / Source file / Languages / Segments / Exported
@@ -74,15 +83,19 @@ namespace Supervertaler.Trados.Core.Export
             // Decorative line above title.
             body.AppendChild(MakeDecorativeLine());
 
-            // Title: globe emoji + "Supervertaler Bilingual Table"
-            // (the emoji uses a non-bold run so the emoji glyph itself
-            // isn't bolded; the title text after it is bold blue 18pt).
+            // Title: the Sv icon + "Supervertaler Bilingual Table" in bold
+            // blue 18pt. If the icon can't be read, the title goes without it.
             var titlePara = new Paragraph(
                 new ParagraphProperties(
                     new Justification() { Val = JustificationValues.Center },
-                    new SpacingBetweenLines() { Before = "0", After = "120" }),
-                MakeRun("🌐 ", fontSize: "36"),
-                MakeRun("Supervertaler Bilingual Table", bold: true, fontSize: "36", color: "0066CC"));
+                    new SpacingBetweenLines() { Before = "0", After = "120" }));
+            var icon = MakeIconRun(mainPart);
+            if (icon != null)
+            {
+                titlePara.AppendChild(icon);
+                titlePara.AppendChild(MakeRun(" ", fontSize: "36"));
+            }
+            titlePara.AppendChild(MakeRun("Supervertaler Bilingual Table", bold: true, fontSize: "36", color: "0066CC"));
             body.AppendChild(titlePara);
 
             // Subtitle: clickable URL distinguishing Trados-produced files
@@ -128,6 +141,52 @@ namespace Supervertaler.Trados.Core.Export
                     MakeRun("are copied from your Trados segments for reference only. "
                           + "You can edit them here, but the changes are not read back on "
                           + "re-import – only the target text is.", italic: true)));
+            }
+        }
+
+        /// <summary>The Sv icon as an inline picture, 0.3 inch square and
+        /// lowered 4 pt so it sits level with the title text. Null when the
+        /// image isn't in the assembly: the export then goes ahead without
+        /// it rather than failing.</summary>
+        private static Run MakeIconRun(MainDocumentPart mainPart)
+        {
+            using (var stream = typeof(DocxRenderer).Assembly.GetManifestResourceStream(ICON_RESOURCE))
+            {
+                if (stream == null) return null;
+                var imagePart = mainPart.AddImagePart(ImagePartType.Png);
+                imagePart.FeedData(stream);
+                string relId = mainPart.GetIdOfPart(imagePart);
+
+                var inline = new DW.Inline(
+                    new DW.Extent() { Cx = ICON_SIZE_EMU, Cy = ICON_SIZE_EMU },
+                    new DW.EffectExtent() { LeftEdge = 0L, TopEdge = 0L, RightEdge = 0L, BottomEdge = 0L },
+                    new DW.DocProperties() { Id = 1U, Name = "Supervertaler for Trados", Description = "Supervertaler for Trados" },
+                    new DW.NonVisualGraphicFrameDrawingProperties(
+                        new A.GraphicFrameLocks() { NoChangeAspect = true }),
+                    new A.Graphic(
+                        new A.GraphicData(
+                            new PIC.Picture(
+                                new PIC.NonVisualPictureProperties(
+                                    new PIC.NonVisualDrawingProperties() { Id = 0U, Name = "sv-icon.png" },
+                                    new PIC.NonVisualPictureDrawingProperties()),
+                                new PIC.BlipFill(
+                                    new A.Blip() { Embed = relId },
+                                    new A.Stretch(new A.FillRectangle())),
+                                new PIC.ShapeProperties(
+                                    new A.Transform2D(
+                                        new A.Offset() { X = 0L, Y = 0L },
+                                        new A.Extents() { Cx = ICON_SIZE_EMU, Cy = ICON_SIZE_EMU }),
+                                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle })))
+                        { Uri = "http://schemas.openxmlformats.org/drawingml/2006/picture" }))
+                {
+                    DistanceFromTop = 0U, DistanceFromBottom = 0U,
+                    DistanceFromLeft = 0U, DistanceFromRight = 0U
+                };
+
+                // w:position is in half-points: -8 lowers the picture by 4 pt.
+                return new Run(
+                    new RunProperties(new Position() { Val = "-8" }),
+                    new Drawing(inline));
             }
         }
 

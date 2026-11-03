@@ -312,6 +312,11 @@
     <EmbeddedResource Include="Resources\sv-icon.ico">
       <LogicalName>Supervertaler.Trados.Resources.sv-icon.ico</LogicalName>
     </EmbeddedResource>
+    <!-- The same blue Sv mark as a PNG, placed before the title of an
+         exported Bilingual Table (Core\Export\DocxRenderer). -->
+    <EmbeddedResource Include="..\..\sv-icon-512.png">
+      <LogicalName>Supervertaler.Trados.Resources.sv-icon-512.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- Copy compiled .plugin.resources sidecar to output (needed by Trados plugin framework) -->
