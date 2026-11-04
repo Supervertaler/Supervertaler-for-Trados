@@ -557,16 +557,11 @@ namespace Supervertaler.Trados
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[TermLens] MultiTerm loading failed: {ex}");
-                try
-                {
-                    var logDir = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "Supervertaler.Trados");
-                    Directory.CreateDirectory(logDir);
-                    File.AppendAllText(Path.Combine(logDir, "multiterm_debug.log"),
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] LoadMultiTermTermbases failed: {ex}\n\n");
-                }
-                catch { /* ignore log write errors */ }
+                // Written even with diagnostic logging off, as the old
+                // multiterm_debug.log was - but that file sat in
+                // %LocalAppData%\Supervertaler.Trados, which the next Studio
+                // start deletes, so it was gone before anyone could send it.
+                DiagnosticLog.WriteAlways("MultiTerm", $"LoadMultiTermTermbases failed: {ex}");
             }
         }
 

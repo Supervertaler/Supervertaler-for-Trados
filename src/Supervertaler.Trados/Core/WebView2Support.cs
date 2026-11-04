@@ -85,7 +85,7 @@ namespace Supervertaler.Trados.Core
         public static bool IsAvailable => !string.IsNullOrEmpty(RuntimeVersion);
 
         /// <summary>
-        /// Where WebView2 keeps its profile: cookies, cache, local storage.
+        /// Where WebView2 keeps its profile: cookies, sign-ins, cache, local storage.
         ///
         /// <para>Deliberately <b>not</b> under <see cref="Settings.UserDataPath"/>.
         /// That folder is user-chosen and shared with Workbench, so it is
@@ -93,13 +93,30 @@ namespace Supervertaler.Trados.Core
         /// high-churn cache that must never be synced. This one is pinned to
         /// LocalApplicationData, which is always machine-local.</para>
         ///
+        /// <para>And deliberately <b>not</b> in <c>%LocalAppData%\Supervertaler.Trados</c>:
+        /// that is the pre-unification data folder, which
+        /// <c>UserDataPath.CleanupLegacyFolders</c> deletes at every Studio start
+        /// once it has been migrated. The profile lived there until 205, so every
+        /// sign-in (ProZ, Juremy) and cookie choice was gone after a restart. The
+        /// update checker's cache fell into the same trap and moved to the same
+        /// folder (<see cref="UpdateChecker.CacheFilePath"/>);
+        /// <c>%LocalAppData%\Supervertaler</c> is left alone. The old profile goes
+        /// with the rest of the legacy folder at the next start.</para>
+        ///
+        /// <para>One folder for every Studio on the machine. WebView2 allows one
+        /// browser process per profile; a second Studio opened alongside joins the
+        /// first one's (tested with 2024 x86 and 2026 x64, runtime 156: same
+        /// process, cookies shared live) and keeps working when the first closes
+        /// or crashes. A host that cannot reach the running browser - one on
+        /// another Windows desktop - fails per tab with 0x800700AA instead.</para>
+        ///
         /// <para>It is also why signing in to ProZ or Juremy inside the embedded
         /// browser is a separate session from the one in the user's real browser:
         /// different profile, different cookie jar.</para>
         /// </summary>
         public static string UserDataFolder => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Supervertaler.Trados", "webview2");
+            "Supervertaler", "trados-webview2");
 
         /// <summary>
         /// Creates the shared WebView2 environment, or returns null when the
@@ -114,6 +131,16 @@ namespace Supervertaler.Trados.Core
             {
                 var folder = UserDataFolder;
                 Directory.CreateDirectory(folder);
+
+                // WebView2 does not report an unwritable profile folder as such.
+                // Tested (runtime 156): with an existing profile every tab fails
+                // with "resource in use" (0x800700AA); with a new, empty one the
+                // window sits on "Loading…" for about a minute, fails, and leaves
+                // a browser process behind. Writing a file first turns both into
+                // the browser fallback, via the catch below. DeleteOnClose: the
+                // file goes even if Studio dies before the using block ends.
+                using (new FileStream(Path.Combine(folder, ".write-test-" + Guid.NewGuid().ToString("N")),
+                    FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
 
                 return await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,   // use the installed Evergreen runtime
