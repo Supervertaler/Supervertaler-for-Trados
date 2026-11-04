@@ -99,6 +99,8 @@ and displays their terms as green chips alongside Supervertaler terms.
 | `src/Supervertaler.Trados/Core/HelpSystem.cs` | Context-sensitive help – maps UI elements to GitBook docs pages |
 | `build.sh` | Build → package → deploy script; aborts if Trados is running |
 | `package_plugin.py` | Creates OPC-format `.sdlplugin` (NOT plain ZIP – needs `[Content_Types].xml`, `_rels/`) |
+| `tools/StudioReferenceCheck/` | build.sh runs it on every package before installing: Studio refuses a plugin whose DLL references an `Sdl.*` assembly missing from its `pluginconfig.xml` (e.g. `Sdl.Desktop.Platform`) – reach such parts by reflection |
+| `src/Supervertaler.Trados/Core/StudioEditor.cs` | Use `StudioEditor.Controller` instead of `GetController<EditorController>()` (build.sh enforces it): the latter sets the Editor view up early and Studio then fails to open a first document that reports parsing messages |
 
 ### External resources
 

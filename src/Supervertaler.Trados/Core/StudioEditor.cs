@@ -1,11 +1,11 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using Sdl.Core.PluginFramework;
 using Sdl.Core.PluginFramework.Integration;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
-using Sdl.Desktop.Platform.PluginManagement;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
 
 namespace Supervertaler.Trados.Core
@@ -36,6 +36,17 @@ namespace Supervertaler.Trados.Core
     /// so every session whose first document had such messages failed this way.
     /// Opening any other document first hid it: that shows the view.</para>
     ///
+    /// <para><b>By reflection, and why.</b> The two Studio parts this needs,
+    /// <c>StudioPluginManager</c> and <c>IViewPart</c>, live in
+    /// Sdl.Desktop.Platform, which is not on Studio's list of assemblies a plugin
+    /// may reference (pluginconfig.xml). A plugin DLL that references it is
+    /// refused when Studio starts ("Assembly reference is not public") and Studio
+    /// runs without the plugin - which is what the first version of this fix did.
+    /// So they are looked up by name in the copy Studio has loaded, and this file
+    /// must never name a type from that assembly directly. build.sh checks every
+    /// package against Studio's list (tools/StudioReferenceCheck) so that such a
+    /// reference cannot be installed again.</para>
+    ///
     /// <para>Checked by decompiling Studio 2024, Studio 2026 and the 2026 beta,
     /// which all do this the same way.</para>
     ///
@@ -49,6 +60,12 @@ namespace Supervertaler.Trados.Core
     internal static class StudioEditor
     {
 #if !STUDIO17
+        private const string PlatformAssemblyName = "Sdl.Desktop.Platform";
+
+        // Studio's singleton once found, so the reflection runs once per session
+        // rather than on every MCP request and editor action. It lives as long as
+        // Studio does, so it cannot go stale.
+        private static EditorController _controller;
         private static int _controllerFallbackLogged;
 #endif
 
@@ -60,9 +77,9 @@ namespace Supervertaler.Trados.Core
         /// resolving it from the container gives the very object GetController
         /// returns (GetController resolves it the same way and only then sets up
         /// the view), with nothing set up. Its own Initialize is empty, and nothing
-        /// this plugin calls on it needs the view. Should a later Studio stop
-        /// registering it like that, this falls back to GetController - working,
-        /// with the old gap - and says so once in the log.
+        /// this plugin calls on it needs the view. Should Studio's container not be
+        /// reachable, this falls back to GetController - working, with the old gap -
+        /// and says so once in the log.
         /// </summary>
         public static EditorController Controller
         {
@@ -71,16 +88,32 @@ namespace Supervertaler.Trados.Core
 #if STUDIO17
                 return SdlTradosStudio.Application?.GetController<EditorController>();
 #else
+                var found = _controller;
+                if (found != null) return found;
+
                 string why;
                 try
                 {
-                    var controller = StudioPluginManager.Resolve<EditorController>();
-                    if (controller != null) return controller;
-                    why = "the container returned null";
+                    var resolve = FindResolve();
+                    if (resolve == null)
+                    {
+                        why = "StudioPluginManager.Resolve<T>() not found";
+                    }
+                    else
+                    {
+                        found = resolve.MakeGenericMethod(typeof(EditorController)).Invoke(null, null) as EditorController;
+                        if (found != null)
+                        {
+                            _controller = found;
+                            return found;
+                        }
+                        why = "the container returned null";
+                    }
                 }
                 catch (Exception ex)
                 {
-                    why = ex.GetType().Name + ": " + ex.Message;
+                    var inner = (ex as TargetInvocationException)?.InnerException ?? ex;
+                    why = inner.GetType().Name + ": " + inner.Message;
                 }
 
                 if (Interlocked.Exchange(ref _controllerFallbackLogged, 1) == 0)
@@ -141,11 +174,25 @@ namespace Supervertaler.Trados.Core
                     DiagnosticLog.WriteAlways("StudioEditor", typeof(T).Name + ": no ViewPart extension found.");
                     return null;
                 }
-                ExtensionsFactory.Create<Sdl.Desktop.Platform.IViewPart>(extension);
+
+                var create = FindCreateViewPart();
+                if (create == null)
+                {
+                    DiagnosticLog.WriteAlways("StudioEditor", typeof(T).Name +
+                        ": cannot be created (IViewPart or ExtensionsFactory.Create<T>(IExtension) not found).");
+                    return null;
+                }
+                var parameters = create.GetParameters();
+                var args = new object[parameters.Length];
+                args[0] = extension;
+                for (int i = 1; i < parameters.Length; i++)
+                    args[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : null;
+                create.Invoke(null, args);
             }
             catch (Exception ex)
             {
-                try { DiagnosticLog.WriteAlways("StudioEditor", typeof(T).Name + ": could not be created: " + ex.GetType().Name + ": " + ex.Message); }
+                var inner = (ex as TargetInvocationException)?.InnerException ?? ex;
+                try { DiagnosticLog.WriteAlways("StudioEditor", typeof(T).Name + ": could not be created: " + inner.GetType().Name + ": " + inner.Message); }
                 catch { }
                 return null;
             }
@@ -156,5 +203,40 @@ namespace Supervertaler.Trados.Core
             return pane;
 #endif
         }
+
+#if !STUDIO17
+        // The two lookups below only find members: no logging, nothing invoked, so
+        // tools/studio_editor_test.ps1 can run them against Studio's own DLLs and
+        // catch a renamed member, which would otherwise only show as the log line
+        // and the old behaviour.
+
+        /// <summary><c>StudioPluginManager.Resolve&lt;T&gt;()</c> (open generic), or null.</summary>
+        internal static MethodInfo FindResolve() =>
+            PlatformAssembly()
+                ?.GetType(PlatformAssemblyName + ".PluginManagement.StudioPluginManager", false)
+                ?.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .FirstOrDefault(m => m.Name == "Resolve" && m.IsGenericMethodDefinition
+                                     && m.GetGenericArguments().Length == 1
+                                     && m.GetParameters().Length == 0);
+
+        /// <summary><c>ExtensionsFactory.Create&lt;Sdl.Desktop.Platform.IViewPart&gt;(IExtension, ...)</c>,
+        /// ready to invoke, or null.</summary>
+        internal static MethodInfo FindCreateViewPart()
+        {
+            var viewPartType = PlatformAssembly()?.GetType(PlatformAssemblyName + ".IViewPart", false);
+            var create = typeof(ExtensionsFactory).GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .FirstOrDefault(m => m.Name == "Create" && m.IsGenericMethodDefinition
+                                     && m.GetGenericArguments().Length == 1
+                                     && m.GetParameters().Length >= 1
+                                     && m.GetParameters()[0].ParameterType == typeof(IExtension));
+            return viewPartType == null || create == null ? null : create.MakeGenericMethod(viewPartType);
+        }
+
+        /// <summary>The Sdl.Desktop.Platform Studio has loaded (it is loaded long
+        /// before any plugin code runs), or null.</summary>
+        private static Assembly PlatformAssembly() =>
+            AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => string.Equals(a.GetName().Name, PlatformAssemblyName, StringComparison.Ordinal));
+#endif
     }
 }
