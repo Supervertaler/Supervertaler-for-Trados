@@ -550,6 +550,24 @@ namespace Supervertaler.Trados.Core
         /// segment no longer holds this source. See
         /// <see cref="SourceFingerprint"/> for what that protects against.</summary>
         [DataMember(Name = "fp", Order = 9, EmitDefaultValue = false)] public string Fp { get; set; }
+        /// <summary>The source holds inline tags and no text (email links, a
+        /// field, an image). Fill it with update_segments' copySource, which
+        /// clones the source's tags as Ctrl+Insert does, rather than retyping
+        /// its markers. Absent on every other segment.</summary>
+        [DataMember(Name = "tagOnly", Order = 10, EmitDefaultValue = false)] public bool TagOnly { get; set; }
+    }
+
+    /// <summary>A segment get_segments matched but did not list, and why - so
+    /// that nothing in the document is ever left out without a word.</summary>
+    [DataContract]
+    public class BridgeOmittedSegment
+    {
+        [DataMember(Name = "id", Order = 0)] public string Id { get; set; }
+        [DataMember(Name = "number", Order = 1, EmitDefaultValue = false)] public string Number { get; set; }
+        [DataMember(Name = "fileName", Order = 2, EmitDefaultValue = false)] public string FileName { get; set; }
+        /// <summary>"empty": the source holds no text and no tags.
+        /// "unreadable": reading the segment threw, so it could not be checked.</summary>
+        [DataMember(Name = "reason", Order = 3)] public string Reason { get; set; }
     }
 
     [DataContract]
@@ -562,6 +580,15 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "segments", Order = 4, EmitDefaultValue = false)]
         public List<BridgeSegmentRecord> Segments { get; set; }
         [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>Segments that matched the filters but are not listed, with
+        /// the reason; at most <see cref="MaxOmittedListed"/>, all counted in
+        /// <see cref="OmittedCount"/>. With no filters, totalMatching plus
+        /// omittedCount is get_active_project's totalSegments.</summary>
+        [DataMember(Name = "omitted", Order = 6, EmitDefaultValue = false)]
+        public List<BridgeOmittedSegment> Omitted { get; set; }
+        [DataMember(Name = "omittedCount", Order = 7, EmitDefaultValue = false)] public int OmittedCount { get; set; }
+
+        public const int MaxOmittedListed = 50;
     }
 
     [DataContract]
@@ -1342,6 +1369,22 @@ namespace Supervertaler.Trados.Core
         /// afterwards (unless <see cref="Locked"/> says otherwise). The way to fix a
         /// locked segment in one call.</summary>
         [DataMember(Name = "unlockForWrite", EmitDefaultValue = false)] public bool UnlockForWrite { get; set; }
+
+        /// <summary>Fill the target with a copy of the source - text, tags and
+        /// all, each tag keeping the source's id - as Studio's Copy Source to
+        /// Target (Ctrl+Insert) does, instead of writing <see cref="Target"/>. The
+        /// way to fill a segment of tags only, and safe on any segment that stays
+        /// as its source (a number, a URL). Not together with
+        /// <see cref="Target"/>. See <see cref="TargetBuilder.CopySource"/>.</summary>
+        [DataMember(Name = "copySource", EmitDefaultValue = false)] public bool CopySource { get; set; }
+
+        /// <summary>Write a <see cref="Target"/> sent WITHOUT an <see cref="Fp"/>
+        /// even though its tags would not match the source's. Without it such a
+        /// write is refused and nothing changes: no fp means no sign the source
+        /// was read, and a target whose tags were guessed is what left broken
+        /// segments on a real job (4 Nov 2026). With an fp, a mismatch is written
+        /// and reported, as before. Overrides nothing else.</summary>
+        [DataMember(Name = "force", EmitDefaultValue = false)] public bool Force { get; set; }
     }
 
     [DataContract]

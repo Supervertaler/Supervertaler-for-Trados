@@ -1525,12 +1525,32 @@ namespace Supervertaler.Trados
             {
                 response.Available = true;
                 int matching = 0;
+                int tagOnlyReturned = 0;
+                int emptyOmitted = 0, unreadableOmitted = 0;
+
+                // Nothing is left out without a word: every segment that is not
+                // listed is counted, and the first few named, with the reason.
+                void Omit(string omittedId, string fileName, string reason)
+                {
+                    response.OmittedCount++;
+                    if (reason == "empty") emptyOmitted++; else unreadableOmitted++;
+                    if (response.Omitted == null) response.Omitted = new List<BridgeOmittedSegment>();
+                    if (response.Omitted.Count >= BridgeSegmentsResponse.MaxOmittedListed) return;
+                    response.Omitted.Add(new BridgeOmittedSegment
+                    {
+                        Id = omittedId,
+                        Number = omittedId?.Substring(omittedId.LastIndexOf(':') + 1),
+                        FileName = string.IsNullOrEmpty(fileName) ? null : fileName,
+                        Reason = reason
+                    });
+                }
 
                 foreach (var pair in _activeDocument.SegmentPairs)
                 {
                     string source, target, status, id;
                     string segFileName = null;
                     bool isLocked;
+                    bool tagOnly, emptySource;
                     int? matchPercent = null;
                     string originType = null;
                     try
@@ -1559,8 +1579,18 @@ namespace Supervertaler.Trados
                         var sourceSer = SegmentTagHandler.Serialize(pair.Source);
                         source = Core.Export.BilingualTagNamer.ApplySemanticNames(
                             sourceSer.SerializedText ?? "", sourceSer.TagMap);
-                        if (string.IsNullOrWhiteSpace(SegmentTagHandler.StripTagPlaceholders(source)))
-                            continue; // structural/empty segment – same rule as the bilingual export
+
+                        // A source of tags only is a segment to fill like any
+                        // other (Ctrl+Insert in Studio; copySource here) and is
+                        // listed, marked tagOnly. Until 205 it was skipped with the
+                        // empty ones, silently (4 Nov 2026: 48 segments, 46 listed,
+                        // and a request for one of them by number returned none).
+                        // A source with neither text nor tags has nothing to
+                        // translate: still left out, but reported in 'omitted'.
+                        tagOnly = SegmentTagHandler.IsTagOnly(sourceSer);
+                        emptySource = !tagOnly && SegmentTagHandler.IsEmptySource(sourceSer);
+                        if (emptySource && !string.IsNullOrEmpty(query.Contains))
+                            continue; // nothing in it to match
 
                         if (pair.Target != null)
                         {
@@ -1615,6 +1645,23 @@ namespace Supervertaler.Trados
                     {
                         System.Diagnostics.Debug.WriteLine(
                             $"[SupervertalerBridge] segment read threw, skipping: {ex.Message}");
+                        // Whether it matched the filters cannot be known; it is
+                        // reported rather than silently missing.
+                        string badId = null;
+                        try
+                        {
+                            badId = (_activeDocument.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id ?? "")
+                                    + ":" + (pair.Properties?.Id.Id ?? "");
+                        }
+                        catch { }
+                        Omit(badId, null, "unreadable");
+                        continue;
+                    }
+
+                    if (emptySource)
+                    {
+                        // Every filter matched; only the empty source keeps it out.
+                        Omit(id, segFileName, "empty");
                         continue;
                     }
 
@@ -1640,8 +1687,10 @@ namespace Supervertaler.Trados
                         Origin = originType,
                         // Hashed from the same 'source' string being sent, so the
                         // write side can verify against exactly what was read.
-                        Fp = SourceFingerprint.Of(source)
+                        Fp = SourceFingerprint.Of(source),
+                        TagOnly = tagOnly
                     });
+                    if (tagOnly) tagOnlyReturned++;
                 }
 
                 response.TotalMatching = matching;
@@ -1653,6 +1702,22 @@ namespace Supervertaler.Trados
                     response.Note = ((response.Note ?? "") + " Note: this is a merged multi-file document and " +
                         "segment numbers restart per file, so the number range matched in every file – check " +
                         "each hit's fileName, or pass 'file' to target one file.").Trim();
+                if (tagOnlyReturned > 0)
+                    response.Note = ((response.Note ?? "") + $" {tagOnlyReturned} of the segments returned hold " +
+                        "only inline tags and no text (tagOnly: true). Fill one by sending update_segments " +
+                        "{id, fp, copySource: true} – a copy of its source, tags and all, as Ctrl+Insert does in " +
+                        "Studio – rather than retyping its tag markers.").Trim();
+                if (emptyOmitted > 0)
+                    response.Note = ((response.Note ?? "") + $" {emptyOmitted} segment(s) matching the filters are " +
+                        "not listed because their source is empty (no text and no tags – typically left behind by " +
+                        "merging segments across paragraphs): nothing to translate. See 'omitted', reason 'empty'.").Trim();
+                if (unreadableOmitted > 0)
+                    response.Note = ((response.Note ?? "") + $" WARNING: {unreadableOmitted} segment(s) could not be " +
+                        "read and are not listed – see 'omitted', reason 'unreadable'. Tell the user: they may need " +
+                        "checking in Studio.").Trim();
+                if (response.OmittedCount > (response.Omitted?.Count ?? 0))
+                    response.Note = ((response.Note ?? "") + $" 'omitted' names the first {response.Omitted.Count} " +
+                        $"of {response.OmittedCount}.").Trim();
             }
             catch (Exception ex)
             {
@@ -1755,6 +1820,7 @@ namespace Supervertaler.Trados
             int trackedWholeSegment = 0;
             int trackedTagsReplaced = 0;   // segments whose tags were replaced without a revision
             int staleFingerprints = 0;
+            int tagRefusals = 0;           // no-fp writes refused for tags that would not match
 
             // updateTm: the segments written, to send to the TM once the whole
             // batch is in - so each one's context is its neighbour as it now reads.
@@ -1796,6 +1862,13 @@ namespace Supervertaler.Trados
                     continue;
                 }
 
+                if (u.CopySource && u.Target != null)
+                {
+                    item.Error = "send either 'target' or copySource: true, not both – nothing written";
+                    response.Failed++;
+                    continue;
+                }
+
                 // #134: a locked segment is refused unless the caller asked to
                 // unlock it - either for this write only (unlockForWrite: the lock
                 // is put back afterwards) or for good (locked: false). An item that
@@ -1805,7 +1878,7 @@ namespace Supervertaler.Trados
                 var lockedBefore = pair.Properties?.IsLocked == true;
                 item.LockedBefore = lockedBefore;
                 item.LockedAfter = lockedBefore;
-                var lockOnly = u.Target == null && string.IsNullOrEmpty(u.Status) && u.Locked != null;
+                var lockOnly = u.Target == null && !u.CopySource && string.IsNullOrEmpty(u.Status) && u.Locked != null;
                 var unlockFirst = lockedBefore && (u.UnlockForWrite || u.Locked == false);
                 if (lockedBefore && !unlockFirst && !lockOnly)
                 {
@@ -1853,7 +1926,8 @@ namespace Supervertaler.Trados
                 // Resolve the requested status up front so an unknown name fails
                 // the whole item before any content is written.
                 var statusName = u.Status;
-                bool statusDefaulted = string.IsNullOrEmpty(statusName) && u.Target != null;
+                bool writesTarget = u.Target != null || u.CopySource;
+                bool statusDefaulted = string.IsNullOrEmpty(statusName) && writesTarget;
                 if (statusDefaulted)
                     statusName = "Draft";
 
@@ -1871,9 +1945,9 @@ namespace Supervertaler.Trados
                     setStatus = true;
                 }
 
-                if (u.Target == null && !setStatus && u.Locked == null)
+                if (!writesTarget && !setStatus && u.Locked == null)
                 {
-                    item.Error = "nothing to do – provide 'target', 'status' and/or 'locked'";
+                    item.Error = "nothing to do – provide 'target' (or copySource: true), 'status' and/or 'locked'";
                     response.Failed++;
                     continue;
                 }
@@ -1898,6 +1972,36 @@ namespace Supervertaler.Trados
                 var targetText = u.Target;
                 if (req.DecodeEntities && targetText != null)
                     targetText = Core.EntityEscapes.Decode(targetText);
+
+                // Build the write on a detached copy first, so a write that cannot
+                // be built - or one sent with no fp whose tags would not match the
+                // source - is refused before anything changes: target, status and
+                // lock alike. Until 205 such a write went through, and the tag
+                // problem was reported afterwards as a warning (4 Nov 2026: a
+                // segment of tags only, its markers guessed, the target left
+                // broken until fixed by hand with Ctrl+Insert).
+                if (writesTarget)
+                {
+                    string refusal;
+                    bool mismatch;
+                    try
+                    {
+                        refusal = Core.TargetBuilder.Preflight(pair.Source, pair.Target, targetText, u.CopySource,
+                            requireMatchingTags: string.IsNullOrWhiteSpace(u.Fp) && !u.Force, out mismatch);
+                    }
+                    catch (Exception ex)
+                    {
+                        refusal = "could not prepare this write – nothing written: " + ex.Message;
+                        mismatch = false;
+                    }
+                    if (refusal != null)
+                    {
+                        item.Error = refusal;
+                        response.Failed++;
+                        if (mismatch) tagRefusals++;
+                        continue;
+                    }
+                }
 
                 string tagWarning = null;
 
@@ -1935,10 +2039,10 @@ namespace Supervertaler.Trados
 
                 try
                 {
-                    if (targetText != null)
+                    if (writesTarget)
                     {
                         var written = WriteSegmentTarget(pair, targetText, "Supervertaler MCP",
-                            semanticTagNames: true);
+                            semanticTagNames: true, copySource: u.CopySource);
                         tagWarning = written.TagWarning;
                         trackedNote = written.TrackedNote;
                         revisionMode = written.RevisionMode;
@@ -2067,6 +2171,13 @@ namespace Supervertaler.Trados
 
             // Outside the Applied>0 block on purpose: the case worth shouting about
             // is the one where EVERY item was refused, and that leaves Applied at 0.
+            if (tagRefusals > 0)
+                response.Note = $"{tagRefusals} of {req.Updates.Count} segment(s) were refused, nothing written for " +
+                    "them, because they were sent without an fp and their tags would not have matched the source – " +
+                    "see each item's 'error'. Do not guess tag markers: read those segments with get_segments, copy " +
+                    "the markers from the SOURCE field and send the fp, or send copySource: true for a segment of " +
+                    "tags only. " + (response.Note ?? "");
+
             if (staleFingerprints > 0)
                 response.Note = $"STOP: {staleFingerprints} of {req.Updates.Count} segment(s) were refused because " +
                     "their source no longer matches the fp read from get_segments, and nothing was written for " +
@@ -2123,6 +2234,10 @@ namespace Supervertaler.Trados
             /// <summary>The target's markup before and after the write, for the
             /// diagnostic log when Studio does not apply it.</summary>
             public string ShapeBefore, ShapeAfter;
+
+            /// <summary>Nothing could be built, so the edit was cancelled and the
+            /// segment left as it was (<see cref="Core.TargetBuilder"/>).</summary>
+            public bool NotBuilt;
         }
 
         /// <summary>
@@ -2142,8 +2257,10 @@ namespace Supervertaler.Trados
         /// markers as the source's formatting tags (update_segments: an MCP client
         /// may write them). False where the text can only hold &lt;tN&gt;, so a
         /// literal "&lt;b&gt;" in a translation stays text.</param>
+        /// <param name="copySource">Write a copy of the source instead of
+        /// <paramref name="targetText"/> (update_segments' copySource; Ctrl+Insert).</param>
         private SegmentTargetWrite WriteSegmentTarget(ISegmentPair pair, string targetText,
-            string undoName, bool semanticTagNames)
+            string undoName, bool semanticTagNames, bool copySource = false)
         {
             var written = new SegmentTargetWrite();
             Core.TrackingSuspension suspension = null;
@@ -2191,11 +2308,7 @@ namespace Supervertaler.Trados
                         // So: source-authoritative, always. (Apply on the Reports
                         // tab sends the target in the source's numbering for the
                         // same reason - SegmentTagHandler.SerializeAlignedTo.)
-                        bool reconstructed = false;
-                        var sourceSer = Core.SegmentTagHandler.Serialize(sp.Source);
-                        var tagMap = sourceSer.TagMap
-                            ?? new Dictionary<int, Core.TagInfo>();
-
+                        //
                         // How many comments this segment carried going in.
                         // Both write branches clear the target, and comments
                         // live only there, so without deliberate preservation
@@ -2205,36 +2318,21 @@ namespace Supervertaler.Trados
                         int commentsBefore =
                             Core.SegmentTagHandler.CaptureCommentMarkers(sp.Target).Count;
 
-                        var resolved = semanticTagNames
-                            ? Core.Export.BilingualTagNamer.ResolveSemanticNames(targetText, tagMap)
-                            : targetText;
-
-                        bool hasAnyMarker = tagMap.Count > 0
-                            || resolved.IndexOf("<t", StringComparison.Ordinal) >= 0;
-                        if (hasAnyMarker)
+                        // copySource: the source's own content, cloned, as
+                        // Ctrl+Insert does - no markers to get wrong.
+                        bool built = copySource
+                            ? Core.TargetBuilder.CopySource(sp.Target, sp.Source)
+                            : Core.TargetBuilder.FromText(sp.Target, sp.Source, targetText, semanticTagNames);
+                        if (!built)
                         {
-                            reconstructed = Core.SegmentTagHandler.ReconstructTarget(
-                                sp.Target, sp.Source, resolved, tagMap);
-                        }
-
-                        if (!reconstructed)
-                        {
-                            var plain = Core.SegmentTagHandler.StripTagPlaceholders(targetText);
-                            if (semanticTagNames)
-                                plain = System.Text.RegularExpressions.Regex.Replace(
-                                    plain, @"</?(?:bi|b|i|u)>", "",
-                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-                            var textTpl = Core.SegmentTagHandler.FindFirstText(sp.Source);
-                            if (textTpl != null)
-                            {
-                                var keptComments =
-                                    Core.SegmentTagHandler.CaptureCommentMarkers(sp.Target);
-                                sp.Target.Clear();
-                                var dest = Core.SegmentTagHandler.OpenCommentMarkers(
-                                    sp.Target, keptComments);
-                                Core.SegmentTagHandler.AppendText(dest, plain, sp.Source, tagMap, textTpl);
-                            }
+                            // Nothing could be built (a source of tags only and a
+                            // translation that needs text; an empty source to
+                            // copy). Until 205 this left the target as it was and
+                            // the write was reported as done. Now Studio is told
+                            // to drop the edit, and the caller is told why.
+                            cancel.Cancel = true;
+                            written.NotBuilt = true;
+                            return;
                         }
 
                         // Post-write audit. Whatever we just built, check that
@@ -2291,6 +2389,12 @@ namespace Supervertaler.Trados
                 // make edits no reviewer can see. Idempotent - the finally below
                 // covers the path where the write throws.
                 suspension?.Dispose();
+
+                if (written.NotBuilt)
+                    throw new InvalidOperationException(copySource
+                        ? "this segment's source is empty, so there is nothing to copy; nothing was written"
+                        : "this segment's source has no text to model new text on (it holds only tags), and the " +
+                          "target sent needs text or uses none of its tags; nothing was written");
 
                 // Read back once: to check that the write landed, and for
                 // EditCapture, which is told about a proposal only once it is in
@@ -2668,6 +2772,10 @@ namespace Supervertaler.Trados
             public List<string> SourceTagIds;
             public List<string> TargetTagIds;
             public string FileName;      // null unless multi-file attribution worked
+            // The source holds tags and no text, so Source is "" (see
+            // SegmentTagHandler.IsTagOnly). Listed like any segment since 205, so
+            // coverage counts it and check_tags checks it.
+            public bool TagOnly;
         }
 
         /// <summary>Collects a plain snapshot of every segment on the UI thread,
@@ -2701,7 +2809,12 @@ namespace Supervertaler.Trados
                     var sourceRaw = Core.SegmentTagHandler.StripTagPlaceholders(sourceSer.SerializedText ?? "");
                     var source = System.Text.RegularExpressions.Regex.Replace(
                         sourceRaw, @"\s+", " ").Trim();
-                    if (source.Length == 0) continue;
+                    // Empty segments are left out, as get_segments leaves them out.
+                    // A segment of tags only is not empty: until 205 it was left
+                    // out too, so check_tags never saw one and get_coverage never
+                    // counted one.
+                    bool tagOnly = Core.SegmentTagHandler.IsTagOnly(sourceSer);
+                    if (source.Length == 0 && !tagOnly) continue;
 
                     var targetSer = pair.Target != null
                         ? Core.SegmentTagHandler.Serialize(pair.Target) : null;
@@ -2739,7 +2852,8 @@ namespace Supervertaler.Trados
                         TargetTagIds = pair.Target != null ? Core.TagIdAudit.CollectTagIds(pair.Target) : null,
                         MatchPercent = BridgeReadMatchPercent(pair),
                         IsLocked = pair.Properties?.IsLocked == true,
-                        FileName = fileName
+                        FileName = fileName,
+                        TagOnly = tagOnly
                     });
                 }
                 catch { /* skip unreadable segment */ }
@@ -3510,11 +3624,17 @@ namespace Supervertaler.Trados
             }
             else if (q.Type == "tags")
             {
-                foreach (var s in translated)
+                // A segment of tags only has no text on either side, so it is not
+                // in 'translated'; it counts as filled once its target holds a tag.
+                var tagOnlyFilled = raw.Where(s => s.TagOnly && string.IsNullOrEmpty(s.Target)
+                                                   && s.TargetTagCount > 0).ToList();
+                response.SegmentsChecked += tagOnlyFilled.Count;
+                foreach (var s in translated.Concat(tagOnlyFilled))
                 {
                     if (s.SourceTagCount != s.TargetTagCount)
                     {
-                        AddIssue(s, $"source has {s.SourceTagCount} inline tag(s), target has {s.TargetTagCount}");
+                        AddIssue(s, $"source has {s.SourceTagCount} inline tag(s), target has {s.TargetTagCount}" +
+                            (s.TagOnly ? ". This segment holds only tags: repair it with update_segments {id, copySource: true}" : ""));
                         continue;
                     }
 
@@ -3528,8 +3648,9 @@ namespace Supervertaler.Trados
                     // verification.
                     var idMismatch = Core.TagIdAudit.DescribeListMismatch(s.SourceTagIds, s.TargetTagIds);
                     if (idMismatch != null)
-                        AddIssue(s, idMismatch +
-                            ". Re-send this segment with update_segments, copying the tag markers from its SOURCE field, to repair it");
+                        AddIssue(s, idMismatch + (s.TagOnly
+                            ? ". This segment holds only tags: repair it with update_segments {id, copySource: true}"
+                            : ". Re-send this segment with update_segments, copying the tag markers from its SOURCE field, to repair it"));
                 }
                 if (response.IssuesFound == 0)
                     response.Note = "Inline tag counts and underlying tag ids match in every translated segment.";
