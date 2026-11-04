@@ -143,7 +143,7 @@ namespace Supervertaler.Trados.Controls
                 return;
             }
 
-            // Normalise the URL to a single trailing slash so host-matching is stable.
+            // Normalise the URL to a single trailing slash (matching itself compares scheme, host and port).
             if (url.Length > 0 && !url.EndsWith("/")) url += "/";
 
             var gs = settings.GroupShareServers.FirstOrDefault();

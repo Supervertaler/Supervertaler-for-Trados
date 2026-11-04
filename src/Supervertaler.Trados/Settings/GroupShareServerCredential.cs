@@ -12,7 +12,7 @@ namespace Supervertaler.Trados.Settings
     [DataContract]
     public class GroupShareServerCredential
     {
-        /// <summary>Server base URL, e.g. <c>https://groupsharedev.sdlproducts.com/</c>. Matched by host.</summary>
+        /// <summary>Server base URL, e.g. <c>https://groupsharedev.sdlproducts.com/</c>. The login is used only for this exact address (scheme, host and port).</summary>
         [DataMember(Name = "baseUrl")]
         public string BaseUrl { get; set; } = "";
 

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Windows.Forms;
 using Sdl.LanguagePlatform.TranslationMemory;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
 using Supervertaler.Core;
@@ -146,7 +148,7 @@ namespace Supervertaler.Trados.Core
             ServerTmRef sref, Connections connections)
         {
             if (sref == null) yield break;
-            DiagnosticLog.Log("ServerTM", "OpenLanguageDirections: host=" + sref.BaseUri.Host
+            DiagnosticLog.Log("ServerTM", "OpenLanguageDirections: server=" + DisplayOrigin(sref.BaseUri)
                 + ", orgPath=" + sref.OrgPath + ", tmName=" + sref.TmName);
 
             TranslationProviderServer server;
@@ -192,7 +194,11 @@ namespace Supervertaler.Trados.Core
 
         private static TranslationProviderServer GetOrCreateServer(Uri baseUri, Connections connections)
         {
-            var key = baseUri.Host;
+            // One connection per server address (scheme, host and port), never
+            // per host name: https://server and http://server:8080 are different
+            // servers as far as a login is concerned.
+            var key = OriginOf(baseUri.AbsoluteUri);
+            if (key == null) return null;
             if (connections.Servers.TryGetValue(key, out var cached)) return cached;
 
             var creds = ResolveCredentials(baseUri);
@@ -218,11 +224,29 @@ namespace Supervertaler.Trados.Core
 
             // 2. Settings-based GroupShare credentials (primary, reliable). The
             //    user enters the server login once; the password is DPAPI-encrypted.
+            //    A stored login is used ONLY for the exact server address it was
+            //    saved for - same scheme, host and port (SameOrigin). A login for
+            //    https://server never goes to http://server or https://server:8080,
+            //    for GroupShare and Windows authentication alike.
+            string refusedFor = null;
             try
             {
                 var settings = SettingsService.Current;
-                var match = settings?.GroupShareServers?
-                    .FirstOrDefault(g => HostMatches(g.BaseUrl, baseUri));
+                var servers = settings?.GroupShareServers;
+                var match = servers?.FirstOrDefault(g => g != null && SameOrigin(g.BaseUrl, baseUri));
+                if (match == null)
+                {
+                    // Same host name, different address: say so (below) rather than
+                    // leave the user wondering why the TM never connects.
+                    refusedFor = servers?
+                        .Where(g => g != null && string.Equals(HostOf(g.BaseUrl), baseUri.Host, StringComparison.OrdinalIgnoreCase))
+                        .Select(g => g.BaseUrl)
+                        .FirstOrDefault();
+                    if (refusedFor != null)
+                        DiagnosticLog.WriteAlways("ServerTM", "Stored GroupShare login for " + refusedFor
+                            + " NOT used for " + DisplayOrigin(baseUri)
+                            + ": a login is only used for the exact server address it was saved for (scheme, host and port).");
+                }
                 if (match != null)
                 {
                     // "Windows" => AD / Windows authentication (useWindowsCredentials
@@ -235,8 +259,8 @@ namespace Supervertaler.Trados.Core
                     if (useWin || !string.IsNullOrEmpty(match.Username))
                     {
                         var pw = DpapiSecret.Unprotect(match.PasswordProtected);
-                        DiagnosticLog.Log("ServerTM", "Using settings-based credential for host "
-                            + baseUri.Host + " (user='" + match.Username + "', auth="
+                        DiagnosticLog.Log("ServerTM", "Using settings-based credential for "
+                            + DisplayOrigin(baseUri) + " (user='" + match.Username + "', auth="
                             + (useWin ? "Windows" : "GroupShare") + ").");
                         return new ServerTmCredentials
                         {
@@ -249,6 +273,14 @@ namespace Supervertaler.Trados.Core
             }
             catch (Exception ex) { DiagnosticLog.Log("ServerTM", "Settings credential lookup failed: " + ex.Message); }
 
+            var fromStudio = ResolveFromStudioStore(baseUri);
+            if (fromStudio == null && refusedFor != null)
+                ReportRefusedLogin(refusedFor, baseUri);
+            return fromStudio;
+        }
+
+        private static ServerTmCredentials ResolveFromStudioStore(Uri baseUri)
+        {
             // 3. Studio's credential store (opportunistic fallback; only populated
             //    when a Supervertaler bridged TM is also in the project).
             var store = _credentialStore;
@@ -303,11 +335,78 @@ namespace Supervertaler.Trados.Core
             return null;
         }
 
-        private static bool HostMatches(string baseUrl, Uri baseUri)
+        /// <summary>
+        /// The normalised origin of a server address - <c>scheme://host:port</c>,
+        /// lower case, the port always written out (443 for https, 80 for http
+        /// when not given) - or null when it is not an http(s) address. Accepts
+        /// Studio's prefixed forms (<c>sdltm.https://…</c>, <c>ps.https://…</c>)
+        /// and a bare host name, which is taken as https.
+        /// </summary>
+        internal static string OriginOf(string url)
         {
-            if (string.IsNullOrEmpty(baseUrl)) return false;
-            try { return string.Equals(new Uri(baseUrl).Host, baseUri.Host, StringComparison.OrdinalIgnoreCase); }
-            catch { return false; }
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            var s = url.Trim();
+            foreach (var prefix in new[] { "sdltm.", "ps." })
+            {
+                if (s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { s = s.Substring(prefix.Length); break; }
+            }
+            if (s.IndexOf("://", StringComparison.Ordinal) < 0) s = "https://" + s;
+            if (!Uri.TryCreate(s, UriKind.Absolute, out var u)) return null;
+            if (u.Scheme != Uri.UriSchemeHttps && u.Scheme != Uri.UriSchemeHttp) return null;
+            if (string.IsNullOrEmpty(u.Host)) return null;
+            return u.Scheme + "://" + u.IdnHost.ToLowerInvariant() + ":" + u.Port;
+        }
+
+        /// <summary>
+        /// True only when the stored server address and the TM's server are the
+        /// same origin: scheme, host (any case) and effective port. An unreadable
+        /// address on either side never matches.
+        /// </summary>
+        internal static bool SameOrigin(string storedBaseUrl, Uri tmBaseUri)
+        {
+            if (tmBaseUri == null) return false;
+            var a = OriginOf(storedBaseUrl);
+            var b = OriginOf(tmBaseUri.AbsoluteUri);
+            return a != null && b != null && string.Equals(a, b, StringComparison.Ordinal);
+        }
+
+        private static string HostOf(string url)
+        {
+            var o = OriginOf(url);
+            if (o == null) return null;
+            try { return new Uri(o).Host; } catch { return null; }
+        }
+
+        private static string DisplayOrigin(Uri u)
+        {
+            try { return u.GetLeftPart(UriPartial.Authority); } catch { return u?.Host ?? ""; }
+        }
+
+        private static int _refusalShown;
+
+        /// <summary>
+        /// A stored login that was not used because the TM is on another address
+        /// of the same host. The caller has logged it; the user is told the first
+        /// time in a session, since every search would otherwise repeat it.
+        /// </summary>
+        private static void ReportRefusedLogin(string storedBaseUrl, Uri tmBaseUri)
+        {
+            if (Interlocked.Exchange(ref _refusalShown, 1) == 1) return;
+            var text =
+                "Supervertaler did not connect to a GroupShare translation memory at\n"
+                + DisplayOrigin(tmBaseUri) + "\n\n"
+                + "Your stored GroupShare login is for\n" + storedBaseUrl + "\n\n"
+                + "A login is only used for the exact server address it was saved for – "
+                + "the same http or https, server name and port – so it was not sent to this one.\n\n"
+                + "If this really is your GroupShare server, enter this address on the GroupShare tab "
+                + "of Supervertaler’s settings. This is shown once; any further cases go to the diagnostic log.";
+            try
+            {
+                StartupNotices.Enqueue(null, "groupshare-login-not-used", owner =>
+                    MessageBox.Show(owner, text, "Supervertaler – GroupShare",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning));
+            }
+            catch (Exception ex) { DiagnosticLog.Log("ServerTM", "Could not show the GroupShare notice: " + ex.Message); }
         }
 
         private static IEnumerable<Uri> CredentialKeyCandidates(Uri baseUri)
