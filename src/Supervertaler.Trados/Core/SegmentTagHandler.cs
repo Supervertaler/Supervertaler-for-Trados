@@ -615,9 +615,13 @@ namespace Supervertaler.Trados.Core
 
                 // Find an IText node to use as a clone template
                 IText textTemplate = FindFirstText(sourceSegment);
-                if (textTemplate == null)
+                if (textTemplate == null && NeedsText(elements))
                 {
-                    // No text node in source – cannot create text in target via cloning
+                    // No text node in source – cannot create text in target via
+                    // cloning. A translation of tags alone needs none: a source
+                    // of tags only (email links, a field) used to fail here even
+                    // when its markers were sent exactly, and the write built
+                    // nothing (4 Nov 2026).
                     return false;
                 }
 
@@ -657,6 +661,18 @@ namespace Supervertaler.Trados.Core
                 // Any reconstruction failure → caller falls back to plain text
                 return false;
             }
+        }
+
+        /// <summary>True when any element, at any depth, is text that would be
+        /// written (an empty text element writes nothing).</summary>
+        private static bool NeedsText(List<ParsedElement> elements)
+        {
+            foreach (var e in elements)
+            {
+                if (e is ParsedText pt && !string.IsNullOrEmpty(pt.Text)) return true;
+                if (e is ParsedOpenTag ot && NeedsText(ot.Children)) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -1338,6 +1354,30 @@ namespace Supervertaler.Trados.Core
         {
             if (string.IsNullOrEmpty(text)) return text;
             return TagPlaceholderPattern.Replace(text, "");
+        }
+
+        /// <summary>
+        /// True when a serialised segment holds inline tags and no text but
+        /// whitespace - email links, a field, an image: a segment Studio shows and
+        /// counts, which a translator fills with Copy Source to Target. The
+        /// bridge used to leave these out of get_segments as if they were empty
+        /// (4 Nov 2026: 48 segments in the project, 46 listed).
+        /// </summary>
+        public static bool IsTagOnly(SegmentSerializationResult serialized)
+        {
+            return (serialized?.TagMap?.Count ?? 0) > 0
+                   && string.IsNullOrWhiteSpace(StripTagPlaceholders(serialized.SerializedText ?? ""));
+        }
+
+        /// <summary>
+        /// True when a serialised segment holds neither tags nor text but
+        /// whitespace - typically what is left of a paragraph after segments were
+        /// merged across it. Nothing to translate.
+        /// </summary>
+        public static bool IsEmptySource(SegmentSerializationResult serialized)
+        {
+            return (serialized?.TagMap?.Count ?? 0) == 0
+                   && string.IsNullOrWhiteSpace(StripTagPlaceholders(serialized?.SerializedText ?? ""));
         }
 
         /// <summary>

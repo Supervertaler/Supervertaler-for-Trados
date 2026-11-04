@@ -186,7 +186,13 @@ before proposing a change.
 - **Copy inline tags from the SOURCE field**, not from the existing target -
   Studio verifies the target's tags against the source. Use each marker
   (`<t1>...</t1>`, `<t2/>`, `<b>...</b>`) at most once, and never invent a
-  number the source does not have.
+  number the source does not have. A target sent without its `fp` whose tags
+  do not match the source is refused, and nothing is written.
+- **Segments marked `tagOnly`** hold inline tags and no text (email links, a
+  field, an image). Fill them with `update_segments` `{id, fp, copySource:
+  true}` - a copy of the source, exactly as Ctrl+Insert does in Studio - never
+  by typing their tag markers. `copySource` also suits a segment that stays as
+  its source: a number, a URL, a product code.
 - A target written without an explicit status becomes **Draft**, so the user can
   review it. Leave it that way unless they ask for Translated.
 
