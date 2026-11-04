@@ -151,7 +151,22 @@ namespace Supervertaler.Trados
 
         // Static, like the control whose index they guard (_control).
         private static readonly object _termReloadLock = new object();
-        private static bool _termReloadRunning, _termReloadAgain;
+        private static bool _termReloadRunning;
+        // What the reload still owes: asked while one runs, the largest request
+        // waits here and that one goes round once more.
+        private static ReloadKind _termReloadPending;
+
+        /// <summary>What a requested termbase reload must do; a larger one includes the smaller.</summary>
+        private enum ReloadKind
+        {
+            None = 0,
+            /// <summary>The database may have changed elsewhere: reload only if its termbase tables did.</summary>
+            IfChanged = 1,
+            /// <summary>Re-read the Supervertaler terms.</summary>
+            Terms = 2,
+            /// <summary>Re-read the Supervertaler terms and the project's MultiTerm termbases.</summary>
+            Full = 3
+        }
 
         protected override IUIControl GetContentControl()
         {
@@ -323,28 +338,17 @@ namespace Supervertaler.Trados
             //
             // While loading is in progress, _matcher is empty so segment clicks
             // simply show no term chips yet — the user can still scroll, edit,
-            // and translate normally. UI updates inside the loaders (status
-            // label, MergeMultiTermEntries) already marshal to the UI thread.
+            // and translate normally. The reload installs the database file
+            // watcher once it knows which database it loaded (v4.19.113: cross-
+            // process edits, typically by Workbench, then reload by themselves).
+            RequestTermbaseReload(ReloadKind.Full);
             System.Threading.Tasks.Task.Run(() =>
             {
-                try
-                {
-                    LoadTermbase();
-                    // v4.19.113: a FileSystemWatcher on the SQLite DB so
-                    // cross-process edits (typically by the Workbench desktop
-                    // app sharing the same DB) trigger a background reload once
-                    // the writes go quiet. Here, not after Task.Run: only now
-                    // does the control know which database it loaded.
-                    try { SetupTermbaseDbWatcher(); }
-                    catch { /* watcher is best-effort; F5 + ↻ still work */ }
-                    LoadMultiTermTermbases();
-                    MigrateGlobalAiTermbaseListIfNeeded();
-                    SafeInvoke(UpdateFromActiveSegment);
-                }
+                try { MigrateGlobalAiTermbaseListIfNeeded(); }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine(
-                        "[TermLens] Background termbase load failed: " + ex);
+                        "[TermLens] AI termbase list migration failed: " + ex);
                 }
             });
 
@@ -399,29 +403,15 @@ namespace Supervertaler.Trados
                 : null;
         }
 
-        private void LoadTermbase(bool forceReload = false)
+        /// <summary>
+        /// The Supervertaler database TermLens reads: the one in settings if it
+        /// exists, else Supervertaler's default locations. Null when there is none.
+        /// </summary>
+        private string ResolveTermbasePath()
         {
-            var disabled = DisabledTermbaseSet();
-            var globalCaseSensitive = _settings.CaseSensitiveMatching;
-
-            // Push project termbase ID to the control for pink/blue coloring
-            _control.Value.SetProjectTermbaseId(_settings.ProjectTermbaseId);
-
-            var projectSourceLang = GetDocumentSourceLanguage();
-
-            // Suffix-tolerant matching for Korean/Japanese (particles attach to
-            // nouns without a space). Honours the three-state user setting,
-            // defaulting to on for those source languages.
-            _control.Value.SetSuffixTolerant(_settings.ResolveSuffixTolerant(projectSourceLang));
-
-            // 1. Use the saved termbase path if set and the file exists
             if (!string.IsNullOrEmpty(_settings.TermbasePath) && File.Exists(_settings.TermbasePath))
-            {
-                _control.Value.LoadTermbase(_settings.TermbasePath, disabled, forceReload, globalCaseSensitive, projectSourceLang);
-                return;
-            }
+                return _settings.TermbasePath;
 
-            // 2. Fallback: auto-detect Supervertaler's default locations
             var candidates = new[]
             {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -429,15 +419,45 @@ namespace Supervertaler.Trados
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "Supervertaler", "resources", "supervertaler.db"),
             };
-
             foreach (var path in candidates)
+                if (File.Exists(path)) return path;
+            return null;
+        }
+
+        /// <summary>
+        /// Everything a termbase load depends on. Taken on the UI thread, which
+        /// owns the settings and the active document, and taken again when the
+        /// read is ready: if it differs by then - a document from another
+        /// project opened, a Read tick changed - the read is for the old state
+        /// and is not swapped in.
+        /// </summary>
+        private sealed class TermbaseLoadInputs
+        {
+            public string DbPath;
+            public HashSet<long> Disabled;
+            public bool CaseSensitive;
+            public string SourceLang;
+
+            public bool SameAs(TermbaseLoadInputs other)
             {
-                if (File.Exists(path))
-                {
-                    _control.Value.LoadTermbase(path, disabled, forceReload, globalCaseSensitive, projectSourceLang);
-                    return;
-                }
+                return other != null
+                    && string.Equals(DbPath, other.DbPath, StringComparison.OrdinalIgnoreCase)
+                    && CaseSensitive == other.CaseSensitive
+                    && string.Equals(SourceLang, other.SourceLang, StringComparison.Ordinal)
+                    && (Disabled == null) == (other.Disabled == null)
+                    && (Disabled == null || Disabled.SetEquals(other.Disabled));
             }
+        }
+
+        private TermbaseLoadInputs CaptureLoadInputs()
+        {
+            return new TermbaseLoadInputs
+            {
+                DbPath = ResolveTermbasePath(),
+                Disabled = DisabledTermbaseSet(),
+                CaseSensitive = _settings.CaseSensitiveMatching,
+                SourceLang = GetDocumentSourceLanguage()
+            };
         }
 
         /// <summary>
@@ -448,8 +468,10 @@ namespace Supervertaler.Trados
         {
             try
             {
-                // Clear previous MultiTerm entries from the index
-                _control.Value.ClearMultiTermEntries();
+                // Clear previous MultiTerm entries from the index - on the UI
+                // thread, which renders from it: this runs on the reload's pool
+                // thread for ↻, F5, settings changes and start-up.
+                UiThread.Invoke(() => _control.Value.ClearMultiTermEntries());
                 DisposeFallbackProviders();
                 _multiTermConfigs = null;
                 _multiTermInfos = null;
@@ -550,7 +572,7 @@ namespace Supervertaler.Trados
                     $"LoadMultiTermTermbases: merged index has {mergedIndex.Count} key(s) across {infos.Count} termbase(s) " +
                     $"({failedConfigs.Count} needed the API fallback). These feed both TermLens and (if AI-enabled) the prompt.");
                 if (mergedIndex.Count > 0)
-                    SafeInvoke(() => _control.Value.MergeMultiTermEntries(mergedIndex, infos));
+                    UiThread.Invoke(() => _control.Value.MergeMultiTermEntries(mergedIndex, infos));
                 else if (failedConfigs.Count > 0)
                     System.Diagnostics.Debug.WriteLine("[TermLens] All MultiTerm termbases failed direct load – relying on fallback providers");
             }
@@ -1308,8 +1330,10 @@ namespace Supervertaler.Trados
                     // to the previous project's Write termbase.
                     SettingsService.Save();
 
-                    // Reload termbase with the project-specific path
-                    LoadTermbase(forceReload: true);
+                    // Reload termbase with the project-specific path and
+                    // languages - in the background: on the UI thread this
+                    // was Studio frozen while a document opened.
+                    RequestTermbaseReload(ReloadKind.Terms);
                 }
                 else
                 {
@@ -1328,8 +1352,8 @@ namespace Supervertaler.Trados
                     // above for the bug this prevents.
                     SettingsService.Save();
 
-                    // Reload termbase with clean state
-                    LoadTermbase(forceReload: true);
+                    // Reload termbase with clean state (in the background)
+                    RequestTermbaseReload(ReloadKind.Terms);
                 }
             }
             catch
@@ -3533,34 +3557,12 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
-        /// The full reload, off the UI thread: a forced reload can take ~2 min on
-        /// a cold Studio 2026 cache, and on the UI thread that is Studio "Not
-        /// Responding" for the whole time. UpdateFromActiveSegment is marshalled
-        /// back so chips refresh on whatever segment is active when it finishes,
-        /// and the database snapshot is refreshed so the file watcher does not
-        /// run the same reload again.
+        /// The full reload (Supervertaler terms and MultiTerm termbases), off the
+        /// UI thread: a forced reload can take ~2 min on a cold Studio 2026 cache,
+        /// and on the UI thread that is Studio "Not Responding" for the whole
+        /// time. Returns at once; see <see cref="RequestTermbaseReload"/>.
         /// </summary>
-        private void ReloadAllInBackground()
-        {
-            System.Threading.Tasks.Task.Run(() =>
-            {
-                try
-                {
-                    LoadTermbase(forceReload: true);
-                    // Follows a database path changed in settings, and refreshes
-                    // the snapshot (the watcher used to stay on the old path
-                    // until ↻).
-                    try { SetupTermbaseDbWatcher(); } catch { }
-                    LoadMultiTermTermbases();
-                    SafeInvoke(UpdateFromActiveSegment);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        "[TermLens] Background reload failed: " + ex);
-                }
-            });
-        }
+        private void ReloadAllInBackground() => RequestTermbaseReload(ReloadKind.Full);
 
         /// <summary>Above this many edited terms, reload in the background instead.</summary>
         private const int MaxIncrementalRefresh = 500;
@@ -3625,8 +3627,13 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
-        /// Called by AddTermAction after a term is inserted.
-        /// Reloads settings and the term index so the new term appears immediately.
+        /// The full refresh: ↻, F5, and the editors' bulk operations. Re-reads
+        /// the settings here (cheap), then reloads every term and the MultiTerm
+        /// termbases in the background; the chips follow when the read is in.
+        /// Returns at once.
+        ///
+        /// Until 18.20.205 the reload itself ran here, on the UI thread: Studio
+        /// froze for the whole read, about a minute on a real project.
         /// </summary>
         public static void NotifyTermAdded()
         {
@@ -3634,18 +3641,12 @@ namespace Supervertaler.Trados
             if (instance == null) return;
 
             instance.ReloadSettingsWithProjectOverlay();
-
-            instance.LoadTermbase(forceReload: true);
-            instance.LoadMultiTermTermbases();
+            // ↻ has just rebuilt the panel: fill it from the index as it is.
             instance.UpdateFromActiveSegment();
-
-            // v4.19.113: refresh the file-watcher's snapshot so this
-            // own-write doesn't cause a redundant rebuild ~2 s later
-            // when the FileSystemWatcher debounce fires. Also re-attach
-            // the watcher in case the DB path itself changed (e.g. user
-            // pointed Settings at a different supervertaler.db).
-            try { instance.RefreshTermbaseDbSnapshot(); } catch { }
-            try { instance.SetupTermbaseDbWatcher(); } catch { }
+            // The reload records the database snapshot it read and follows a
+            // changed database path with the file watcher, so this own write
+            // does not reload a second time.
+            instance.RequestTermbaseReload(ReloadKind.Full);
         }
 
         /// <summary>
@@ -3707,23 +3708,26 @@ namespace Supervertaler.Trados
 
         /// <summary>
         /// Install (or re-install on path change) a FileSystemWatcher on
-        /// the currently-loaded supervertaler.db. Called after every full
-        /// load - the background one Initialize starts, ReloadAllInBackground
-        /// and NotifyTermAdded - so it follows a database path changed in
-        /// settings. Any thread.
+        /// the currently-loaded supervertaler.db. Called after every load
+        /// (<see cref="RunTermbaseReload"/>), so it follows a database path
+        /// changed in settings or by a project. Any thread.
         ///
         /// Until 18.20.205 Initialize called this straight after STARTING the
         /// background load, before the control knew its database path, so no
         /// watcher was installed at all until the first ↻.
+        ///
+        /// It leaves the snapshot alone: the load records the one it took
+        /// BEFORE its read, and one taken here, after it, would let a write
+        /// that landed in between pass for already loaded.
         /// </summary>
         private void SetupTermbaseDbWatcher()
         {
             lock (_dbWatcherLock)
             {
                 // Resolve the path the TermLensControl is actually using right
-                // now (set inside its LoadTermbase). If empty, no termbase
+                // now (set when a load is swapped in). If empty, no termbase
                 // loaded yet → nothing to watch; we'll be called again the
-                // next time a full load finishes.
+                // next time a load finishes.
                 var path = _control.Value.CurrentDbPath;
                 if (string.IsNullOrEmpty(path) || !File.Exists(path))
                 {
@@ -3732,14 +3736,10 @@ namespace Supervertaler.Trados
                     return;
                 }
 
-                // Already watching this exact path? Snapshot only; no need to
-                // rebuild the watcher.
+                // Already watching this exact path? Nothing to do.
                 if (string.Equals(_watchedDbPath, path, StringComparison.OrdinalIgnoreCase) &&
                     _dbWatcher != null)
-                {
-                    _dbSnapshot = SnapshotTermbaseDb(path);
                     return;
-                }
 
                 TeardownTermbaseDbWatcher();
 
@@ -3780,7 +3780,6 @@ namespace Supervertaler.Trados
                     _dbWatcher.EnableRaisingEvents = true;
 
                     _watchedDbPath = path;
-                    _dbSnapshot = SnapshotTermbaseDb(path);
                     System.Diagnostics.Debug.WriteLine(
                         $"[TermLens] DB auto-refresh: watching {name} and its -wal ({DbQuietMs} ms quiet)");
                 }
@@ -3830,29 +3829,15 @@ namespace Supervertaler.Trados
 
         /// <summary>
         /// The database's commit files have been quiet for <see cref="DbQuietMs"/>.
-        /// Thread-pool thread. Reloads only if the termbase tables changed, so
-        /// TM writes and checkpoints - same file - cause no reload.
+        /// Thread-pool thread. Asks for a reload that first checks whether the
+        /// termbase tables changed, so TM writes and checkpoints - same file -
+        /// cause no reload. The check runs in the reload's turn, after any
+        /// reload already running: a change that reload has already read then
+        /// costs nothing, where checking here would have queued a second one.
         /// </summary>
         private void OnDbQuiet()
         {
-            try
-            {
-                var path = _watchedDbPath;
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
-
-                var fresh = SnapshotTermbaseDb(path);
-                if (fresh != null && Equals(fresh, _dbSnapshot)) return;
-
-                // Changed - or the snapshot could not be read (locked mid-
-                // write?), in which case reloading is the safe side; a reload
-                // that cannot read either leaves the index as it is.
-                DiagnosticLog.Log("TermLens", fresh == null
-                    ? "Termbase database changed but could not be checked; reloading its terms."
-                    : $"Termbase database changed outside TermLens (termbases " +
-                      $"{_dbSnapshot?.Item1.ToString() ?? "?"}→{fresh.Item1}, terms " +
-                      $"{_dbSnapshot?.Item3.ToString() ?? "?"}→{fresh.Item3}); reloading its terms.");
-                RequestTermbaseReload();
-            }
+            try { RequestTermbaseReload(ReloadKind.IfChanged); }
             catch (Exception ex)
             {
                 DiagnosticLog.Log("TermLens", "Termbase change check failed: " + ex.Message);
@@ -3860,92 +3845,192 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
-        /// Reloads the Supervertaler terms without touching the UI thread until
-        /// the read is done. Any thread; returns at once. Never two at a time:
-        /// asked while one runs, that one goes round once more, however often
-        /// it is asked. Used by the watcher and after a bulk import.
+        /// Whether the termbase tables differ from the snapshot the last load
+        /// recorded. True, and logged, when they do or cannot be read (locked
+        /// mid-write?): reloading is the safe side, and a reload that cannot read
+        /// either leaves the index as it is.
         /// </summary>
-        private void RequestTermbaseReload()
+        private bool TermbaseDbChangedSinceLastLoad()
+        {
+            var path = _watchedDbPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+
+            var fresh = SnapshotTermbaseDb(path);
+            if (fresh != null && Equals(fresh, _dbSnapshot)) return false;
+
+            DiagnosticLog.Log("TermLens", fresh == null
+                ? "Termbase database changed but could not be checked; reloading its terms."
+                : $"Termbase database changed outside TermLens (termbases " +
+                  $"{_dbSnapshot?.Item1.ToString() ?? "?"}→{fresh.Item1}, terms " +
+                  $"{_dbSnapshot?.Item3.ToString() ?? "?"}→{fresh.Item3}); reloading its terms.");
+            return true;
+        }
+
+        /// <summary>
+        /// Every termbase (re)load goes through here: start-up, a document from
+        /// another project, ↻ / F5, a settings change, a bulk import, a change
+        /// made in Workbench. Any thread; returns at once. The read runs on a
+        /// pool thread and only the swap touches the UI thread.
+        ///
+        /// Never two at a time, and requests coalesce: asked while one runs, the
+        /// largest request waits and that one goes round once more, however
+        /// often it is asked. So a burst of Workbench edits during a load costs
+        /// one more load at most, not one per edit.
+        /// </summary>
+        private void RequestTermbaseReload(ReloadKind kind)
         {
             lock (_termReloadLock)
             {
-                if (_termReloadRunning) { _termReloadAgain = true; return; }
+                if (kind > _termReloadPending) _termReloadPending = kind;
+                if (_termReloadRunning) return;
                 _termReloadRunning = true;
             }
             try
             {
-                System.Threading.Tasks.Task.Run(() =>
-                {
-                    while (true)
-                    {
-                        ReloadSupervertalerTerms();
-                        lock (_termReloadLock)
-                        {
-                            if (!_termReloadAgain) { _termReloadRunning = false; return; }
-                            _termReloadAgain = false;
-                        }
-                    }
-                });
+                System.Threading.Tasks.Task.Run(() => RunTermbaseReloads());
             }
             catch (Exception ex)
             {
                 // Could not even start: release the flag, or no reload would
                 // ever run again this session.
-                lock (_termReloadLock) { _termReloadRunning = false; _termReloadAgain = false; }
+                lock (_termReloadLock) { _termReloadRunning = false; _termReloadPending = ReloadKind.None; }
                 DiagnosticLog.Log("TermLens", "Termbase reload could not start: " + ex.Message);
             }
         }
 
-        /// <summary>
-        /// One reload: reads every Supervertaler term on a connection of its own,
-        /// then swaps them in on the UI thread (MultiTerm entries kept). If an
-        /// add or edit reached the index while it was reading, the read may lack
-        /// it, so it reads again rather than undo it; that ends as soon as one
-        /// read goes by without an edit. Never throws.
-        /// </summary>
-        private void ReloadSupervertalerTerms()
+        /// <summary>The reload loop: runs what is owed until nothing is.</summary>
+        private void RunTermbaseReloads()
         {
+            while (true)
+            {
+                ReloadKind kind;
+                lock (_termReloadLock)
+                {
+                    kind = _termReloadPending;
+                    _termReloadPending = ReloadKind.None;
+                    if (kind == ReloadKind.None) { _termReloadRunning = false; return; }
+                }
+                // RunTermbaseReload never throws; this catch is what keeps the
+                // flag from staying set for good if that ever stops being true.
+                try { RunTermbaseReload(kind); }
+                catch (Exception ex) { DiagnosticLog.Log("TermLens", "Termbase reload failed: " + ex.Message); }
+            }
+        }
+
+        private void RunTermbaseReload(ReloadKind kind)
+        {
+            if (kind == ReloadKind.IfChanged && !TermbaseDbChangedSinceLastLoad()) return;
+
+            // A full request the read took over makes this round a full one.
+            if (ReloadSupervertalerTerms() == ReloadKind.Full) kind = ReloadKind.Full;
+            // Follows a database path changed in settings or by a project.
+            try { SetupTermbaseDbWatcher(); }
+            catch { /* watcher is best-effort; F5 + ↻ still work */ }
+
+            if (kind == ReloadKind.Full)
+            {
+                LoadMultiTermTermbases();
+                UiThread.Invoke(UpdateFromActiveSegment);
+            }
+        }
+
+        /// <summary>How often a read may be overtaken before the reload waits for the next change.</summary>
+        private const int MaxReloadAttempts = 5;
+
+        /// <summary>
+        /// One load: reads every Supervertaler term on a connection of its own,
+        /// then swaps them in on the UI thread (MultiTerm entries kept). A read
+        /// that an add or edit overtook, or that was made for a document or
+        /// settings that have changed since, is not swapped in but read again;
+        /// the first read nothing overtakes is used. Never throws; on any
+        /// failure the terms already shown stay.
+        ///
+        /// Each read takes over the requests still waiting when it takes its
+        /// inputs: it serves them, since it reads everything as it is from that
+        /// moment on. Without that, a document switch during a read cost two
+        /// more reads - the retry, then the switch's own request. Returns the
+        /// largest request it took over, so a full one still gets its MultiTerm
+        /// half.
+        /// </summary>
+        private ReloadKind ReloadSupervertalerTerms()
+        {
+            var absorbed = ReloadKind.None;
             try
             {
                 var control = _control.Value;
-                var path = control.CurrentDbPath;
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
-
-                while (true)
+                for (int attempt = 1; attempt <= MaxReloadAttempts; attempt++)
                 {
+                    // On the UI thread, so a change made there and the request
+                    // that goes with it are either both in this read or both
+                    // left for the next.
+                    var inputs = UiThread.Invoke(() =>
+                    {
+                        lock (_termReloadLock)
+                        {
+                            if (_termReloadPending > absorbed) absorbed = _termReloadPending;
+                            _termReloadPending = ReloadKind.None;
+                        }
+                        return CaptureLoadInputs();
+                    });
+                    if (inputs.DbPath == null)
+                    {
+                        DiagnosticLog.Log("TermLens", "Termbase load: no Supervertaler database found; nothing to load.");
+                        return absorbed;
+                    }
+
                     int version = control.IndexVersion;
                     // Taken BEFORE the read, so a write landing during it still
                     // differs from the recorded snapshot and is picked up by the
                     // next check instead of being taken as already loaded.
-                    var before = SnapshotTermbaseDb(path);
+                    var before = SnapshotTermbaseDb(inputs.DbPath);
                     var sw = System.Diagnostics.Stopwatch.StartNew();
-                    var fresh = TermLensControl.ReadSupervertalerIndex(path, DisabledTermbaseSet(),
-                        _settings.CaseSensitiveMatching, GetDocumentSourceLanguage());
-                    if (fresh == null)
+                    string error;
+                    using (var read = TermLensControl.ReadTermbase(inputs.DbPath, inputs.Disabled,
+                        inputs.CaseSensitive, inputs.SourceLang, out error))
                     {
-                        DiagnosticLog.Log("TermLens", "Termbase reload: could not open the database; keeping the terms shown.");
-                        return;
-                    }
-                    long readMs = sw.ElapsedMilliseconds;
+                        if (read == null)
+                        {
+                            DiagnosticLog.Log("TermLens",
+                                $"Termbase load: could not open the database ({error}); keeping the terms shown.");
+                            UiThread.Invoke(() => control.ShowTermbaseProblem("Failed to open termbase"));
+                            return absorbed;
+                        }
+                        long readMs = sw.ElapsedMilliseconds;
+                        int keys = read.Index.Count;
 
-                    bool swapped = UiThread.Invoke(() =>
-                    {
-                        if (!control.SwapInSupervertalerIndex(fresh, version)) return false;
-                        _dbSnapshot = before;
-                        UpdateFromActiveSegment();
-                        return true;
-                    });
-                    if (swapped)
-                    {
-                        DiagnosticLog.Log("TermLens",
-                            $"Termbase reload: {fresh.Count} headword key(s) read in {readMs} ms and swapped in.");
-                        return;
+                        bool swapped = UiThread.Invoke(() =>
+                        {
+                            if (!inputs.SameAs(CaptureLoadInputs())) return false;
+                            if (!control.SwapInTermbase(read, version)) return false;
+                            // Pink/blue colouring and Korean/Japanese suffix
+                            // matching follow the settings and language just loaded.
+                            control.SetProjectTermbaseId(_settings.ProjectTermbaseId);
+                            control.SetSuffixTolerant(_settings.ResolveSuffixTolerant(inputs.SourceLang));
+                            _dbSnapshot = before;
+                            UpdateFromActiveSegment();
+                            return true;
+                        });
+                        if (swapped)
+                        {
+                            DiagnosticLog.Log("Termbase",
+                                $"Loaded Supervertaler .db index: {keys} headword key(s), read in {readMs} ms " +
+                                $"off the UI thread{(attempt > 1 ? $" (attempt {attempt})" : "")}.");
+                            return absorbed;
+                        }
                     }
+                    DiagnosticLog.Log("TermLens",
+                        "Termbase load: an edit, a document switch or a settings change came in during the read; reading again.");
                 }
+                DiagnosticLog.Log("TermLens",
+                    $"Termbase load: overtaken {MaxReloadAttempts} times in a row; keeping the terms shown until the next change.");
+                return absorbed;
             }
             catch (Exception ex)
             {
-                DiagnosticLog.Log("TermLens", "Termbase reload failed: " + ex.Message);
+                DiagnosticLog.Log("TermLens", "Termbase load failed: " + ex.Message + "; keeping the terms shown.");
+                try { UiThread.Invoke(() => _control.Value.ShowTermbaseProblem("Failed to load termbase")); }
+                catch { /* the status line is a courtesy */ }
+                return absorbed;
             }
         }
 
@@ -3962,7 +4047,7 @@ namespace Supervertaler.Trados
             if (instance == null) return;
             try { instance.ReloadSettingsWithProjectOverlay(); }
             catch (Exception ex) { DiagnosticLog.Log("TermLens", "Settings refresh after import failed: " + ex.Message); }
-            instance.RequestTermbaseReload();
+            instance.RequestTermbaseReload(ReloadKind.Terms);
         }
 
         /// <summary>
