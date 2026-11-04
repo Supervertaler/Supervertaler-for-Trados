@@ -26,9 +26,11 @@ namespace Supervertaler.Trados.Controls
     /// <para><b>Few browsers live at once, none once the window is closed.</b>
     /// Each loaded tab is a Chromium page with its own renderer processes: one
     /// for the site and one for every other site framed in it (ads, trackers,
-    /// consent banners), so an ad-funded dictionary site can cost half a dozen.
-    /// Keeping every tab ever opened, and keeping them all while the window was
-    /// merely hidden, once left 63 msedgewebview2.exe processes and 5.9 GB under
+    /// consent banners), so an ad-funded dictionary site could cost dozens.
+    /// Strict tracking prevention now blocks most of those frames before they
+    /// load (<see cref="UseStrictTrackingPrevention"/>). Keeping every tab
+    /// ever opened, and keeping them all while the window was merely hidden,
+    /// once left 63 msedgewebview2.exe processes and 5.9 GB under
     /// Studio after a few searches across nine resources. Now only the
     /// <see cref="MaxLiveViews"/> most recently shown tabs keep a browser, and
     /// closing the window releases them all, so the WebView2 processes exit.
@@ -327,7 +329,7 @@ namespace Supervertaler.Trados.Controls
 
                     // Every view shares one environment, so they share a cookie
                     // jar: signing in on one tab carries to the rest.
-                    state.ViewReady = view.EnsureCoreWebView2Async(_environment);
+                    state.ViewReady = StartViewAsync(view);
                 }
 
                 // Also reached when the user comes back to a tab whose browser is
@@ -356,6 +358,67 @@ namespace Supervertaler.Trados.Controls
                 // never disposed. Coming back to the tab now retries.
                 ReleaseView(state, showPlaceholder: false);
                 ShowTabError(page, state.Target, ex);
+            }
+        }
+
+        /// <summary>
+        /// Starts a tab's browser and turns tracking prevention up to Strict
+        /// before its first page loads. Becomes <see cref="TabState.ViewReady"/>.
+        /// </summary>
+        private async Task StartViewAsync(WebView2 view)
+        {
+            await view.EnsureCoreWebView2Async(_environment);
+            UseStrictTrackingPrevention(view.CoreWebView2);
+        }
+
+        /// <summary>
+        /// Edge's own tracking prevention, at Strict rather than the default
+        /// Balanced: it blocks requests to the ad, analytics and fingerprinting
+        /// services on Microsoft's list, which the runtime keeps up to date, so
+        /// we maintain no blocklist and intercept no requests ourselves.
+        ///
+        /// <para>Why it matters here: every frame from another site gets a
+        /// renderer process of its own (site isolation), and an ad auction is
+        /// dozens of such frames. Measured on nine popular resources with a
+        /// copy of a profile in daily use (runtime 156): Reverso alone brought
+        /// ~40 renderers, so Linguee + ProZ + Reverso open together ran 51
+        /// processes and 1.95 GB (private); at Strict, 8 processes and
+        /// ~0.4-0.55 GB, and Reverso's
+        /// page loaded in about a second instead of 16. Page text was the same
+        /// on all nine apart from Linguee's cookie banner and Reverso's
+        /// "Advertising" labels; ProZ's Cloudflare check (Turnstile) still
+        /// loads.</para>
+        ///
+        /// <para>The alternatives measured worse: <c>--renderer-process-limit</c>
+        /// and <c>--process-per-site</c> changed nothing (site isolation
+        /// overrides them), and switching site isolation off got to 8
+        /// processes but kept the ads, ~1 GB, and the slow page, at the price
+        /// of letting a hostile ad frame share a process with the dictionary
+        /// page.</para>
+        ///
+        /// <para>The level belongs to the profile, so it covers every tab, and
+        /// is saved in the profile folder (tested: a build that does not set
+        /// it reopens the profile at Strict). Setting it on every new view
+        /// costs one property read and also covers a new or reset profile;
+        /// it takes effect for the page that view loads first. A site that breaks under it
+        /// still has "Open this tab in my browser". Failure (a runtime too
+        /// old for the setting) is logged and the tab loads as before.</para>
+        /// </summary>
+        private static void UseStrictTrackingPrevention(CoreWebView2 core)
+        {
+            try
+            {
+                var profile = core?.Profile;
+                if (profile == null) return;
+                var was = profile.PreferredTrackingPreventionLevel;
+                if (was == CoreWebView2TrackingPreventionLevel.Strict) return;
+                profile.PreferredTrackingPreventionLevel = CoreWebView2TrackingPreventionLevel.Strict;
+                DiagnosticLog.Log("WebView2", $"Tracking prevention {was} -> Strict");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("WebView2",
+                    $"Could not set tracking prevention: {ex.GetType().Name}: {ex.Message}");
             }
         }
 
