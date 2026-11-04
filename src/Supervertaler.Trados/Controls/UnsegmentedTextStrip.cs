@@ -8,7 +8,7 @@ using Supervertaler.Trados.Core;
 namespace Supervertaler.Trados.Controls
 {
     /// <summary>
-    /// A one-line warning across the top of the Supervertaler panel, shown only
+    /// A one-line warning across the top of the TermLens panel, shown only
     /// while the open document has source text outside every segment (see
     /// <see cref="UnsegmentedTextDetector"/>). Clicking it lists each stretch;
     /// clicking one puts the editor on the nearest segment. The × hides it for
@@ -19,9 +19,6 @@ namespace Supervertaler.Trados.Controls
     /// </summary>
     internal sealed class UnsegmentedTextStrip : Panel
     {
-        /// <summary>Stretches listed in the menu; the rest are counted.</summary>
-        private const int MaxListed = 25;
-
         // A Button rather than a Label: only a focusable control can recover the
         // click Studio 2026 eats when the pane was inactive (ClickThrough).
         private readonly Button _message;
@@ -108,7 +105,9 @@ namespace Supervertaler.Trados.Controls
             _hits = results.SelectMany(r => r.Hits).ToList();
             _total = results.Sum(r => r.HitCount);
             _severalFiles = results.Count(r => r.HitCount > 0) > 1;
-            _shownKey = string.Join("|", results.Select(r => r.FilePath + "#" + r.LastWriteUtc.Ticks + "#" + r.HitCount));
+            // The stretches themselves, not the files' save times: saving without
+            // fixing them is not a change. The pop-up goes by the same key.
+            _shownKey = UnsegmentedTextAlert.ResultsKey(results);
 
             if (_total == 0 || _shownKey == _dismissedKey)
             {
@@ -132,37 +131,7 @@ namespace Supervertaler.Trados.Controls
 
         private void ShowList()
         {
-            if (_hits.Count == 0) return;
-            var menu = new ContextMenuStrip { ShowImageMargin = false, ShowItemToolTips = true };
-            menu.Closed += (s, e) => BeginInvoke(new Action(menu.Dispose));
-
-            foreach (var hit in _hits.Take(MaxListed))
-            {
-                var h = hit;
-                var where = (_severalFiles ? UnsegmentedTextMonitor.DisplayName(h.FilePath) + ", " : "") + h.Location;
-                var label = where + ": " + UnsegmentedTextMonitor.Shorten(h.Text, 80);
-                var item = new ToolStripMenuItem(label.Replace("&", "&&"))
-                {
-                    ToolTipText = UnsegmentedTextMonitor.Shorten(h.Text, 300),
-                    Enabled = h.JumpSegmentId != null
-                };
-                item.Click += (s, e) =>
-                {
-                    var problem = UnsegmentedTextMonitor.GoTo(h);
-                    if (problem != null)
-                        MessageBox.Show(FindForm(), problem, "Supervertaler for Trados",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                };
-                menu.Items.Add(item);
-            }
-            if (_total > MaxListed)
-                menu.Items.Add(new ToolStripMenuItem($"…and {_total - MaxListed} more") { Enabled = false });
-
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Why this matters and what to do", null,
-                (s, e) => HelpSystem.OpenHelp(HelpSystem.Topics.UnsegmentedText));
-
-            menu.Show(_message, new Point(0, _message.Height));
+            UnsegmentedTextMenu.Show(_message, _hits, _total, _severalFiles);
         }
     }
 }

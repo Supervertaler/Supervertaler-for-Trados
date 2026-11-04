@@ -1,6 +1,6 @@
 ﻿# Source text outside any segment: the detector, the monitor's reuse of results,
-# the get_active_project warnings and the check_unsegmented_text response - checked
-# against the built plugin DLL.
+# the get_active_project warnings, the check_unsegmented_text response and when the
+# pop-up shows - checked against the built plugin DLL.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\unsegmented_text_test.ps1
 #   ... -Dll <path to Supervertaler.Trados.dll>     (default: this repo's build)
@@ -231,6 +231,86 @@ try {
     Check (-not $resp.Available -and $resp.Note -match 'No document') 'check_unsegmented_text: no document open'
     $resp = $build.Invoke($null, @($third, $false, 100))
     Check (-not $resp.Available) 'check_unsegmented_text: not attached to Studio'
+
+    # ---- the pop-up: when it shows, and when not ---------------------------------------------
+    # UnsegmentedTextAlert.ShouldShow is the whole decision; showing the window needs Studio.
+    $Alert = $plugin.GetType('Supervertaler.Trados.Core.UnsegmentedTextAlert')
+    $AlertForm = $plugin.GetType('Supervertaler.Trados.Controls.UnsegmentedTextAlertForm')
+    if (-not $Alert -or -not $AlertForm) { throw 'pop-up types not found in the DLL' }
+    $Alert.GetField('_told', $Static).GetValue($null).Clear()
+    $should = $Alert.GetMethod('ShouldShow', $Static)
+    $script:popArgs = $null
+    function Pop($checked, $open, $results) {
+        $list = [Collections.Generic.List[Supervertaler.Trados.Core.UnsegmentedFileResult]]::new()
+        foreach ($x in @($results)) { if ($x) { $list.Add($x) } }
+        $openArg = $null
+        if ($null -ne $open) { $openArg = [string[]]$open }
+        $script:popArgs = [object[]]@([string[]]$checked, $openArg, $list, $null, $null)
+        return [bool]$should.Invoke($null, $script:popArgs)
+    }
+    $utf8 = New-Object Text.UTF8Encoding($false)
+
+    $pa = Join-Path $work 'pop-a.sdlxliff'; Copy-Item $stray $pa
+    $ra = CheckFile $pa
+    Check (Pop @($pa) @($pa) $ra) 'pop-up: shown when the open document has stretches'
+    Check (-not (Pop @($pa) @($pa) $ra)) 'pop-up: not shown twice for the same results'
+    Check (-not (Pop @($pa) @($pa) (CheckFile $pa))) 'pop-up: not shown when the check runs again with the same results'
+    (Get-Item $pa).LastWriteTimeUtc = (Get-Item $pa).LastWriteTimeUtc.AddSeconds(7)
+    Check (-not (Pop @($pa) @($pa) (CheckFile $pa))) 'pop-up: not shown after a save that left the stretches as they were'
+
+    $pb = Join-Path $work 'pop-b.sdlxliff'; Copy-Item $clean $pb
+    Check (-not (Pop @($pb) @($pb) (CheckFile $pb))) 'pop-up: not shown for a document with no stretches'
+    Check (-not (Pop @($pa) @($pa) (CheckFile $pa))) 'pop-up: switching back to a document shows nothing'
+
+    $text = [IO.File]::ReadAllText($pa, $utf8)
+    [IO.File]::WriteAllText($pa, $text.Replace('Acme ships worldwide.', 'Acme ships to every country.'), $utf8)
+    $changed = CheckFile $pa
+    Check (($changed.HitCount -eq 5) -and (Pop @($pa) @($pa) $changed)) 'pop-up: shown again when the stretches change (same count, other text)'
+    Check (-not (Pop @($pa) @($pa) (CheckFile $pa))) 'pop-up: and then not again'
+
+    $pp = Join-Path $work 'pop-paragraphs.sdlxliff'
+    $cleanText = [IO.File]::ReadAllText($clean, $utf8)
+    [IO.File]::WriteAllText($pp, $cleanText.Replace('</body>', '<group><trans-unit id="p1"><source>Contact Acme for a quote.</source><seg-source>Contact Acme for a quote.</seg-source></trans-unit></group></body>'), $utf8)
+    $rp = CheckFile $pp
+    Check (($rp.ParagraphCount -eq 1) -and ($rp.HitCount -eq 0) -and -not (Pop @($pp) @($pp) $rp)) 'pop-up: not shown for a paragraph without any segment'
+
+    Check (-not (Pop @($half) @($half) (CheckFile $half))) 'pop-up: not shown for a file that could not be read'
+    Check (-not (Pop @($half) @($half) @())) 'pop-up: not shown while a file has no result'
+    $fake = New-Object Supervertaler.Trados.Core.UnsegmentedFileResult
+    $fake.FilePath = $half; $fake.Ok = $false; $fake.HitCount = 3
+    Check (-not (Pop @($half) @($half) $fake)) 'pop-up: a failed check never counts, whatever it holds'
+
+    $pc = Join-Path $work 'pop-c.sdlxliff'; Copy-Item $stray $pc
+    $rc = CheckFile $pc
+    Check (-not (Pop @($pc) @($pb) $rc)) 'pop-up: not shown when another document came forward during the check'
+    Check (-not (Pop @($pc) @() $rc)) 'pop-up: not shown when the document was closed during the check'
+    Check (-not (Pop @($pc) $null $rc)) 'pop-up: not shown when Studio cannot say which document is open'
+    Check (Pop @($pc) @($pc) $rc) 'pop-up: a skipped decision is not remembered - shown once the document is open again'
+
+    $pd1 = Join-Path $work 'pop-d1.sdlxliff'; Copy-Item $stray $pd1
+    $pd2 = Join-Path $work 'pop-d2.sdlxliff'; Copy-Item $clean $pd2
+    $rd = @((CheckFile $pd1), (CheckFile $pd2))
+    Check (Pop @($pd1, $pd2) @($pd2.ToUpperInvariant(), $pd1) $rd) 'pop-up: a document of two files, listed in another order and case'
+    Check (-not (Pop @($pd2, $pd1) @($pd1, $pd2) $rd)) 'pop-up: the same document, its files listed the other way round: not again'
+    Check (-not (Pop @($pa) @($pa) (CheckFile $pa))) 'pop-up: one document told does not reset another'
+
+    $null = Pop @($pc) @($pc) $rc   # already told; the keys come back all the same
+    $docKey = $script:popArgs[3]; $resKey = $script:popArgs[4]
+    $Alert.GetMethod('Unsee', $Static).Invoke($null, @($docKey, $resKey))
+    Check (Pop @($pc) @($pc) $rc) 'pop-up: one closed unseen (the user moved to another document) comes back with its document'
+    $Alert.GetMethod('Unsee', $Static).Invoke($null, @($docKey, 'older results'))
+    Check (-not (Pop @($pc) @($pc) $rc)) 'pop-up: closing an older pop-up does not forget newer results'
+
+    $describe = $AlertForm.GetMethod('Describe', $Static)
+    $one = [Collections.Generic.List[Supervertaler.Trados.Core.UnsegmentedFileResult]]::new(); $one.Add($ra)
+    $msg = $describe.Invoke($null, @($one, 5))
+    Check ($msg -match '^Trados left 5 stretches of source text in pop-a outside any segment\.' -and $msg -match 'exported untranslated' -and $msg -notmatch 'sdlxliff') "pop-up text, one file: '$msg'"
+    $two = [Collections.Generic.List[Supervertaler.Trados.Core.UnsegmentedFileResult]]::new(); $two.Add($rd[0]); $two.Add($rc)
+    $msg = $describe.Invoke($null, @($two, 10))
+    Check ($msg -match '10 stretches of source text \(5 in pop-d1 and 5 in pop-c\) outside') "pop-up text, two files: '$msg'"
+    $msg = $describe.Invoke($null, @($one, 1))
+    Check ($msg -match '1 stretch of source text' -and $msg -match 'It is not in the editor') "pop-up text, one stretch: '$msg'"
+    $Alert.GetField('_told', $Static).GetValue($null).Clear()
 
     $Mon.GetField('_activeFiles', $Static).SetValue($null, [string[]]@())
 

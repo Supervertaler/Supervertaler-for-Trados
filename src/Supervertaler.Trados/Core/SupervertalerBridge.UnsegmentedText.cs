@@ -82,7 +82,7 @@ namespace Supervertaler.Trados.Core
                 return new BridgeUnsegmentedResponse
                 {
                     Available = false,
-                    Note = "The check is not running in this Studio (the Supervertaler panel has not started)."
+                    Note = "The check is not running in this Studio (the TermLens panel has not started)."
                 };
             if (results.Count == 0)
                 return new BridgeUnsegmentedResponse
