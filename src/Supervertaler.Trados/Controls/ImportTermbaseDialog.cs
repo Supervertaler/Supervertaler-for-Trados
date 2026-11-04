@@ -53,6 +53,9 @@ namespace Supervertaler.Trados.Controls
             (ImportFieldTarget.Url, "URL"),
             (ImportFieldTarget.Client, "Client"),
             (ImportFieldTarget.Project, "Project"),
+            // Must be listed: LabelFor() looks every suggested target up here, and
+            // a field named "Abbreviation" is now suggested as one.
+            (ImportFieldTarget.Abbreviation, "Abbreviation"),
             (ImportFieldTarget.ForbiddenFlag, "Forbidden flag"),
             (ImportFieldTarget.AppendToNotes, "Append to notes"),
         };
