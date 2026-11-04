@@ -507,6 +507,18 @@ namespace Supervertaler.Trados.Core
             // declared direction here is resilient to those corrupted per-entry tags.
             var termbaseDirection = GetTermbaseDirections();
 
+            // How each termbase faces the project, worked out once per termbase.
+            // It was worked out per ROW, and the comparison parses language
+            // names: ~4 ms a time for Studio's "Dutch (Netherlands)", so a
+            // project load took 52 s for 12,800 terms where the same load
+            // without a project took under 1 s (18.20.205). Rows of a termbase
+            // missing from the table compare as before: no declared source, so
+            // NotApplicable.
+            var directionByTermbase = new Dictionary<long, LanguageUtils.TermbaseDirection>();
+            foreach (var kv in termbaseDirection)
+                directionByTermbase[kv.Key] = LanguageUtils.CompareTermbaseDirection(
+                    projectSourceLang, kv.Value.src ?? "", kv.Value.tgt ?? "");
+
             var ntCol = _hasNonTranslatableColumn ? ", t.is_nontranslatable" : "";
             var uuidCol = _hasTermUuidColumn ? ", t.term_uuid" : "";
             var abbrCol = _hasAbbreviationColumns ? ", t.source_abbreviation, t.target_abbreviation" : "";
@@ -596,19 +608,12 @@ namespace Supervertaler.Trados.Core
                 // silently not matching even though their text was fine. The termbase declaration
                 // is the canonical direction every entry inherits by definition.
                 List<string> srcSynsForIndex;
-                string termbaseSrcLang = "";
-                string termbaseTgtLang = "";
-                if (termbaseDirection.TryGetValue(entry.TermbaseId, out var dir))
-                {
-                    termbaseSrcLang = dir.src ?? "";
-                    termbaseTgtLang = dir.tgt ?? "";
-                }
 
                 // Read paths skip Unrelated entries to avoid indexing terms
                 // under languages they have no content for. NotApplicable and
                 // Aligned both mean "don't invert"; only Inverted swaps.
-                var direction = LanguageUtils.CompareTermbaseDirection(
-                    projectSourceLang, termbaseSrcLang, termbaseTgtLang);
+                if (!directionByTermbase.TryGetValue(entry.TermbaseId, out var direction))
+                    direction = LanguageUtils.TermbaseDirection.NotApplicable;
                 if (direction == LanguageUtils.TermbaseDirection.Unrelated)
                     continue;
                 bool isInverted = direction == LanguageUtils.TermbaseDirection.Inverted;

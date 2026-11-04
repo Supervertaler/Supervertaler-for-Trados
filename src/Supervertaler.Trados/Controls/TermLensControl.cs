@@ -313,53 +313,102 @@ namespace Supervertaler.Trados.Controls
         }
 
         /// <summary>
-        /// Loads a Supervertaler termbase database.
+        /// A full read of a Supervertaler database, made by <see cref="ReadTermbase"/>
+        /// and put in place by <see cref="SwapInTermbase"/>. Holds the open reader
+        /// until the swap takes it over; disposing it closes the reader if the
+        /// swap never happened, so a refused or failed swap leaks no connection.
         /// </summary>
-        /// <param name="dbPath">Path to the .db file.</param>
-        /// <param name="disabledTermbaseIds">Termbase IDs to exclude (null = load all).</param>
-        /// <param name="forceReload">Force reload even if the path hasn't changed.</param>
-        public bool LoadTermbase(string dbPath, HashSet<long> disabledTermbaseIds = null,
-            bool forceReload = false, bool globalCaseSensitive = false, string projectSourceLang = null)
+        public sealed class TermbaseRead : IDisposable
         {
-            if (!forceReload && dbPath == _currentDbPath && _reader != null)
-                return true;
+            public string DbPath { get; internal set; }
+            public Dictionary<string, List<TermEntry>> Index { get; internal set; }
+            public string StatusText { get; internal set; }
+            internal TermbaseReader Reader;
+            public void Dispose() { Reader?.Dispose(); Reader = null; }
+        }
 
-            _reader?.Dispose();
-            _reader = new TermbaseReader(dbPath);
-
-            if (!_reader.Open())
+        /// <summary>
+        /// Reads every Supervertaler term on a connection of its own, so it is
+        /// safe on a background thread: it touches nothing the panel is using.
+        /// Null when the database cannot be opened (<paramref name="error"/> says
+        /// why). A read that fails part-way throws, with the connection closed.
+        ///
+        /// This replaced LoadTermbase, which read straight into the live index -
+        /// on the UI thread from ↻, F5 and a document opening in another
+        /// project, where the read took ~53 s on a real project until 18.20.205.
+        /// </summary>
+        public static TermbaseRead ReadTermbase(string dbPath, HashSet<long> disabledTermbaseIds,
+            bool globalCaseSensitive, string projectSourceLang, out string error)
+        {
+            error = null;
+            var reader = new TermbaseReader(dbPath);
+            try
             {
-                SetStatusLabel("Failed to open termbase");
-                return false;
-            }
-
-            // Build in-memory index for fast matching
-            var index = _reader.LoadAllTerms(disabledTermbaseIds, globalCaseSensitive, projectSourceLang);
-            _matcher.LoadIndex(index);
-            DiagnosticLog.Log("Termbase", $"Loaded Supervertaler .db index: {index.Count} headword key(s).");
-
-            var termbases = _reader.GetTermbases();
-            int enabledCount = 0;
-            int totalTerms = 0;
-            foreach (var tb in termbases)
-            {
-                if (disabledTermbaseIds == null || !disabledTermbaseIds.Contains(tb.Id))
+                if (!reader.Open())
                 {
-                    enabledCount++;
-                    totalTerms += tb.TermCount;
+                    error = reader.LastError ?? "the database could not be opened";
+                    return null;
                 }
-            }
-            SetStatusLabel(enabledCount == termbases.Count
-                ? $"{termbases.Count} termbases, {totalTerms} terms"
-                : $"{enabledCount}/{termbases.Count} termbases, {totalTerms} terms");
-            _currentDbPath = dbPath;
 
+                var index = reader.LoadAllTerms(disabledTermbaseIds, globalCaseSensitive, projectSourceLang);
+                var termbases = reader.GetTermbases();
+                int enabledCount = 0;
+                int totalTerms = 0;
+                foreach (var tb in termbases)
+                {
+                    if (disabledTermbaseIds == null || !disabledTermbaseIds.Contains(tb.Id))
+                    {
+                        enabledCount++;
+                        totalTerms += tb.TermCount;
+                    }
+                }
+
+                var read = new TermbaseRead
+                {
+                    DbPath = dbPath,
+                    Index = index,
+                    StatusText = enabledCount == termbases.Count
+                        ? $"{termbases.Count} termbases, {totalTerms} terms"
+                        : $"{enabledCount}/{termbases.Count} termbases, {totalTerms} terms",
+                    Reader = reader
+                };
+                reader = null; // the read owns it now
+                return read;
+            }
+            finally
+            {
+                reader?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Puts a <see cref="ReadTermbase"/> result in place: its terms replace
+        /// the Supervertaler entries (MultiTerm entries kept), its reader becomes
+        /// the one edits are re-read through, and the status line follows. UI
+        /// thread only. Returns false, changing nothing, when the index changed
+        /// after <paramref name="versionWhenReadStarted"/> - an add or edit landed
+        /// during the read and may be missing from it; read again.
+        /// </summary>
+        public bool SwapInTermbase(TermbaseRead read, int versionWhenReadStarted)
+        {
+            if (read == null || !_matcher.ReplaceSupervertalerEntries(read.Index, versionWhenReadStarted))
+                return false;
+
+            var old = _reader;
+            _reader = read.Reader;
+            read.Reader = null;
+            _currentDbPath = read.DbPath;
+            try { old?.Dispose(); } catch { /* closing a connection must not undo the swap */ }
+            SetStatusLabel(read.StatusText);
             return true;
         }
 
-        // Thread-safe status-label setter. LoadTermbase() is now called from a
-        // background Task during plugin initialization (so editor activation
-        // isn't blocked by 2 min of cold-SQLite reads on x64 Studio 2026).
+        /// <summary>Shows why the termbase could not be loaded. Any thread.</summary>
+        public void ShowTermbaseProblem(string text) => SetStatusLabel(text);
+
+        // Thread-safe status-label setter. Termbase loads read on a background
+        // thread (so editor activation isn't blocked by 2 min of cold-SQLite
+        // reads on x64 Studio 2026) and may report a problem from there.
         // Touching _statusLabel.Text from a worker thread would throw on debug
         // builds and is undefined behaviour on release; marshal via Invoke.
         private void SetStatusLabel(string text)
@@ -488,31 +537,6 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>See <see cref="TermMatcher.Version"/>. Read it before a background read.</summary>
         public int IndexVersion => _matcher.Version;
-
-        /// <summary>
-        /// Reads every Supervertaler term into a new index on a connection of its
-        /// own, so it is safe on a background thread: it touches nothing the
-        /// panel is using. Null when the database cannot be opened.
-        /// </summary>
-        public static Dictionary<string, List<TermEntry>> ReadSupervertalerIndex(string dbPath,
-            HashSet<long> disabledTermbaseIds, bool globalCaseSensitive, string projectSourceLang)
-        {
-            using (var reader = new TermbaseReader(dbPath))
-            {
-                if (!reader.Open()) return null;
-                return reader.LoadAllTerms(disabledTermbaseIds, globalCaseSensitive, projectSourceLang);
-            }
-        }
-
-        /// <summary>
-        /// Puts the result of <see cref="ReadSupervertalerIndex"/> in place, keeping
-        /// the MultiTerm entries. UI thread only. False when the index changed
-        /// after <paramref name="versionWhenReadStarted"/>; read again.
-        /// </summary>
-        public bool SwapInSupervertalerIndex(Dictionary<string, List<TermEntry>> fresh, int versionWhenReadStarted)
-        {
-            return _matcher.ReplaceSupervertalerEntries(fresh, versionWhenReadStarted);
-        }
 
         /// <summary>
         /// Returns all loaded termbase term entries from the in-memory index.

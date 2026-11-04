@@ -708,27 +708,42 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>
         /// Finds the 2-letter ISO 3166-1 country code for a country name.
-        /// Searches all specific cultures' RegionInfo for a match.
         /// </summary>
         private static string FindCountryIsoCode(string countryName)
         {
-            foreach (var ci in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
+            if (string.IsNullOrEmpty(countryName)) return null;
+            return CountryIsoCodes.Value.TryGetValue(countryName, out var code) ? code : null;
+        }
+
+        /// <summary>
+        /// Every specific culture's region by its English and display name,
+        /// built once per process. It used to be a fresh scan of all ~800
+        /// cultures on every call: 4.4 ms, which is nothing once but was paid
+        /// three times per term when a termbase loaded for a project whose
+        /// source language Studio names "Dutch (Netherlands)" - 52 s on a
+        /// 12,800-term project (18.20.205). The table is fixed for the life of
+        /// the process, so caching it changes no answer: the first culture to
+        /// carry a name wins, as the first match of the scan did.
+        /// </summary>
+        private static readonly Lazy<System.Collections.Generic.Dictionary<string, string>> CountryIsoCodes =
+            new Lazy<System.Collections.Generic.Dictionary<string, string>>(() =>
             {
-                try
+                var map = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var ci in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
                 {
-                    var region = new RegionInfo(ci.Name);
-                    if (string.Equals(region.EnglishName, countryName, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(region.DisplayName, countryName, StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        return region.TwoLetterISORegionName;
+                        var region = new RegionInfo(ci.Name);
+                        foreach (var name in new[] { region.EnglishName, region.DisplayName })
+                            if (!string.IsNullOrEmpty(name) && !map.ContainsKey(name))
+                                map[name] = region.TwoLetterISORegionName;
+                    }
+                    catch
+                    {
+                        // Some cultures may throw – skip them
                     }
                 }
-                catch
-                {
-                    // Some cultures may throw – skip them
-                }
-            }
-            return null;
-        }
+                return map;
+            });
     }
 }
