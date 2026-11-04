@@ -20,14 +20,32 @@ namespace Supervertaler.Trados.Controls
     /// rebuilt when the enabled resource set changes.</para>
     ///
     /// <para><b>Tabs load lazily.</b> Only the tab you are looking at gets a
-    /// CoreWebView2; the rest stay inert placeholders until selected. With eight
-    /// resources enabled that is the difference between one Chromium tab and
-    /// eight in Studio 2024's 32-bit address space, which Trados has already
-    /// eaten into. Matches the standalone app, where each source loads when first
-    /// clicked.</para>
+    /// CoreWebView2; the rest stay inert placeholders until selected. Matches the
+    /// standalone app, where each source loads when first clicked.</para>
+    ///
+    /// <para><b>Few browsers live at once, none once the window is closed.</b>
+    /// Each loaded tab is a Chromium page with its own renderer processes: one
+    /// for the site and one for every other site framed in it (ads, trackers,
+    /// consent banners), so an ad-funded dictionary site can cost half a dozen.
+    /// Keeping every tab ever opened, and keeping them all while the window was
+    /// merely hidden, once left 63 msedgewebview2.exe processes and 5.9 GB under
+    /// Studio after a few searches across nine resources. Now only the
+    /// <see cref="MaxLiveViews"/> most recently shown tabs keep a browser, and
+    /// closing the window releases them all, so the WebView2 processes exit.
+    /// What carries over is the profile on disk: persistent cookies (sign-ins
+    /// that "remember me"), cache, local storage.</para>
     /// </summary>
     public class WebSearchBrowserForm : Form
     {
+        /// <summary>
+        /// Tabs that keep a live browser: the selected one and the two shown
+        /// before it. Flicking between three sources stays instant; going back
+        /// to a fourth reloads it (a fraction of a second once the browser is
+        /// running). The cap holds however many resources are enabled: with 9,
+        /// or all 43, at most three tabs' worth of renderers run at once.
+        /// </summary>
+        private const int MaxLiveViews = 3;
+
         /// <summary>
         /// Detects a bot-check interstitial. Same probe as the standalone
         /// SuperLookup app: these walls render as ordinary pages, so the text is
@@ -43,7 +61,9 @@ namespace Supervertaler.Trados.Controls
         private sealed class TabState
         {
             public WebSearchTarget Target;
-            public WebView2 View;          // null until the tab is first selected
+            public WebView2 View;          // null until selected, and again once released
+            public Task ViewReady;         // View's start-up; see ReleaseView
+            public long LastShown;         // selection order, for MaxLiveViews
             public bool NeedsNavigate = true;
             public Panel Banner;           // the bot-check hand-off offer, if shown
             public bool RaiseWhenLoaded;   // re-assert the window once this load finishes
@@ -58,6 +78,7 @@ namespace Supervertaler.Trados.Controls
         private CoreWebView2Environment _environment;
         private List<string> _layoutIds = new List<string>();
         private bool _ownerSet;
+        private long _selections;   // stamps TabState.LastShown
 
         public WebSearchBrowserForm()
         {
@@ -122,6 +143,13 @@ namespace Supervertaler.Trados.Controls
             {
                 _environment = await WebView2Support.CreateEnvironmentAsync();
                 if (_environment == null) return false;
+
+                // The environment is kept for the session (it holds no process);
+                // the browser processes come and go with the views. This line
+                // is the log's proof that closing the window really ended them.
+                _environment.BrowserProcessExited += (s, e) =>
+                    DiagnosticLog.Log("WebView2",
+                        $"Browser processes exited ({e.BrowserProcessExitKind}, pid {e.BrowserProcessId})");
             }
 
             Text = $"SuperSearch – {query}";
@@ -155,9 +183,14 @@ namespace Supervertaler.Trados.Controls
 
         private void RebuildTabs(IList<WebSearchTarget> targets)
         {
-            foreach (TabPage page in _tabs.TabPages)
-                foreach (Control c in page.Controls) c.Dispose();
+            // Release the browsers through ReleaseView, which knows how to end one
+            // that is still starting, then dispose the pages themselves: clearing
+            // TabPages only detaches them. (The loop this replaces disposed each
+            // page's controls while enumerating them, which skips every other one.)
+            var old = _tabs.TabPages.Cast<TabPage>().ToList();
+            foreach (var page in old) ReleaseView(page.Tag as TabState, showPlaceholder: false);
             _tabs.TabPages.Clear();
+            foreach (var page in old) page.Dispose();
 
             foreach (var target in targets)
             {
@@ -166,15 +199,101 @@ namespace Supervertaler.Trados.Controls
                     UseVisualStyleBackColor = true,
                     Tag = new TabState { Target = target }
                 };
-                page.Controls.Add(new Label
-                {
-                    Dock = DockStyle.Fill,
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    ForeColor = Color.FromArgb(140, 140, 140),
-                    Text = "Loading…"
-                });
+                page.Controls.Add(NewPlaceholder());
                 _tabs.TabPages.Add(page);
             }
+        }
+
+        private static Label NewPlaceholder() => new Label
+        {
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.FromArgb(140, 140, 140),
+            Text = "Loading…"
+        };
+
+        /// <summary>
+        /// Ends a tab's browser, so its renderer processes exit, and leaves the
+        /// tab as if it had never been opened: selecting it again loads the
+        /// search afresh. Safe to call on a tab without one.
+        ///
+        /// <para>A view still starting up is not disposed here but when its
+        /// start-up settles. The WinForms WebView2 control's Dispose closes its
+        /// browser only once initialisation has finished; disposed mid-start,
+        /// it relies on the runtime noticing its window go and aborting the
+        /// start. Runtime 156 does (E_ABORT, tested), but waiting for
+        /// <see cref="TabState.ViewReady"/> doesn't depend on it, and a leaked
+        /// browser here would be invisible until Studio closed.</para>
+        /// </summary>
+        private void ReleaseView(TabState state, bool showPlaceholder = true)
+        {
+            var view = state?.View;
+            if (view == null) return;
+
+            var ready = state.ViewReady;
+            state.View = null;
+            state.ViewReady = null;
+            state.NeedsNavigate = true;
+            state.RaiseWhenLoaded = false;
+            state.BouncedUrls.Clear();     // a reload may offer the hand-off again
+            RemoveBanner(state);
+
+            var page = view.Parent as TabPage;
+            if (page != null)
+            {
+                page.Controls.Remove(view);
+                if (showPlaceholder && page.Controls.Count == 0) page.Controls.Add(NewPlaceholder());
+            }
+
+            if (ready == null || ready.IsCompleted)
+            {
+                DisposeQuietly(view);
+            }
+            else
+            {
+                ready.ContinueWith(_ => DisposeQuietly(view), System.Threading.CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+            }
+        }
+
+        private static void DisposeQuietly(WebView2 view)
+        {
+            try { view.Dispose(); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("WebView2", $"Releasing a view failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        /// <summary>Releases every tab's browser; the window keeps its tabs.</summary>
+        private void ReleaseAllViews()
+        {
+            int released = 0;
+            foreach (TabPage page in _tabs.TabPages)
+            {
+                var state = page.Tag as TabState;
+                if (state?.View == null) continue;
+                ReleaseView(state);
+                released++;
+            }
+            if (released > 0)
+                DiagnosticLog.Log("WebView2", $"Web window closed: released {released} browser view(s)");
+        }
+
+        /// <summary>
+        /// Keeps <paramref name="current"/> and the most recently shown others,
+        /// <see cref="MaxLiveViews"/> in all, and releases the rest. Runs before
+        /// a new view is created, so the cap is never exceeded even for a moment.
+        /// </summary>
+        private void ReleaseLeastRecentViews(TabState current)
+        {
+            var surplus = _tabs.TabPages.Cast<TabPage>()
+                .Select(p => p.Tag as TabState)
+                .Where(s => s?.View != null && s != current)
+                .OrderByDescending(s => s.LastShown)
+                .Skip(MaxLiveViews - 1)
+                .ToList();
+            foreach (var state in surplus) ReleaseView(state);
         }
 
         /// <summary>
@@ -183,38 +302,59 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         private async Task ActivateSelectedTabAsync()
         {
+            // Never while hidden: a window closed while a search was starting must
+            // not start a browser behind the user's back.
+            if (!Visible) return;
             var page = _tabs.SelectedTab;
             if (page == null || _environment == null) return;
             var state = page.Tag as TabState;
             if (state == null) return;
 
+            state.LastShown = ++_selections;
+            WebView2 view = state.View;
             try
             {
-                if (state.View == null)
+                if (view == null)
                 {
-                    var view = new WebView2 { Dock = DockStyle.Fill };
-                    page.Controls.Clear();          // drop the "Loading…" placeholder
+                    ReleaseLeastRecentViews(state);
+
+                    view = new WebView2 { Dock = DockStyle.Fill };
+                    foreach (var old in page.Controls.Cast<Control>().ToList())
+                        old.Dispose();              // the "Loading…" placeholder, or an old error
                     page.Controls.Add(view);
                     state.View = view;
+                    view.NavigationCompleted += async (s, e) => await OnNavigationCompletedAsync(state, view);
 
                     // Every view shares one environment, so they share a cookie
                     // jar: signing in on one tab carries to the rest.
-                    await view.EnsureCoreWebView2Async(_environment);
-                    view.NavigationCompleted += async (s, e) => await OnNavigationCompletedAsync(state);
+                    state.ViewReady = view.EnsureCoreWebView2Async(_environment);
                 }
+
+                // Also reached when the user comes back to a tab whose browser is
+                // still starting: it must wait too, not navigate a null CoreWebView2.
+                await state.ViewReady;
+
+                // Released while it was starting (window closed, or flicked
+                // past): ReleaseView has already arranged its disposal.
+                if (state.View != view) return;
 
                 if (state.NeedsNavigate)
                 {
                     state.NeedsNavigate = false;
                     state.RaiseWhenLoaded = true;
                     RemoveBanner(state);   // a stale wall notice must not outlive its page
-                    state.View.CoreWebView2.Navigate(state.Target.Url);
+                    view.CoreWebView2.Navigate(state.Target.Url);
                 }
             }
             catch (Exception ex)
             {
+                if (state.View != view) return;   // released meanwhile: not a failure
+
                 DiagnosticLog.Log("WebView2",
                     $"Tab '{state.Target.Resource.Name}' failed: {ex.GetType().Name}: {ex.Message}");
+                // Release first: the error page used to replace a view that was
+                // never disposed. Coming back to the tab now retries.
+                ReleaseView(state, showPlaceholder: false);
                 ShowTabError(page, state.Target, ex);
             }
         }
@@ -225,11 +365,13 @@ namespace Supervertaler.Trados.Controls
         /// and passes instantly. Only tabs the user actually opened can reach
         /// here, so this never launches a browser for something unseen.
         /// </summary>
-        private async Task OnNavigationCompletedAsync(TabState state)
+        private async Task OnNavigationCompletedAsync(TabState state, WebView2 view)
         {
             try
             {
-                var core = state.View?.CoreWebView2;
+                // A released view can still deliver one last event.
+                if (state.View != view) return;
+                var core = view.CoreWebView2;
                 if (core == null) return;
 
                 // The load is only NOW finished. Navigate() returned the moment
@@ -247,6 +389,7 @@ namespace Supervertaler.Trados.Controls
                 if (string.IsNullOrEmpty(url) || state.BouncedUrls.Contains(url)) return;
 
                 var result = await core.ExecuteScriptAsync(CloudflareProbe);
+                if (state.View != view) return;   // released while the probe ran
                 if (!string.Equals(result, "true", StringComparison.OrdinalIgnoreCase)) return;
 
                 state.BouncedUrls.Add(url);
@@ -362,7 +505,7 @@ namespace Supervertaler.Trados.Controls
 
         private static void ShowTabError(TabPage page, WebSearchTarget target, Exception ex)
         {
-            page.Controls.Clear();
+            foreach (var old in page.Controls.Cast<Control>().ToList()) old.Dispose();
             page.Controls.Add(new Label
             {
                 Dock = DockStyle.Fill,
@@ -418,19 +561,34 @@ namespace Supervertaler.Trados.Controls
         }
 
         /// <summary>
-        /// Closing hides rather than disposes, so the next search reuses the warm
-        /// environment and the signed-in sessions instead of paying the WebView2
-        /// cold start again.
+        /// Closing hides the window rather than disposing it, so the next search
+        /// reuses its tabs, size and position. The browsers do not survive it:
+        /// see <see cref="Dismiss"/>.
         /// </summary>
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
-                Hide();
+                Dismiss();
                 return;
             }
             base.OnFormClosing(e);
+        }
+
+        /// <summary>
+        /// Puts the window away and releases every tab's browser, so the WebView2
+        /// processes exit within a few seconds; the next search starts them again
+        /// in about a second. Hiding used to keep them all until Studio closed.
+        ///
+        /// <para>Deliberately not done on every hide: Windows also hides this
+        /// window while Studio, its owner, is minimised, and brings it back on
+        /// restore with nothing to reload the tab it shows.</para>
+        /// </summary>
+        public void Dismiss()
+        {
+            Hide();
+            ReleaseAllViews();
         }
     }
 }
