@@ -135,6 +135,29 @@ fi
 echo "  none"
 echo ""
 
+# Trados Studio refuses to load a plugin whose DLLs reference an RWS assembly
+# that is not on the public list in its own pluginconfig.xml, or one in a newer
+# version than that Studio has ("Assembly reference is not public"), and then
+# starts without the plugin. The compiler is happy with any assembly the .csproj
+# lists, so nothing short of Studio itself would notice: 20.205 shipped a
+# reference to Sdl.Desktop.Platform that built and passed, and Studio 2024 and
+# 2026 dropped the plugin. tools/StudioReferenceCheck applies Studio's own rule
+# to each package, against the pluginconfig.xml of the Studio it was built for,
+# before anything is installed. Built once here, run after each packaging.
+echo "=== Building the Studio reference check ==="
+REFCHECK_PROJECT="$SCRIPT_DIR/tools/StudioReferenceCheck/StudioReferenceCheck.csproj"
+if ! REFCHECK_OUT=$("$DOTNET" build "$REFCHECK_PROJECT" -c Release -v q --nologo 2>&1); then
+    echo "$REFCHECK_OUT" | grep -E "error" | sort -u
+    echo "  ERROR: tools/StudioReferenceCheck does not build."
+    exit 1
+fi
+echo "  built"
+echo ""
+check_studio_references() {   # <Studio install dir> <package.sdlplugin>
+    echo "=== Checking $(basename "$2") against $(basename "$1")'s public assemblies ==="
+    "$DOTNET" run --no-build --project "$REFCHECK_PROJECT" -c Release -- "$1/pluginconfig.xml" "$2"
+}
+
 # The build compiles core/ from the CHECKED-OUT files, not from the commit the
 # superproject pins, so those two must agree or the binary contains code this
 # repo has not recorded. Normally a submodule sits detached at the pinned
@@ -294,6 +317,7 @@ if [ -d "$STUDIO18_INSTALL" ]; then
     mkdir -p "$DIST_DIR"
     rm -f "$DIST_DIR/$PLUGIN_FILENAME_18"
     python "$SCRIPT_DIR/package_plugin.py" "$BUILD_DIR_18" "$DIST_DIR/$PLUGIN_FILENAME_18"
+    check_studio_references "$STUDIO18_INSTALL" "$DIST_DIR/$PLUGIN_FILENAME_18" || exit 1
 
     # NOT mirrored into "RWS AppStore/" here, deliberately. Staging happens in
     # tools/appstore_release.py, which computes the notes' checksums from these
@@ -358,6 +382,7 @@ if [ -d "$STUDIO19_INSTALL" ]; then
     mkdir -p "$DIST_DIR"
     rm -f "$DIST_DIR/$PLUGIN_FILENAME_19"
     python "$SCRIPT_DIR/package_plugin.py" "$BUILD_DIR_19" "$DIST_DIR/$PLUGIN_FILENAME_19"
+    check_studio_references "$STUDIO19_INSTALL" "$DIST_DIR/$PLUGIN_FILENAME_19" || exit 1
 
     # Staged by tools/appstore_release.py, not here - see the note above.
 
@@ -409,6 +434,7 @@ if [ -f "$STUDIO17_INSTALL/Sdl.Desktop.IntegrationApi.dll" ]; then
     mkdir -p "$DIST_DIR"
     rm -f "$DIST_DIR/$PLUGIN_FILENAME_17"
     python "$SCRIPT_DIR/package_plugin.py" "$BUILD_DIR_17" "$DIST_DIR/$PLUGIN_FILENAME_17"
+    check_studio_references "$STUDIO17_INSTALL" "$DIST_DIR/$PLUGIN_FILENAME_17" || exit 1
 
     # Staged by tools/appstore_release.py, not here - see the note above.
 
