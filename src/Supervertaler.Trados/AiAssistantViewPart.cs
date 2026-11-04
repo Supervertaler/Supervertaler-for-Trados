@@ -747,7 +747,9 @@ namespace Supervertaler.Trados
                 KbContext = kbPromptSection,
                 DemoMode = _settings?.AiSettings?.DemoMode ?? false
             };
-            var systemPrompt = ChatPrompt.BuildSystemPrompt(chatCtx);
+            // The first stableSystemLength characters stay the same from turn to
+            // turn; the rest follows the active segment (prompt caching, 205).
+            var systemPrompt = ChatPrompt.BuildSystemPrompt(chatCtx, out var stableSystemLength);
 
             // #120: AutoPrompt does not take the Assistant's chat system prompt.
             //
@@ -787,9 +789,17 @@ namespace Supervertaler.Trados
             }
             else
             {
-                // Regular chat: send last 10 messages for conversational context
-                messagesToSend = BuildMessageWindow(_chatHistory, 10);
+                // Regular chat: send the last 10 messages (up to 13: the window
+                // moves two exchanges at a time) for conversational context
+                messagesToSend = ChatPrompt.MessageWindow(_chatHistory, 10);
             }
+
+            // Prompt caching (205): a regular chat turn will be followed by the
+            // next one, beginning with the same system prompt and history, so the
+            // beginning is worth caching. QuickLauncher and AutoPrompt send a
+            // one-off request that nothing repeats; marking it would only add the
+            // 25% cache-write charge.
+            var cacheChat = !isStandalone;
 
             // 5. Resolve provider / API key
             var aiSettings = _settings?.AiSettings;
@@ -934,14 +944,16 @@ namespace Supervertaler.Trados
                             maxTokens: sendMaxTokens, cancellationToken: ct,
                             feature: capturedFeature, promptName: capturedPromptName,
                             toolStatusCallback: toolName =>
-                                SafeInvoke(() => _control.Value.SetThinking(true, FormatToolStatus(toolName))));
+                                SafeInvoke(() => _control.Value.SetThinking(true, FormatToolStatus(toolName))),
+                            enablePromptCaching: cacheChat, stableSystemPromptLength: stableSystemLength);
                     }
                     else
                     {
                         response = await client.SendChatAsync(
                             capturedMessages, capturedSystemPrompt,
                             maxTokens: sendMaxTokens, cancellationToken: ct,
-                            feature: capturedFeature, promptName: capturedPromptName);
+                            feature: capturedFeature, promptName: capturedPromptName,
+                            enablePromptCaching: cacheChat, stableSystemPromptLength: stableSystemLength);
                     }
 
                     // Read now, while this client is in scope; the dialog that may
@@ -15393,47 +15405,6 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             };
             _chatHistory.Add(msg);
             _control.Value.AddMessage(msg);
-        }
-
-        /// <summary>
-        /// Returns the last N messages for the API context window, constrained by
-        /// a character budget (~50K tokens ≈ 200K chars) to prevent runaway costs
-        /// from accumulated large prompts (e.g. {{PROJECT}} expansions).
-        /// Always includes at least the most recent message.
-        /// </summary>
-        private static List<ChatMessage> BuildMessageWindow(List<ChatMessage> history, int maxMessages)
-        {
-            const int maxChars = 200_000; // ~50K tokens
-
-            if (history.Count == 0)
-                return new List<ChatMessage>();
-
-            // Start from the most recent message and work backwards
-            var result = new List<ChatMessage>();
-            var totalChars = 0;
-            var startIdx = Math.Max(0, history.Count - maxMessages);
-
-            for (int i = history.Count - 1; i >= startIdx; i--)
-            {
-                var msgLen = history[i].Content?.Length ?? 0;
-
-                // Always include the most recent message
-                if (i == history.Count - 1)
-                {
-                    result.Insert(0, history[i]);
-                    totalChars += msgLen;
-                    continue;
-                }
-
-                // Stop adding older messages if we'd exceed the budget
-                if (totalChars + msgLen > maxChars)
-                    break;
-
-                result.Insert(0, history[i]);
-                totalChars += msgLen;
-            }
-
-            return result;
         }
 
         // ─── Chat History Persistence ─────────────────────────────
