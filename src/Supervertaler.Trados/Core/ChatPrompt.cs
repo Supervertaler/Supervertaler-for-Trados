@@ -173,12 +173,15 @@ namespace Supervertaler.Trados.Core
 
                 // Which segment "this segment" means (205). Only the active
                 // segment's position is in the prompt, so the model used to read
-                // every earlier "this segment" as the one active now.
+                // every earlier "this segment" as the one active now. The user
+                // never sees the tags, so the model must not talk about them.
                 sb.AppendLine();
                 sb.AppendLine("# WHICH SEGMENT A MESSAGE IS ABOUT");
                 sb.AppendLine("Each user message begins with a tag such as [Asked while segment N of M was active], naming the segment");
                 sb.AppendLine("that was active when it was sent: \"this segment\" in a message means the segment its tag names, which for");
                 sb.AppendLine("an earlier message need not be the segment active now (see ACTIVE SEGMENT).");
+                sb.AppendLine("The tags are for your own orientation: the user never sees them, so never mention or quote them. Just name");
+                sb.AppendLine("the segment, e.g. \"Your first question was about segment 6.\"");
             }
 
             // ══ Everything above stays the same from turn to turn; everything
