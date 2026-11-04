@@ -4634,7 +4634,7 @@ namespace Supervertaler.Trados
                     explicitSourceLang: req.SourceLang,
                     explicitTargetLang: req.TargetLang);
 
-                var insertedEntries = new List<TermEntry>();
+                var insertedIds = new List<long>();
                 var addedTo = new List<string>();
                 foreach (var o in outcomes)
                 {
@@ -4659,28 +4659,7 @@ namespace Supervertaler.Trados
                                 Reoriented = o.Swapped
                             }
                         });
-                        if (tb != null)
-                            insertedEntries.Add(new TermEntry
-                            {
-                                Id = o.NewId,
-                                // Stored orientation, not the caller's – the old
-                                // code indexed the caller's order even when the
-                                // insert had swapped it for this termbase.
-                                SourceTerm = o.StoredSource,
-                                TargetTerm = o.StoredTarget,
-                                SourceLang = tb.SourceLang,
-                                TargetLang = tb.TargetLang,
-                                TermbaseId = tb.Id,
-                                TermbaseName = tb.Name,
-                                IsProjectTermbase = tb.IsProjectTermbase,
-                                Ranking = tb.Ranking,
-                                Definition = req.Definition ?? "",
-                                Domain = req.Domain ?? "",
-                                Notes = req.Notes ?? "",
-                                Forbidden = false,
-                                CaseSensitive = false,
-                                TargetSynonyms = new List<string>()
-                            });
+                        insertedIds.Add(o.NewId);
                     }
                     else
                     {
@@ -4703,9 +4682,13 @@ namespace Supervertaler.Trados
                     }
                 }
 
-                // Incremental TermLens index update – terms appear immediately.
-                if (insertedEntries.Count > 0)
-                    TermLensEditorViewPart.NotifyTermInserted(insertedEntries);
+                // TermLens re-reads the new rows the way a full load reads
+                // them. It used to be handed entries built here, in the
+                // termbase's STORED direction - for a termbase pointing the
+                // other way from the project, indexed under the target-language
+                // word, so the term showed only after ↻ (18.20.205).
+                if (insertedIds.Count > 0)
+                    TermLensEditorViewPart.NotifyTermsEdited(insertedIds);
 
                 var response = new BridgeAddTermResponse
                 {
@@ -5063,9 +5046,10 @@ namespace Supervertaler.Trados
 
                 if (!req.DryRun && summary.Added > 0)
                 {
-                    // Same refresh the UI import does, so the new terms are matched
-                    // immediately instead of after a restart.
-                    try { TermLensEditorViewPart.NotifyTermAdded(); } catch { }
+                    // One reload for the whole import, read in the background.
+                    // NotifyTermAdded did it on the UI thread, holding up both
+                    // Studio and this reply for the whole reload (18.20.205).
+                    try { TermLensEditorViewPart.NotifyTermsImported(); } catch { }
                 }
 
                 return new BridgeImportTermbaseResponse
@@ -5272,6 +5256,7 @@ namespace Supervertaler.Trados
                 }
 
                 var details = new List<string>();
+                var changedIds = new List<long>();
                 foreach (var match in editable)
                 {
                     var e = match.Item1;
@@ -5288,7 +5273,7 @@ namespace Supervertaler.Trados
                     if (delete)
                     {
                         if (!TermbaseReader.DeleteTerm(settings.TermbasePath, e.Id)) continue;
-                        TermLensEditorViewPart.NotifyTermDeleted(e.Id);
+                        changedIds.Add(e.Id);
                         details.Add($"{e.TermbaseName}: deleted “{e.SourceTerm} → {e.TargetTerm}”");
                     }
                     else
@@ -5304,33 +5289,7 @@ namespace Supervertaler.Trados
                                 e.IsNonTranslatable, e.SourceAbbreviation, e.TargetAbbreviation,
                                 e.Url, e.Client, e.Forbidden, e.Project))
                             continue;
-                        // Refresh TermLens's in-memory index: replace the old entry.
-                        TermLensEditorViewPart.NotifyTermDeleted(e.Id);
-                        var updated = new TermEntry
-                        {
-                            Id = e.Id,
-                            SourceTerm = s,
-                            TargetTerm = t,
-                            SourceLang = e.SourceLang,
-                            TargetLang = e.TargetLang,
-                            TermbaseId = e.TermbaseId,
-                            TermbaseName = e.TermbaseName,
-                            IsProjectTermbase = e.IsProjectTermbase,
-                            Ranking = e.Ranking,
-                            Definition = definition,
-                            Domain = domain,
-                            Notes = notes,
-                            Url = e.Url,
-                            Forbidden = e.Forbidden,
-                            CaseSensitive = e.CaseSensitive,
-                            IsNonTranslatable = e.IsNonTranslatable,
-                            Client = e.Client,
-                            Project = e.Project,
-                            SourceAbbreviation = e.SourceAbbreviation,
-                            TargetAbbreviation = e.TargetAbbreviation,
-                            TargetSynonyms = e.TargetSynonyms ?? new List<string>()
-                        };
-                        TermLensEditorViewPart.NotifyTermInserted(new List<TermEntry> { updated });
+                        changedIds.Add(e.Id);
                         var changeParts = new List<string>();
                         if (s != e.SourceTerm || t != e.TargetTerm)
                             changeParts.Add($"“{e.SourceTerm} → {e.TargetTerm}” is now “{s} → {t}”");
@@ -5344,6 +5303,14 @@ namespace Supervertaler.Trados
                         details.Add($"{e.TermbaseName}: " + string.Join(", ", changeParts));
                     }
                 }
+
+                // TermLens re-reads these rows (a deleted one simply drops out).
+                // The edit branch used to hand it an entry built from the search
+                // result, which is in the termbase's STORED direction: on a
+                // termbase pointing the other way from the project, an edited
+                // term vanished from TermLens until ↻ (18.20.205).
+                if (changedIds.Count > 0)
+                    TermLensEditorViewPart.NotifyTermsEdited(changedIds);
 
                 var skippedNote = matches.Count > editable.Count
                     ? $" ({matches.Count - editable.Count} match(es) in non-Write termbases were left untouched: " +

@@ -79,6 +79,23 @@ namespace Supervertaler.Trados.Core
 
         private Dictionary<string, List<TermEntry>> _termIndex;
 
+        // Counts changes to the Supervertaler entries (not MultiTerm ones), so a
+        // reload read in the background can tell whether an add or edit landed
+        // while it was reading - see ReplaceSupervertalerEntries.
+        private int _version;
+
+        /// <summary>
+        /// Goes up whenever a Supervertaler entry is loaded, added, edited or
+        /// removed. MultiTerm merges leave it alone.
+        /// </summary>
+        public int Version => System.Threading.Volatile.Read(ref _version);
+
+        private void Changed()
+        {
+            System.Threading.Interlocked.Increment(ref _version);
+            _multiWordTermsCache = null;
+        }
+
         // Cached multi-word term list (keys containing spaces, sorted longest first).
         // Invalidated when the index changes to avoid rebuilding on every segment.
         private List<string> _multiWordTermsCache;
@@ -139,7 +156,7 @@ namespace Supervertaler.Trados.Core
         {
             _termIndex = termIndex ?? new Dictionary<string, List<TermEntry>>(StringComparer.OrdinalIgnoreCase);
             AddBracketAliases(_termIndex);
-            _multiWordTermsCache = null;
+            Changed();
         }
 
         // A bracket group attached to a word: the "(s)" of "verkoper(s)", the
@@ -321,7 +338,7 @@ namespace Supervertaler.Trados.Core
                     }
                 }
             }
-            _multiWordTermsCache = null;
+            Changed();
         }
 
         /// <summary>
@@ -351,6 +368,9 @@ namespace Supervertaler.Trados.Core
             if (entry == null) return false;
 
             text = text.Trim();
+            // Counted before the duplicate checks below: harmless if nothing
+            // changes, and no path out of this method is missed.
+            Changed();
 
             if (isSourceSynonym)
             {
@@ -416,7 +436,7 @@ namespace Supervertaler.Trados.Core
             }
             foreach (var key in keysToClean)
                 _termIndex.Remove(key);
-            _multiWordTermsCache = null;
+            Changed();
         }
 
         /// <summary>
@@ -465,7 +485,47 @@ namespace Supervertaler.Trados.Core
                         if (!list.Contains(e)) list.Add(e);
                 }
             }
-            _multiWordTermsCache = null;
+            Changed();
+        }
+
+        /// <summary>
+        /// Swaps in a complete, freshly read set of Supervertaler entries - a
+        /// full reload whose database read ran off the UI thread - and keeps the
+        /// MultiTerm entries already in the index, so the project's own
+        /// termbases need not be read again. Call on the UI thread.
+        ///
+        /// Refuses, and returns false, when <see cref="Version"/> has moved
+        /// since <paramref name="versionWhenReadStarted"/>: an add or edit
+        /// made while the read was running may be missing from it, and
+        /// swapping it in would quietly undo that. The caller reads again.
+        /// </summary>
+        public bool ReplaceSupervertalerEntries(Dictionary<string, List<TermEntry>> fresh, int versionWhenReadStarted)
+        {
+            if (fresh == null || Version != versionWhenReadStarted) return false;
+
+            // The fresh read is ours alone, so it becomes the new index; the
+            // MultiTerm entries are copied in under every key they sat under
+            // (aliases included), so nothing about them changes.
+            AddBracketAliases(fresh);
+            if (_termIndex != null)
+            {
+                foreach (var kvp in _termIndex)
+                {
+                    foreach (var e in kvp.Value)
+                    {
+                        if (!e.IsMultiTerm) continue;
+                        if (!fresh.TryGetValue(kvp.Key, out var list))
+                        {
+                            list = new List<TermEntry>();
+                            fresh[kvp.Key] = list;
+                        }
+                        if (!list.Contains(e)) list.Add(e);
+                    }
+                }
+            }
+            _termIndex = fresh;
+            Changed();
+            return true;
         }
 
         /// <summary>

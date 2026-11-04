@@ -17,6 +17,9 @@
 ### Fixed
 - **The Reports tab shows the real cost of a chat answer that used a tool, and of chat with OpenAI, Grok, Mistral, DeepSeek, OpenRouter and your own OpenAI-compatible endpoints.** These recorded no usage, so their cost was an estimate (marked ~) worked out from the length of the text. They now record the token counts the provider reports, cached tokens included; a tool-using answer adds up every step. AutoPrompt through these providers also now says, when a generated prompt is incomplete, whether the model ran out of output tokens.
 
+### Fixed
+- **Terms added through the MCP server show in TermLens straight away, and so do terms added in Workbench or Sidekick.** When an AI assistant added a term with `add_term` to a termbase that runs the other way from your project – an English–Dutch termbase in a Dutch–English project, say – TermLens did not show it until you clicked ↻, and a term it changed with `update_term` disappeared from TermLens until then. Both now show at once, exactly as ↻ would show them; a term added to a termbase whose **Read** box is unticked is no longer shown. A term added, changed or deleted in Workbench, Sidekick or a second Trados Studio now shows in TermLens a second or so later (about three seconds with 40,000 terms). Before, TermLens did not notice such changes at all until you had clicked ↻ once, and after that often not for hours. TermLens now reads the termbase in the background, so Trados Studio keeps responding while it does – after `import_project_termbase` too – and a large import is read once, when it finishes, not once per term.
+
 ## [18.20.204 / 19.20.204] – 2026-11-02
 
 ### Added
