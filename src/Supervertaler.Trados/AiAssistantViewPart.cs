@@ -674,7 +674,6 @@ namespace Supervertaler.Trados
                 }
                 : userMsg;
             _control.Value.AddMessage(displayMsg);
-            SaveChatHistory();
 
             // 2. Gather current context
             // #97: as the model reads it - placeholders, never Studio markup.
@@ -751,6 +750,15 @@ namespace Supervertaler.Trados
             // turn; the rest follows the active segment (prompt caching, 205).
             var systemPrompt = ChatPrompt.BuildSystemPrompt(chatCtx, out var stableSystemLength);
 
+            // The segment this question is asked on, kept with it (205): the
+            // prompt names only the segment active now, and the model took every
+            // earlier "this segment" to mean that one. Not for AutoPrompt, which
+            // is about the whole document. Saved here rather than when the bubble
+            // went up, so the tag is on disk with the question.
+            if (args.Feature != PromptLogFeature.PromptGeneration)
+                userMsg.AskedWhile = ChatPrompt.AskedWhile(chatCtx);
+            SaveChatHistory();
+
             // #120: AutoPrompt does not take the Assistant's chat system prompt.
             //
             // The meta-prompt is self-contained - it carries its own termbase
@@ -793,6 +801,9 @@ namespace Supervertaler.Trados
                 // moves two exchanges at a time) for conversational context
                 messagesToSend = ChatPrompt.MessageWindow(_chatHistory, 10);
             }
+            // Each question with the segment it was asked on (copies; the history
+            // and the chat keep the translator's own text).
+            messagesToSend = ChatPrompt.WithSegmentTags(messagesToSend);
 
             // Prompt caching (205): a regular chat turn will be followed by the
             // next one, beginning with the same system prompt and history, so the

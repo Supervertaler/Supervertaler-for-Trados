@@ -170,6 +170,15 @@ namespace Supervertaler.Trados.Core
                 // Truncated past the cap: first 80% of it + last 20%.
                 Supervertaler.Core.DocumentContent.AppendNumbered(sb, ctx.DocumentSegments,
                     ctx.MaxDocumentSegments > 0 ? ctx.MaxDocumentSegments : 500);
+
+                // Which segment "this segment" means (205). Only the active
+                // segment's position is in the prompt, so the model used to read
+                // every earlier "this segment" as the one active now.
+                sb.AppendLine();
+                sb.AppendLine("# WHICH SEGMENT A MESSAGE IS ABOUT");
+                sb.AppendLine("Each user message begins with a tag such as [Asked while segment N of M was active], naming the segment");
+                sb.AppendLine("that was active when it was sent: \"this segment\" in a message means the segment its tag names, which for");
+                sb.AppendLine("an earlier message need not be the segment active now (see ACTIVE SEGMENT).");
             }
 
             // ══ Everything above stays the same from turn to turn; everything
@@ -177,24 +186,12 @@ namespace Supervertaler.Trados.Core
             stableLength = sb.Length;
 
             // ── Position of the active segment ───────────────────────
-            if (ctx.TotalSegmentCount > 0 && ctx.ActiveSegmentIndex >= 0)
+            var position = ActiveSegmentPosition(ctx);
+            if (position != null)
             {
-                // The active segment by the number Studio shows - and, in a
-                // merged document, which numbers each file from 1, its file.
-                var active = ctx.DocumentSegments != null
-                    && ctx.ActiveSegmentIndex < ctx.DocumentSegments.Count
-                    ? ctx.DocumentSegments[ctx.ActiveSegmentIndex] : null;
-                var files = Supervertaler.Core.DocumentContent.Files(ctx.DocumentSegments);
                 sb.AppendLine();
                 sb.AppendLine("# ACTIVE SEGMENT");
-                if (active != null && files.Count > 1 && active.File != null)
-                    sb.Append("- Position: Segment ").Append(active.Number)
-                      .Append(" of ").Append(active.File)
-                      .Append(" (file ").Append(files.IndexOf(active.File) + 1).Append(" of ").Append(files.Count)
-                      .Append("; ").Append(ctx.TotalSegmentCount).AppendLine(" segments in all)");
-                else
-                    sb.Append("- Position: Segment ").Append(active?.Number ?? (ctx.ActiveSegmentIndex + 1).ToString())
-                      .Append(" of ").AppendLine(ctx.TotalSegmentCount.ToString());
+                sb.Append("- Position: Segment ").AppendLine(position);
             }
 
             // ── Surrounding segments ─────────────────────────────────
@@ -304,6 +301,80 @@ namespace Supervertaler.Trados.Core
                 sb.AppendLine("- Use your analysis of the document type to inform terminology and style recommendations");
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Where the active segment is, by the number Studio shows: "4 of 54",
+        /// or in a merged document, which numbers each file from 1, "4 of
+        /// part-a.docx (file 1 of 2; 54 segments in all)". Null when no segment
+        /// is active or the document was not read.
+        /// </summary>
+        public static string ActiveSegmentPosition(ChatContext ctx)
+        {
+            if (ctx == null || ctx.TotalSegmentCount <= 0 || ctx.ActiveSegmentIndex < 0)
+                return null;
+
+            var active = ctx.DocumentSegments != null
+                && ctx.ActiveSegmentIndex < ctx.DocumentSegments.Count
+                ? ctx.DocumentSegments[ctx.ActiveSegmentIndex] : null;
+            var files = Supervertaler.Core.DocumentContent.Files(ctx.DocumentSegments);
+            if (active != null && files.Count > 1 && active.File != null)
+                return active.Number + " of " + active.File
+                    + " (file " + (files.IndexOf(active.File) + 1) + " of " + files.Count
+                    + "; " + ctx.TotalSegmentCount + " segments in all)";
+            return (active?.Number ?? (ctx.ActiveSegmentIndex + 1).ToString())
+                + " of " + ctx.TotalSegmentCount;
+        }
+
+        /// <summary>
+        /// What a question records about where it was asked, for
+        /// <see cref="Supervertaler.Core.Models.ChatMessage.AskedWhile"/>:
+        /// "segment 4 of 54". Null when no segment is active.
+        /// </summary>
+        public static string AskedWhile(ChatContext ctx)
+        {
+            var position = ActiveSegmentPosition(ctx);
+            return position == null ? null : "segment " + position;
+        }
+
+        /// <summary>
+        /// The messages as the model reads them: a question that records the
+        /// segment it was asked on starts with "[Asked while segment 4 of 54 was
+        /// active]". Without it the model sees only the segment active now, and
+        /// took every earlier "this segment" to mean that one.
+        ///
+        /// <para>Copies; the history keeps the text the translator wrote, and the
+        /// chat shows that. Each question's tag is fixed when it is sent, so a
+        /// question reads the same on every later turn and the conversation stays
+        /// cacheable. Questions saved before 205 have no tag and go as they
+        /// are.</para>
+        /// </summary>
+        public static List<Supervertaler.Core.Models.ChatMessage> WithSegmentTags(
+            List<Supervertaler.Core.Models.ChatMessage> messages)
+        {
+            var result = new List<Supervertaler.Core.Models.ChatMessage>(messages?.Count ?? 0);
+            if (messages == null)
+                return result;
+
+            foreach (var m in messages)
+            {
+                if (m == null || m.Role != Supervertaler.Core.Models.ChatRole.User
+                    || string.IsNullOrEmpty(m.AskedWhile))
+                {
+                    result.Add(m);
+                    continue;
+                }
+                result.Add(new Supervertaler.Core.Models.ChatMessage
+                {
+                    Role = m.Role,
+                    Content = "[Asked while " + m.AskedWhile + " was active]\n" + (m.Content ?? ""),
+                    DisplayContent = m.DisplayContent,
+                    Images = m.Images,
+                    Documents = m.Documents,
+                    Timestamp = m.Timestamp
+                });
+            }
+            return result;
         }
 
         /// <summary>
