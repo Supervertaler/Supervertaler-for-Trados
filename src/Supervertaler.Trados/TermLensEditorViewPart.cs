@@ -287,7 +287,7 @@ namespace Supervertaler.Trados
             // Wire up editor controller and load termbases regardless of tier –
             // AssistantOnly users need termbase terms for AI prompt context even
             // though the TermLens UI panel is locked.
-            _editorController = SdlTradosStudio.Application.GetController<EditorController>();
+            _editorController = Core.StudioEditor.Controller;
 
             if (_editorController != null)
             {
@@ -1101,7 +1101,7 @@ namespace Supervertaler.Trados
 
             try
             {
-                var doc = SdlTradosStudio.Application.GetController<EditorController>()?.ActiveDocument;
+                var doc = Core.StudioEditor.Controller?.ActiveDocument;
                 if (doc == null)
                 {
                     if (result.Count == 0)
@@ -1676,7 +1676,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var doc = SdlTradosStudio.Application.GetController<EditorController>()?.ActiveDocument;
+                var doc = Core.StudioEditor.Controller?.ActiveDocument;
                 return doc?.Project as FileBasedProject;
             }
             catch
@@ -2353,8 +2353,7 @@ namespace Supervertaler.Trados
                 // is what the logged focus tells us.
                 try
                 {
-                    var ec = SdlTradosStudio.Application
-                        ?.GetController<Sdl.TranslationStudioAutomation.IntegrationApi.EditorController>();
+                    var ec = Core.StudioEditor.Controller;
                     if (ec != null) ec.Activate(_currentInstance._activeDocument);
                 }
                 catch (Exception ex)

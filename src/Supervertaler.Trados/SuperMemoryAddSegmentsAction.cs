@@ -56,7 +56,7 @@ namespace Supervertaler.Trados
                 return;
             }
 
-            var doc = SdlTradosStudio.Application.GetController<EditorController>()?.ActiveDocument;
+            var doc = Core.StudioEditor.Controller?.ActiveDocument;
             if (doc == null)
             {
                 MessageBox.Show("Open a document in the editor first.", "Supervertaler – SuperMemory",

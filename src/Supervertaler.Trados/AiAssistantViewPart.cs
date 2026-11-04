@@ -259,7 +259,7 @@ namespace Supervertaler.Trados
             if (_fullyInitialized) return;
             _fullyInitialized = true;
 
-            _editorController = SdlTradosStudio.Application.GetController<EditorController>();
+            _editorController = Core.StudioEditor.Controller;
             if (_editorController != null)
             {
                 _editorController.ActiveDocumentChanged += OnActiveDocumentChanged;
@@ -14954,7 +14954,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // BatchTranslator's background events can write on the UI thread.
                 var ui = System.Threading.SynchronizationContext.Current;
 
-                var editor = SdlTradosStudio.Application.GetController<EditorController>();
+                var editor = Core.StudioEditor.Controller;
                 var doc = editor?.ActiveDocument;
                 if (doc?.ActiveSegmentPair == null)
                 {
@@ -15213,7 +15213,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // the Assistant pane's control to exist.
                 var ui = System.Threading.SynchronizationContext.Current;
 
-                var editor = SdlTradosStudio.Application.GetController<EditorController>();
+                var editor = Core.StudioEditor.Controller;
                 var doc = editor?.ActiveDocument;
                 if (doc?.ActiveSegmentPair == null)
                 {

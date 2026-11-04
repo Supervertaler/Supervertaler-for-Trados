@@ -39,7 +39,7 @@ namespace Supervertaler.Trados
             }
 
             // ── Gather context from editor ───────────────────────────
-            var editorController = SdlTradosStudio.Application.GetController<EditorController>();
+            var editorController = Core.StudioEditor.Controller;
             var doc = editorController?.ActiveDocument;
 
             var sourceTerm = "";
