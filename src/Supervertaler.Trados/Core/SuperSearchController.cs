@@ -44,7 +44,8 @@ namespace Supervertaler.Trados.Core
         private EditorController _editorController;
 
         /// <summary>The single embedded web-results window, created on first use
-        /// and reused for the rest of the session.</summary>
+        /// and reused for the rest of the session (its browsers are not: they end
+        /// whenever it is closed).</summary>
         private Controls.WebSearchBrowserForm _webForm;
         private IStudioDocument _activeDocument;
 
@@ -223,10 +224,11 @@ namespace Supervertaler.Trados.Core
         {
             try
             {
-                // One window for the session, reused. Closing it only hides it,
-                // so the WebView2 environment and any signed-in sessions stay
-                // warm — and searches refresh tabs in place instead of piling up
-                // windows, which is the whole reason embedded mode exists.
+                // One window for the session, reused. Closing it hides it and
+                // ends its browsers (WebSearchBrowserForm.Dismiss); the next search
+                // refreshes the same window instead of piling up windows, which
+                // is the whole reason embedded mode exists.
+                //
                 // Sample the host window BEFORE our own form exists. AppInitializer
                 // tries first, but it runs while Studio is still starting up and
                 // the main window may not be there yet — and once our form does
@@ -249,12 +251,16 @@ namespace Supervertaler.Trados.Core
                     {
                         DiagnosticLog.Log("WebSearch",
                             "Embedded window could not load; opening the browser instead");
-                        try { form.Hide(); } catch { }
+                        // Dismiss, not Hide: it also ends any browser that did start.
+                        try { form.Dismiss(); } catch { }
                         WebSearchLauncher.OpenAll(targets);
                         _control.SetStatus(
                             $"Embedded view unavailable – opened {targets.Count} resource(s) in your browser.");
                         return;
                     }
+
+                    // Closed by the user while it was starting: leave it closed.
+                    if (!form.Visible) return;
 
                     // Raise it only once the tabs exist. WebView2 spins up a
                     // separate browser process that takes the foreground while it
