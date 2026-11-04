@@ -11,7 +11,8 @@ namespace Supervertaler.Trados.Core
     /// <summary>
     /// Runs <see cref="UnsegmentedTextDetector"/> on the files of the document
     /// open in the editor, in the background, whenever the active document
-    /// changes - and keeps the results so the panel, get_active_project and
+    /// changes - and keeps the results so the panel, the pop-up
+    /// (<see cref="UnsegmentedTextAlert"/>), get_active_project and
     /// check_unsegmented_text can all answer without reading the file again.
     ///
     /// <para><b>Never delays opening a document.</b> The event handler only reads
@@ -48,6 +49,15 @@ namespace Supervertaler.Trados.Core
         /// changed: a different document became active, or a check finished.
         /// </summary>
         public static event Action Changed;
+
+        /// <summary>True once Studio's editor is attached.</summary>
+        public static bool IsAttached => _editor != null;
+
+        /// <summary>The files of the document the editor was last known to show.</summary>
+        public static string[] ActiveFiles
+        {
+            get { lock (_gate) return _activeFiles; }
+        }
 
         /// <summary>
         /// Call on the UI thread with Studio's editor controller. Only the first call
@@ -100,6 +110,7 @@ namespace Supervertaler.Trados.Core
                 foreach (var gone in _results.Keys.Where(k => !open.Contains(k)).ToList())
                     _results.Remove(gone);
             }
+            UnsegmentedTextAlert.DocumentChanged(files);   // a pop-up about another document goes
             RaiseChanged();   // the previous document's warning goes at once
             CheckInBackground(files);
         }
@@ -141,6 +152,10 @@ namespace Supervertaler.Trados.Core
                         if (Refresh(path, token) != null) any = true;
                     }
                     if (any) RaiseChanged();
+                    // Also when nothing had to be read: a document seen before
+                    // decides again, and says nothing if its results are unchanged.
+                    if (!token.IsCancellationRequested)
+                        OnUi(() => UnsegmentedTextAlert.CheckFinished(files));
                 }
                 catch (OperationCanceledException) { /* a newer document took over */ }
                 catch (Exception ex)
@@ -212,22 +227,27 @@ namespace Supervertaler.Trados.Core
         private static void RaiseChanged()
         {
             var handler = Changed;
-            if (handler == null) return;
+            if (handler != null) OnUi(handler);
+        }
+
+        /// <summary>Runs <paramref name="action"/> on the UI thread: now if this is it, else posted.</summary>
+        private static void OnUi(Action action)
+        {
             var ui = _ui;
             if (ui != null)
             {
-                if (SynchronizationContext.Current == ui) SafeRaise(handler);
-                else ui.Post(_ => SafeRaise(handler), null);
+                if (SynchronizationContext.Current == ui) SafeRun(action);
+                else ui.Post(_ => SafeRun(action), null);
             }
             else if (UiThread.InvokeRequired)
-                UiThread.Invoke(() => SafeRaise(handler));
+                UiThread.Invoke(() => SafeRun(action));
             else
-                SafeRaise(handler);
+                SafeRun(action);
         }
 
-        private static void SafeRaise(Action handler)
+        private static void SafeRun(Action action)
         {
-            try { handler(); }
+            try { action(); }
             catch (Exception ex) { DiagnosticLog.WriteAlways(LogCategory, "Warning display failed: " + ex.Message); }
         }
 
@@ -238,18 +258,41 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         public static List<UnsegmentedFileResult> Current(out int pending)
         {
+            string[] files;
+            lock (_gate) files = _activeFiles;
+            var list = ResultsFor(files);
+            pending = files.Length - list.Count;
+            return list;
+        }
+
+        /// <summary>The kept result of each of <paramref name="files"/> that has one.</summary>
+        public static List<UnsegmentedFileResult> ResultsFor(IEnumerable<string> files)
+        {
             var list = new List<UnsegmentedFileResult>();
-            pending = 0;
             lock (_gate)
             {
-                foreach (var path in _activeFiles)
+                foreach (var path in files ?? Enumerable.Empty<string>())
                 {
                     UnsegmentedFileResult r;
                     if (_results.TryGetValue(path, out r)) list.Add(r);
-                    else pending++;
                 }
             }
             return list;
+        }
+
+        /// <summary>
+        /// The files of the document open in the editor at this moment, asked of
+        /// Studio. Null when not attached or Studio could not say. UI thread.
+        /// </summary>
+        public static string[] ActiveDocumentFilesNow()
+        {
+            if (_editor == null) return null;
+            try { return FilesOf(_editor.ActiveDocument); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log(LogCategory, "Could not list the open document's files: " + ex.Message);
+                return null;
+            }
         }
 
         /// <summary>
@@ -282,7 +325,11 @@ namespace Supervertaler.Trados.Core
                     FilePath = path, Ok = false, Error = "the file could not be found or read"
                 });
             }
-            if (any) RaiseChanged();
+            if (any)
+            {
+                RaiseChanged();
+                if (_editor != null) OnUi(() => UnsegmentedTextAlert.CheckFinished(files));
+            }
             return list;
         }
 
@@ -345,6 +392,10 @@ namespace Supervertaler.Trados.Core
             if (hit?.JumpSegmentId == null) return "This file has no segments to go to.";
             try
             {
+                // A list left open while another document came forward.
+                if (!FilesOf(doc).Contains(hit.FilePath ?? "", StringComparer.OrdinalIgnoreCase))
+                    return "This stretch is in " + DisplayName(hit.FilePath) +
+                           ", which is not the document open in the editor now. Switch to it and try again.";
                 doc.SetActiveSegmentPair(hit.JumpParagraphUnitId, hit.JumpSegmentId, true);
                 return null;
             }
