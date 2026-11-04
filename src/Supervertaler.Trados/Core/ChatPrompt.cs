@@ -51,10 +51,32 @@ namespace Supervertaler.Trados.Core
         /// Builds a context-aware system prompt for the AI chat assistant.
         /// Uses the full ChatContext for rich project/document awareness.
         /// </summary>
-        public static string BuildSystemPrompt(ChatContext ctx)
+        public static string BuildSystemPrompt(ChatContext ctx) => BuildSystemPrompt(ctx, out _);
+
+        /// <summary>
+        /// <see cref="BuildSystemPrompt(ChatContext)"/>, and how many of its
+        /// leading characters stay the same from one chat turn to the next.
+        ///
+        /// <para>The prompt is built in two parts for prompt caching (205). First
+        /// what stays the same while the translator works in one document: the
+        /// instructions, the project, SuperMemory and the whole source document -
+        /// tens of thousands of tokens, the bulk of every turn. Then what follows
+        /// the active segment: where it is, its neighbours, its text, its TM
+        /// matches and terms. A cache matches a prompt's beginning, so anything
+        /// that changes per segment in the first part would make every turn pay
+        /// for the whole document again; here moving to another segment changes
+        /// only the second part. The segment's position used to sit in PROJECT
+        /// CONTEXT, ahead of the document; it is the one thing that moved.</para>
+        ///
+        /// <para>Byte-identical across turns needs the inputs to be: the document
+        /// and the memory bank as read, in the same order. Both are (the bank's
+        /// files are read sorted); editing a bank file between turns changes the
+        /// first part, once.</para>
+        /// </summary>
+        public static string BuildSystemPrompt(ChatContext ctx, out int stableLength)
         {
             if (ctx == null)
-                return BuildSystemPrompt(null, null, null, null, null, null);
+                return BuildSystemPrompt(new ChatContext(), out stableLength);
 
             var sb = new StringBuilder(8192);
 
@@ -121,25 +143,9 @@ namespace Supervertaler.Trados.Core
                 if (hasLangPair)
                     sb.Append("- Language pair: ").Append(ctx.SourceLang).Append(" \u2192 ").AppendLine(ctx.TargetLang);
 
-                if (ctx.TotalSegmentCount > 0)
-                {
-                    // The active segment by the number Studio shows - and, in a
-                    // merged document, which numbers each file from 1, its file.
-                    var active = ctx.DocumentSegments != null && ctx.ActiveSegmentIndex >= 0
-                        && ctx.ActiveSegmentIndex < ctx.DocumentSegments.Count
-                        ? ctx.DocumentSegments[ctx.ActiveSegmentIndex] : null;
-                    var files = Supervertaler.Core.DocumentContent.Files(ctx.DocumentSegments);
-                    if (active != null && files.Count > 1 && active.File != null)
-                        sb.Append("- Position: Segment ").Append(active.Number)
-                          .Append(" of ").Append(active.File)
-                          .Append(" (file ").Append(files.IndexOf(active.File) + 1).Append(" of ").Append(files.Count)
-                          .Append("; ").Append(ctx.TotalSegmentCount).AppendLine(" segments in all)");
-                    else if (ctx.ActiveSegmentIndex >= 0)
-                        sb.Append("- Position: Segment ").Append(active?.Number ?? (ctx.ActiveSegmentIndex + 1).ToString())
-                          .Append(" of ").AppendLine(ctx.TotalSegmentCount.ToString());
-                    else
-                        sb.Append("- Total segments: ").AppendLine(ctx.TotalSegmentCount.ToString());
-                }
+                // Where the active segment is goes in the second part, below.
+                if (ctx.TotalSegmentCount > 0 && ctx.ActiveSegmentIndex < 0)
+                    sb.Append("- Total segments: ").AppendLine(ctx.TotalSegmentCount.ToString());
             }
 
             // ── SuperMemory knowledge base context ─────────────────
@@ -164,6 +170,31 @@ namespace Supervertaler.Trados.Core
                 // Truncated past the cap: first 80% of it + last 20%.
                 Supervertaler.Core.DocumentContent.AppendNumbered(sb, ctx.DocumentSegments,
                     ctx.MaxDocumentSegments > 0 ? ctx.MaxDocumentSegments : 500);
+            }
+
+            // ══ Everything above stays the same from turn to turn; everything
+            //    below follows the active segment. ══════════════════════════
+            stableLength = sb.Length;
+
+            // ── Position of the active segment ───────────────────────
+            if (ctx.TotalSegmentCount > 0 && ctx.ActiveSegmentIndex >= 0)
+            {
+                // The active segment by the number Studio shows - and, in a
+                // merged document, which numbers each file from 1, its file.
+                var active = ctx.DocumentSegments != null
+                    && ctx.ActiveSegmentIndex < ctx.DocumentSegments.Count
+                    ? ctx.DocumentSegments[ctx.ActiveSegmentIndex] : null;
+                var files = Supervertaler.Core.DocumentContent.Files(ctx.DocumentSegments);
+                sb.AppendLine();
+                sb.AppendLine("# ACTIVE SEGMENT");
+                if (active != null && files.Count > 1 && active.File != null)
+                    sb.Append("- Position: Segment ").Append(active.Number)
+                      .Append(" of ").Append(active.File)
+                      .Append(" (file ").Append(files.IndexOf(active.File) + 1).Append(" of ").Append(files.Count)
+                      .Append("; ").Append(ctx.TotalSegmentCount).AppendLine(" segments in all)");
+                else
+                    sb.Append("- Position: Segment ").Append(active?.Number ?? (ctx.ActiveSegmentIndex + 1).ToString())
+                      .Append(" of ").AppendLine(ctx.TotalSegmentCount.ToString());
             }
 
             // ── Surrounding segments ─────────────────────────────────
@@ -273,6 +304,67 @@ namespace Supervertaler.Trados.Core
                 sb.AppendLine("- Use your analysis of the document type to inform terminology and style recommendations");
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// How far the start of the history window moves at a time:
+        /// two exchanges. Even, so the window keeps starting on the same side of
+        /// the user/assistant alternation.
+        /// </summary>
+        internal const int MessageWindowStep = 4;
+
+        /// <summary>
+        /// The messages a chat turn sends: the most recent
+        /// <paramref name="maxMessages"/> at least, within a character budget
+        /// (~50K tokens ≈ 200K chars) that keeps accumulated large prompts (e.g.
+        /// {{PROJECT}} expansions) from running away. Always includes the most
+        /// recent message.
+        ///
+        /// <para>The window's first message moves only every
+        /// <see cref="MessageWindowStep"/> messages, so a window holds between
+        /// <paramref name="maxMessages"/> and <paramref name="maxMessages"/> + 3.
+        /// Until 205 it slid by one with every message once the chat was longer
+        /// than <paramref name="maxMessages"/>, so each turn began differently
+        /// from the last and prompt caching, which matches a beginning, could
+        /// never read the history back. Now it starts the same for two exchanges
+        /// at a time.</para>
+        /// </summary>
+        public static List<Supervertaler.Core.Models.ChatMessage> MessageWindow(
+            List<Supervertaler.Core.Models.ChatMessage> history, int maxMessages)
+        {
+            const int maxChars = 200_000; // ~50K tokens
+
+            var result = new List<Supervertaler.Core.Models.ChatMessage>();
+            if (history == null || history.Count == 0)
+                return result;
+
+            var startIdx = history.Count > maxMessages
+                ? (history.Count - maxMessages) / MessageWindowStep * MessageWindowStep
+                : 0;
+
+            // Start from the most recent message and work backwards
+            var totalChars = 0;
+            for (int i = history.Count - 1; i >= startIdx; i--)
+            {
+                var msgLen = history[i].Content?.Length ?? 0;
+
+                // Always include the most recent message
+                if (i == history.Count - 1)
+                {
+                    result.Insert(0, history[i]);
+                    totalChars += msgLen;
+                    continue;
+                }
+
+                // Stop adding older messages if we'd exceed the budget
+                if (totalChars + msgLen > maxChars)
+                    break;
+
+                result.Insert(0, history[i]);
+                totalChars += msgLen;
+            }
+
+            return result;
         }
 
         /// <summary>
