@@ -284,6 +284,10 @@ namespace Supervertaler.Trados
             {
                 _editorController.ActiveDocumentChanged += OnActiveDocumentChanged;
 
+                // Checks each opened document for source text outside any segment,
+                // in the background; the warning shows in this panel.
+                UnsegmentedTextMonitor.Attach(_editorController);
+
                 StartEditCapture();
 
                 // If a document is already open, wire up to it immediately

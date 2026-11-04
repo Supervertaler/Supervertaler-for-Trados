@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic test fixture for tools/unsegmented_text_test.ps1: source text left
+     outside every segment, in the shapes Trados has been seen to leave it.
+     Five stretches and two unsegmented paragraphs must be found; nothing else. -->
+<xliff xmlns:sdl="http://sdl.com/FileTypes/SdlXliff/1.0" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2" sdl:version="1.0">
+<doc-info xmlns="http://sdl.com/FileTypes/SdlXliff/1.0"><cmt-defs><cmt-def id="c1"><Comments><Comment severity="Medium" user="Acme Reviewer" date="2026-11-01T10:00:00" version="1.0">Comment text is not source text.</Comment></Comments></cmt-def><cmt-def id="c2"><Comments><Comment severity="Low" user="Acme Reviewer" date="2026-11-01T10:01:00" version="1.0">Point comment.</Comment></Comments></cmt-def></cmt-defs></doc-info>
+<file original="C:\Acme\PROJ-001\Acme garden catalogue.docx" datatype="x-sdlfilterframework2" source-language="en-GB" target-language="nl-NL">
+<header>
+<file-info xmlns="http://sdl.com/FileTypes/SdlXliff/1.0"><value key="SDL:FileId">00000000-0000-4000-8000-000000000000</value><value key="SDL:OriginalFilePath">C:\Acme\PROJ-001\Acme garden catalogue.docx</value></file-info>
+<reference><internal-file form="base64">QWNtZSBlbWJlZGRlZCBvcmlnaW5hbCAtIG5vdCBzb3VyY2UgdGV4dA==</internal-file></reference>
+<tag-defs xmlns="http://sdl.com/FileTypes/SdlXliff/1.0"><tag id="5"><bpt name="cf">&lt;cf bold="True"&gt;</bpt><ept name="cf">&lt;/cf&gt;</ept></tag><tag id="9"><ph name="tab">&lt;tab/&gt;</ph></tag></tag-defs>
+</header>
+<body>
+<group><sdl:cxts><sdl:cxt id="1"/></sdl:cxts>
+<!-- 1: text before the first segment of a paragraph (and of the file): "before segment 1". -->
+<trans-unit id="00000000-0000-4000-8000-000000000001"><source>Welcome to Acme. Acme sells garden tools. It also sells seeds.</source><seg-source>Welcome to Acme. <mrk mtype="seg" mid="1">Acme sells garden tools.</mrk> <mrk mtype="seg" mid="2">It also sells seeds.</mrk></seg-source><target>Welcome to Acme. <mrk mtype="seg" mid="1">Acme verkoopt tuingereedschap.</mrk> <mrk mtype="seg" mid="2">Het verkoopt ook zaden.</mrk></target><sdl:seg-defs><sdl:seg id="1" conf="Translated"/><sdl:seg id="2" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<!-- 2: comment markers (one an empty point comment) end at a sentence boundary,
+     and the next sentence is outside every segment. -->
+<trans-unit id="00000000-0000-4000-8000-000000000002"><source>The rake is made in <mrk mtype="x-sdl-comment" sdl:cid="c1">Acme</mrk> Town, plot 4210-2. Does your garden need a special soil, such as type B4 or C7? Then Acme tests it for you.</source><seg-source><mrk mtype="seg" mid="3">The rake is made in <mrk mtype="x-sdl-comment" sdl:cid="c1">Acme</mrk> Town, plot 4210-2.</mrk> <mrk mtype="x-sdl-comment" sdl:cid="c1"><mrk mtype="x-sdl-comment" sdl:cid="c2" /></mrk><mrk mtype="x-sdl-comment" sdl:cid="c2" />Does your garden need a special soil, such as type B4 or C7? <mrk mtype="seg" mid="4">Then Acme tests it for you.</mrk></seg-source><target><mrk mtype="seg" mid="3">De hark wordt gemaakt in Acme Town, perceel 4210-2.</mrk> Does your garden need a special soil, such as type B4 or C7? <mrk mtype="seg" mid="4">Dan test Acme het voor u.</mrk></target><sdl:seg-defs><sdl:seg id="3" conf="Translated"/><sdl:seg id="4" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<!-- 3: a segment nested inside a comment marker, with stray text after it but still
+     inside the same comment marker. -->
+<trans-unit id="00000000-0000-4000-8000-000000000003"><source>Acme ships every order. Acme ships worldwide. Delivery takes a week.</source><seg-source><mrk mtype="x-sdl-comment" sdl:cid="c1"><mrk mtype="seg" mid="5">Acme ships every order.</mrk> Acme ships worldwide. </mrk><mrk mtype="seg" mid="6">Delivery takes a week.</mrk></seg-source><target><mrk mtype="x-sdl-comment" sdl:cid="c1"><mrk mtype="seg" mid="5">Acme verzendt elke bestelling.</mrk> Acme ships worldwide. </mrk><mrk mtype="seg" mid="6">Levering duurt een week.</mrk></target><sdl:seg-defs><sdl:seg id="5" conf="Translated"/><sdl:seg id="6" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="3"/></sdl:cxts>
+<!-- 4: a paragraph with text but no segment in its seg-source. -->
+<trans-unit id="00000000-0000-4000-8000-000000000004"><source>Contact Acme for a quote.</source><seg-source>Contact Acme for a quote.</seg-source><target>Contact Acme for a quote.</target></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="4"/></sdl:cxts>
+<!-- structure paragraph: nothing to translate, nothing to report. -->
+<trans-unit translate="no" id="00000000-0000-4000-8000-000000000005"><source><x id="9"/></source></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<!-- none of this between segments may count: whitespace, punctuation, digits, a
+     two-letter word, tags, comment markers, deleted text, native code. -->
+<trans-unit id="00000000-0000-4000-8000-000000000006"><source>Acme rakes are strong. Acme hoses are light.</source><seg-source><mrk mtype="seg" mid="7"><g id="5">Acme</g> rakes are strong.</mrk> <x id="9"/> – B4 / 70 (km) • <mrk mtype="x-sdl-comment" sdl:cid="c2" /><mrk mtype="x-sdl-deleted" sdl:revid="r1">Deleted words here</mrk><ph id="10">Native code text</ph><g id="5"> 12, </g><mrk mtype="seg" mid="8">Acme hoses are light.</mrk>&#9; </seg-source><target><mrk mtype="seg" mid="7"><g id="5">Acme</g> harken zijn sterk.</mrk> <x id="9"/> <mrk mtype="seg" mid="8">Acme slangen zijn licht.</mrk></target><sdl:seg-defs><sdl:seg id="7" conf="Draft"/><sdl:seg id="8" conf="Draft"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="3"/></sdl:cxts>
+<!-- 5: a paragraph with no seg-source at all. -->
+<trans-unit id="00000000-0000-4000-8000-000000000007"><source>Acme Corporation</source><target>Acme Corporation</target></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<!-- 6: stray text split by a formatting tag still reads as one word. -->
+<trans-unit id="00000000-0000-4000-8000-000000000008"><source>Ask us. Acme. We answer.</source><seg-source><mrk mtype="seg" mid="9">Ask us.</mrk> Ac<g id="5">me</g>. <mrk mtype="seg" mid="10">We answer.</mrk></seg-source><target><mrk mtype="seg" mid="9">Vraag het ons.</mrk> Ac<g id="5">me</g>. <mrk mtype="seg" mid="10">Wij antwoorden.</mrk></target><sdl:seg-defs><sdl:seg id="9" conf="Draft"/><sdl:seg id="10" conf="Draft"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<!-- 7: letters of any script count. Text outside segments in <target> does not. -->
+<trans-unit id="00000000-0000-4000-8000-000000000009"><source>Acme Greece. Ωμέγα. Acme Athens.</source><seg-source><mrk mtype="seg" mid="11">Acme Greece.</mrk> Ωμέγα. <mrk mtype="seg" mid="12">Acme Athens.</mrk></seg-source><target><mrk mtype="seg" mid="11">Acme Griekenland.</mrk> Target only text. <mrk mtype="seg" mid="12">Acme Athene.</mrk></target><sdl:seg-defs><sdl:seg id="11" conf="Draft"/><sdl:seg id="12" conf="Draft"/></sdl:seg-defs></trans-unit>
+</group>
+</body>
+</file>
+</xliff>
