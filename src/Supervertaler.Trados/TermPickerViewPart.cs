@@ -168,7 +168,7 @@ namespace Supervertaler.Trados
                 return false;
             try
             {
-                SdlTradosStudio.Application.GetController<EditorController>()?.Activate();
+                Core.StudioEditor.Controller?.Activate();
                 return true;
             }
             catch { return false; }

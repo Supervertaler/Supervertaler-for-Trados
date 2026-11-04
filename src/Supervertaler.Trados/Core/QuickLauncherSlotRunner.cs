@@ -92,7 +92,7 @@ namespace Supervertaler.Trados
             }
 
             // Gather segment context (same as QuickLauncherAction)
-            var editorController = SdlTradosStudio.Application.GetController<EditorController>();
+            var editorController = StudioEditor.Controller;
             var doc = editorController?.ActiveDocument;
 
             var sourceText = "";

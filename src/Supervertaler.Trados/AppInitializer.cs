@@ -282,6 +282,14 @@ namespace Supervertaler.Trados
         /// forcing init explicitly is required; merely retrieving it does nothing.
         /// Everything is idempotent and logged so a failed run tells us where it
         /// stalled. Verified: bridge now starts with no pane activation.
+        ///
+        /// The editor controller and both panes come from <see cref="Core.StudioEditor"/>,
+        /// never from GetController directly. This runs before Studio has shown its
+        /// Editor view, and until 20.204 it got the panes by first asking for the
+        /// EditorController, which made Studio set that view up half-way: Studio then
+        /// failed to open the session's first document whenever it reported
+        /// file-parsing messages. The two panes' Initialize methods get the editor
+        /// controller the same way, for the same reason.
         /// </summary>
         private static void EnsureBridgeViewPartLoads()
         {
@@ -308,8 +316,8 @@ namespace Supervertaler.Trados
                     {
                         _bridgeLoaderTicks++;
                         EditorController editor = null;
-                        try { editor = SdlTradosStudio.Application.GetController<EditorController>(); }
-                        catch (Exception ex) { Core.DiagnosticLog.WriteAlways("BridgeLoader", "GetController<EditorController> threw: " + ex.Message); }
+                        try { editor = Core.StudioEditor.Controller; }
+                        catch (Exception ex) { Core.DiagnosticLog.WriteAlways("BridgeLoader", "StudioEditor.Controller threw: " + ex.Message); }
 
                         if (editor == null)
                         {
@@ -360,7 +368,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var vp = SdlTradosStudio.Application.GetController<AiAssistantViewPart>();
+                var vp = Core.StudioEditor.Pane<AiAssistantViewPart>();
                 if (vp == null)
                 {
                     Core.DiagnosticLog.WriteAlways("BridgeLoader", $"ForcePane ({reason}): controller is null");
@@ -399,7 +407,7 @@ namespace Supervertaler.Trados
         {
             try
             {
-                var vp = SdlTradosStudio.Application.GetController<TermLensEditorViewPart>();
+                var vp = Core.StudioEditor.Pane<TermLensEditorViewPart>();
                 if (vp == null)
                 {
                     Core.DiagnosticLog.WriteAlways("BridgeLoader", $"ForceTermLens ({reason}): controller is null");

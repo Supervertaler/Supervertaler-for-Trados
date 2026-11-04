@@ -83,7 +83,7 @@ namespace Supervertaler.Trados.Core
             _control.SetWebResources(settings.GetWebResources());
             _control.WebResultsInBrowser = settings.WebResultsInBrowser;
 
-            _editorController = SdlTradosStudio.Application.GetController<EditorController>();
+            _editorController = StudioEditor.Controller;
             if (_editorController != null)
             {
                 _editorController.ActiveDocumentChanged += OnActiveDocumentChanged;
@@ -362,8 +362,7 @@ namespace Supervertaler.Trados.Core
                 {
                     try
                     {
-                        var doc = SdlTradosStudio.Application
-                            .GetController<EditorController>()?.ActiveDocument;
+                        var doc = StudioEditor.Controller?.ActiveDocument;
                         return MultiTermProjectDetector.DetectTermbases(doc);
                     }
                     catch { return null; }
@@ -449,8 +448,7 @@ namespace Supervertaler.Trados.Core
                 {
                     try
                     {
-                        var doc = SdlTradosStudio.Application
-                            .GetController<EditorController>()?.ActiveDocument;
+                        var doc = StudioEditor.Controller?.ActiveDocument;
                         return MultiTermProjectDetector.DetectTermbases(doc);
                     }
                     catch { return null; }

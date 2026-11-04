@@ -117,6 +117,24 @@ echo ""
 python "$SCRIPT_DIR/tools/check_mcp_docs.py" || exit 1
 echo ""
 
+# Asked for before Studio has shown its Editor view, GetController<EditorController>
+# sets that view up half-way, and Studio then fails to open the session's first
+# document whenever it reports file-parsing messages (fixed in 20.205; see
+# Core/StudioEditor.cs). Nothing would show it until a user opened such a file
+# first, so every call goes through StudioEditor.Controller, and this keeps it so.
+echo "=== Checking nothing asks Studio for the EditorController directly ==="
+DIRECT_EDITOR=$(grep -rnE "GetController<([A-Za-z]+\.)*EditorController>" --include=*.cs "$PROJECT_DIR" \
+    | grep -vE "/(bin|obj)/|/Core/StudioEditor\.cs:" || true)
+if [ -n "$DIRECT_EDITOR" ]; then
+    echo "$DIRECT_EDITOR"
+    echo ""
+    echo "  ERROR: use Core.StudioEditor.Controller instead (see Core/StudioEditor.cs)."
+    echo ""
+    exit 1
+fi
+echo "  none"
+echo ""
+
 # The build compiles core/ from the CHECKED-OUT files, not from the commit the
 # superproject pins, so those two must agree or the binary contains code this
 # repo has not recorded. Normally a submodule sits detached at the pinned

@@ -434,8 +434,7 @@ namespace Supervertaler.Trados.Controls
                 {
                     try
                     {
-                        SdlTradosStudio.Application
-                            .GetController<EditorController>()?.Activate();
+                        Core.StudioEditor.Controller?.Activate();
                     }
                     catch { /* editor may be mid-transition; Escape just does nothing */ }
                     return true;

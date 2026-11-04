@@ -39,7 +39,7 @@ namespace Supervertaler.Trados
 
             try
             {
-                var editorController = SdlTradosStudio.Application.GetController<EditorController>();
+                var editorController = Core.StudioEditor.Controller;
                 var doc = editorController?.ActiveDocument;
                 if (doc == null)
                 {

@@ -72,7 +72,7 @@ namespace Supervertaler.Trados
             }
 
             // Gather segment context once (before showing the menu)
-            var editorController = SdlTradosStudio.Application.GetController<EditorController>();
+            var editorController = Core.StudioEditor.Controller;
             var doc = editorController?.ActiveDocument;
 
             var sourceText = "";
