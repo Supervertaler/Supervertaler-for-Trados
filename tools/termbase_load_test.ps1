@@ -269,6 +269,14 @@ $t1 = $LangT.GetMethod("CompareTermbaseDirection")
 $sw = [Diagnostics.Stopwatch]::StartNew(); for ($i = 0; $i -lt 200; $i++) { [void]$t1.Invoke($null, @("Dutch (Netherlands)", "en", "nl")) }
 Write-Host ("       one direction comparison for 'Dutch (Netherlands)': {0:N3} ms (was ~4.3 ms; the load made one per term)" -f ($sw.Elapsed.TotalMilliseconds / 200))
 Check "a direction comparison no longer scans every culture (< 1 ms)" (($sw.Elapsed.TotalMilliseconds / 200) -lt 1) "True"
+# Same answers as before: the plugin's own start-up self-test of the direction
+# rules, and the names Studio and termbases use.
+Check "LanguageUtils start-up self-test" ([string]$LangT.GetMethod("RunStartupSelfTest").Invoke($null, @())) ""
+$shortMi = $LangT.GetMethod("ShortenLanguageName")
+foreach ($p in @(@("Dutch (Netherlands)", "Dutch (NL)"), @("English (United Kingdom)", "English (GB)"), @("nl-BE", "Dutch (BE)"),
+                 @("en", "English"), @("Dutch", "Dutch"), @("Chinese (Simplified)", "Chinese (Simplified)"))) {
+    Check "  ShortenLanguageName('$($p[0])')" ([string]$shortMi.Invoke($null, @($p[0]))) $p[1]
+}
 $rows = $null; $dutch = $null
 
 # ═══ Part 2: the panel's reloads, off the UI thread ══════════════════
