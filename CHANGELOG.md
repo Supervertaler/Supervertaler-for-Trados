@@ -7,7 +7,7 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
-## [18.20.205 / 19.20.205] – Unreleased
+## [18.20.205 / 19.20.205] – 2026-11-04
 
 ### Added
 - **An AI assistant connected through the MCP server can now read and write a term's abbreviations.** Supervertaler termbase entries have long had a source and a target abbreviation (**Add term with abbreviation**, Ctrl+Alt+A, fills them), but an assistant could neither see nor set them, so it put abbreviations in the notes or added them as separate entries. Now `add_term` takes the abbreviations along with the term pair and reports exactly what it stored – in a termbase that runs the other way, each abbreviation stays beside its own term. `update_term` changes or removes them, `lookup_term` shows them and finds an entry by its abbreviation alone ("GC" finds "gas chromatography"), and `import_project_termbase` puts a Trados termbase's Abbreviation fields, and the abbreviation columns of a CSV or TSV glossary, into the abbreviation fields instead of the notes. It is all optional: entries without abbreviations, and assistants that don't use them, work as before.
