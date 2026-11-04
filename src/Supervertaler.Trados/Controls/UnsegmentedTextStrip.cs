@@ -8,7 +8,7 @@ using Supervertaler.Trados.Core;
 namespace Supervertaler.Trados.Controls
 {
     /// <summary>
-    /// A one-line warning across the top of the Supervertaler panel, shown only
+    /// A one-line warning across the top of the TermLens panel, shown only
     /// while the open document has source text outside every segment (see
     /// <see cref="UnsegmentedTextDetector"/>). Clicking it lists each stretch;
     /// clicking one puts the editor on the nearest segment. The × hides it for
