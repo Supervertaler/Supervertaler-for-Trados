@@ -486,6 +486,34 @@ namespace Supervertaler.Trados.Controls
             return true;
         }
 
+        /// <summary>See <see cref="TermMatcher.Version"/>. Read it before a background read.</summary>
+        public int IndexVersion => _matcher.Version;
+
+        /// <summary>
+        /// Reads every Supervertaler term into a new index on a connection of its
+        /// own, so it is safe on a background thread: it touches nothing the
+        /// panel is using. Null when the database cannot be opened.
+        /// </summary>
+        public static Dictionary<string, List<TermEntry>> ReadSupervertalerIndex(string dbPath,
+            HashSet<long> disabledTermbaseIds, bool globalCaseSensitive, string projectSourceLang)
+        {
+            using (var reader = new TermbaseReader(dbPath))
+            {
+                if (!reader.Open()) return null;
+                return reader.LoadAllTerms(disabledTermbaseIds, globalCaseSensitive, projectSourceLang);
+            }
+        }
+
+        /// <summary>
+        /// Puts the result of <see cref="ReadSupervertalerIndex"/> in place, keeping
+        /// the MultiTerm entries. UI thread only. False when the index changed
+        /// after <paramref name="versionWhenReadStarted"/>; read again.
+        /// </summary>
+        public bool SwapInSupervertalerIndex(Dictionary<string, List<TermEntry>> fresh, int versionWhenReadStarted)
+        {
+            return _matcher.ReplaceSupervertalerEntries(fresh, versionWhenReadStarted);
+        }
+
         /// <summary>
         /// Returns all loaded termbase term entries from the in-memory index.
         /// Used for termbase injection into AI translation prompts.
