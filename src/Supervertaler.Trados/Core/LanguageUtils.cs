@@ -38,22 +38,29 @@ namespace Supervertaler.Trados.Core
 
             langName = langName.Trim();
 
-            // 1) Try to parse as a culture code (e.g., "en-US", "nl-BE")
-            try
+            // 1) Try to parse as a culture code (e.g., "en-US", "nl-BE").
+            // Not for a display name such as Studio's "Dutch (Netherlands)": no
+            // culture code has a space or a bracket, so the attempt can only end
+            // in a CultureNotFoundException - which, when this ran per term,
+            // was some 38,000 exceptions per termbase load.
+            if (langName.IndexOf(' ') < 0 && langName.IndexOf('(') < 0)
             {
-                var culture = new CultureInfo(langName);
-                if (!culture.IsNeutralCulture && culture.Name.Contains("-"))
+                try
                 {
-                    var region = new RegionInfo(culture.Name);
-                    var langPart = culture.Parent.EnglishName;
-                    return $"{langPart} ({region.TwoLetterISORegionName})";
+                    var culture = new CultureInfo(langName);
+                    if (!culture.IsNeutralCulture && culture.Name.Contains("-"))
+                    {
+                        var region = new RegionInfo(culture.Name);
+                        var langPart = culture.Parent.EnglishName;
+                        return $"{langPart} ({region.TwoLetterISORegionName})";
+                    }
+                    if (culture.IsNeutralCulture)
+                        return culture.EnglishName;
                 }
-                if (culture.IsNeutralCulture)
-                    return culture.EnglishName;
-            }
-            catch
-            {
-                // Not a valid culture code – fall through to display name parsing
+                catch
+                {
+                    // Not a valid culture code – fall through to display name parsing
+                }
             }
 
             // 2) Try to parse "Language (Country)" format and shorten the country
