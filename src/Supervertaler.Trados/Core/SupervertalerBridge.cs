@@ -1688,7 +1688,7 @@ namespace Supervertaler.Trados.Core
     ///     The existing state already is – see BridgePayloadLedger's lock and the
     ///     coverage sets' _bridgeCoverageLock.
     /// </summary>
-    public sealed class SupervertalerBridge : IDisposable
+    public sealed partial class SupervertalerBridge : IDisposable
     {
         private const int HandshakeVersion = 1;
 
@@ -2298,6 +2298,12 @@ namespace Supervertaler.Trados.Core
             if (method == "GET" && path == "/v1/coverage")
             {
                 HandleCoverage(context);
+                return;
+            }
+
+            if (method == "GET" && path == "/v1/unsegmented-text")
+            {
+                HandleUnsegmentedText(context);
                 return;
             }
 

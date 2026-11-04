@@ -15,6 +15,7 @@ namespace Supervertaler.Trados.Controls
     {
         private readonly Button _btnSettings;
         private readonly Button _btnHelp;
+        private readonly UnsegmentedTextStrip _unsegmented;
 
         /// <summary>
         /// Fired when the user clicks the gear/settings button.
@@ -30,6 +31,13 @@ namespace Supervertaler.Trados.Controls
             // Host TermLensControl directly – no TabControl
             termLensControl.Dock = DockStyle.Fill;
             Controls.Add(termLensControl);
+
+            // Warning strip above it, hidden unless the open document has source
+            // text outside every segment. Added after the Fill control so it docks
+            // first and takes the top.
+            _unsegmented = new UnsegmentedTextStrip();
+            Controls.Add(_unsegmented);
+            _unsegmented.VisibleChanged += (s, e) => PositionTopButtons();
 
             // Settings gear button – floats at top-right
             _btnSettings = new Button
@@ -90,9 +98,11 @@ namespace Supervertaler.Trados.Controls
         private void PositionTopButtons()
         {
             if (_btnHelp == null || _btnSettings == null) return;
-            // Help "?" at far right, gear to its left
-            _btnHelp.Location = new Point(Width - _btnHelp.Width - 2, 1);
-            _btnSettings.Location = new Point(_btnHelp.Left - _btnSettings.Width, 1);
+            // Help "?" at far right, gear to its left - on TermLens's header,
+            // so below the warning strip while it shows.
+            int top = 1 + (_unsegmented != null && _unsegmented.Visible ? _unsegmented.Height : 0);
+            _btnHelp.Location = new Point(Width - _btnHelp.Width - 2, top);
+            _btnSettings.Location = new Point(_btnHelp.Left - _btnSettings.Width, top);
         }
 
         // Force MA_ACTIVATE on WM_MOUSEACTIVATE — default per Win32 docs but

@@ -95,6 +95,7 @@ namespace Supervertaler.Trados.Core
 
             public const string KeyboardShortcuts   = "trados/keyboard-shortcuts/";
             public const string Troubleshooting     = "trados/troubleshooting/";
+            public const string UnsegmentedText     = "trados/troubleshooting/#source-text-outside-any-segment";
         }
 
         /// <summary>

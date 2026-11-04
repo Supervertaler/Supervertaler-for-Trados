@@ -50,6 +50,7 @@ unread. **Call the tools, then read.**
 | what the TM says for a sentence | `search_studio_tm` |
 | progress, how much is left | `get_project_statistics`, `get_coverage` |
 | tags, numbers, spacing, consistency | `check_tags`, `check_numbers`, `check_nbsp`, `find_inconsistencies` |
+| source text Trados left outside any segment | `check_unsegmented_text` |
 | Studio's own QA | `run_verification` |
 | what was changed | `get_tracked_changes` |
 | client and domain knowledge | `get_supermemory_context`, `search_supermemory` |
@@ -99,6 +100,7 @@ and then mention it afterwards.
 | numbers, dates, measurements | `check_numbers` |
 | inline tags | `check_tags` |
 | non-breaking spaces | `check_nbsp` |
+| source text outside any segment (exports untranslated) | `check_unsegmented_text` |
 | the same source translated two ways | `find_inconsistencies` |
 | Studio's own QA rules | `run_verification` |
 | the text itself | `get_segments`, then READ it |

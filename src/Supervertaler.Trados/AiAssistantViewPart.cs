@@ -1428,6 +1428,7 @@ namespace Supervertaler.Trados
                 if (termbaseWarning != null) warnings.Add(termbaseWarning);
                 var bankWarning = BridgeMemoryBankWarning();   // #135
                 if (bankWarning != null) warnings.Add(bankWarning);
+                warnings.AddRange(UnsegmentedTextMonitor.BridgeWarnings());   // text outside segments
                 if (warnings.Count > 0) snapshot.Warnings = warnings;
             }
             catch (Exception ex)

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic test fixture for tools/unsegmented_text_test.ps1: every piece of source
+     text is inside a segment, with plenty of markup between segments - comment
+     markers wrapping and beside segments, an empty point comment, tags, whitespace,
+     punctuation, a structure paragraph, an empty paragraph. No stretch may be found. -->
+<xliff xmlns:sdl="http://sdl.com/FileTypes/SdlXliff/1.0" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2" sdl:version="1.0">
+<doc-info xmlns="http://sdl.com/FileTypes/SdlXliff/1.0"><cmt-defs><cmt-def id="c1"><Comments><Comment severity="Medium" user="Acme Reviewer" date="2026-11-01T10:00:00" version="1.0">Check the brand name.</Comment></Comments></cmt-def></cmt-defs></doc-info>
+<file original="C:\Acme\PROJ-001\Acme seed list.docx" datatype="x-sdlfilterframework2" source-language="en-GB" target-language="nl-NL">
+<header>
+<file-info xmlns="http://sdl.com/FileTypes/SdlXliff/1.0"><value key="SDL:FileId">00000000-0000-4000-8000-000000000100</value></file-info>
+<reference><internal-file form="base64">QWNtZSBlbWJlZGRlZCBvcmlnaW5hbCAtIG5vdCBzb3VyY2UgdGV4dA==</internal-file></reference>
+<tag-defs xmlns="http://sdl.com/FileTypes/SdlXliff/1.0"><tag id="5"><bpt name="cf">&lt;cf bold="True"&gt;</bpt><ept name="cf">&lt;/cf&gt;</ept></tag><tag id="9"><ph name="tab">&lt;tab/&gt;</ph></tag></tag-defs>
+</header>
+<body>
+<group><sdl:cxts><sdl:cxt id="1"/></sdl:cxts>
+<trans-unit id="00000000-0000-4000-8000-000000000101"><source>Acme seeds</source><seg-source><mrk mtype="seg" mid="1">Acme seeds</mrk></seg-source><target><mrk mtype="seg" mid="1">Acme-zaden</mrk></target><sdl:seg-defs><sdl:seg id="1" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<trans-unit id="00000000-0000-4000-8000-000000000102"><source>Choose a tool. <mrk mtype="x-sdl-comment" sdl:cid="c1">Acme Mini</mrk> is the smallest.</source><seg-source><mrk mtype="seg" mid="2">Choose a tool.</mrk> <mrk mtype="x-sdl-comment" sdl:cid="c1"><mrk mtype="x-sdl-comment" sdl:cid="c1" /></mrk><mrk mtype="x-sdl-comment" sdl:cid="c1" /><mrk mtype="seg" mid="3"><mrk mtype="x-sdl-comment" sdl:cid="c1">Acme Mini</mrk> is the smallest.</mrk></seg-source><target><mrk mtype="seg" mid="2">Kies een gereedschap.</mrk> <mrk mtype="seg" mid="3">Acme Mini is het kleinste.</mrk></target><sdl:seg-defs><sdl:seg id="2" conf="Translated"/><sdl:seg id="3" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<trans-unit id="00000000-0000-4000-8000-000000000103"><source>Spade or fork? Both are fine.</source><seg-source><mrk mtype="x-sdl-comment" sdl:cid="c1"><mrk mtype="seg" mid="4">Spade or fork?</mrk></mrk> – <x id="9"/> <g id="5">(1) </g>… <mrk mtype="seg" mid="5"><g id="5">Both</g> are fine.</mrk> </seg-source><target><mrk mtype="seg" mid="4">Spade of vork?</mrk> <mrk mtype="seg" mid="5">Beide zijn prima.</mrk></target><sdl:seg-defs><sdl:seg id="4" conf="Translated"/><sdl:seg id="5" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="4"/></sdl:cxts>
+<trans-unit translate="no" id="00000000-0000-4000-8000-000000000104"><source/></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="4"/></sdl:cxts>
+<trans-unit id="00000000-0000-4000-8000-000000000105"><source><g id="15"><x id="14"/></g></source><seg-source><g id="15"><x id="14"/></g></seg-source><target><g id="15"><x id="14"/></g></target></trans-unit>
+</group>
+<group><sdl:cxts><sdl:cxt id="2"/></sdl:cxts>
+<trans-unit id="00000000-0000-4000-8000-000000000106"><source>See page 12.</source><seg-source>  <mrk mtype="seg" mid="6">See page 12.</mrk>  12.3 – 4 </seg-source><target><mrk mtype="seg" mid="6">Zie pagina 12.</mrk></target><sdl:seg-defs><sdl:seg id="6" conf="Translated"/></sdl:seg-defs></trans-unit>
+</group>
+</body>
+</file>
+</xliff>
