@@ -23,11 +23,16 @@ namespace Supervertaler.Trados.Controls
     {
         private const int ContentWidth = 380;
         private const int MaxFilesNamed = 3;
+        private const string ShowListText = "Show list";
+        private const string HintText =
+            "Click " + ShowListText + " to see them, then click one to go to the nearest segment. " +
+            "The text itself cannot be translated in the editor.";
 
         private readonly List<UnsegmentedHit> _hits;
         private readonly int _total;
         private readonly bool _severalFiles;
         private readonly Button _showList;
+        private readonly RichTextBox _hint;
         private IntPtr _owner;
 
         public string DocumentKey { get; }
@@ -95,12 +100,12 @@ namespace Supervertaler.Trados.Controls
                 UseMnemonic = false,
                 Margin = new Padding(0, 0, 0, 6)
             };
-            var hint = new Label
+            // Not a Label: a Label cannot make "Show list" bold. Filled and
+            // sized in OnLoad, once its handle exists at its scaled width.
+            _hint = new ReadOnlyText
             {
-                Text = "Show list lists them – click one to go to the nearest segment. The text itself " +
-                       "cannot be translated in the editor.",
-                AutoSize = true,
-                MaximumSize = new Size(ContentWidth, 0),
+                Width = ContentWidth,
+                Height = 1,
                 Margin = new Padding(0, 0, 0, 8)
             };
             var help = new LinkLabel
@@ -130,7 +135,7 @@ namespace Supervertaler.Trados.Controls
             };
             _showList = new Button
             {
-                Text = "Show list",
+                Text = ShowListText,
                 AutoSize = true,
                 MinimumSize = new Size(88, 28),
                 FlatStyle = FlatStyle.System,
@@ -157,7 +162,7 @@ namespace Supervertaler.Trados.Controls
             root.SetRowSpan(icon, 4);
             root.Controls.Add(heading, 1, 0);
             root.Controls.Add(message, 1, 1);
-            root.Controls.Add(hint, 1, 2);
+            root.Controls.Add(_hint, 1, 2);
             root.Controls.Add(help, 1, 3);
             root.Controls.Add(buttons, 0, 4);
             root.SetColumnSpan(buttons, 2);
@@ -216,6 +221,9 @@ namespace Supervertaler.Trados.Controls
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            FillHint();
+            PerformLayout();
+
             // Centred on Studio's window, kept on the screen it is on.
             RECT r;
             var area = _owner != IntPtr.Zero && GetWindowRect(_owner, out r) && r.Right > r.Left && r.Bottom > r.Top
@@ -229,12 +237,72 @@ namespace Supervertaler.Trados.Controls
             Location = new Point(x, y);
         }
 
+        /// <summary>
+        /// Puts the hint in, with "Show list" bold, and makes the box exactly as
+        /// tall as the text: the control reports that height as it lays the
+        /// text out, at the width and font size the screen's DPI gave it (as in
+        /// NumberPopupForm).
+        /// </summary>
+        private void FillHint()
+        {
+            if (!_hint.IsHandleCreated) { var unused = _hint.Handle; }
+            int textHeight = 0;
+            ContentsResizedEventHandler measure = (s, e) => textHeight = e.NewRectangle.Height;
+            _hint.ContentsResized += measure;
+            try
+            {
+                _hint.Text = HintText;
+                _hint.Select(HintText.IndexOf(ShowListText, StringComparison.Ordinal), ShowListText.Length);
+                using (var bold = new Font(_hint.Font, FontStyle.Bold))
+                    _hint.SelectionFont = bold;
+                _hint.Select(0, 0);
+            }
+            finally
+            {
+                _hint.ContentsResized -= measure;
+            }
+            if (textHeight <= 0)
+                textHeight = _hint.GetPositionFromCharIndex(_hint.TextLength - 1).Y + _hint.Font.Height;
+            _hint.Height = textHeight;
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             // The close box, Esc or OK. A close by UnsegmentedTextAlert has
             // already decided whether this counted as seen.
             Seen = true;
             base.OnFormClosing(e);
+        }
+
+        /// <summary>
+        /// Text to read, not to edit: no border or scroll bars, never in the tab
+        /// order, and the mouse can neither select in it nor scroll it, so no
+        /// caret appears and nothing moves when it is clicked.
+        /// </summary>
+        private sealed class ReadOnlyText : RichTextBox
+        {
+            private const int WM_LBUTTONDOWN = 0x0201, WM_MOUSEHWHEEL = 0x020E;
+
+            public ReadOnlyText()
+            {
+                ReadOnly = true;
+                BorderStyle = BorderStyle.None;
+                BackColor = SystemColors.Control;
+                ScrollBars = RichTextBoxScrollBars.None;
+                WordWrap = true;
+                DetectUrls = false;
+                ShortcutsEnabled = false;
+                TabStop = false;
+                Cursor = Cursors.Arrow;
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                // Button presses, double clicks and the wheel. A click still
+                // brings the pop-up forward: WM_MOUSEACTIVATE comes before these.
+                if (m.Msg >= WM_LBUTTONDOWN && m.Msg <= WM_MOUSEHWHEEL) return;
+                base.WndProc(ref m);
+            }
         }
 
         private sealed class OwnerWindow : IWin32Window
