@@ -22,7 +22,15 @@ namespace Supervertaler.Trados.Core
         Client,
         Project,
         ForbiddenFlag,
-        AppendToNotes
+        AppendToNotes,
+        /// <summary>
+        /// The term's abbreviation. A value in the SOURCE language's fields becomes
+        /// the source abbreviation and one in the TARGET language's fields the
+        /// target abbreviation, so each lands on its own side. A concept-level value
+        /// says nothing about which language it is in, so it is appended to the
+        /// notes instead of being guessed onto a side.
+        /// </summary>
+        Abbreviation
     }
 
     /// <summary>User choices that drive one import run.</summary>
@@ -116,6 +124,14 @@ namespace Supervertaler.Trados.Core
                 case "client":
                 case "customer": return ImportFieldTarget.Client;
                 case "project": return ImportFieldTarget.Project;
+                case "abbreviation":
+                case "abbreviations":
+                case "abbr":
+                case "abbr.":
+                case "abbrev":
+                case "abbrev.":
+                case "acronym":
+                case "short form": return ImportFieldTarget.Abbreviation;
                 // "Source" (a term's reference/source) and anything unrecognised are kept
                 // in notes rather than dropped.
                 default: return ImportFieldTarget.AppendToNotes;
@@ -217,6 +233,20 @@ namespace Supervertaler.Trados.Core
                 var target = kv.Value;
                 if (target == ImportFieldTarget.Ignore) continue;
 
+                if (target == ImportFieldTarget.Abbreviation)
+                {
+                    // Read per language rather than through ResolveFieldValue, which
+                    // merges both languages into one string: a Dutch and an English
+                    // abbreviation joined together would be right on neither side.
+                    row.SourceAbbreviation = MergeVariants(row.SourceAbbreviation,
+                        FieldValue(concept.FieldsForLanguage(options.SourceLanguageId), kv.Key));
+                    row.TargetAbbreviation = MergeVariants(row.TargetAbbreviation,
+                        FieldValue(concept.FieldsForLanguage(options.TargetLanguageId), kv.Key));
+                    var unsided = FieldValue(concept.Fields, kv.Key);
+                    if (unsided != null) notesParts.Add($"{kv.Key}: {unsided}");
+                    continue;
+                }
+
                 var value = ResolveFieldValue(concept, kv.Key, options.SourceLanguageId, options.TargetLanguageId);
                 if (string.IsNullOrWhiteSpace(value)) continue;
 
@@ -262,6 +292,32 @@ namespace Supervertaler.Trados.Core
             Take(concept.FieldsForLanguage(srcId));
             Take(concept.FieldsForLanguage(tgtId));
             return values.Count == 0 ? null : string.Join("; ", values);
+        }
+
+        private static string FieldValue(Dictionary<string, string> dict, string fieldName)
+        {
+            if (dict == null || !dict.TryGetValue(fieldName, out var v) || string.IsNullOrWhiteSpace(v))
+                return null;
+            return v.Trim();
+        }
+
+        /// <summary>
+        /// Adds abbreviation variants to a pipe-separated field, skipping repeats.
+        /// The readers join several values of one field with "; " (two terms in a
+        /// language each carrying an abbreviation), and a delimited cell may use
+        /// either separator, so both become the "|" the abbreviation fields use.
+        /// </summary>
+        private static string MergeVariants(string existing, string add)
+        {
+            if (string.IsNullOrWhiteSpace(add)) return existing;
+            var variants = new List<string>();
+            foreach (var part in ((existing ?? "") + "|" + add).Split('|', ';'))
+            {
+                var t = part.Trim();
+                if (t.Length > 0 && !variants.Contains(t, StringComparer.OrdinalIgnoreCase))
+                    variants.Add(t);
+            }
+            return string.Join("|", variants);
         }
 
         private static bool IsForbiddenValue(string value)

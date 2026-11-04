@@ -18,6 +18,11 @@ namespace Supervertaler.Trados.Core
         public string Domain { get; set; }
         public string Notes { get; set; }
 
+        /// <summary>Abbreviation(s) of the source / target term, pipe-separated,
+        /// from columns whose header names the side or the language.</summary>
+        public string SourceAbbreviation { get; set; }
+        public string TargetAbbreviation { get; set; }
+
         /// <summary>Extra spellings for either side, from synonym columns.</summary>
         public List<string> SourceSynonyms { get; set; } = new List<string>();
         public List<string> TargetSynonyms { get; set; } = new List<string>();
@@ -35,7 +40,8 @@ namespace Supervertaler.Trados.Core
         public List<string> Headers { get; set; } = new List<string>();
 
         /// <summary>Header name to the field it was taken as - source, target,
-        /// definition, domain, notes, sourceSynonyms, targetSynonyms, ignore.
+        /// definition, domain, notes, sourceSynonyms, targetSynonyms,
+        /// sourceAbbreviation, targetAbbreviation, ignore.
         /// This is what a dry run must show: in a format with no schema, the
         /// inferred mapping is the thing most likely to be wrong.</summary>
         public List<string> Mapping { get; set; } = new List<string>();
@@ -172,6 +178,8 @@ namespace Supervertaler.Trados.Core
                         case "notes": row.Notes = v; break;
                         case "sourceSynonyms": row.SourceSynonyms.AddRange(SplitSynonyms(v)); break;
                         case "targetSynonyms": row.TargetSynonyms.AddRange(SplitSynonyms(v)); break;
+                        case "sourceAbbreviation": row.SourceAbbreviation = JoinVariants(row.SourceAbbreviation, v); break;
+                        case "targetAbbreviation": row.TargetAbbreviation = JoinVariants(row.TargetAbbreviation, v); break;
                     }
                 }
 
@@ -243,14 +251,45 @@ namespace Supervertaler.Trados.Core
                 if (!string.IsNullOrWhiteSpace(row.Domain)) concept.Fields["Domain"] = row.Domain;
                 if (!string.IsNullOrWhiteSpace(row.Notes)) concept.Fields["Notes"] = row.Notes;
 
+                // Abbreviations are LANGUAGE fields, not concept fields: that is
+                // what lets the importer put each one on its own side.
+                if (!string.IsNullOrWhiteSpace(row.SourceAbbreviation))
+                    LanguageFields(concept, SrcId)[AbbreviationField] = row.SourceAbbreviation;
+                if (!string.IsNullOrWhiteSpace(row.TargetAbbreviation))
+                    LanguageFields(concept, TgtId)[AbbreviationField] = row.TargetAbbreviation;
+
                 tb.Concepts.Add(concept);
             }
 
             foreach (var f in new[] { "Definition", "Domain", "Notes" })
                 if (tb.Concepts.Any(c => c.Fields.ContainsKey(f)))
                     tb.DiscoveredFields.Add(f);
+            if (tb.Concepts.Any(c => c.LanguageFields.Values.Any(d => d.ContainsKey(AbbreviationField))))
+                tb.DiscoveredFields.Add(AbbreviationField);
 
             return tb;
+        }
+
+        /// <summary>The field name abbreviation columns are filed under; the
+        /// importer's automatic mapping sends it to the abbreviation fields.</summary>
+        private const string AbbreviationField = "Abbreviation";
+
+        private static Dictionary<string, string> LanguageFields(Models.ImportConcept concept, int langId)
+        {
+            if (!concept.LanguageFields.TryGetValue(langId, out var d))
+            {
+                d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                concept.LanguageFields[langId] = d;
+            }
+            return d;
+        }
+
+        private static string JoinVariants(string existing, string add)
+        {
+            var parts = (existing ?? "").Split('|').Concat(add.Split('|', ';'))
+                .Select(s => s.Trim()).Where(s => s.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            return string.Join("|", parts);
         }
 
         private static char SniffDelimiter(string header)
@@ -302,7 +341,10 @@ namespace Supervertaler.Trados.Core
 
                 if (overrides.TryGetValue(h, out mapped))
                 {
-                    fields[i] = mapped;
+                    // Known field names in any letter case: "Abbr=TargetAbbreviation"
+                    // must not quietly become a column nothing reads.
+                    fields[i] = KnownFields.FirstOrDefault(k =>
+                        string.Equals(k, mapped, StringComparison.OrdinalIgnoreCase)) ?? mapped;
                     continue;
                 }
 
@@ -314,6 +356,25 @@ namespace Supervertaler.Trados.Core
                 else if (low == "notes" || low == "note" || low == "comment") fields[i] = "notes";
                 else if (IsSynonymHeader(low, sourceLang)) fields[i] = "sourceSynonyms";
                 else if (IsSynonymHeader(low, targetLang)) fields[i] = "targetSynonyms";
+                // Before the language-name tests, which would otherwise take a
+                // "Dutch abbreviation" column for the Dutch TERM column.
+                else if (IsAbbreviationHeader(low))
+                {
+                    if (NamesLanguage(low, sourceLang) || low.StartsWith("source")) fields[i] = "sourceAbbreviation";
+                    else if (NamesLanguage(low, targetLang) || low.StartsWith("target")) fields[i] = "targetAbbreviation";
+                    else
+                    {
+                        // Which language a bare "Abbreviation" column is in cannot be
+                        // read off the file, and guessing wrong would put a Dutch
+                        // abbreviation in the English field of every entry. Leave it
+                        // out, loudly, with the one-line fix.
+                        fields[i] = "ignore";
+                        result.Warnings.Add(
+                            "Column \"" + h + "\" holds abbreviations but does not say which language, so it "
+                            + "was NOT imported. Pass \"" + h + "=sourceAbbreviation\" or \"" + h
+                            + "=targetAbbreviation\" in fieldMap to import it.");
+                    }
+                }
                 else if (NamesLanguage(low, sourceLang)) fields[i] = "source";
                 else if (NamesLanguage(low, targetLang)) fields[i] = "target";
                 else fields[i] = "ignore";
@@ -335,6 +396,26 @@ namespace Supervertaler.Trados.Core
                 result.Mapping.Add(headers[i] + " -> " + fields[i]);
 
             return fields;
+        }
+
+        private static readonly string[] KnownFields =
+        {
+            "source", "target", "definition", "domain", "notes",
+            "sourceSynonyms", "targetSynonyms", "sourceAbbreviation", "targetAbbreviation", "ignore"
+        };
+
+        private static readonly HashSet<string> AbbreviationWords = new HashSet<string>(
+            new[] { "abbreviation", "abbreviations", "abbr", "abbrev", "acronym", "acronyms" },
+            StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>A header naming abbreviations, judged word by word so that
+        /// "abbr" is not found inside some longer word.</summary>
+        private static bool IsAbbreviationHeader(string header)
+        {
+            if (header.Contains("short form")) return true;
+            return header.Split(new[] { ' ', '.', '(', ')', '-', '_', '/', ':' },
+                                StringSplitOptions.RemoveEmptyEntries)
+                         .Any(w => AbbreviationWords.Contains(w));
         }
 
         private static bool IsSynonymHeader(string header, string lang)

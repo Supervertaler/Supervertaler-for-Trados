@@ -3041,6 +3041,27 @@ namespace Supervertaler.Trados
             return false;
         }
 
+        /// <summary>
+        /// An abbreviation in a target segment: whole word, exact case. Unlike
+        /// <see cref="TermFoundInTarget"/> this never matches inside a word, because
+        /// a two- or three-letter abbreviation is inside a great many words ("VAT"
+        /// in "private") and a hit there would hide a real terminology miss.
+        /// </summary>
+        internal static bool AbbreviationFoundInTarget(string target, string abbreviation)
+        {
+            if (string.IsNullOrEmpty(target) || string.IsNullOrWhiteSpace(abbreviation)) return false;
+            var a = abbreviation.Trim();
+            for (int at = target.IndexOf(a, StringComparison.Ordinal); at >= 0;
+                 at = target.IndexOf(a, at + 1, StringComparison.Ordinal))
+            {
+                int end = at + a.Length;
+                bool startOk = at == 0 || !char.IsLetterOrDigit(target[at - 1]);
+                bool endOk = end >= target.Length || !char.IsLetterOrDigit(target[end]);
+                if (startOk && endOk) return true;
+            }
+            return false;
+        }
+
         /// <summary>Shortens a value for a bridge response, marking that it was shortened.</summary>
         private static string TruncateForBridge(string s, int max)
         {
@@ -3684,7 +3705,15 @@ namespace Supervertaler.Trados
                             expected = expected.Where(x => !string.IsNullOrWhiteSpace(x))
                                                .Select(x => x.Trim()).ToList();
 
-                            bool found = expected.Any(x => TermFoundInTarget(s.Target, x));
+                            // The entry's target abbreviation is a correct rendering
+                            // too - "btw" translated "VAT", not "value added tax".
+                            // Matched separately: TermFoundInTarget is a substring
+                            // test, and as a substring "PE" is inside "permanent".
+                            var targetAbbrs = entry.GetTargetAbbreviationVariants();
+                            bool found = expected.Any(x => TermFoundInTarget(s.Target, x))
+                                         || targetAbbrs.Any(a => AbbreviationFoundInTarget(s.Target, a));
+                            // Reported as acceptable renderings alongside the term.
+                            if (targetAbbrs.Length > 0) expected.AddRange(targetAbbrs);
                             if (!found)
                             {
                                 reported.Add(entry.SourceTerm);
@@ -4632,7 +4661,11 @@ namespace Supervertaler.Trados
                     targets,
                     projectSourceLang: projSrcLang,
                     explicitSourceLang: req.SourceLang,
-                    explicitTargetLang: req.TargetLang);
+                    explicitTargetLang: req.TargetLang,
+                    sourceAbbreviation: req.SourceAbbreviation,
+                    targetAbbreviation: req.TargetAbbreviation);
+                bool sentAbbreviations = !string.IsNullOrWhiteSpace(req.SourceAbbreviation)
+                                         || !string.IsNullOrWhiteSpace(req.TargetAbbreviation);
 
                 var insertedIds = new List<long>();
                 var addedTo = new List<string>();
@@ -4656,7 +4689,9 @@ namespace Supervertaler.Trados
                                 Definition = string.IsNullOrEmpty(req.Definition) ? null : req.Definition,
                                 Domain = string.IsNullOrEmpty(req.Domain) ? null : req.Domain,
                                 Notes = string.IsNullOrEmpty(req.Notes) ? null : req.Notes,
-                                Reoriented = o.Swapped
+                                Reoriented = o.Swapped,
+                                SourceAbbreviation = string.IsNullOrEmpty(o.StoredSourceAbbreviation) ? null : o.StoredSourceAbbreviation,
+                                TargetAbbreviation = string.IsNullOrEmpty(o.StoredTargetAbbreviation) ? null : o.StoredTargetAbbreviation
                             }
                         });
                         insertedIds.Add(o.NewId);
@@ -4669,13 +4704,20 @@ namespace Supervertaler.Trados
                             Termbase = o.TermbaseName,
                             Status = isDuplicate ? "duplicate" : "error",
                             Role = tb == null ? null : (tb.Id == settings.ProjectTermbaseId ? "project" : "background"),
-                            Detail = o.Detail,
+                            // A duplicate writes nothing - say so when abbreviations
+                            // were sent, or the caller reads them as stored.
+                            Detail = isDuplicate && sentAbbreviations
+                                ? o.Detail + ". The abbreviations sent were NOT written; to set them on the " +
+                                  "existing entry use update_term with newSourceAbbreviation/newTargetAbbreviation"
+                                : o.Detail,
                             Existing = isDuplicate && o.ExistingId >= 0
                                 ? new BridgeExistingTerm
                                 {
                                     Id = o.ExistingId,
                                     Source = o.ExistingSource,
-                                    Target = o.ExistingTarget
+                                    Target = o.ExistingTarget,
+                                    SourceAbbreviation = string.IsNullOrEmpty(o.ExistingSourceAbbreviation) ? null : o.ExistingSourceAbbreviation,
+                                    TargetAbbreviation = string.IsNullOrEmpty(o.ExistingTargetAbbreviation) ? null : o.ExistingTargetAbbreviation
                                 }
                                 : null
                         });
@@ -5004,7 +5046,11 @@ namespace Supervertaler.Trados
                 // ── 5. Field map ───────────────────────────────────────────
                 var fieldMap = Core.TermbaseImporter.SuggestFieldMap(imported.DiscoveredFields);
                 var badMappings = new List<string>();
-                if (req.FieldMap != null)
+                // A delimited file's fieldMap is a COLUMN map, already applied by
+                // the parser ("Abbr=targetAbbreviation"). Read again here as
+                // MultiTerm field targets, every such entry came back as "not a
+                // known target ... kept the automatic mapping" - false on both counts.
+                if (req.FieldMap != null && delimitedParse == null)
                 {
                     foreach (var entry in req.FieldMap)
                     {
@@ -5076,7 +5122,12 @@ namespace Supervertaler.Trados
                         : fieldMap.Select(kv => $"{kv.Key} = {kv.Value}").OrderBy(s => s).ToList(),
                     Samples = delimitedParse == null ? null
                         : delimitedParse.Rows.Take(5)
-                            .Select(r => r.Source + " \u2192 " + r.Target
+                            // Abbreviations shown on their own side: a pair of
+                            // columns mapped the wrong way round shows here.
+                            .Select(r => r.Source
+                                       + (string.IsNullOrEmpty(r.SourceAbbreviation) ? "" : " [abbr. " + r.SourceAbbreviation + "]")
+                                       + " \u2192 " + r.Target
+                                       + (string.IsNullOrEmpty(r.TargetAbbreviation) ? "" : " [abbr. " + r.TargetAbbreviation + "]")
                                        + (r.TargetSynonyms.Count > 0
                                             ? " (+" + r.TargetSynonyms.Count + " synonym(s))" : ""))
                             .ToList(),
@@ -5176,13 +5227,18 @@ namespace Supervertaler.Trados
                 var newNotes = string.IsNullOrWhiteSpace(req.NewNotes) ? null : req.NewNotes.Trim();
                 var newDefinition = string.IsNullOrWhiteSpace(req.NewDefinition) ? null : req.NewDefinition.Trim();
                 var newDomain = string.IsNullOrWhiteSpace(req.NewDomain) ? null : req.NewDomain.Trim();
+                // NOT blank-to-null like the fields above: "" is a request to clear
+                // the abbreviation, and only a missing member means "leave it".
+                var newSrcAbbr = req.NewSourceAbbreviation;
+                var newTgtAbbr = req.NewTargetAbbreviation;
                 if (!delete && newSource == null && newTarget == null
-                    && newNotes == null && newDefinition == null && newDomain == null)
+                    && newNotes == null && newDefinition == null && newDomain == null
+                    && newSrcAbbr == null && newTgtAbbr == null)
                     return new BridgeEditTermResponse
                     {
                         Ok = false,
                         Error = "nothing to change – provide 'newSource', 'newTarget', 'newNotes', " +
-                                "'newDefinition' and/or 'newDomain'"
+                                "'newDefinition', 'newDomain', 'newSourceAbbreviation' and/or 'newTargetAbbreviation'"
                     };
 
                 var settings = SettingsService.Current;
@@ -5283,10 +5339,14 @@ namespace Supervertaler.Trados
                         var definition = newDefinition ?? e.Definition ?? "";
                         var domain = newDomain ?? e.Domain ?? "";
                         var notes = newNotes ?? e.Notes ?? "";
+                        // Abbreviations cross over with the terms when the pair was
+                        // named the other way round, so each stays beside its own term.
+                        var (srcAbbr, tgtAbbr) = TermbaseReader.EditedAbbreviations(
+                            e.SourceAbbreviation, e.TargetAbbreviation, match.Item2, newSrcAbbr, newTgtAbbr);
                         // Preserve every other field of the entry.
                         if (!TermbaseReader.UpdateTerm(settings.TermbasePath, e.Id, s, t,
                                 definition, domain, notes,
-                                e.IsNonTranslatable, e.SourceAbbreviation, e.TargetAbbreviation,
+                                e.IsNonTranslatable, srcAbbr, tgtAbbr,
                                 e.Url, e.Client, e.Forbidden, e.Project))
                             continue;
                         changedIds.Add(e.Id);
@@ -5300,6 +5360,14 @@ namespace Supervertaler.Trados
                         if (newNotes != null) changeParts.Add("notes updated");
                         if (newDefinition != null) changeParts.Add("definition updated");
                         if (newDomain != null) changeParts.Add("domain updated");
+                        if (newSrcAbbr != null || newTgtAbbr != null)
+                        {
+                            // Both stored values, each with its side's language, so
+                            // the caller can check nothing landed on the wrong side.
+                            string Shown(string a) => string.IsNullOrEmpty(a) ? "none" : "“" + a + "”";
+                            changeParts.Add($"abbreviations now {Shown(srcAbbr)} ({e.SourceLang ?? "source"}) " +
+                                            $"and {Shown(tgtAbbr)} ({e.TargetLang ?? "target"})");
+                        }
                         details.Add($"{e.TermbaseName}: " + string.Join(", ", changeParts));
                     }
                 }

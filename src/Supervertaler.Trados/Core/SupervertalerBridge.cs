@@ -183,6 +183,11 @@ namespace Supervertaler.Trados.Core
         /// sensible (its text and its lang tags agree with each other), which
         /// is why the flag exists: without it there is nothing to notice.</summary>
         [DataMember(Name = "directionMismatch", Order = 12, EmitDefaultValue = false)] public bool DirectionMismatch { get; set; }
+        /// <summary>The entry's abbreviation(s), pipe-separated, on the same side
+        /// as <see cref="Source"/> / <see cref="Target"/> (stored orientation).
+        /// Absent when the entry has none, so such a hit reads as it always did.</summary>
+        [DataMember(Name = "sourceAbbreviation", Order = 13, EmitDefaultValue = false)] public string SourceAbbreviation { get; set; }
+        [DataMember(Name = "targetAbbreviation", Order = 14, EmitDefaultValue = false)] public string TargetAbbreviation { get; set; }
     }
 
     [DataContract]
@@ -266,6 +271,11 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "newNotes")] public string NewNotes { get; set; }
         [DataMember(Name = "newDefinition")] public string NewDefinition { get; set; }
         [DataMember(Name = "newDomain")] public string NewDomain { get; set; }
+        /// <summary>Unlike the fields above, an EMPTY string here is meaningful:
+        /// it clears the abbreviation. Absent (or JSON null) leaves it unchanged.
+        /// The deserializer keeps the two apart - a missing member stays null.</summary>
+        [DataMember(Name = "newSourceAbbreviation")] public string NewSourceAbbreviation { get; set; }
+        [DataMember(Name = "newTargetAbbreviation")] public string NewTargetAbbreviation { get; set; }
     }
 
     [DataContract]
@@ -1503,6 +1513,15 @@ namespace Supervertaler.Trados.Core
         /// an explicit list always wins.</summary>
         [DataMember(Name = "scope", EmitDefaultValue = false)] public string Scope { get; set; }
 
+        /// <summary>Optional abbreviation(s) of <see cref="Source"/> /
+        /// <see cref="Target"/>, pipe-separated for variants ("GC|G.C."). Each
+        /// travels with its own term, so a termbase stored the other way round
+        /// gets them the other way round too. Single-pair form only: in the
+        /// 'entries' form they go on each entry, and a call-level value there is
+        /// refused (one abbreviation cannot belong to forty terms).</summary>
+        [DataMember(Name = "sourceAbbreviation", EmitDefaultValue = false)] public string SourceAbbreviation { get; set; }
+        [DataMember(Name = "targetAbbreviation", EmitDefaultValue = false)] public string TargetAbbreviation { get; set; }
+
         /// <summary>
         /// Many pairs in one call. Mutually exclusive with the single-pair
         /// form: passing both is an error rather than a merge, because a
@@ -1531,6 +1550,11 @@ namespace Supervertaler.Trados.Core
         /// <summary>True when the caller's pair was reoriented to fit this
         /// termbase's declared direction.</summary>
         [DataMember(Name = "reoriented", Order = 7, EmitDefaultValue = false)] public bool Reoriented { get; set; }
+        /// <summary>The abbreviation(s) stored beside <see cref="Source"/> /
+        /// <see cref="Target"/> - after any reorientation, so these show which
+        /// side each one actually landed on. Absent when none was stored.</summary>
+        [DataMember(Name = "sourceAbbreviation", Order = 8, EmitDefaultValue = false)] public string SourceAbbreviation { get; set; }
+        [DataMember(Name = "targetAbbreviation", Order = 9, EmitDefaultValue = false)] public string TargetAbbreviation { get; set; }
     }
 
     /// <summary>Duplicate-only: the existing entry an add_term call matched,
@@ -1542,6 +1566,11 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "id", Order = 0)] public long Id { get; set; }
         [DataMember(Name = "source", Order = 1)] public string Source { get; set; }
         [DataMember(Name = "target", Order = 2)] public string Target { get; set; }
+        /// <summary>The existing entry's abbreviations. A duplicate writes nothing,
+        /// abbreviations included - this shows whether it already has them, and
+        /// update_term is the way to add them.</summary>
+        [DataMember(Name = "sourceAbbreviation", Order = 3, EmitDefaultValue = false)] public string SourceAbbreviation { get; set; }
+        [DataMember(Name = "targetAbbreviation", Order = 4, EmitDefaultValue = false)] public string TargetAbbreviation { get; set; }
     }
 
     /// <summary>One pair in a batch <c>add_term</c> call.</summary>
@@ -1558,6 +1587,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "definition", EmitDefaultValue = false)] public string Definition { get; set; }
         [DataMember(Name = "domain", EmitDefaultValue = false)] public string Domain { get; set; }
         [DataMember(Name = "notes", EmitDefaultValue = false)] public string Notes { get; set; }
+        [DataMember(Name = "sourceAbbreviation", EmitDefaultValue = false)] public string SourceAbbreviation { get; set; }
+        [DataMember(Name = "targetAbbreviation", EmitDefaultValue = false)] public string TargetAbbreviation { get; set; }
     }
 
     /// <summary>What happened to one entry of a batch, in input order.</summary>
@@ -2955,6 +2986,16 @@ namespace Supervertaler.Trados.Core
                     // that exact form ANYWHERE, fall back to substring so
                     // inflected or partial queries still surface entries.
                     var entries = reader.SearchTerm(q) ?? new List<TermEntry>();
+
+                    // A query equal to one of an entry's abbreviations ("VI" for
+                    // "vaste inrichting") is an exact hit as well, so it counts
+                    // before the substring fallback rather than after it. Entries
+                    // the term search already found keep their term matchedField.
+                    var abbreviationOnly = new HashSet<long>();
+                    var termIds = new HashSet<long>(entries.Select(e => e.Id));
+                    foreach (var a in reader.SearchAbbreviation(q) ?? new List<TermEntry>())
+                        if (termIds.Add(a.Id)) { entries.Add(a); abbreviationOnly.Add(a.Id); }
+
                     var studioHits = studioExact;
                     if (entries.Count == 0 && studioExact.Count == 0)
                     {
@@ -3017,11 +3058,15 @@ namespace Supervertaler.Trados.Core
                             Notes = entry.Notes,
                             NonTranslatable = entry.IsNonTranslatable,
                             Inactive = inactive,
-                            MatchedField = ComputeMatchedField(q, entry.SourceTerm, entry.TargetTerm),
+                            MatchedField = abbreviationOnly.Contains(entry.Id)
+                                ? AbbreviationMatchedField(q, entry)
+                                : ComputeMatchedField(q, entry.SourceTerm, entry.TargetTerm),
                             SourceLang = entry.SourceLang,
                             TargetLang = entry.TargetLang,
                             IsProjectTermbase = entry.TermbaseId == projectTbId,
-                            DirectionMismatch = reversed
+                            DirectionMismatch = reversed,
+                            SourceAbbreviation = BlankToNull(entry.SourceAbbreviation),
+                            TargetAbbreviation = BlankToNull(entry.TargetAbbreviation)
                         });
                     }
                     if (excludedInactive > 0)
@@ -3091,6 +3136,19 @@ namespace Supervertaler.Trados.Core
             if (tgtHit) return "target";
             return "source";
         }
+
+        /// <summary>matchedField for a hit found through its abbreviations only:
+        /// "sourceAbbreviation", "targetAbbreviation" or "bothAbbreviations",
+        /// on the stored sides - the same orientation as the hit's source/target.</summary>
+        internal static string AbbreviationMatchedField(string q, TermEntry e)
+        {
+            bool src = TermbaseReader.AbbreviationMatches(q, e?.SourceAbbreviation);
+            bool tgt = TermbaseReader.AbbreviationMatches(q, e?.TargetAbbreviation);
+            if (src && tgt) return "bothAbbreviations";
+            return tgt ? "targetAbbreviation" : "sourceAbbreviation";
+        }
+
+        private static string BlankToNull(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
         private static bool FieldMatches(string q, string field)
         {
@@ -3396,6 +3454,20 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            // An abbreviation belongs to one term. Applied to every entry it would
+            // be wrong on all but one of them, and dropping it silently would
+            // leave the caller believing it was stored.
+            if (!string.IsNullOrWhiteSpace(req.SourceAbbreviation) || !string.IsNullOrWhiteSpace(req.TargetAbbreviation))
+            {
+                WriteJson(context, 400, new BridgeAddTermBatchResponse
+                {
+                    Ok = false,
+                    Error = "with 'entries', put sourceAbbreviation/targetAbbreviation on each entry, "
+                          + "not at the call level - nothing was written"
+                });
+                return;
+            }
+
             if (req.Entries.Count > MaxEntries)
             {
                 WriteJson(context, 400, new BridgeAddTermBatchResponse
@@ -3443,6 +3515,8 @@ namespace Supervertaler.Trados.Core
                     Definition = entry.Definition,
                     Domain = entry.Domain,
                     Notes = entry.Notes,
+                    SourceAbbreviation = entry.SourceAbbreviation,
+                    TargetAbbreviation = entry.TargetAbbreviation,
                 };
 
                 BridgeAddTermResponse one;

@@ -361,6 +361,110 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Entries that have <paramref name="query"/> as one of their abbreviation
+        /// variants, on either side - so the MCP lookup finds "vaste inrichting"
+        /// from "VI" and "permanent establishment" from "PE". Rows come back in
+        /// STORED orientation with every field, exactly as <see cref="SearchTerm"/>
+        /// returns them.
+        ///
+        /// <para>Whole-variant equality only, never substring: an abbreviation is two
+        /// or three letters, and as a substring "PE" is inside half the vocabulary.
+        /// The comparison is <see cref="AbbreviationMatches"/>, the rule TermLens's
+        /// index uses for abbreviation keys (case-insensitive, script characters
+        /// folded, trailing sentence punctuation ignored).</para>
+        ///
+        /// <para>Cost: one pass over the id and the two abbreviation columns of the
+        /// rows that have an abbreviation at all, then the full rows for the ids
+        /// that matched. The term search beside it is already a full scan (its
+        /// LOWER(TRIM(...)) comparisons cannot use an index), so this keeps the
+        /// lookup the same order of cost. A LIKE prefilter would be cheaper but
+        /// cannot see through the fold - "CO₂" stored, "CO2" asked.</para>
+        /// </summary>
+        public List<TermEntry> SearchAbbreviation(string query, int maxResults = 50)
+        {
+            var results = new List<TermEntry>();
+            if (_connection == null || !_hasAbbreviationColumns || string.IsNullOrWhiteSpace(query))
+                return results;
+
+            var ids = new List<long>();
+            const string scanSql = @"
+                SELECT id, source_abbreviation, target_abbreviation
+                FROM termbase_terms
+                WHERE (source_abbreviation IS NOT NULL AND source_abbreviation <> '')
+                   OR (target_abbreviation IS NOT NULL AND target_abbreviation <> '')";
+            using (var cmd = new SqliteCommand(scanSql, _connection))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read() && ids.Count < maxResults)
+                {
+                    var src = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    var tgt = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    if (AbbreviationMatches(query, src) || AbbreviationMatches(query, tgt))
+                        ids.Add(reader.GetInt64(0));
+                }
+            }
+            if (ids.Count == 0) return results;
+
+            var ntCol = _hasNonTranslatableColumn ? ", t.is_nontranslatable" : "";
+            var uuidCol = _hasTermUuidColumn ? ", t.term_uuid" : "";
+            var urlCol = _hasUrlColumn ? ", t.url" : "";
+            // ids are longs read from the table itself, so inlining them is safe;
+            // a parameter per id would only add ceremony.
+            var sql = $@"
+                SELECT t.id, t.source_term, t.target_term, t.termbase_id,
+                       t.source_lang, t.target_lang, t.definition, t.domain,
+                       t.notes, t.forbidden, t.case_sensitive, t.client, t.project,
+                       tb.name AS termbase_name,
+                       tb.is_project_termbase,
+                       COALESCE(tb.ranking, 99) AS ranking
+                       {ntCol}
+                       {uuidCol}
+                       , t.source_abbreviation, t.target_abbreviation
+                       {urlCol}
+                FROM termbase_terms t
+                LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
+                WHERE t.id IN ({string.Join(",", ids)})
+                ORDER BY ranking ASC, t.source_term ASC";
+
+            using (var cmd = new SqliteCommand(sql, _connection))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                    results.Add(ReadTermEntry(reader, _hasNonTranslatableColumn));
+            }
+
+            foreach (var entry in results)
+                entry.TargetSynonyms = GetTargetSynonyms(entry.Id);
+
+            return results;
+        }
+
+        /// <summary>
+        /// Is <paramref name="query"/> one of the pipe-separated variants in
+        /// <paramref name="abbreviationField"/>? Case-insensitive, with the script
+        /// fold and the trailing-punctuation tolerance TermLens applies to
+        /// abbreviation keys, so lookup and the panel agree on what matches.
+        /// </summary>
+        internal static bool AbbreviationMatches(string query, string abbreviationField)
+        {
+            if (string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(abbreviationField))
+                return false;
+            var want = AbbreviationKey(query);
+            if (want.Length == 0) return false;
+            foreach (var variant in abbreviationField.Split('|'))
+            {
+                var have = AbbreviationKey(variant);
+                if (have.Length > 0 && string.Equals(have, want, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        private static string AbbreviationKey(string text)
+            => TermMatcher.NormalizeScriptChars((text ?? "").Trim())
+                .TrimEnd('.', '!', '?', ',', ';', ':').Trim();
+
+        /// <summary>
         /// Bulk-loads all source terms for fast in-memory matching.
         /// Returns a dictionary mapping lowercased source term to list of entries.
         /// </summary>
@@ -1152,6 +1256,48 @@ namespace Supervertaler.Trados.Core
         private static string NormalizeTermForSave(string text)
             => string.IsNullOrEmpty(text) ? text : SanitizeTermWhitespace(text).TrimEnd(TermTrailingPunct).Trim();
 
+        /// <summary>
+        /// An abbreviation field as it is stored by the MCP write paths: the same
+        /// whitespace clean-up a term gets (every write point sanitises - see
+        /// docs/design/term-matching-across-products.md, section 7), but trailing
+        /// punctuation KEPT, because the full stop in "Vpb." or "o.a." is part of
+        /// the spelling. Variants stay pipe-separated exactly as given ("GC|G.C.");
+        /// <see cref="TermEntry.GetSourceAbbreviationVariants"/> splits and trims
+        /// them on read. Null or blank becomes "", which is what the column holds
+        /// for an entry without an abbreviation.
+        /// </summary>
+        internal static string NormalizeAbbreviationForSave(string text)
+            => string.IsNullOrWhiteSpace(text) ? "" : (SanitizeTermWhitespace(text) ?? "");
+
+        /// <summary>
+        /// The value an abbreviation field takes after an MCP update_term:
+        /// <paramref name="requested"/> null (left out of the call) keeps
+        /// <paramref name="current"/>; an empty or blank string clears it; anything
+        /// else replaces it. Null and "" must stay distinct all the way here,
+        /// because they are the difference between "leave it" and "remove it".
+        /// </summary>
+        internal static string ApplyAbbreviationEdit(string current, string requested)
+            => requested == null ? (current ?? "") : NormalizeAbbreviationForSave(requested);
+
+        /// <summary>
+        /// Both abbreviation fields of a stored entry after an MCP update_term.
+        /// <paramref name="newSource"/> / <paramref name="newTarget"/> are in the
+        /// orientation the CALLER named the pair in; <paramref name="reversed"/> says
+        /// that was the opposite of how this termbase stores it, in which case they
+        /// cross over - each abbreviation stays beside its own term, so a Dutch one
+        /// never lands in the English field. Each side then follows
+        /// <see cref="ApplyAbbreviationEdit"/>.
+        /// </summary>
+        internal static (string source, string target) EditedAbbreviations(
+            string currentSource, string currentTarget, bool reversed,
+            string newSource, string newTarget)
+        {
+            var wantSource = reversed ? newTarget : newSource;
+            var wantTarget = reversed ? newSource : newTarget;
+            return (ApplyAbbreviationEdit(currentSource, wantSource),
+                    ApplyAbbreviationEdit(currentTarget, wantTarget));
+        }
+
         public static long InsertTerm(string dbPath, long termbaseId,
             string sourceTerm, string targetTerm,
             string sourceLang, string targetLang,
@@ -1276,6 +1422,11 @@ namespace Supervertaler.Trados.Core
             public string Project { get; set; }
             public bool Forbidden { get; set; }
             public bool IsNonTranslatable { get; set; }
+            /// <summary>The source-language abbreviation(s), pipe-separated, from an
+            /// abbreviation field of the SOURCE language (or a source abbreviation
+            /// column). Never filled from a concept-level field: that has no side.</summary>
+            public string SourceAbbreviation { get; set; }
+            public string TargetAbbreviation { get; set; }
             public List<string> SourceSynonyms { get; set; } = new List<string>();
             public List<string> TargetSynonyms { get; set; } = new List<string>();
         }
@@ -1351,11 +1502,13 @@ namespace Supervertaler.Trados.Core
                             INSERT INTO termbase_terms
                                 (source_term, target_term, termbase_id, source_lang, target_lang,
                                  definition, domain, notes, forbidden, case_sensitive, is_nontranslatable,
-                                 term_uuid, url, client, project, part_of_speech, context)
+                                 term_uuid, url, client, project, part_of_speech, context,
+                                 source_abbreviation, target_abbreviation)
                             VALUES
                                 (@source, @target, @tbId, @srcLang, @tgtLang,
                                  @def, @domain, @notes, @forbidden, 0, @nt,
-                                 @uuid, @url, @client, @project, @pos, @context);
+                                 @uuid, @url, @client, @project, @pos, @context,
+                                 @srcAbbr, @tgtAbbr);
                             SELECT last_insert_rowid();", conn, tx))
                         {
                             cmd.Parameters.AddWithValue("@source", source);
@@ -1374,6 +1527,8 @@ namespace Supervertaler.Trados.Core
                             cmd.Parameters.AddWithValue("@project", row.Project ?? "");
                             cmd.Parameters.AddWithValue("@pos", row.PartOfSpeech ?? "");
                             cmd.Parameters.AddWithValue("@context", row.Context ?? "");
+                            cmd.Parameters.AddWithValue("@srcAbbr", NormalizeAbbreviationForSave(row.SourceAbbreviation));
+                            cmd.Parameters.AddWithValue("@tgtAbbr", NormalizeAbbreviationForSave(row.TargetAbbreviation));
                             termId = Convert.ToInt64(cmd.ExecuteScalar());
                         }
                         result.Added++;
@@ -1475,6 +1630,10 @@ namespace Supervertaler.Trados.Core
             /// <summary>Exactly what went into the source_term column (added only).</summary>
             public string StoredSource;
             public string StoredTarget;
+            /// <summary>Exactly what went into source_abbreviation / target_abbreviation
+            /// (added only; "" when none). Swapped together with the terms.</summary>
+            public string StoredSourceAbbreviation = "";
+            public string StoredTargetAbbreviation = "";
             /// <summary>True when the caller's pair was reoriented for this termbase.</summary>
             public bool Swapped;
             /// <summary>Human-readable reason for duplicate / cannot-orient.</summary>
@@ -1485,6 +1644,11 @@ namespace Supervertaler.Trados.Core
             public long ExistingId = -1;
             public string ExistingSource;
             public string ExistingTarget;
+            /// <summary>Duplicate only: the matched entry's abbreviations, in its
+            /// stored orientation. A duplicate writes nothing, so a caller that
+            /// sent abbreviations needs to see whether the entry already has them.</summary>
+            public string ExistingSourceAbbreviation;
+            public string ExistingTargetAbbreviation;
         }
 
         /// <summary>
@@ -1506,13 +1670,19 @@ namespace Supervertaler.Trados.Core
         ///      domain term pairs are routinely identical across languages
         ///      (radar, IFF, transponder), so a detector would guess, and a
         ///      wrong silent write is far worse than a refusal.
+        /// <para><paramref name="sourceAbbreviation"/> / <paramref name="targetAbbreviation"/>
+        /// belong to <paramref name="sourceTerm"/> / <paramref name="targetTerm"/> and
+        /// are swapped together with them: a termbase that stores the pair the other
+        /// way round gets the abbreviations the other way round too, so a Dutch
+        /// abbreviation always lands on the Dutch side.</para>
         /// </summary>
         public static List<TermInsertOutcome> InsertTermBatchDetailed(
             string dbPath, string sourceTerm, string targetTerm,
             string definition, string domain, string notes,
             List<TermbaseInfo> termbases,
             string projectSourceLang,
-            string explicitSourceLang, string explicitTargetLang)
+            string explicitSourceLang, string explicitTargetLang,
+            string sourceAbbreviation = null, string targetAbbreviation = null)
         {
             return InsertTermBatchCore(
                 dbPath, sourceTerm, targetTerm, definition, domain, notes,
@@ -1529,7 +1699,9 @@ namespace Supervertaler.Trados.Core
                 // PO-nr., SAFETY INFORMATION!. Lookup is unaffected - SearchTerm
                 // RTRIMs the STORED term as well as the query, so "Rev." still
                 // matches a search for "Rev".
-                preserveTrailingPunctuation: true);
+                preserveTrailingPunctuation: true,
+                sourceAbbreviation: sourceAbbreviation,
+                targetAbbreviation: targetAbbreviation);
         }
 
         /// <summary>
@@ -1606,8 +1778,15 @@ namespace Supervertaler.Trados.Core
             string definition, string domain, string notes,
             List<TermbaseInfo> termbases, bool isNonTranslatable,
             Func<TermbaseInfo, (bool swap, string cannotOrient)> orient,
-            bool preserveTrailingPunctuation = false)
+            bool preserveTrailingPunctuation = false,
+            string sourceAbbreviation = null, string targetAbbreviation = null)
         {
+            // Abbreviations keep their trailing punctuation ("Vpb.") whatever the
+            // terms do. Null and blank both become "", the column's own default,
+            // so callers that pass none store exactly what they always did.
+            sourceAbbreviation = NormalizeAbbreviationForSave(sourceAbbreviation);
+            targetAbbreviation = NormalizeAbbreviationForSave(targetAbbreviation);
+
             // Strip trailing sentence punctuation from translatable terms on save
             // (e.g. "circumference." -> "circumference"); non-translatables kept as-is.
             if (!isNonTranslatable && !preserveTrailingPunctuation)
@@ -1641,8 +1820,11 @@ namespace Supervertaler.Trados.Core
                     // Check BOTH directions when deduping. A concept already stored
                     // in the reverse direction (e.g. from an older buggy insert)
                     // counts as a duplicate and must not be added a second time.
+                    // MigrateSchema above guarantees the abbreviation columns exist.
                     const string checkSql = @"
-                        SELECT id, source_term, target_term FROM termbase_terms
+                        SELECT id, source_term, target_term,
+                               source_abbreviation, target_abbreviation
+                        FROM termbase_terms
                         WHERE CAST(termbase_id AS INTEGER) = @tbId
                           AND (
                             (LOWER(TRIM(source_term)) = LOWER(@source)
@@ -1657,11 +1839,11 @@ namespace Supervertaler.Trados.Core
                         INSERT INTO termbase_terms
                             (source_term, target_term, termbase_id, source_lang, target_lang,
                              definition, domain, notes, forbidden, case_sensitive, is_nontranslatable,
-                             term_uuid)
+                             term_uuid, source_abbreviation, target_abbreviation)
                         VALUES
                             (@source, @target, @tbId, @srcLang, @tgtLang,
                              @def, @domain, @notes, 0, 0, @nt,
-                             @uuid);
+                             @uuid, @srcAbbr, @tgtAbbr);
                         SELECT last_insert_rowid();";
 
                     foreach (var tb in termbases)
@@ -1683,6 +1865,9 @@ namespace Supervertaler.Trados.Core
 
                         var termForSourceColumn = decision.swap ? targetTerm : sourceTerm;
                         var termForTargetColumn = decision.swap ? sourceTerm : targetTerm;
+                        // An abbreviation travels with its term, never with a column.
+                        var abbrForSourceColumn = decision.swap ? targetAbbreviation : sourceAbbreviation;
+                        var abbrForTargetColumn = decision.swap ? sourceAbbreviation : targetAbbreviation;
                         outcome.Swapped = decision.swap;
 
                         // Skip if duplicate already exists in this termbase (either direction).
@@ -1700,6 +1885,8 @@ namespace Supervertaler.Trados.Core
                                     outcome.ExistingId = existing.GetInt64(0);
                                     outcome.ExistingSource = existing.IsDBNull(1) ? "" : existing.GetString(1);
                                     outcome.ExistingTarget = existing.IsDBNull(2) ? "" : existing.GetString(2);
+                                    outcome.ExistingSourceAbbreviation = existing.IsDBNull(3) ? "" : existing.GetString(3);
+                                    outcome.ExistingTargetAbbreviation = existing.IsDBNull(4) ? "" : existing.GetString(4);
                                     outcome.Detail = $"an entry for this pair already exists in this termbase " +
                                         $"(id {outcome.ExistingId}: “{outcome.ExistingSource} → {outcome.ExistingTarget}”)";
                                     continue;
@@ -1719,6 +1906,8 @@ namespace Supervertaler.Trados.Core
                             cmd.Parameters.AddWithValue("@notes", notes ?? "");
                             cmd.Parameters.AddWithValue("@nt", isNonTranslatable ? 1 : 0);
                             cmd.Parameters.AddWithValue("@uuid", System.Guid.NewGuid().ToString());
+                            cmd.Parameters.AddWithValue("@srcAbbr", abbrForSourceColumn);
+                            cmd.Parameters.AddWithValue("@tgtAbbr", abbrForTargetColumn);
 
                             var result = cmd.ExecuteScalar();
                             var newId = result != null ? Convert.ToInt64(result) : -1;
@@ -1728,6 +1917,8 @@ namespace Supervertaler.Trados.Core
                                 outcome.NewId = newId;
                                 outcome.StoredSource = termForSourceColumn.Trim();
                                 outcome.StoredTarget = termForTargetColumn.Trim();
+                                outcome.StoredSourceAbbreviation = abbrForSourceColumn;
+                                outcome.StoredTargetAbbreviation = abbrForTargetColumn;
                             }
                             else
                             {

@@ -9,6 +9,9 @@
 
 ## [18.20.205 / 19.20.205] – Unreleased
 
+### Added
+- **An AI assistant connected through the MCP server can now read and write a term's abbreviations.** Supervertaler termbase entries have long had a source and a target abbreviation (**Add term with abbreviation**, Ctrl+Alt+A, fills them), but an assistant could neither see nor set them, so it put abbreviations in the notes or added them as separate entries. Now `add_term` takes the abbreviations along with the term pair and reports exactly what it stored – in a termbase that runs the other way, each abbreviation stays beside its own term. `update_term` changes or removes them, `lookup_term` shows them and finds an entry by its abbreviation alone ("GC" finds "gas chromatography"), and `import_project_termbase` puts a Trados termbase's Abbreviation fields, and the abbreviation columns of a CSV or TSV glossary, into the abbreviation fields instead of the notes. It is all optional: entries without abbreviations, and assistants that don't use them, work as before.
+
 ### Changed
 - **In the TermLens popup (Alt+L), Up now edits the highlighted entry and Down shows its details.** Up and Down used to do the same as Left and Right. Now **Up** opens the highlighted entry for editing, like **E**, and **Down** shows or hides its details, like **I**. Holding Down shows the details once; they don't flicker. **Left**, **Right**, **Tab** and **Shift+Tab** move between the matches, as before, and all other keys work as before. The line at the bottom of the popup now reads "← → cycle · Enter insert · ↑/E edit · ↓/I info · Esc close", and the popup is always wide enough to show all of it.
 - **An exported Bilingual Table carries the Supervertaler for Trados icon.** The title of a table exported as a Word document on the Import/Export tab now starts with the blue Sv icon instead of a 🌐. Nothing else about the table changes, and it imports back as before.
@@ -19,6 +22,10 @@
 
 ### Fixed
 - **Terms added through the MCP server show in TermLens straight away, and so do terms added in Workbench or Sidekick.** When an AI assistant added a term with `add_term` to a termbase that runs the other way from your project – an English–Dutch termbase in a Dutch–English project, say – TermLens did not show it until you clicked ↻, and a term it changed with `update_term` disappeared from TermLens until then. Both now show at once, exactly as ↻ would show them; a term added to a termbase whose **Read** box is unticked is no longer shown. A term added, changed or deleted in Workbench, Sidekick or a second Trados Studio now shows in TermLens a second or so later (about three seconds with 40,000 terms). Before, TermLens did not notice such changes at all until you had clicked ↻ once, and after that often not for hours. TermLens now reads the termbase in the background, so Trados Studio keeps responding while it does – after `import_project_termbase` too – and a large import is read once, when it finishes, not once per term.
+
+### Fixed
+- **The MCP server's terminology check no longer reports a term as missing when the translation uses its abbreviation.** A segment with "btw" translated as "VAT" was reported because the translation did not say "value added tax". The entry's target abbreviation now counts too, as a whole word in the same letter case, so "VAT" inside "private" still does not.
+- **Importing a CSV or TSV glossary through the MCP server no longer warns about the column choices it followed.** Each `fieldMap` entry such as "Column A=source" was applied, and then also reported as "not a known target … kept the automatic mapping".
 
 ## [18.20.204 / 19.20.204] – 2026-11-02
 
