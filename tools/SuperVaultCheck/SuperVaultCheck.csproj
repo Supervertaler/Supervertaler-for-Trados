@@ -31,6 +31,7 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="Kit.cs" />
+    <Compile Include="RealTm.cs" />
     <ProjectReference Include="..\..\src\Supervertaler.Trados\Supervertaler.Trados.csproj" AdditionalProperties="TradosStudioVersion=$(TradosStudioVersion)" />
     <Reference Include="Sdl.Core.Globalization"><HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.Core.Globalization.Async"><HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.Async.dll</HintPath><Private>false</Private></Reference>
