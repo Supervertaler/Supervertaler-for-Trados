@@ -884,6 +884,27 @@ namespace Supervertaler.Trados.Core
                 else if (element is ParsedOpenTag ot)
                 {
                     TagInfo tagInfo;
+                    // <tN>text</tN> where the source's tN is a stand-alone tag (a
+                    // placeholder: a field, an image, a line break). A placeholder
+                    // holds nothing, so cloning it and adding the text inside
+                    // dropped the translated text - silently, as the tag ids then
+                    // matched (found 6 Nov 2026). Treat it like the reverse case
+                    // above: the tag is left out, the text is kept as plain target
+                    // text. The placeholder then misses from the target, which
+                    // every write path already reports as a tag mismatch. Not put
+                    // back at a guessed position: a target whose tags match the
+                    // source passes every check, so a wrong guess would be silent
+                    // again. An empty <tN></tN> loses nothing and still writes the
+                    // placeholder, as before.
+                    if (ot.Children.Count > 0 &&
+                        tagMap.TryGetValue(ot.TagNumber, out tagInfo) &&
+                        tagInfo.OriginalMarkup != null &&
+                        !(tagInfo.OriginalMarkup is IAbstractMarkupDataContainer))
+                    {
+                        AddElementsToContainer(container, ot.Children, tagMap, textTemplate,
+                            sourceBreaks, usedTagNumbers);
+                        continue;
+                    }
                     if (tagMap.TryGetValue(ot.TagNumber, out tagInfo) &&
                         tagInfo.OriginalMarkup != null &&
                         (usedTagNumbers == null || usedTagNumbers.Add(ot.TagNumber)))

@@ -28,6 +28,8 @@
 #   E  <tN/> written for a source tag PAIR (206): a tag mismatch like any
 #      other - refused without an fp, warned with one, and never the
 #      source text inside the pair copied into the target.
+#   F  <tN>text</tN> written for a source PLACEHOLDER (206): the text is
+#      kept, the tag left out - a tag mismatch, never the text dropped.
 #   K  check_tags and get_coverage now see segments of tags only.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\mcp_tag_only_test.ps1
@@ -111,10 +113,11 @@ if (-not $Child) {
             $b = $js.DeserializeObject([IO.File]::ReadAllText($newJson))
             $same = 0
             # The one intended difference: the "nothing to do" error now also names copySource.
+            # Normalised on both sides, so a baseline from 205 or later compares too.
             function Normalise([string]$s) { $s.Replace("provide 'target' (or copySource: true), 'status'", "provide 'target', 'status'") }
             foreach ($k in $a.Keys) {
                 if (-not $b.ContainsKey($k)) { Write-Host "FAIL  D text case '$k' missing from the new run"; $failed = $true; continue }
-                if ($a[$k] -ceq (Normalise $b[$k])) { $same++ }
+                if ((Normalise $a[$k]) -ceq (Normalise $b[$k])) { $same++ }
                 else {
                     Write-Host "FAIL  D text case '$k' answers differently from the baseline"
                     Write-Host "        baseline: $($a[$k])"
@@ -974,6 +977,71 @@ public static class TagOnlyTest
             "E a placeholder's <tN/> is written as before, no warning");
     }
 
+    // ── F: <tN>text</tN> written where the source's tN is a PLACEHOLDER ──
+    // The reverse of E. Until 206 the placeholder was cloned and the text
+    // meant to go inside it was dropped; the tag ids matched, so nothing
+    // warned: translated text silently lost. Now the text is kept and the
+    // tag left out - a tag mismatch like any other.
+    static Spec PhSpec() { return new Spec { Id = "1", Source = () => new IAbstractMarkupData[] { T("Press "), X("7"), T(" to begin.") } }; }
+    static void CasePairForPlaceholder()
+    {
+        const string reply = "Druk op <t1>Enter</t1> om te beginnen.";
+
+        var d = Doc(PhSpec());
+        var s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(reply) + "}]}");
+        Say("<t1>text</t1> for a placeholder, no fp: " + s.Json + "  target " + Shape(Seg(d, "1").Target));
+        Check(Int(s.R, "failed") == 1 && (Str(Item(s), "error") ?? "").Contains("tag-id mismatch") && d.Edits == 0
+              && Shape(Seg(d, "1").Target) == "",
+            "F update_segments, no fp: <tN>text</tN> for a source placeholder is refused as a tag mismatch, nothing written");
+
+        d = Doc(PhSpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":" + Q(reply) + "}]}");
+        var t = Shape(Seg(d, "1").Target);
+        Say("with fp: " + s.Json + "  target " + t);
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch"),
+            "F update_segments with an fp: written, with the tag-mismatch warning");
+        Check(t == "\"Druk op Enter om te beginnen.\"",
+            "F ... and the translated text inside the markers is kept, not dropped: " + t);
+
+        d = Doc(PhSpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(reply) + ",\"force\":true}]}");
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch")
+              && Shape(Seg(d, "1").Target).Contains("Enter"),
+            "F with force: written with the warning, the text kept");
+
+        // Batch Translate, Alt+T, the proofreader import: ReconstructTarget direct.
+        d = Doc(PhSpec());
+        var seg = Seg(d, "1");
+        var ser = SegmentTagHandler.Serialize(seg.Source);
+        bool built = SegmentTagHandler.ReconstructTarget(seg.Target, seg.Source, reply, ser.TagMap);
+        var shape = Shape(seg.Target);
+        Check(built && shape == "\"Druk op Enter om te beginnen.\"",
+            "F ReconstructTarget (Batch Translate, Alt+T, proofreader import): the text is kept, the tag left out: " + shape);
+        Check(Supervertaler.Core.ReplyCheck.TagDifference(ser.SerializedText, reply) != null
+              && !SegmentTagHandler.ValidateTagsPresent(reply, ser.TagMap),
+            "F Batch Translate's reply check and the AI-reply import's tag check both report it");
+
+        // An empty <t1></t1> loses nothing: the placeholder is written, as before.
+        d = Doc(PhSpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Druk op <t1></t1> om te beginnen.\"}]}");
+        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null
+              && Shape(Seg(d, "1").Target) == "\"Druk op \"[x7 <x id=\"7\"/>]\" om te beginnen.\"",
+            "F an empty <tN></tN> for a placeholder: the placeholder is written as before, no warning");
+
+        // The placeholder's own <t1/> is unaffected.
+        d = Doc(PhSpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Druk op <t1/> om te beginnen.\"}]}");
+        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null && Shape(Seg(d, "1").Target).Contains("[x7 "),
+            "F the placeholder written as <tN/>: as before, no warning");
+
+        // A real pair is unaffected: <tN>text</tN> on a source pair still wraps the text.
+        d = TextDoc();
+        var src = Src(d, "4");
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:4\",\"target\":" + Q(src.Replace("Press ", "Druk op ").Replace(" to begin.", " om te beginnen.")) + "}]}");
+        Check(Int(s.R, "applied") == 1 && Shape(Seg(d, "4").Target) == "\"Druk op \"[g5 <g id=\"5\">:\"Start\"]\" om te beginnen.\"",
+            "F a source pair written as a pair: unchanged");
+    }
+
     // ── K: coverage counts segments of tags only ──────────────────────
     static void CaseCoverage()
     {
@@ -1007,6 +1075,7 @@ public static class TagOnlyTest
             CaseCopySource();
             CaseRefusals();
             CaseSelfClosingPair();
+            CasePairForPlaceholder();
             CaseCoverage();
         }
         Console.WriteLine(Pass + " passed, " + Fail + " failed");
