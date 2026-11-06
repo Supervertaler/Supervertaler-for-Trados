@@ -28,7 +28,7 @@ static class RealTm
         var pair = new LanguagePair(dir.SourceLanguage, dir.TargetLanguage);
         var sv = new SuperVaultProvider(root).GetLanguageDirection(pair);
         var settings = new SearchSettings { Mode = SearchMode.NormalSearch, MinScore = 70, MaxResults = 5, IsDocumentSearch = true };
-        int total = 0, exact = 0, withTags = 0, tagsPlaced = 0, sameTarget = 0;
+        int total = 0, exact = 0, withTags = 0, tagsPlaced = 0, sameTarget = 0, shown = 0;
         var it = new RegularIterator { MaxCount = 500 };
         TranslationUnit[] units;
         while ((units = dir.GetTranslationUnits(ref it)) != null && units.Length > 0)
@@ -42,6 +42,8 @@ static class RealTm
                 if (top == null) continue;
                 exact++;
                 if (hasTags && top.ScoringResult.Match == 100 && top.TranslationProposal.TargetSegment.Elements.OfType<Tag>().Count() == tu.TargetSegment.Elements.OfType<Tag>().Count()) tagsPlaced++;
+                else if (hasTags && shown++ < 6)
+                    Console.WriteLine($"  tags not placed ({top.ScoringResult.Match}%): {Show(tu.SourceSegment)}  =>  {Show(tu.TargetSegment)}");
                 if (res.Results.Any(x => x.ScoringResult.BaseScore == 100 && SuperVaultImport.Codes(x.TranslationProposal.TargetSegment).Replace(" ", "") != "" &&
                                          Plain(x.TranslationProposal.TargetSegment) == Plain(tu.TargetSegment))) sameTarget++;
             }
@@ -50,5 +52,6 @@ static class RealTm
         return 0;
     }
 
+    static string Show(Segment s) => string.Concat(s.Elements.Select(e => e is Tag t ? "[" + t.Type + " a" + t.Anchor + "]" : e.ToString())).Replace("\n", " ");
     static string Plain(Segment s) => VaultMarkup.Normalize(string.Concat(s.Elements.OfType<Text>().Select(t => t.Value)));
 }
