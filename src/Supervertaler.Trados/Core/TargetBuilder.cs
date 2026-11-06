@@ -64,17 +64,18 @@ namespace Supervertaler.Trados.Core
             var resolved = semanticTagNames
                 ? Export.BilingualTagNamer.ResolveSemanticNames(targetText, tagMap)
                 : targetText;
+            // Any marker still left that is not one of ours is taken out, so it
+            // never reaches the target as text. See RemoveUnknownMarkers.
+            resolved = RemoveUnknownMarkers(resolved,
+                SegmentTagHandler.StripTagPlaceholders(sourceSer.SerializedText ?? ""));
 
             bool hasAnyMarker = tagMap.Count > 0
                 || resolved.IndexOf("<t", StringComparison.Ordinal) >= 0;
             if (hasAnyMarker && SegmentTagHandler.ReconstructTarget(target, source, resolved, tagMap))
                 return true;
 
-            var plain = SegmentTagHandler.StripTagPlaceholders(targetText);
-            if (semanticTagNames)
-                plain = System.Text.RegularExpressions.Regex.Replace(
-                    plain, @"</?(?:bi|b|i|u)>", "",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            // Semantic markers are already resolved to <tN> or removed above.
+            var plain = SegmentTagHandler.StripTagPlaceholders(resolved);
 
             var textTpl = SegmentTagHandler.FindFirstText(source);
             if (textTpl == null) return false;
@@ -84,6 +85,55 @@ namespace Supervertaler.Trados.Core
             var dest = SegmentTagHandler.OpenCommentMarkers(target, keptComments);
             SegmentTagHandler.AppendText(dest, plain, source, tagMap, textTpl);
             return true;
+        }
+
+        // A tag-like marker: <name>, </name>, <name/>, optionally with
+        // name="value" attributes (<cf bold="True">). Deliberately strict, so
+        // ordinary text is never taken for one: '<' must be followed straight
+        // away by a letter (or '/' and a letter), and anything between the name
+        // and '>' must be attributes with a value. "a < b", "a<b", "x < y > z" and
+        // "if a<b and c>d" do not match.
+        private static readonly System.Text.RegularExpressions.Regex MarkerRe =
+            new System.Text.RegularExpressions.Regex(
+                @"</?[A-Za-z][A-Za-z0-9_.:-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*\s*=\s*(?:""[^""<>]*""|'[^'<>]*'|[^\s""'<>/=]+))*\s*(?:/\s*)?>",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        // Our own numbered markers, in the tolerant forms SegmentTagHandler
+        // reads (<t1>, </t1>, <t2/>, <T1 />).
+        private static readonly System.Text.RegularExpressions.Regex NumberedMarkerRe =
+            new System.Text.RegularExpressions.Regex(@"^<\s*/?\s*t\s*\d+\s*/?\s*>$",
+                System.Text.RegularExpressions.RegexOptions.Compiled
+                | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Removes every tag-like marker from <paramref name="text"/> that is not
+        /// one of our numbered &lt;tN&gt; markers - after
+        /// <see cref="Export.BilingualTagNamer.ResolveSemanticNames"/> has turned
+        /// the &lt;b&gt;/&lt;i&gt;/&lt;u&gt;/&lt;bi&gt; it could bind into those.
+        /// What is left is a marker this tool does not understand: a &lt;u&gt;
+        /// with no underline tag in the source to bind to, &lt;br/&gt;, &lt;x&gt;,
+        /// Studio's own &lt;cf bold="True"&gt;. Until 206 such a marker went into
+        /// the target as literal text (6 Nov 2026: "&lt;u/&gt;" in a target).
+        ///
+        /// <para>Removed the way an invented &lt;t99&gt; is: the marker goes, the
+        /// text around and inside it stays. When it stood for one of the source's
+        /// tags, that tag is then missing from the target, which update_segments
+        /// treats as the tag mismatch it is (refused without an fp, written with
+        /// the tag-id warning with one).</para>
+        ///
+        /// <para>Kept: a marker that appears as TEXT in the source
+        /// (<paramref name="sourceText"/>, the source with our markers removed) -
+        /// a software string "Press &lt;Enter&gt;" or a page about HTML translates
+        /// with that text in it.</para>
+        /// </summary>
+        internal static string RemoveUnknownMarkers(string text, string sourceText)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('<') < 0) return text;
+            return MarkerRe.Replace(text, m =>
+                NumberedMarkerRe.IsMatch(m.Value)
+                || (!string.IsNullOrEmpty(sourceText) && sourceText.IndexOf(m.Value, StringComparison.Ordinal) >= 0)
+                    ? m.Value
+                    : "");
         }
 
         /// <summary>

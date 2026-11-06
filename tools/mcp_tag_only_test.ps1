@@ -30,6 +30,12 @@
 #      source text inside the pair copied into the target.
 #   F  <tN>text</tN> written for a source PLACEHOLDER (206): the text is
 #      kept, the tag left out - a tag mismatch, never the text dropped.
+#   G  a marker the tool does not understand (206): <u/>, <b/>, <i/>, <bi/>
+#      for a source pair is a tag mismatch like E (refused without an fp,
+#      warned with one); any other unknown marker (<br/>, <x>, an unbound
+#      <u>, Studio's <cf ...>) is removed, its text kept - never literal
+#      text in the target. Text that only looks like a tag ("a < b") and a
+#      marker that is part of the source's TEXT ("<Enter>") are kept.
 #   K  check_tags and get_coverage now see segments of tags only.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\mcp_tag_only_test.ps1
@@ -358,6 +364,14 @@ public static class TagOnlyTest
         var st = PF.CreateStartTagProperties("<g id=\"" + id + "\">");
         st.TagId = new TagId(id);
         var tp = F.CreateTagPair(st, PF.CreateEndTagProperties("</g>"));
+        foreach (var k in kids) tp.Add(k);
+        return tp;
+    }
+    static ITagPair U(string id, params IAbstractMarkupData[] kids)
+    {
+        var st = PF.CreateStartTagProperties("<cf underline=\"single\">");
+        st.TagId = new TagId(id);
+        var tp = F.CreateTagPair(st, PF.CreateEndTagProperties("</cf>"));
         foreach (var k in kids) tp.Add(k);
         return tp;
     }
@@ -1042,6 +1056,93 @@ public static class TagOnlyTest
             "F a source pair written as a pair: unchanged");
     }
 
+    // ── G: markers the tool does not understand ─────────────────────
+    // Until 206 a self-closing semantic marker (<u/>, <b/>) and any other
+    // unknown marker went into the target as LITERAL text "<u/>": only the
+    // tag-missing warning fired (live, 6 Nov 2026, Studio 2024). Now <u/> for
+    // a source pair is handled as <tN/> for one is (section E), and every
+    // other unknown marker is removed, its text kept.
+    static Spec USpec() { return new Spec { Id = "1", Source = () => new IAbstractMarkupData[] { T("Click "), U("5", T("here")), T(" now.") } }; }
+    static Spec PlainSpec(string text) { return new Spec { Id = "1", Source = () => new IAbstractMarkupData[] { T(text) } }; }
+    static string One(FakeDocument d) { return Shape(Seg(d, "1").Target); }
+    static void CaseUnknownMarkers()
+    {
+        // The live case: <u/> for the source's underline pair.
+        const string reply = "Klik <u/>hier nu.";
+        var d = Doc(USpec());
+        var s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(reply) + "}]}");
+        Say("<u/> for a pair, no fp: " + s.Json + "  target " + One(d));
+        Check(Int(s.R, "failed") == 1 && (Str(Item(s), "error") ?? "").Contains("tag-id mismatch") && d.Edits == 0 && One(d) == "",
+            "G update_segments, no fp: <u/> for a source underline pair is refused as a tag mismatch, nothing written");
+
+        d = Doc(USpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":" + Q(reply) + "}]}");
+        var t = One(d);
+        Say("with fp: " + s.Json + "  target " + t);
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch"),
+            "G update_segments with an fp: written, with the tag-mismatch warning");
+        Check(t == "\"Klik hier nu.\"", "G ... and no literal <u/> in the target: " + t);
+
+        d = Doc(USpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(reply) + ",\"force\":true}]}");
+        Check(Int(s.R, "applied") == 1 && One(d) == "\"Klik hier nu.\"", "G with force: written without the marker: " + One(d));
+
+        // Every self-closing semantic form, any case and spacing.
+        foreach (var m in new[] { "<b/>", "<i/>", "<bi/>", "<U />", "<u/ >" })
+        {
+            d = Doc(USpec());
+            s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":" + Q("Klik " + m + "hier nu.") + "}]}");
+            Check(Int(s.R, "applied") == 1 && !One(d).Contains("<"), "G " + m + " never literal: " + One(d));
+        }
+
+        // A <u/> does not use up the tag: a proper <u>…</u> after it still binds.
+        d = Doc(USpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"<u/>Klik <u>hier</u> nu.\"}]}");
+        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null
+              && One(d) == "\"Klik \"[g5 <cf underline=\"single\">:\"hier\"]\" nu.\"",
+            "G <u/> does not use up the tag: a later <u>…</u> still gets it, no warning: " + One(d));
+
+        // The semantic pair, as before.
+        d = Doc(USpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Klik <u>hier</u> nu.\"}]}");
+        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null
+              && One(d) == "\"Klik \"[g5 <cf underline=\"single\">:\"hier\"]\" nu.\"",
+            "G <u>…</u> on the source's underline pair: written as before: " + One(d));
+
+        // A second <u> pair with no second underline tag: removed, text kept.
+        d = Doc(USpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":\"Klik <u>hier</u> of <u>daar</u>.\"}]}");
+        Check(Int(s.R, "applied") == 1 && One(d) == "\"Klik \"[g5 <cf underline=\"single\">:\"hier\"]\" of daar.\"",
+            "G an unbound <u>…</u> is removed, its text kept: " + One(d));
+
+        // Unknown markers on a source without tags: removed, text kept, no tags guessed.
+        d = Doc(PlainSpec("Contact Acme support."));
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q("Neem <b/>contact op<br/> met <x>Acme</x> <cf bold=\"True\">support</cf>.") + "}]}");
+        Check(Int(s.R, "applied") == 1 && One(d) == "\"Neem contact op met Acme support.\"",
+            "G <b/>, <br/>, <x>…</x>, <cf bold=\"True\"> with no source tags: removed, text kept: " + One(d));
+
+        // Text that only looks like a tag stays exactly as written.
+        foreach (var lit in new[] { "Als a < b en b > c, dan a < c.", "Waarde a<b.", "if a<b and c>d then", "x < y > z", "3 <5 en 7> 2" })
+        {
+            d = Doc(PlainSpec("If a < b and b > c, then a < c."));
+            s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(lit) + "}]}");
+            Check(Int(s.R, "applied") == 1 && One(d) == "\"" + lit + "\"", "G literal text kept as written: " + One(d));
+        }
+
+        // A marker that is part of the source's TEXT is translated text.
+        d = Doc(PlainSpec("Press <Enter> to begin."));
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Druk op <Enter> om te beginnen.\"}]}");
+        Check(Int(s.R, "applied") == 1 && One(d) == "\"Druk op <Enter> om te beginnen.\"",
+            "G a marker that is text in the source ('<Enter>') is kept: " + One(d));
+
+        // The numbered markers are untouched (E/F cover them; one sanity check).
+        d = TextDoc();
+        var src = Src(d, "4");
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:4\",\"target\":" + Q(src.Replace("Press ", "Druk op ").Replace(" to begin.", " om te beginnen.")) + "}]}");
+        Check(Int(s.R, "applied") == 1 && Shape(Seg(d, "4").Target) == "\"Druk op \"[g5 <g id=\"5\">:\"Start\"]\" om te beginnen.\"",
+            "G <tN>…</tN> unchanged");
+    }
+
     // ── K: coverage counts segments of tags only ──────────────────────
     static void CaseCoverage()
     {
@@ -1076,6 +1177,7 @@ public static class TagOnlyTest
             CaseRefusals();
             CaseSelfClosingPair();
             CasePairForPlaceholder();
+            CaseUnknownMarkers();
             CaseCoverage();
         }
         Console.WriteLine(Pass + " passed, " + Fail + " failed");
