@@ -2033,20 +2033,18 @@ namespace Supervertaler.Trados.Core
             string url = null, string client = null, bool forbidden = false,
             string project = null)
         {
-            // Strip trailing sentence punctuation from translatable terms on save
-            // (e.g. "circumference." -> "circumference"); non-translatables kept as-is.
-            if (!isNonTranslatable)
-            {
-                sourceTerm = NormalizeTermForSave(sourceTerm);
-                targetTerm = NormalizeTermForSave(targetTerm);
-            }
-            else
-            {
-                // Non-translatables keep trailing punctuation (e.g. "Inc.")
-                // but still get invisible-whitespace sanitising.
-                sourceTerm = SanitizeTermWhitespace(sourceTerm);
-                targetTerm = SanitizeTermWhitespace(targetTerm);
-            }
+            // An edit keeps the terms exactly as given, apart from the invisible
+            // whitespace every write point cleans up. The trailing-punctuation
+            // strip the INSERT paths do (NormalizeTermForSave) is for capturing
+            // a term from a selection, where "circumference." picked up the
+            // sentence's full stop. An edit has no selection: the caller states
+            // the term, and its full stop is part of the spelling - "Rev.",
+            // "Fig.", "approx.". Until 206 every update (MCP update_term, the
+            // Term Entry Editor's Save, a Termbase Editor cell edit) stripped
+            // it, so "Rev." could not be stored by editing at all, and an
+            // imported "Rev." lost its stop the first time its note was edited.
+            sourceTerm = SanitizeTermWhitespace(sourceTerm) ?? "";
+            targetTerm = SanitizeTermWhitespace(targetTerm) ?? "";
 
             var connStr = new SqliteConnectionStringBuilder
             {
