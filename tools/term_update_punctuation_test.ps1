@@ -117,6 +117,23 @@ try {
     # 7. Unknown id: false, nothing thrown.
     $ok = $R::UpdateTerm($db, [long]999999, "x.", "y.")
     Check (-not $ok) "update of an id that does not exist returns false" "$ok"
+
+    # 8. The add paths, so add and update stay alike where they should.
+    #    MCP add_term (InsertTermBatchDetailed) keeps the stop since 90cbf34:
+    #    the caller names the term. The in-Studio quick-add (Alt+Down / Alt+Up,
+    #    InsertTermBatch) captures from a selection and strips a sentence stop.
+    $infoT = $plugin.GetType("Supervertaler.Core.Models.TermbaseInfo")
+    if (-not $infoT) { $infoT = [Type]::GetType("Supervertaler.Core.Models.TermbaseInfo, Supervertaler.Core") }
+    $info = [Activator]::CreateInstance($infoT)
+    $info.Id = [long]$tb; $info.Name = "Acme test"; $info.SourceLang = "nl-NL"; $info.TargetLang = "en-GB"
+    $listT = [System.Collections.Generic.List``1].MakeGenericType($infoT)
+    $tbs = [Activator]::CreateInstance($listT); [void]$tbs.Add($info)
+    $out = $R::InsertTermBatchDetailed($db, "blz.", "p.", "", "", "", $tbs, "nl-NL", $null, $null)
+    $e = if ($out -and $out[0].NewId -gt 0) { Get $out[0].NewId } else { $null }
+    Check ($e -and $e.SourceTerm -eq "blz." -and $e.TargetTerm -eq "p.") "MCP add_term path: 'blz.' / 'p.' kept" "$($e.SourceTerm) / $($e.TargetTerm) ($($out[0].Status))"
+    $out = $R::InsertTermBatch($db, "pagina.", "page.", "", $tbs, $false, "nl-NL")
+    $e = if ($out -and $out[0].Item2 -gt 0) { Get $out[0].Item2 } else { $null }
+    Check ($e -and $e.SourceTerm -eq "pagina" -and $e.TargetTerm -eq "page") "quick-add path (from a selection): sentence stop still stripped" "$($e.SourceTerm) / $($e.TargetTerm)"
 }
 finally {
     [GC]::Collect(); [GC]::WaitForPendingFinalizers()
