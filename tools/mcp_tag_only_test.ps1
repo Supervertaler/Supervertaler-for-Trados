@@ -25,6 +25,9 @@
 #   D  existing text-segment writes behave exactly as before: with
 #      -BaselineDll (a build of the commit before this change), every text
 #      case is run on both builds and their answers must be identical.
+#   E  <tN/> written for a source tag PAIR (206): a tag mismatch like any
+#      other - refused without an fp, warned with one, and never the
+#      source text inside the pair copied into the target.
 #   K  check_tags and get_coverage now see segments of tags only.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\mcp_tag_only_test.ps1
@@ -902,6 +905,75 @@ public static class TagOnlyTest
             "C allowEmpty on a filled segment of tags only, no fp: blanked (it used to be left as it was, and reported written)");
     }
 
+    // ── E: <tN/> written where the source has the tag PAIR <tN>…</tN> ──
+    // Until 206 the pair was cloned whole, its SOURCE text with it: the
+    // target got untranslated source text, its tags matched, and nothing
+    // warned or refused. Now the pair is left out, so it is a tag mismatch
+    // like any other.
+    static void CaseSelfClosingPair()
+    {
+        // update_segments, no fp: refused, nothing written.
+        var d = TextDoc();
+        var src = Src(d, "4");                              // Press <tN>Start</tN> to begin.
+        var n = src.Substring(src.IndexOf("<t") + 2, src.IndexOf('>') - src.IndexOf("<t") - 2);
+        var reply = "Druk op <t" + n + "/> om te beginnen.";
+        var s = Update(d, "{\"updates\":[{\"id\":\"pu-1:4\",\"target\":" + Q(reply) + "}]}");
+        Say("<t" + n + "/> for a pair, no fp: " + s.Json + "  target " + Shape(Seg(d, "4").Target));
+        Check(Int(s.R, "failed") == 1 && (Str(Item(s), "error") ?? "").Contains("tag-id mismatch") && d.Edits == 0
+              && Shape(Seg(d, "4").Target) == "",
+            "E update_segments, no fp: <tN/> for a source tag pair is refused as a tag mismatch, nothing written");
+
+        // With an fp: written with the mismatch warning, and without the source's text.
+        d = TextDoc();
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:4\",\"fp\":" + Q(Fp(d, "4")) + ",\"target\":" + Q(reply) + "}]}");
+        var t4 = Shape(Seg(d, "4").Target);
+        Say("with fp: " + s.Json + "  target " + t4);
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch"),
+            "E update_segments with an fp: written, with the tag-mismatch warning");
+        Check(!t4.Contains("Start") && !t4.Contains("[g5"),
+            "E ... and the source's text inside the pair is NOT copied into the target: " + t4);
+
+        // force, no fp: the same as with an fp.
+        d = TextDoc();
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:4\",\"target\":" + Q(reply) + ",\"force\":true}]}");
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch") && !Shape(Seg(d, "4").Target).Contains("Start"),
+            "E with force: written with the warning, no source text");
+
+        // Batch Translate, Alt+T and the proofreader import write through
+        // ReconstructTarget directly: no source text either, and the tag is
+        // missing, which Batch Translate's reply check reports in its log.
+        d = TextDoc();
+        var seg = Seg(d, "4");
+        var ser = SegmentTagHandler.Serialize(seg.Source);
+        bool built = SegmentTagHandler.ReconstructTarget(seg.Target, seg.Source, reply, ser.TagMap);
+        var shape = Shape(seg.Target);
+        Check(built && shape == "\"Druk op  om te beginnen.\"",
+            "E ReconstructTarget (Batch Translate, Alt+T): the pair is left out, no source text: " + shape);
+        Check(Supervertaler.Core.ReplyCheck.TagDifference(ser.SerializedText, reply) != null,
+            "E Batch Translate's reply check reports the tag difference (logged, as for any tag mismatch)");
+
+        // A proper pair later in the same reply still gets the tag.
+        d = TextDoc();
+        seg = Seg(d, "4");
+        built = SegmentTagHandler.ReconstructTarget(seg.Target, seg.Source, "<t" + n + "/>Druk op <t" + n + ">Start</t" + n + ">.", ser.TagMap);
+        shape = Shape(seg.Target);
+        Check(built && shape == "\"Druk op \"[g5 <g id=\"5\">:\"Start\"]\".\"",
+            "E a <tN/> for the pair does not use up the tag: a later <tN>…</tN> still gets it: " + shape);
+
+        // The field report's segment of tags only: <t3/> where t3 is a pair
+        // holding <t4/>. It used to clone the pair with its tag inside and match.
+        d = TagDoc();
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:2\",\"target\":\"<t1/><t2/><t3/>\"}]}");
+        Check(Int(s.R, "failed") == 1 && (Str(Item(s), "error") ?? "").Contains("copySource") && d.Edits == 0,
+            "E a segment of tags only, its pair written as <t3/>, no fp: refused, pointing to copySource");
+
+        // A placeholder written as <tN/> is unchanged: no mismatch.
+        d = Doc(new Spec { Id = "1", Source = () => new IAbstractMarkupData[] { T("A"), X("1"), T("B") } });
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"C<t1/>D\"}]}");
+        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null && Shape(Seg(d, "1").Target) == "\"C\"[x1 <x id=\"1\"/>]\"D\"",
+            "E a placeholder's <tN/> is written as before, no warning");
+    }
+
     // ── K: coverage counts segments of tags only ──────────────────────
     static void CaseCoverage()
     {
@@ -934,6 +1006,7 @@ public static class TagOnlyTest
             CaseGetSegments();
             CaseCopySource();
             CaseRefusals();
+            CaseSelfClosingPair();
             CaseCoverage();
         }
         Console.WriteLine(Pass + " passed, " + Fail + " failed");

@@ -854,6 +854,21 @@ namespace Supervertaler.Trados.Core
                 else if (element is ParsedStandaloneTag st)
                 {
                     TagInfo tagInfo;
+                    // <tN/> where the source's tN is a tag PAIR: write nothing for
+                    // it. Cloning the pair clones its content too - the SOURCE's
+                    // text inside it - and the tags then match, so no check sees
+                    // that untranslated source text has landed in the target
+                    // (6 Nov 2026; there since August). Left out, the pair is
+                    // missing from the target, which every write path already
+                    // treats as a tag mismatch: update_segments refuses it without
+                    // an fp, Batch Translate logs it. Not marked used, so a proper
+                    // <tN>…</tN> later in the same reply still gets the tag.
+                    // Locked content (also serialised as a pair) is not an
+                    // ITagPair and is still cloned whole: its text is meant to
+                    // stay as it is.
+                    if (tagMap.TryGetValue(st.TagNumber, out tagInfo) &&
+                        tagInfo.OriginalMarkup is ITagPair)
+                        continue;
                     // usedTagNumbers.Add returns false when this number was already
                     // materialised – see the note in ReconstructTarget.
                     if (tagMap.TryGetValue(st.TagNumber, out tagInfo) &&
