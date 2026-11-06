@@ -7,6 +7,11 @@
 > releases (`4.20.85` and below) used a single independent sequence for both
 > builds.
 
+## [18.20.206 / 19.20.206] – Unreleased
+
+### Fixed
+- **Your stored GroupShare login is now used only for the exact server address you saved it for.** Before, it was used for any server TM on the same server name, so a project whose TM sat at an `http://` address, or on another port, of that server was given your login too – for GroupShare and Windows authentication alike. Now the address must match in full: `https` or `http`, server name and port (`https://groupshare.acme.example/` and `https://groupshare.acme.example:443/` are the same address; `http://groupshare.acme.example/` and `https://groupshare.acme.example:8080/` are not). A TM on another address of the same server is not connected, and Supervertaler tells you why once a session, with both addresses; every case also goes to the diagnostic log. If such a TM really is on your server, enter its address on the GroupShare tab of Supervertaler's settings.
+
 ## [18.20.205 / 19.20.205] – 2026-11-04
 
 ### Added
