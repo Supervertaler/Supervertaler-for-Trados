@@ -101,6 +101,8 @@ and displays their terms as green chips alongside Supervertaler terms.
 | `package_plugin.py` | Creates OPC-format `.sdlplugin` (NOT plain ZIP – needs `[Content_Types].xml`, `_rels/`) |
 | `tools/StudioReferenceCheck/` | build.sh runs it on every package before installing: Studio refuses a plugin whose DLL references an `Sdl.*` assembly missing from its `pluginconfig.xml` (e.g. `Sdl.Desktop.Platform`) – reach such parts by reflection |
 | `src/Supervertaler.Trados/Core/StudioEditor.cs` | Use `StudioEditor.Controller` instead of `GetController<EditorController>()` (build.sh enforces it): the latter sets the Editor view up early and Studio then fails to open a first document that reports parsing messages |
+| `src/Supervertaler.Trados/SuperVault/` | SuperVault as a Studio TM provider (lookup + concordance, read-only). Index, tag mapping and scoring are shared code in `core/src/SuperVault` and `core/supervault` (Lucene.NET, opt-in). Its results set `TextReplacements`/`PlaceableFormatChanges` high on purpose: that is what keeps Studio's cross-TM "multiple translations" penalty off the client TM's 100% matches - do not "tidy" it away |
+| `tools/SuperVaultCheck/` | Offline proof of the above in Studio's own `Cascade` with a real file TM, for Studio 2024 (x86) and 2026 (x64); `kit <folder>` writes the acceptance-test document and TMX |
 
 ### External resources
 

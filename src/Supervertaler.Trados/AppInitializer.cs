@@ -765,6 +765,11 @@ namespace Supervertaler.Trados
             "System.Buffers",
             "System.Numerics.Vectors",
             "System.Runtime.CompilerServices.Unsafe",
+            // SuperVault's index
+            "Lucene.Net",
+            "J2N",
+            "Microsoft.Extensions.Configuration.Abstractions",
+            "Microsoft.Extensions.Primitives",
         };
 
         private static Assembly OnAssemblyResolve(object sender, ResolveEventArgs args)

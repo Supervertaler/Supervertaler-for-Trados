@@ -347,4 +347,8 @@
        .sdlplugin or resolved at runtime. See core/README.md. -->
   <Import Project="..\..\core\Supervertaler.Core.props" />
 
+  <!-- SuperVault's index (Lucene.NET), shared with memoQ but opt-in: core/src
+       itself takes no NuGet packages. See core/supervault/Supervertaler.SuperVault.props. -->
+  <Import Project="..\..\core\supervault\Supervertaler.SuperVault.props" />
+
 </Project>

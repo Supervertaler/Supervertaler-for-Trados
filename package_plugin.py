@@ -38,6 +38,11 @@ PLUGIN_FILES = [
     "System.Buffers.dll",
     "System.Numerics.Vectors.dll",
     "System.Runtime.CompilerServices.Unsafe.dll",
+    # --- Lucene.NET (SuperVault's index; Apache-2.0) and what it needs ---
+    "Lucene.Net.dll",
+    "J2N.dll",
+    "Microsoft.Extensions.Configuration.Abstractions.dll",
+    "Microsoft.Extensions.Primitives.dll",
 
     # --- Native SQLite library (per-architecture) ---
     "runtimes/win-x64/native/e_sqlite3.dll",
@@ -59,6 +64,11 @@ INCLUDE_FILES = [
     "System.Buffers.dll",
     "System.Numerics.Vectors.dll",
     "System.Runtime.CompilerServices.Unsafe.dll",
+    # --- Lucene.NET (SuperVault's index; Apache-2.0) and what it needs ---
+    "Lucene.Net.dll",
+    "J2N.dll",
+    "Microsoft.Extensions.Configuration.Abstractions.dll",
+    "Microsoft.Extensions.Primitives.dll",
 
     "runtimes/win-x64/native/e_sqlite3.dll",
     "runtimes/win-x86/native/e_sqlite3.dll",

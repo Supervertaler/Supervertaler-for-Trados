@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Offline check of SuperVault inside Studio's own TM machinery, without Studio running: a real file-based TM and the
+    plugin's SuperVault provider, merged by Studio's own Cascade (what Translation Results, Analyze and Pre-translate
+    use). Proves that SuperVault never lowers a client TM's match, and exercises the failure modes.
+
+        dotnet build tools/SuperVaultCheck/SuperVaultCheck.csproj -p:TradosStudioVersion=19
+        tools/SuperVaultCheck/bin/Studio19/Debug/net48/SuperVaultCheck.exe [scale index folder]
+
+    Same bitness as the Studio under test (2024 = x86, 2026 = x64), against that Studio's own DLLs.
+    Everything is written to a temporary folder; nothing in the user's data folder is touched.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <TradosStudioVersion Condition="'$(TradosStudioVersion)' == ''">18</TradosStudioVersion>
+    <PlatformTarget Condition="'$(TradosStudioVersion)' != '19'">x86</PlatformTarget>
+    <PlatformTarget Condition="'$(TradosStudioVersion)' == '19'">x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <BaseOutputPath>bin\Studio$(TradosStudioVersion)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\Studio$(TradosStudioVersion)\</BaseIntermediateOutputPath>
+    <TradosStudioPath Condition="'$(TradosStudioVersion)' == '18'">C:\Program Files (x86)\Trados\Trados Studio\Studio18</TradosStudioPath>
+    <TradosStudioPath Condition="'$(TradosStudioVersion)' == '19'">C:\Program Files\Trados\Trados Studio\Studio19</TradosStudioPath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AppConfig Condition="'$(TradosStudioVersion)' == '19'">App.Studio19.config</AppConfig>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Kit.cs" />
+    <ProjectReference Include="..\..\src\Supervertaler.Trados\Supervertaler.Trados.csproj" AdditionalProperties="TradosStudioVersion=$(TradosStudioVersion)" />
+    <Reference Include="Sdl.Core.Globalization"><HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.Core.Globalization.Async"><HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.Async.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.LanguagePlatform.Core"><HintPath>$(TradosStudioPath)\Sdl.LanguagePlatform.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.LanguagePlatform.TranslationMemory"><HintPath>$(TradosStudioPath)\Sdl.LanguagePlatform.TranslationMemory.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.LanguagePlatform.TranslationMemoryApi"><HintPath>$(TradosStudioPath)\Sdl.LanguagePlatform.TranslationMemoryApi.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>
