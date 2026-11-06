@@ -5,7 +5,9 @@
 > **Studio 2026 = 19** – so the two builds always carry distinct, non-colliding
 > version numbers that share one tail (e.g. `18.20.86` / `19.20.86`). Earlier
 > releases (`4.20.85` and below) used a single independent sequence for both
-> builds.
+> builds. Since `18.20.199` there is a third build for **Studio 2022 = 17**
+> (`17.20.199`), with the same tail; headings name only the 2024 and 2026
+> numbers, and the website's changelog page adds the 2022 one.
 
 ## [18.20.206 / 19.20.206] – Unreleased
 
