@@ -41,7 +41,14 @@ namespace Supervertaler.Trados.Core
         /// (a segment of tags only) and the translation needs text, or holds no
         /// tag the source has. The caller must then not report a write.</para>
         /// </summary>
-        public static bool FromText(ISegment target, ISegment source, string targetText, bool semanticTagNames)
+        /// <param name="removedMarkers">When given, receives every marker taken
+        /// out of <paramref name="targetText"/> rather than written (see
+        /// <see cref="RemoveUnknownMarkers"/>), as written, so the caller can
+        /// refuse or warn. Only with <paramref name="semanticTagNames"/>: without
+        /// it the text can only hold &lt;tN&gt;, and a "&lt;b&gt;" in it is text
+        /// (Proofread apply) and stays text.</param>
+        public static bool FromText(ISegment target, ISegment source, string targetText, bool semanticTagNames,
+            List<string> removedMarkers = null)
         {
             if (target == null || source == null || targetText == null) return false;
 
@@ -61,20 +68,23 @@ namespace Supervertaler.Trados.Core
             var sourceSer = SegmentTagHandler.Serialize(source);
             var tagMap = sourceSer.TagMap ?? new Dictionary<int, TagInfo>();
 
-            var resolved = semanticTagNames
-                ? Export.BilingualTagNamer.ResolveSemanticNames(targetText, tagMap)
-                : targetText;
-            // Any marker still left that is not one of ours is taken out, so it
-            // never reaches the target as text. See RemoveUnknownMarkers.
-            resolved = RemoveUnknownMarkers(resolved,
-                SegmentTagHandler.StripTagPlaceholders(sourceSer.SerializedText ?? ""));
+            var resolved = targetText;
+            if (semanticTagNames)
+            {
+                resolved = Export.BilingualTagNamer.ResolveSemanticNames(targetText, tagMap, removedMarkers);
+                // Any marker still left that is not one of ours is taken out, so
+                // it never reaches the target as text. See RemoveUnknownMarkers.
+                resolved = RemoveUnknownMarkers(resolved,
+                    SegmentTagHandler.StripTagPlaceholders(sourceSer.SerializedText ?? ""), removedMarkers);
+            }
 
             bool hasAnyMarker = tagMap.Count > 0
                 || resolved.IndexOf("<t", StringComparison.Ordinal) >= 0;
             if (hasAnyMarker && SegmentTagHandler.ReconstructTarget(target, source, resolved, tagMap))
                 return true;
 
-            // Semantic markers are already resolved to <tN> or removed above.
+            // Semantic markers are already resolved to <tN> or removed above;
+            // without semanticTagNames there are none to remove.
             var plain = SegmentTagHandler.StripTagPlaceholders(resolved);
 
             var textTpl = SegmentTagHandler.FindFirstText(source);
@@ -116,7 +126,10 @@ namespace Supervertaler.Trados.Core
         /// the target as literal text (6 Nov 2026: "&lt;u/&gt;" in a target).
         ///
         /// <para>Removed the way an invented &lt;t99&gt; is: the marker goes, the
-        /// text around and inside it stays. When it stood for one of the source's
+        /// text around and inside it stays - but never silently: each one goes into
+        /// <paramref name="removed"/>, and update_segments refuses the write
+        /// without an fp and warns with one (<see cref="Preflight"/>,
+        /// <see cref="DescribeRemovedMarkers"/>). When it stood for one of the source's
         /// tags, that tag is then missing from the target, which update_segments
         /// treats as the tag mismatch it is (refused without an fp, written with
         /// the tag-id warning with one).</para>
@@ -126,14 +139,41 @@ namespace Supervertaler.Trados.Core
         /// a software string "Press &lt;Enter&gt;" or a page about HTML translates
         /// with that text in it.</para>
         /// </summary>
-        internal static string RemoveUnknownMarkers(string text, string sourceText)
+        internal static string RemoveUnknownMarkers(string text, string sourceText, List<string> removed = null)
         {
             if (string.IsNullOrEmpty(text) || text.IndexOf('<') < 0) return text;
             return MarkerRe.Replace(text, m =>
-                NumberedMarkerRe.IsMatch(m.Value)
-                || (!string.IsNullOrEmpty(sourceText) && sourceText.IndexOf(m.Value, StringComparison.Ordinal) >= 0)
-                    ? m.Value
-                    : "");
+            {
+                if (NumberedMarkerRe.IsMatch(m.Value)
+                    || (!string.IsNullOrEmpty(sourceText) && sourceText.IndexOf(m.Value, StringComparison.Ordinal) >= 0))
+                    return m.Value;
+                removed?.Add(m.Value);
+                return "";
+            });
+        }
+
+        /// <summary>
+        /// The removed markers as the caller is told about them, each once, in
+        /// the order written: "removed '&lt;Invoer&gt;', '&lt;u/&gt;': not a tag
+        /// in this segment's source". Null when nothing was removed.
+        /// </summary>
+        internal static string DescribeRemovedMarkers(List<string> removed)
+        {
+            var list = QuoteRemovedMarkers(removed);
+            if (list == null) return null;
+            return "removed " + list + ": " + (list.IndexOf("', '", StringComparison.Ordinal) < 0 ? "not a tag" : "not tags") +
+                   " in this segment's source";
+        }
+
+        /// <summary>"'&lt;Invoer&gt;', '&lt;u/&gt;'": each removed marker once, in
+        /// the order written. Null when there are none.</summary>
+        private static string QuoteRemovedMarkers(List<string> removed)
+        {
+            if (removed == null || removed.Count == 0) return null;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var shown = new List<string>();
+            foreach (var r in removed) if (seen.Add(r)) shown.Add("'" + r + "'");
+            return string.Join(", ", shown);
         }
 
         /// <summary>
@@ -185,7 +225,8 @@ namespace Supervertaler.Trados.Core
                     : "this segment's source is empty (no text and no tags), so there is nothing to copy – " +
                       "nothing written";
 
-            if (!FromText(probe, source, targetText, semanticTagNames: true))
+            var removed = new List<string>();
+            if (!FromText(probe, source, targetText, semanticTagNames: true, removedMarkers: removed))
                 return SegmentTagHandler.Serialize(source).TagMap.Count == 0
                     ? "this segment's source is empty (no text and no tags): there is nothing to translate – " +
                       "nothing written"
@@ -199,15 +240,25 @@ namespace Supervertaler.Trados.Core
             if (!requireMatchingTags || targetText.Length == 0) return null;
             var mismatch = TagIdAudit.DescribeListMismatch(
                 TagIdAudit.CollectTagIds(source), TagIdAudit.CollectTagIds(probe));
-            if (mismatch == null) return null;
+            // A marker that would be removed is refused like a tag mismatch, even
+            // when every source tag is still there: "<Invoer>" for a key name is
+            // text the caller meant, and removing it unannounced loses it.
+            var removedList = QuoteRemovedMarkers(removed);
+            if (mismatch == null && removedList == null) return null;
 
             tagMismatch = true;
-            return "refused, nothing written: the target you sent would leave this segment's tags not matching " +
-                   "its source (" + mismatch + "), and it came without an fp, so there is no sign its source " +
-                   "was read. Read the segment with get_segments and copy the tag markers from its SOURCE " +
-                   "field, sending its fp; for a segment of tags only (tagOnly: true) send copySource: true " +
-                   "instead of a target. Only if you mean these tags to differ from the source, re-send with " +
-                   "force: true";
+            var problems = new List<string>();
+            if (removedList != null)
+                problems.Add("holds " + (removedList.IndexOf("', '", StringComparison.Ordinal) < 0 ? "a marker that is not a tag" : "markers that are not tags") +
+                             " in this segment's source (" + removedList + "), which would be removed, not written");
+            if (mismatch != null)
+                problems.Add("would leave this segment's tags not matching its source (" + mismatch + ")");
+            return "refused, nothing written: the target you sent " + string.Join(", and ", problems) +
+                   "; it came without an fp, so there is no sign its source was read. Read the segment with " +
+                   "get_segments and copy the tag markers from its SOURCE field, sending its fp; for a segment of " +
+                   "tags only (tagOnly: true) send copySource: true instead of a target. Only if you mean the " +
+                   "target to differ from the source's tags, re-send with force: true (a marker that is not a tag " +
+                   "in the source is then still left out, and the result says so)";
         }
 
         /// <summary>True when <paramref name="container"/> holds anything that

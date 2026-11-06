@@ -130,8 +130,11 @@ namespace Supervertaler.Trados.Core.Export
         /// marker with no tag left to bind to is left as-is: ReconstructTarget
         /// does NOT reject it, it writes it as text, so a caller must remove
         /// it - <see cref="TargetBuilder.FromText"/> does, with
-        /// <see cref="TargetBuilder.RemoveUnknownMarkers"/>.</summary>
-        public static string ResolveSemanticNames(string editedText, Dictionary<int, TagInfo> tagMap)
+        /// <see cref="TargetBuilder.RemoveUnknownMarkers"/>.
+        /// <paramref name="removed"/>, when given, receives each marker
+        /// removed, as written, so the caller can say so.</summary>
+        public static string ResolveSemanticNames(string editedText, Dictionary<int, TagInfo> tagMap,
+            List<string> removed = null)
         {
             if (string.IsNullOrEmpty(editedText) || tagMap == null) return editedText;
 
@@ -170,7 +173,9 @@ namespace Supervertaler.Trados.Core.Export
                     // Handled as <tN/> for a source pair is (SegmentTagHandler,
                     // 206): it writes nothing and does not use up a tag, so the
                     // pair is missing from the target and every write path
-                    // treats it as the tag mismatch it is. Never literal text.
+                    // treats it as the tag mismatch it is. Never literal text,
+                    // and never silent: the caller is handed it to report.
+                    removed?.Add(m.Value);
                     lastEnd = m.Index + m.Length;
                     continue;
                 }

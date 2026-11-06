@@ -31,11 +31,13 @@
 #   F  <tN>text</tN> written for a source PLACEHOLDER (206): the text is
 #      kept, the tag left out - a tag mismatch, never the text dropped.
 #   G  a marker the tool does not understand (206): <u/>, <b/>, <i/>, <bi/>
-#      for a source pair is a tag mismatch like E (refused without an fp,
-#      warned with one); any other unknown marker (<br/>, <x>, an unbound
-#      <u>, Studio's <cf ...>) is removed, its text kept - never literal
-#      text in the target. Text that only looks like a tag ("a < b") and a
-#      marker that is part of the source's TEXT ("<Enter>") are kept.
+#      for a source pair is a tag mismatch like E; any other unknown marker
+#      (<br/>, <x>, an unbound <u>, Studio's <cf ...>, a "<Invoer>" meant as
+#      text) is never literal text in the target either. Never silent: without
+#      an fp the write is refused naming the marker; with an fp or force it is
+#      written without it and the item's warning names it. Text that only looks
+#      like a tag ("a < b") and a marker that is part of the source's TEXT
+#      ("<Enter>") are kept.
 #   K  check_tags and get_coverage now see segments of tags only.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\mcp_tag_only_test.ps1
@@ -1079,28 +1081,35 @@ public static class TagOnlyTest
         s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":" + Q(reply) + "}]}");
         var t = One(d);
         Say("with fp: " + s.Json + "  target " + t);
-        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch"),
-            "G update_segments with an fp: written, with the tag-mismatch warning");
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("tag-id mismatch")
+              && (Str(Item(s), "warning") ?? "").Contains("removed '<u/>'"),
+            "G update_segments with an fp: written, the warning names the removed <u/> and the tag mismatch");
         Check(t == "\"Klik hier nu.\"", "G ... and no literal <u/> in the target: " + t);
 
         d = Doc(USpec());
         s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(reply) + ",\"force\":true}]}");
-        Check(Int(s.R, "applied") == 1 && One(d) == "\"Klik hier nu.\"", "G with force: written without the marker: " + One(d));
+        Check(Int(s.R, "applied") == 1 && One(d) == "\"Klik hier nu.\"" && (Str(Item(s), "warning") ?? "").Contains("removed '<u/>'"),
+            "G with force: written without the marker, the warning names it: " + One(d));
 
         // Every self-closing semantic form, any case and spacing.
         foreach (var m in new[] { "<b/>", "<i/>", "<bi/>", "<U />", "<u/ >" })
         {
             d = Doc(USpec());
             s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":" + Q("Klik " + m + "hier nu.") + "}]}");
-            Check(Int(s.R, "applied") == 1 && !One(d).Contains("<"), "G " + m + " never literal: " + One(d));
+            Check(Int(s.R, "applied") == 1 && !One(d).Contains("<") && (Str(Item(s), "warning") ?? "").Contains("removed '" + m + "'"),
+                "G " + m + " never literal, and named in the warning: " + One(d));
         }
 
         // A <u/> does not use up the tag: a proper <u>…</u> after it still binds.
         d = Doc(USpec());
         s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"<u/>Klik <u>hier</u> nu.\"}]}");
-        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null
+        Check(Int(s.R, "failed") == 1 && (Str(Item(s), "error") ?? "").Contains("'<u/>'") && d.Edits == 0,
+            "G an extra <u/> beside a proper <u>…</u>, no fp: refused, naming '<u/>' (no tag is missing, but a marker would be removed)");
+        d = Doc(USpec());
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":\"<u/>Klik <u>hier</u> nu.\"}]}");
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "") == "removed '<u/>': not a tag in this segment's source."
               && One(d) == "\"Klik \"[g5 <cf underline=\"single\">:\"hier\"]\" nu.\"",
-            "G <u/> does not use up the tag: a later <u>…</u> still gets it, no warning: " + One(d));
+            "G <u/> does not use up the tag: a later <u>…</u> still gets it; the only warning names '<u/>': " + One(d) + " / " + Str(Item(s), "warning"));
 
         // The semantic pair, as before.
         d = Doc(USpec());
@@ -1117,23 +1126,60 @@ public static class TagOnlyTest
 
         // Unknown markers on a source without tags: removed, text kept, no tags guessed.
         d = Doc(PlainSpec("Contact Acme support."));
-        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q("Neem <b/>contact op<br/> met <x>Acme</x> <cf bold=\"True\">support</cf>.") + "}]}");
-        Check(Int(s.R, "applied") == 1 && One(d) == "\"Neem contact op met Acme support.\"",
-            "G <b/>, <br/>, <x>…</x>, <cf bold=\"True\"> with no source tags: removed, text kept: " + One(d));
+        const string junk = "Neem <b/>contact op<br/> met <x>Acme</x> <cf bold=\"True\">support</cf>.";
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(junk) + "}]}");
+        Check(Int(s.R, "failed") == 1 && d.Edits == 0 && (Str(Item(s), "error") ?? "").Contains("'<br/>'"),
+            "G unknown markers on a source without tags, no fp: refused, naming them: " + Str(Item(s), "error"));
+        d = Doc(PlainSpec("Contact Acme support."));
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":" + Q(junk) + "}]}");
+        var w = Str(Item(s), "warning") ?? "";
+        Check(Int(s.R, "applied") == 1 && One(d) == "\"Neem contact op met Acme support.\""
+              && w.StartsWith("removed '<b/>', '<br/>', '<x>', '</x>', '<cf bold=\"True\">', '</cf>': not tags in this segment's source")
+              && (Str(s.R, "note") ?? "").Contains("WITHOUT one or more tag-like markers"),
+            "G ... with an fp: removed, text kept, each marker named in the warning, and the note flags it: " + One(d) + " / " + w);
+
+        // The orchestrator's case: "<Invoer>" meant as text, not in the source.
+        // Never silently lost: refused without an fp, warned with one.
+        d = Doc(PlainSpec("Press <Enter> to begin."));
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Druk op <Invoer> om te beginnen.\"}]}");
+        Say("<Invoer>, no fp: " + s.Json);
+        Check(Int(s.R, "failed") == 1 && d.Edits == 0 && One(d) == ""
+              && (Str(Item(s), "error") ?? "").Contains("'<Invoer>'") && (Str(Item(s), "error") ?? "").StartsWith("refused, nothing written"),
+            "G '<Invoer>' (not in the source), no fp: refused, nothing written, the error names it");
+        d = Doc(PlainSpec("Press <Enter> to begin."));
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"fp\":" + Q(Fp(d, "1")) + ",\"target\":\"Druk op <Invoer> om te beginnen.\"}]}");
+        Say("<Invoer>, with fp: " + s.Json);
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "") == "removed '<Invoer>': not a tag in this segment's source.",
+            "G '<Invoer>' with an fp: written, the warning says removed '<Invoer>': not a tag in this segment's source: " + One(d));
+        d = Doc(PlainSpec("Press <Enter> to begin."));
+        s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Druk op <Invoer> om te beginnen.\",\"force\":true}]}");
+        Check(Int(s.R, "applied") == 1 && (Str(Item(s), "warning") ?? "").Contains("removed '<Invoer>'"),
+            "G '<Invoer>' with force: written, with the same warning");
 
         // Text that only looks like a tag stays exactly as written.
         foreach (var lit in new[] { "Als a < b en b > c, dan a < c.", "Waarde a<b.", "if a<b and c>d then", "x < y > z", "3 <5 en 7> 2" })
         {
             d = Doc(PlainSpec("If a < b and b > c, then a < c."));
             s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":" + Q(lit) + "}]}");
-            Check(Int(s.R, "applied") == 1 && One(d) == "\"" + lit + "\"", "G literal text kept as written: " + One(d));
+            Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null && One(d) == "\"" + lit + "\"",
+                "G literal text kept as written, no fp needed, no warning: " + One(d));
         }
 
         // A marker that is part of the source's TEXT is translated text.
         d = Doc(PlainSpec("Press <Enter> to begin."));
         s = Update(d, "{\"updates\":[{\"id\":\"pu-1:1\",\"target\":\"Druk op <Enter> om te beginnen.\"}]}");
-        Check(Int(s.R, "applied") == 1 && One(d) == "\"Druk op <Enter> om te beginnen.\"",
-            "G a marker that is text in the source ('<Enter>') is kept: " + One(d));
+        Check(Int(s.R, "applied") == 1 && Str(Item(s), "warning") == null && One(d) == "\"Druk op <Enter> om te beginnen.\"",
+            "G a marker that is text in the source ('<Enter>') is kept, no fp needed, no warning: " + One(d));
+
+        // Proofread apply writes with semanticTagNames off: its text can only hold
+        // <tN>, so a "<b>" there is text and stays text - nothing is removed.
+        d = Doc(PlainSpec("Use the <b> element."));
+        var seg = Seg(d, "1");
+        var gone = new List<string>();
+        var fromText = T_("Core.TargetBuilder").GetMethod("FromText", Any);
+        bool built = (bool)fromText.Invoke(null, new object[] { seg.Target, seg.Source, "Gebruik het <b>-element en <br/>.", false, gone });
+        Check(built && Shape(seg.Target) == "\"Gebruik het <b>-element en <br/>.\"" && gone.Count == 0,
+            "G without semantic names (Proofread apply): markers are text, nothing removed: " + Shape(seg.Target));
 
         // The numbered markers are untouched (E/F cover them; one sanity check).
         d = TextDoc();

@@ -1817,6 +1817,7 @@ namespace Supervertaler.Trados
             var pairIndex = BuildSegmentPairIndex(null);
             int processed = 0;
             int tagMismatches = 0;
+            int markersRemoved = 0;
             int trackedWholeSegment = 0;
             int trackedTagsReplaced = 0;   // segments whose tags were replaced without a revision
             int staleFingerprints = 0;
@@ -2005,6 +2006,11 @@ namespace Supervertaler.Trados
 
                 string tagWarning = null;
 
+                // Markers left out of the target because they are not tags in the
+                // source (206). Written only with an fp or force - without, the
+                // preflight above refused the write - and always reported.
+                string removedNote = null;
+
                 // #138: set when Track Changes is on but this write could not be
                 // shown word by word and was recorded as one whole-segment change.
                 // Reported on its own, never through tagWarning, which counts as a
@@ -2044,6 +2050,7 @@ namespace Supervertaler.Trados
                         var written = WriteSegmentTarget(pair, targetText, "Supervertaler MCP",
                             semanticTagNames: true, copySource: u.CopySource);
                         tagWarning = written.TagWarning;
+                        removedNote = written.RemovedMarkers;
                         trackedNote = written.TrackedNote;
                         revisionMode = written.RevisionMode;
                         tagsReplaced = written.TagsReplaced;
@@ -2078,9 +2085,14 @@ namespace Supervertaler.Trados
                     if (!lockOnly) BridgeRecordWrite(u.Id); // coverage: this segment was written this session
                     if (tmCandidates != null && !lockOnly)
                         tmCandidates.Add(new KeyValuePair<string, BridgeUpdateResultItem>(pairKey, item));
+                    if (!string.IsNullOrEmpty(removedNote))
+                    {
+                        item.Warning = removedNote + ".";
+                        markersRemoved++;
+                    }
                     if (!string.IsNullOrEmpty(tagWarning))
                     {
-                        item.Warning = tagWarning;
+                        item.Warning = string.IsNullOrEmpty(item.Warning) ? tagWarning : item.Warning + " " + tagWarning;
                         tagMismatches++;
                     }
                     if (!string.IsNullOrEmpty(trackedNote))
@@ -2160,6 +2172,12 @@ namespace Supervertaler.Trados
                         "without a revision mark, so that only text changes show as revisions - see each item's " +
                         "'tagsReplaced'. Where nothing else changed, the item's revisionMode is 'tag-only' and nothing " +
                         "shows as changed in Studio's editor.";
+                if (markersRemoved > 0)
+                    response.Note += $" WARNING: {markersRemoved} segment(s) were written WITHOUT one or more " +
+                        "tag-like markers from your target (<u/>, <br/>, <x> ...), because they are not tags in " +
+                        "the segment's source – see the per-item 'warning' field, which names each one. A marker " +
+                        "never goes into a target as text. If one was meant as text in the translation, it was " +
+                        "lost: tell the user, who can type it in Studio.";
                 if (tagMismatches > 0)
                     response.Note += $" WARNING: {tagMismatches} segment(s) were written with inline tags whose " +
                         "underlying tag ids do not match the source – see the per-item 'warning' field. Studio's Tag " +
@@ -2215,6 +2233,12 @@ namespace Supervertaler.Trados
             /// <summary>#138: why a tracked write was recorded as one whole-segment
             /// change; null when it was not.</summary>
             public string TrackedNote;
+
+            /// <summary>Markers taken out of the target text rather than written,
+            /// because they are not tags in the source ("removed '&lt;Invoer&gt;':
+            /// not a tag in this segment's source"); null when none. Only
+            /// update_segments' writes remove any (<see cref="Core.TargetBuilder.FromText"/>).</summary>
+            public string RemovedMarkers;
 
             /// <summary>"word", "tag-only" or "whole-segment" for a tracked write;
             /// null when Track Changes was off.</summary>
@@ -2272,6 +2296,10 @@ namespace Supervertaler.Trados
                 // messages and the translator can toggle it mid-batch.
                 bool trackWords = Core.TrackingSuspension.IsTracking(_activeDocument) == true;
 
+                // Markers the build takes out instead of writing (FromText); the
+                // caller reports them, so none is lost unannounced.
+                var removedMarkers = new List<string>();
+
                 _activeDocument.ProcessSegmentPair(pair, undoName,
                     (sp, cancel) =>
                     {
@@ -2322,7 +2350,8 @@ namespace Supervertaler.Trados
                         // Ctrl+Insert does - no markers to get wrong.
                         bool built = copySource
                             ? Core.TargetBuilder.CopySource(sp.Target, sp.Source)
-                            : Core.TargetBuilder.FromText(sp.Target, sp.Source, targetText, semanticTagNames);
+                            : Core.TargetBuilder.FromText(sp.Target, sp.Source, targetText, semanticTagNames,
+                                removedMarkers);
                         if (!built)
                         {
                             // Nothing could be built (a source of tags only and a
@@ -2366,6 +2395,7 @@ namespace Supervertaler.Trados
                         written.UnchangedText = written.AcceptedAfter == acceptedBefore;
 
                         written.TagWarning = DescribeTagIdMismatch(sp.Source, sp.Target);
+                        written.RemovedMarkers = Core.TargetBuilder.DescribeRemovedMarkers(removedMarkers);
 
                         // Comment audit, same principle as the tag audit: a
                         // write that silently destroys a comment is the worst
