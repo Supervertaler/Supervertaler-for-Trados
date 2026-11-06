@@ -15,6 +15,8 @@ using Microsoft.Data.Sqlite;
 ///
 ///   SuperVault acceptance.docx   Dutch sentences taken from the Workbench database (read-only), bold where the unit has &lt;b&gt;
 ///   client TM.tmx                nl-BE > en-US translations of most of them, as a translator's normal TM would hold them
+///   SuperVault.tmx               the units to import into SuperVault (groups A-D), written en-GB > nl-NL on purpose:
+///                                the other direction and other variants than the project, which SuperVault must serve anyway
 ///   expected.txt                 which sentence is in which group, and what Analyze should show
 ///
 /// Groups: A formatted, same translation in the client TM; B plain, same; C different translation in the client TM;
@@ -41,19 +43,21 @@ static class Kit
             units.Add(new Unit { Group = "E", Nl = s, En = null, ClientEn = null });
 
         WriteDocx(Path.Combine(folder, "SuperVault acceptance.docx"), units);
-        WriteTmx(Path.Combine(folder, "client TM.tmx"), units.Where(u => u.ClientEn != null));
+        WriteTmx(Path.Combine(folder, "client TM.tmx"), units.Where(u => u.ClientEn != null), "nl-BE", u => u.Nl, "en-US", u => u.ClientEn);
+        WriteTmx(Path.Combine(folder, "SuperVault.tmx"), units.Where(u => u.En != null), "en-GB", u => u.En, "nl-NL", u => u.Nl);
         var sb = new StringBuilder();
         sb.AppendLine("SuperVault acceptance test - what is in the test document (paragraph order)");
         sb.AppendLine("A = formatted, client TM has the same translation; B = plain, same; C = client TM has a different translation;");
         sb.AppendLine("D = only in SuperVault; E = in neither.");
         sb.AppendLine();
+        sb.AppendLine("Setup: import client TM.tmx into a new Studio TM (nl-BE > en-US); import SuperVault.tmx into SuperVault (en-GB > nl-NL on purpose).");
         sb.AppendLine("Expected: the client TM's 100% / Context Match counts are identical with SuperVault on and off.");
         sb.AppendLine("With SuperVault on, group D moves from No Match to 100%. Groups A-C keep the client TM's match, listed first.");
         sb.AppendLine();
         int i = 1;
         foreach (var u in units) sb.AppendLine($"{i++,2}. {u.Group}  {u.Nl}");
         File.WriteAllText(Path.Combine(folder, "expected.txt"), sb.ToString(), new UTF8Encoding(true));
-        Console.WriteLine($"Kit written to {folder}: {units.Count} paragraphs, {units.Count(u => u.ClientEn != null)} client TM units.");
+        Console.WriteLine($"Kit written to {folder}: {units.Count} paragraphs, {units.Count(u => u.ClientEn != null)} client TM units, {units.Count(u => u.En != null)} SuperVault units.");
         return 0;
     }
 
@@ -131,15 +135,15 @@ static class Kit
         }
     }
 
-    static void WriteTmx(string path, IEnumerable<Unit> units)
+    static void WriteTmx(string path, IEnumerable<Unit> units, string sourceLang, Func<Unit, string> source, string targetLang, Func<Unit, string> target)
     {
         var sb = new StringBuilder();
         sb.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-        sb.AppendLine("<tmx version=\"1.4\"><header creationtool=\"SuperVaultCheck\" creationtoolversion=\"1\" segtype=\"sentence\" o-tmf=\"none\" adminlang=\"en-US\" srclang=\"nl-BE\" datatype=\"plaintext\"/><body>");
+        sb.AppendLine("<tmx version=\"1.4\"><header creationtool=\"SuperVaultCheck\" creationtoolversion=\"1\" segtype=\"sentence\" o-tmf=\"none\" adminlang=\"en-US\" srclang=\"" + sourceLang + "\" datatype=\"plaintext\"/><body>");
         foreach (var u in units)
         {
-            sb.Append("<tu><tuv xml:lang=\"nl-BE\"><seg>").Append(Seg(u.Nl)).Append("</seg></tuv>");
-            sb.Append("<tuv xml:lang=\"en-US\"><seg>").Append(Seg(u.ClientEn)).AppendLine("</seg></tuv></tu>");
+            sb.Append("<tu><tuv xml:lang=\"" + sourceLang + "\"><seg>").Append(Seg(source(u))).Append("</seg></tuv>");
+            sb.Append("<tuv xml:lang=\"" + targetLang + "\"><seg>").Append(Seg(target(u))).AppendLine("</seg></tuv></tu>");
         }
         sb.AppendLine("</body></tmx>");
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));

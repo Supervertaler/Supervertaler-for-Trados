@@ -10,11 +10,11 @@ using Supervertaler.Core.SuperVault;
 namespace Supervertaler.Trados.SuperVault
 {
     /// <summary>
-    /// SuperVault as a Trados Studio translation memory: one memory, built from the Supervertaler Workbench database,
-    /// for every project in a language pair it holds, in both directions and every language variant. nl-BE>en-US,
+    /// SuperVault as a Trados Studio translation memory: one memory for every project in a language pair it holds, in both directions and every language variant. nl-BE>en-US,
     /// nl-NL>en-GB and en-GB>nl-BE all use the same units; there are no reversed copies and nothing to add per variant.
     ///
-    /// Stage 1: lookups and concordance, read-only. Confirmed segments are not stored (SupportsUpdate is false).
+    /// SuperVault has its own memory (VaultStore), filled by importing TMX files and Studio TMs; it needs no other program.
+    /// Stage 1: lookups and concordance. Confirmed segments are not stored yet (SupportsUpdate is false).
     /// </summary>
     [TranslationProviderFactory(Id = "SupervertalerSuperVaultFactory", Name = "SupervertalerSuperVaultFactory", Description = "SupervertalerSuperVaultFactory_Description")]
     public sealed class SuperVaultProviderFactory : ITranslationProviderFactory
@@ -64,9 +64,9 @@ namespace Supervertaler.Trados.SuperVault
             get
             {
                 var s = Library.Status;
-                if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "SuperVault: " + s.Message + (s.Building ? " (rebuilding: " + s.BuildProgress + ")" : ""));
-                if (s.Building) return new ProviderStatusInfo(true, "SuperVault is being built: " + s.BuildProgress);
-                return new ProviderStatusInfo(false, s.Message + " Open SuperVault's settings to build it.");
+                if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "SuperVault: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
+                if (s.Building) return new ProviderStatusInfo(true, "SuperVault is importing or building its index: " + s.BuildProgress);
+                return new ProviderStatusInfo(false, s.Message + " Select SuperVault and click Settings... to import or rebuild.");
             }
         }
 

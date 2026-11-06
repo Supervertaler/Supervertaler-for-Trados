@@ -83,38 +83,45 @@ static class Checks
 
     // ---- fixtures ----
 
-    // Workbench-style units. Tag codes as Workbench stores them.
+    // Units for SuperVault, as a TMX file would carry them (tags as <bpt>/<ept>/<ph>).
     static readonly (string src, string trg, string sl, string tl)[] VaultUnits =
     {
-        ("Klik op <b>Opslaan</b> om de wijzigingen te bewaren.", "Click <b>Save</b> to keep the changes.", "nl", "en"),
+        ("Klik op <bpt i=\"1\">&lt;b&gt;</bpt>Opslaan<ept i=\"1\">&lt;/b&gt;</ept> om de wijzigingen te bewaren.", "Click <bpt i=\"1\">&lt;b&gt;</bpt>Save<ept i=\"1\">&lt;/b&gt;</ept> to keep the changes.", "nl", "en"),
         ("De pomp wordt gestart.", "The pump is started.", "nl-BE", "en-US"),
         ("Druk op Start.", "Press Start.", "nl", "en"),                                             // stored without formatting
         ("The valve is closed automatically.", "De klep wordt automatisch gesloten.", "en-GB", "nl-NL"), // stored the other way round
         ("Het apparaat moet worden schoongemaakt na elk gebruik.", "The device must be cleaned after each use.", "nl-NL", "en-GB"),
-        ("Gebruik <pt x=\"1\">nooit</pt> water.", "<pt x=\"1\">Never</pt> use water.", "nl", "en"),
     };
 
+    static string _vaultTmx;
+
+    static string WriteTmx(string name, IEnumerable<(string src, string trg, string sl, string tl)> units)
+    {
+        var path = Path.Combine(_scratch, name);
+        var sb = new System.Text.StringBuilder("<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"*all*\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>");
+        foreach (var u in units)
+            sb.Append("<tu><tuv xml:lang=\"").Append(u.sl).Append("\"><seg>").Append(u.src).Append("</seg></tuv><tuv xml:lang=\"").Append(u.tl).Append("\"><seg>").Append(u.trg).Append("</seg></tuv></tu>");
+        sb.Append("</body></tmx>");
+        File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(false));
+        return path;
+    }
+
+    /// <summary>SuperVault filled the way a user fills it: a TMX file, and a Studio TM (its own tags, through Studio's public API).</summary>
     static string BuildScratchVault()
     {
-        var db = Path.Combine(_scratch, "supervertaler.db");
-        using (var c = new SqliteConnection("Data Source=" + db))
-        {
-            c.Open();
-            Exec(c, "CREATE TABLE translation_units (id INTEGER PRIMARY KEY AUTOINCREMENT, source_text TEXT NOT NULL, target_text TEXT NOT NULL, source_lang TEXT NOT NULL, target_lang TEXT NOT NULL, tm_id TEXT NOT NULL, source_hash TEXT NOT NULL)");
-            foreach (var u in VaultUnits)
-                using (var cmd = c.CreateCommand())
-                {
-                    cmd.CommandText = "INSERT INTO translation_units (source_text, target_text, source_lang, target_lang, tm_id, source_hash) VALUES ($s,$t,$sl,$tl,'t','h')";
-                    cmd.Parameters.AddWithValue("$s", u.src); cmd.Parameters.AddWithValue("$t", u.trg);
-                    cmd.Parameters.AddWithValue("$sl", u.sl); cmd.Parameters.AddWithValue("$tl", u.tl);
-                    cmd.ExecuteNonQuery();
-                }
-        }
-        SqliteConnection.ClearAllPools();
-        var root = Path.Combine(_scratch, "vault");
-        int n = VaultLibrary.For(root).Build(db, null, CancellationToken.None);
-        Check(n == VaultUnits.Length, $"scratch SuperVault built: {n} units");
-        return root;
+        _vaultTmx = WriteTmx("vault.tmx", VaultUnits);
+        var studioTm = new FileBasedTranslationMemory(Path.Combine(_scratch, "for-supervault.sdltm"), "for SuperVault", NlBe, EnUs,
+            FuzzyIndexes.SourceWordBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
+        studioTm.Save();
+        studioTm.LanguageDirection.AddTranslationUnitsMasked(new[] { Tu(WaterDoc(), Open("5", 1), "Never", Close("5", 1), " use water.") }, new ImportSettings(), new[] { true });
+
+        var lib = VaultLibrary.For(Path.Combine(_scratch, "vault"));
+        var r1 = lib.Import((store, p, c) => VaultTmx.Import(store, _vaultTmx, p, c), null, CancellationToken.None);
+        var r2 = lib.Import((store, p, c) => SuperVaultImport.Sdltm(store, studioTm.FilePath, p, c), null, CancellationToken.None);
+        var r3 = lib.Import((store, p, c) => VaultTmx.Import(store, _vaultTmx, p, c), null, CancellationToken.None);
+        Check(r1.Added == 5 && r2.Added == 1 && r3.Added == 0 && r3.Duplicates == 5 && lib.Status.Units == 6,
+              $"SuperVault filled without Workbench: TMX {r1.Added}, Studio TM {r2.Added}, same TMX again {r3.Added} added / {r3.Duplicates} duplicates; index {lib.Status.Units} units");
+        return lib.Root;
     }
 
     static void Exec(SqliteConnection c, string sql) { using (var cmd = c.CreateCommand()) { cmd.CommandText = sql; cmd.ExecuteNonQuery(); } }
@@ -313,14 +320,13 @@ static class Checks
         var pair = new LanguagePair(NlBe, EnUs);
 
         var none = new SuperVaultProvider(Path.Combine(_scratch, "no-index"));
-        Check(!none.StatusInfo.Available && none.StatusInfo.StatusMessage.Contains("build"), "no index: provider unavailable with a message: " + none.StatusInfo.StatusMessage);
+        Check(!none.StatusInfo.Available && none.StatusInfo.StatusMessage.Contains("import"), "no index: provider unavailable with a message: " + none.StatusInfo.StatusMessage);
         var r = Cascade(SaveDoc(), clientTm, none.GetLanguageDirection(pair));
         Check(r.Results.Count == 1 && r.Results[0].ScoringResult.Match == 100, "no index: the client TM works as before");
 
         // A damaged index: every file of the generation overwritten.
         var damagedRoot = Path.Combine(_scratch, "vault-damaged");
-        var db = Path.Combine(_scratch, "supervertaler.db");
-        VaultLibrary.For(Path.Combine(_scratch, "vault-to-damage")).Build(db, null, CancellationToken.None);
+        VaultLibrary.For(Path.Combine(_scratch, "vault-to-damage")).Import((store, p, c) => VaultTmx.Import(store, _vaultTmx, p, c), null, CancellationToken.None);
         var gen = Directory.GetDirectories(Path.Combine(_scratch, "vault-to-damage"), "gen-*").Single();
         Directory.CreateDirectory(Path.Combine(damagedRoot, Path.GetFileName(gen)));
         foreach (var f in Directory.GetFiles(gen))
@@ -331,35 +337,35 @@ static class Checks
         r = Cascade(SaveDoc(), clientTm, damaged.GetLanguageDirection(pair));
         Check(r.Results.Count == 1 && r.Results[0].ScoringResult.Match == 100, "damaged index: no exception, the client TM works as before");
 
+        // A file that isn't a Studio TM (or one Studio can't open, e.g. with a password): a clear error, nothing added.
+        var vaultLib = VaultLibrary.For(Path.Combine(_scratch, "vault"));
+        long before = vaultLib.StoreCount();
+        var notTm = Path.Combine(_scratch, "not a tm.sdltm");
+        File.WriteAllText(notTm, "this is not a translation memory");
+        string message = null;
+        try { vaultLib.Import((store, p, c) => SuperVaultImport.Sdltm(store, notTm, p, c), null, CancellationToken.None); }
+        catch (InvalidOperationException ex) { message = ex.Message; }
+        Check(message != null && message.Contains("TMX") && vaultLib.StoreCount() == before, "unreadable .sdltm: refused with a message, nothing added: " + message);
+
+        // Importing a Studio TM leaves the file free: the user can move or delete it afterwards.
+        var tmFile = Path.Combine(_scratch, "for-supervault.sdltm");
+        bool free;
+        try { File.Move(tmFile, tmFile + ".moved"); File.Move(tmFile + ".moved", tmFile); free = true; } catch (IOException) { free = false; }
+        Check(free, "the imported .sdltm is not left locked");
+
         // Index being rebuilt: lookups keep working on the old one throughout, and the new one takes over.
         var lib = VaultLibrary.For(Path.Combine(_scratch, "vault"));
         var vault = new SuperVaultProvider(lib.Root);
-        var big = Path.Combine(_scratch, "big.db");
-        File.Copy(db, big);
-        using (var c = new SqliteConnection("Data Source=" + big))
-        {
-            c.Open();
-            using (var tx = c.BeginTransaction())
-            {
-                for (int i = 0; i < 30000; i++)
-                    using (var cmd = c.CreateCommand())
-                    {
-                        cmd.CommandText = $"INSERT INTO translation_units (source_text, target_text, source_lang, target_lang, tm_id, source_hash) VALUES ('Zin {i} over de klep.', 'Sentence {i} about the valve.', 'nl', 'en', 't', 'h')";
-                        cmd.ExecuteNonQuery();
-                    }
-                tx.Commit();
-            }
-        }
-        SqliteConnection.ClearAllPools();
+        var big = WriteTmx("big.tmx", Enumerable.Range(0, 30000).Select(i => ($"Zin {i} over de klep.", $"Sentence {i} about the valve.", "nl", "en")));
         var done = new ManualResetEventSlim();
         string error = "?";
-        lib.StartBuild(big, e => { error = e; done.Set(); });
+        lib.StartImport((store, p, c) => VaultTmx.Import(store, big, p, c), e => { error = e; done.Set(); });
         int lookups = 0; bool allGood = true;
         var sv = vault.GetLanguageDirection(pair);
         while (!done.IsSet) { allGood &= Cascade(PumpDoc(), sv).Results.Any(x => x.ScoringResult.Match == 100); lookups++; }
-        Check(error == null && allGood, $"rebuild in the background: {lookups} lookups during it, all answered from the old index");
+        Check(error == null && allGood, $"30,000-unit TMX imported in the background: {lookups} lookups during it, all answered from the old index");
         Thread.Sleep(2100);
-        Check(Cascade(Doc("Zin 29999 over de klep."), sv).Results.Any(x => x.ScoringResult.Match == 100), "after the rebuild the new units are found");
+        Check(Cascade(Doc("Zin 29999 over de klep."), sv).Results.Any(x => x.ScoringResult.Match == 100), "after the import the new units are found");
     }
 
     static void Scale(string root, string db)
