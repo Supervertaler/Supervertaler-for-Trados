@@ -36,6 +36,8 @@ static class Program
         };
         if (args.Length > 0 && args[0] == "kit")
             return Kit.Run(args.Length > 1 ? args[1] : "SuperVault acceptance", args.Length > 2 ? args[2] : @"D:\Supervertaler\resources\supervertaler.db");
+        if (args.Length > 1 && args[0] == "lookup-xliff")
+            return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : null);
         if (args.Length > 1 && args[0] == "import-sdltm")
             return RealTm.Run(args[1], args.Length > 2 ? args[2] : null);
         return Checks.Run(args);
