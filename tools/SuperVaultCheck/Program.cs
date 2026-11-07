@@ -69,7 +69,7 @@ static class Checks
             NeverLowersTheClientTm(vault, clientTm);
             TagsAndPenalties(vault);
             FuzzyDifferences(vault);
-            Concordance(vault);
+            Concordance(vault, clientTm);
             FailureModes(clientTm);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
@@ -304,16 +304,31 @@ static class Checks
         return true;
     }
 
-    static void Concordance(SuperVaultProvider vault)
+    static void Concordance(SuperVaultProvider vault, ITranslationProviderLanguageDirection clientTm)
     {
         Console.WriteLine("Concordance");
         var sv = vault.GetLanguageDirection(new LanguagePair(NlBe, EnUs));
         var src = sv.SearchSegment(new SearchSettings { Mode = SearchMode.ConcordanceSearch, MinScore = 50, MaxResults = 10 }, Doc("pomp"));
         Check(src.Results.Any(x => Text(x.MemoryTranslationUnit.TargetSegment) == "The pump is started."), "source concordance 'pomp': " + src.Count + " result(s)");
+        var hit = src.Results.FirstOrDefault(x => Text(x.MemoryTranslationUnit.TargetSegment) == "The pump is started.");
+        var ranges = hit?.ScoringResult.MatchingConcordanceRanges;
+        string marked = ranges == null ? "(none)" : string.Join(",", ranges.Select(r => Text(hit.MemoryTranslationUnit.SourceSegment).Substring(r.From.Position, r.Into.Position - r.From.Position + 1)));
+        Check(marked == "pomp", "source concordance highlights the searched word: " + marked);
+        // Studio's own TM, for the convention (which side, element index, Into inclusive).
+        foreach (var mode in new[] { SearchMode.ConcordanceSearch, SearchMode.TargetConcordanceSearch })
+        {
+            var q = mode == SearchMode.ConcordanceSearch ? Doc("pomp") : new Func<Segment>(() => { var s = new Segment(EnUs); s.Add("pump"); return s; })();
+            foreach (var r in clientTm.SearchSegment(new SearchSettings { Mode = mode, MinScore = 50, MaxResults = 3 }, q).Results)
+                Console.WriteLine($"    Studio TM {mode}: src '{Text(r.MemoryTranslationUnit.SourceSegment)}' trg '{Text(r.MemoryTranslationUnit.TargetSegment)}' ranges " +
+                    string.Join(" ", (r.ScoringResult.MatchingConcordanceRanges ?? new List<SegmentRange>()).Select(x => $"[{x.From.Index}:{x.From.Position}-{x.Into.Index}:{x.Into.Position}]")));
+        }
         var trg = sv.SearchSegment(new SearchSettings { Mode = SearchMode.TargetConcordanceSearch, MinScore = 50, MaxResults = 10 }, new Func<Segment>(() => { var s = new Segment(EnUs); s.Add("valve"); return s; })());
         var first = trg.Results.FirstOrDefault();
         Check(first != null && Text(first.MemoryTranslationUnit.SourceSegment).StartsWith("De klep") && first.MemoryTranslationUnit.SourceSegment.Culture.Name == "nl-BE",
               "target concordance 'valve': the unit comes back source nl-BE > target en-US");
+        var tr = first?.ScoringResult.MatchingConcordanceRanges;
+        string tmarked = tr == null ? "(none)" : string.Join(",", tr.Select(r => Text(first.MemoryTranslationUnit.TargetSegment).Substring(r.From.Position, r.Into.Position - r.From.Position + 1)));
+        Check(tmarked == "valve", "target concordance highlights the searched word in the target: " + tmarked);
     }
 
     static void FailureModes(ITranslationProviderLanguageDirection clientTm)

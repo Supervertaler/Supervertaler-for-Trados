@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Sdl.Core.Globalization;
 using Sdl.LanguagePlatform.Core;
 using Sdl.LanguagePlatform.Core.EditDistance;
@@ -129,7 +130,12 @@ namespace Supervertaler.Trados.SuperVault
         /// <summary>A Studio search result for a concordance match. Always plain text.</summary>
         public static SearchResult Concordance(Segment src, Segment trg, VaultMatch m)
         {
-            return Make(src, trg, m, new ScoringResult { BaseScore = m.Score, TextReplacements = YieldRank, PlaceableFormatChanges = YieldRank });
+            var scoring = new ScoringResult { BaseScore = m.Score, TextReplacements = YieldRank, PlaceableFormatChanges = YieldRank };
+            // The searched words, for Studio to highlight. Our concordance segments are one Text element each (plain
+            // text, see SuperVaultLanguageDirection.Plain), so element 0, with Into inclusive as in a token's Span.
+            if (m.Hits != null && m.Hits.Count > 0)
+                scoring.MatchingConcordanceRanges = m.Hits.Select(h => new SegmentRange(0, h.Offset, h.Offset + Math.Max(1, h.Length) - 1)).ToList();
+            return Make(src, trg, m, scoring);
         }
 
         static SearchResult Make(Segment src, Segment trg, VaultMatch m, ScoringResult scoring)
