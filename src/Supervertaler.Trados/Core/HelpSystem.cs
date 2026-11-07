@@ -69,6 +69,7 @@ namespace Supervertaler.Trados.Core
 
             public const string SuperSearch         = "trados/supersearch/";
             public const string SuperBench          = "trados/superbench/";
+            public const string SuperVault          = "trados/supervault/";
             public const string QuickLauncher       = "trados/quicklauncher/";
             public const string VoiceCommands       = "trados/voice-commands/";
 

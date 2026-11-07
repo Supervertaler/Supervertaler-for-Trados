@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using Sdl.LanguagePlatform.Core;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
 using Supervertaler.Core.SuperVault;
+using Supervertaler.Trados.Core;
 
 namespace Supervertaler.Trados.SuperVault
 {
@@ -74,6 +75,11 @@ namespace Supervertaler.Trados.SuperVault
             Font = new Font("Segoe UI", 9F);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
+            // The title-bar "?" (WinForms shows it only without the maximise/minimise boxes) and F1 open the Help page.
+            HelpButton = true;
+            HelpButtonClicked += (s, e) => { e.Cancel = true; HelpSystem.OpenHelp(HelpSystem.Topics.SuperVault); };
+            KeyPreview = true;
+            KeyDown += (s, e) => { if (e.KeyCode == Keys.F1) { e.Handled = true; HelpSystem.OpenHelp(HelpSystem.Topics.SuperVault); } };
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(660, 330);
 
