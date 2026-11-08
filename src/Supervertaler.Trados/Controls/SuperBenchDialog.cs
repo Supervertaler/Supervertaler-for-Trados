@@ -106,7 +106,9 @@ namespace Supervertaler.Trados.Controls
             {
                 var pair = MakeModelRow(slotKeys, defaults[i].Item1, defaults[i].Item2);
                 _slots.Add(pair);
-                _layout.Controls.Add(L("Model " + (char)('A' + i) + ":"), 0, row);
+                // Numbers, not letters: the letters A/B/C are dealt at random each run
+                // (so the judge cannot favour a position), and slot letters clashed with them.
+                _layout.Controls.Add(L("Model " + (i + 1) + ":"), 0, row);
                 _layout.Controls.Add(Host(pair.provider, pair.model), 1, row); row++;
             }
             _lblMtNote = new Label
@@ -363,8 +365,8 @@ namespace Supervertaler.Trados.Controls
             _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Source", FillWeight = 24 });
             if (run == null)
             {
-                foreach (var l in new[] { "A", "B", "C" })
-                    _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = l, FillWeight = 24 });
+                for (int i = 0; i < 3; i++)
+                    _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Translation", FillWeight = 24 });
                 return;
             }
             foreach (var c in SuperBench.InLabelOrder(run))
@@ -384,6 +386,7 @@ namespace Supervertaler.Trados.Controls
             }
 
             var sb = new StringBuilder();
+            sb.AppendLine("The letters are dealt at random each run, so the judge cannot favour a slot.");
             sb.AppendLine("Legend: " + string.Join("   ", ordered.Select(c => c.Label + " = " + (c.DisplayModel ?? c.Model)
                 + (c.CostKnown ? $" (${c.Cost:0.00##}, {c.Elapsed.TotalSeconds:F0} s)"
                     : c.Cost > 0 ? $" (up to ${c.Cost:0.00##}, {c.Elapsed.TotalSeconds:F0} s)"
