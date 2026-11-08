@@ -14,7 +14,8 @@ namespace Supervertaler.Trados.SuperVault
     /// nl-NL>en-GB and en-GB>nl-BE all use the same units; there are no reversed copies and nothing to add per variant.
     ///
     /// SuperVault has its own memory (VaultStore), filled by importing TMX files and Studio TMs; it needs no other program.
-    /// Stage 1: lookups and concordance. Confirmed segments are not stored yet (SupportsUpdate is false).
+    /// It also learns as you work: with its Update box ticked in the project's TM settings, every confirmed segment (and
+    /// a batch "Update Main Translation Memories") is stored in it, and found by lookups within seconds.
     /// </summary>
     [TranslationProviderFactory(Id = "SupervertalerSuperVaultFactory", Name = "SupervertalerSuperVaultFactory", Description = "SupervertalerSuperVaultFactory_Description")]
     public sealed class SuperVaultProviderFactory : ITranslationProviderFactory
@@ -38,18 +39,21 @@ namespace Supervertaler.Trados.SuperVault
         /// <summary>For tests: a provider on a scratch index.</summary>
         public SuperVaultProvider(string root) : this(VaultLibrary.For(root)) { }
 
-        SuperVaultProvider(VaultLibrary library) { Library = library; }
+        SuperVaultProvider(VaultLibrary library)
+        {
+            Library = library;
+            if (VaultLibrary.Log == null)
+                VaultLibrary.Log = message => Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", message);
+        }
 
         /// <summary>
-        /// Every pair of two different languages the index holds, either way round, whatever the variants. With no index
-        /// yet, every pair: SuperVault can be added to a project first and built afterwards.
+        /// Every pair of two different languages, either way round, whatever the variants: SuperVault learns a pair it
+        /// doesn't hold yet from the first segment you confirm in it. (Stage 1 offered only the pairs the index held.)
         /// </summary>
         public bool SupportsLanguageDirection(LanguagePair pair)
         {
             string a = VaultMarkup.BaseLanguage(pair?.SourceCultureName), b = VaultMarkup.BaseLanguage(pair?.TargetCultureName);
-            if (a.Length == 0 || b.Length == 0 || a == b) return false;
-            var idx = Library.Current;
-            return idx == null || idx.Pairs().Contains(VaultIndex.PairKey(a, b));
+            return a.Length > 0 && b.Length > 0 && a != b;
         }
 
         public ITranslationProviderLanguageDirection GetLanguageDirection(LanguagePair pair)
@@ -85,7 +89,7 @@ namespace Supervertaler.Trados.SuperVault
         public bool SupportsPenalties => true;
         public bool SupportsStructureContext => false;
         public bool SupportsDocumentSearches => true;
-        public bool SupportsUpdate => false;
+        public bool SupportsUpdate => true;
         public bool SupportsPlaceables => false;
         public bool SupportsTranslation => true;
         public bool SupportsFuzzySearch => true;
@@ -94,7 +98,7 @@ namespace Supervertaler.Trados.SuperVault
         public bool SupportsTargetConcordanceSearch => true;
         public bool SupportsWordCounts => false;
         public TranslationMethod TranslationMethod => TranslationMethod.TranslationMemory;
-        public bool IsReadOnly => true;
+        public bool IsReadOnly => false;
     }
 
     public sealed class SuperVaultLanguageDirection : ITranslationProviderLanguageDirection
@@ -187,15 +191,61 @@ namespace Supervertaler.Trados.SuperVault
         public SearchResults[] SearchTranslationUnitsMasked(SearchSettings settings, TranslationUnit[] translationUnits, bool[] mask) =>
             translationUnits.Select((t, i) => mask == null || mask[i] ? SearchTranslationUnit(settings, t) : null).ToArray();
 
-        // ---- updates: not in stage 1. SupportsUpdate is false, so Studio does not call these; if it does, nothing is stored. ----
+        // ---- updates: learning as you work ----
+        //
+        // Which of these Studio calls (read from Studio 2022, 2024 and 2026's own assemblies, 8 Nov 2026):
+        //   - confirming a segment in the Editor: AddOrUpdateTranslationUnitsMasked (Editor TranslationUpdate.ProcessBuffer);
+        //   - batch task "Update Main Translation Memories": AddOrUpdateTranslationUnitsMasked (AbstractUpdateTmContentProcessor);
+        //   - editing a TM unit from the Translation Results / Concordance window: UpdateTranslationUnits.
+        // All of them go the same way: the units are handed to SuperVault's background thread and the call returns at
+        // once. Studio's previous-translation hashes are not used: SuperVault recognises a changed translation of the
+        // same source itself (VaultStore.Writer.Learn).
 
-        static ImportResult Discard() => new ImportResult(Sdl.LanguagePlatform.TranslationMemory.Action.Discard);
-        public ImportResult AddTranslationUnit(TranslationUnit translationUnit, ImportSettings settings) => Discard();
-        public ImportResult[] AddTranslationUnits(TranslationUnit[] translationUnits, ImportSettings settings) => translationUnits.Select(_ => Discard()).ToArray();
-        public ImportResult[] AddOrUpdateTranslationUnits(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings) => AddTranslationUnits(translationUnits, settings);
-        public ImportResult[] AddTranslationUnitsMasked(TranslationUnit[] translationUnits, ImportSettings settings, bool[] mask) => AddTranslationUnits(translationUnits, settings);
-        public ImportResult[] AddOrUpdateTranslationUnitsMasked(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings, bool[] mask) => AddTranslationUnits(translationUnits, settings);
-        public ImportResult UpdateTranslationUnit(TranslationUnit translationUnit) => Discard();
-        public ImportResult[] UpdateTranslationUnits(TranslationUnit[] translationUnits) => AddTranslationUnits(translationUnits, null);
+        static ImportResult Added => new ImportResult(Sdl.LanguagePlatform.TranslationMemory.Action.Add);         // a new object each time: Studio may fill in its fields
+        static ImportResult Discarded => new ImportResult(Sdl.LanguagePlatform.TranslationMemory.Action.Discard);
+
+        /// <summary>
+        /// Hands the units to SuperVault (<see cref="VaultLibrary.Learn"/>) and returns. Never throws and never waits:
+        /// Studio's confirm action must not fail or hang because of SuperVault. A unit Studio masked out gets null, as
+        /// for searches. The result can only say "added": the unit is stored a moment later, in the background.
+        /// </summary>
+        ImportResult[] Learn(TranslationUnit[] units, bool[] mask)
+        {
+            var results = new ImportResult[units?.Length ?? 0];
+            try
+            {
+                var batch = new List<VaultLearnUnit>(results.Length);
+                for (int i = 0; i < results.Length; i++)
+                {
+                    if (mask != null && (i >= mask.Length || !mask[i])) continue;
+                    var tu = units[i];
+                    if (tu?.SourceSegment == null || tu.TargetSegment == null || tu.TargetSegment.IsEmpty) { results[i] = Discarded; continue; }
+                    batch.Add(new VaultLearnUnit
+                    {
+                        SourceCulture = tu.SourceSegment.Culture?.Name ?? SourceLanguage?.Name,
+                        Source = SuperVaultImport.Codes(tu.SourceSegment),
+                        TargetCulture = tu.TargetSegment.Culture?.Name ?? TargetLanguage?.Name,
+                        Target = SuperVaultImport.Codes(tu.TargetSegment),
+                        Origin = "studio",
+                    });
+                    results[i] = Added;
+                }
+                _provider.Library.Learn(batch);
+            }
+            catch (Exception ex)
+            {
+                try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Could not take confirmed segments: " + ex); } catch { }
+                for (int i = 0; i < results.Length; i++) if (results[i] == null && (mask == null || (i < mask.Length && mask[i]))) results[i] = Discarded;
+            }
+            return results;
+        }
+
+        public ImportResult AddTranslationUnit(TranslationUnit translationUnit, ImportSettings settings) => Learn(new[] { translationUnit }, null)[0];
+        public ImportResult[] AddTranslationUnits(TranslationUnit[] translationUnits, ImportSettings settings) => Learn(translationUnits, null);
+        public ImportResult[] AddOrUpdateTranslationUnits(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings) => Learn(translationUnits, null);
+        public ImportResult[] AddTranslationUnitsMasked(TranslationUnit[] translationUnits, ImportSettings settings, bool[] mask) => Learn(translationUnits, mask);
+        public ImportResult[] AddOrUpdateTranslationUnitsMasked(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings, bool[] mask) => Learn(translationUnits, mask);
+        public ImportResult UpdateTranslationUnit(TranslationUnit translationUnit) => Learn(new[] { translationUnit }, null)[0];
+        public ImportResult[] UpdateTranslationUnits(TranslationUnit[] translationUnits) => Learn(translationUnits, null);
     }
 }

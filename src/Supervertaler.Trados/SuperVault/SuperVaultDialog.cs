@@ -65,6 +65,7 @@ namespace Supervertaler.Trados.SuperVault
         readonly Timer _timer = new Timer { Interval = 1000 };
         long _storeUnits = -1;
         bool _outOfDate;
+        long _learnWaiting;
         DateTime _storeCheckedAt;
 
         public SuperVaultDialog(VaultLibrary library, bool adding)
@@ -81,13 +82,14 @@ namespace Supervertaler.Trados.SuperVault
             KeyPreview = true;
             KeyDown += (s, e) => { if (e.KeyCode == Keys.F1) { e.Handled = true; HelpSystem.OpenHelp(HelpSystem.Topics.SuperVault); } };
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(660, 330);
+            ClientSize = new Size(660, 360);
 
             var intro = new Label
             {
-                Dock = DockStyle.Top, Height = 66,
+                Dock = DockStyle.Top, Height = 84,
                 Text = "SuperVault is one memory for every language variant, in both directions: an English–Dutch unit serves " +
                        "nl-BE > en-US, en-GB > nl-NL and the rest. Fill it by importing TMX files or Studio TMs; duplicates are stored once. " +
+                       "With its Update box ticked in the project's TM settings, the segments you confirm are added as you work. " +
                        "Its matches never lower your project TMs' matches.",
             };
             var imports = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(0, 4, 0, 0) };
@@ -148,7 +150,7 @@ namespace Supervertaler.Trados.SuperVault
             // The store is a file to open: look at it every 5 s at most, and when a job ends.
             if (_storeUnits < 0 || (!s.Building && (DateTime.UtcNow - _storeCheckedAt).TotalSeconds > 5))
             {
-                try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); }
+                try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); _learnWaiting = _library.LearnWaiting(); }
                 catch (Exception ex) { _storeUnits = 0; _outOfDate = false; Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Store check failed: " + ex.Message); }
                 _storeCheckedAt = DateTime.UtcNow;
             }
@@ -159,11 +161,15 @@ namespace Supervertaler.Trados.SuperVault
                 case VaultState.Ready:
                     lines.AppendLine("Index: " + s.Units.ToString("N0", CultureInfo.CurrentCulture) + " units" +
                                      (s.BuiltAt.HasValue ? ", built " + s.BuiltAt.Value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : "") +
-                                     (_outOfDate && !s.Building ? ". Out of date: click Rebuild index." : ""));
+                                     (_outOfDate && !s.Building && _learnWaiting == 0 && s.LearnError == null ? ". Out of date: click Rebuild index." : ""));
                     break;
                 case VaultState.Broken: lines.AppendLine(s.Message); break;
                 default: lines.AppendLine(_storeUnits > 0 ? "No index yet: click Rebuild index." : "Empty. Import a TMX file or a Studio TM to start."); break;
             }
+            if (s.LearnedThisSession > 0 || _learnWaiting > 0 || s.LearnError != null)
+                lines.AppendLine("Confirmed segments: " + s.LearnedThisSession.ToString("N0", CultureInfo.CurrentCulture) + " stored since Studio started" +
+                                 (_learnWaiting > 0 ? ", " + _learnWaiting.ToString("N0", CultureInfo.CurrentCulture) + " waiting" : "") +
+                                 (s.LearnError != null ? ". Last attempt failed (" + s.LearnError + "); they are kept and tried again." : "."));
             if (s.Building) lines.AppendLine("Working: " + s.BuildProgress + ". You can close this window; Studio keeps working meanwhile.");
             else if (_library.LastJobResult != null) lines.AppendLine("Last import or build: " + _library.LastJobResult);
             lines.AppendLine();

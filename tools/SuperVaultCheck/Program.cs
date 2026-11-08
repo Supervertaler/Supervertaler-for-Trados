@@ -72,6 +72,7 @@ static class Checks
             TagsAndPenalties(vault);
             FuzzyDifferences(vault);
             Concordance(vault, clientTm);
+            Learning(vault);
             FailureModes(clientTm);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
@@ -208,8 +209,8 @@ static class Checks
     static void LanguageDirections(SuperVaultProvider vault)
     {
         Console.WriteLine("Language directions");
-        foreach (var (s, t, want) in new[] { ("nl-BE", "en-US", true), ("en-GB", "nl-NL", true), ("nl-NL", "en-GB", true), ("en-US", "nl-BE", true), ("fr-FR", "de-DE", false), ("nl-NL", "nl-BE", false) })
-            Check(vault.SupportsLanguageDirection(new LanguagePair(s, t)) == want, $"{s} > {t}: {(want ? "served" : "not served")}");
+        foreach (var (s, t, want) in new[] { ("nl-BE", "en-US", true), ("en-GB", "nl-NL", true), ("nl-NL", "en-GB", true), ("en-US", "nl-BE", true), ("fr-FR", "de-DE", true), ("nl-NL", "nl-BE", false) })
+            Check(vault.SupportsLanguageDirection(new LanguagePair(s, t)) == want, $"{s} > {t}: {(want ? "served (a pair not held yet is learned from its first confirmed segment)" : "not served")}");
     }
 
     /// <summary>The acceptance rule: with SuperVault in the cascade, in either position, the client TM's matches are exactly as without it.</summary>
@@ -253,6 +254,65 @@ static class Checks
         tm2.LanguageDirection.AddTranslationUnitsMasked(new[] { Tu(PumpDoc(), "The pump gets started.") }, new ImportSettings(), new[] { true });
         var two = Cascade(PumpDoc(), clientTm, tm2.LanguageDirection, sv);
         Check(two.Results.Where(r => !IsVault(r)).All(r => r.ScoringResult.Match == 99), "two disagreeing client TMs still get Studio's own penalty: " + Show(two));
+    }
+
+    /// <summary>
+    /// Confirmed segments, handed over the way Studio's Editor and "Update Main TMs" hand them over
+    /// (AddOrUpdateTranslationUnitsMasked), then looked up through Studio's own Cascade.
+    /// </summary>
+    static void Learning(SuperVaultProvider vault)
+    {
+        Console.WriteLine("Learning as you work");
+        Check(vault.SupportsUpdate && !vault.IsReadOnly, "SupportsUpdate, not read-only: Studio offers the Update box");
+        var sv = vault.GetLanguageDirection(new LanguagePair(NlBe, EnUs));
+        Segment SwitchDoc() => Doc("Zet de ", Open("pt9", 1), "schakelaar", Close("pt9", 1), " op uit.");
+        var tu = Tu(SwitchDoc(), "Set the ", Open("pt9", 1), "switch", Close("pt9", 1), " to of.");
+        var masked = Tu(Doc("Deze zin is uitgemaskeerd."), "This sentence is masked out.");
+        var sw = Stopwatch.StartNew();
+        var r = sv.AddOrUpdateTranslationUnitsMasked(new[] { tu, masked }, new[] { 0, 0 }, new ImportSettings(), new[] { true, false });
+        Check(sw.ElapsedMilliseconds < 100 && r.Length == 2 && r[0]?.Action == Sdl.LanguagePlatform.TranslationMemory.Action.Add && r[1] == null,
+              $"confirm returns at once ({sw.ElapsedMilliseconds} ms): Add for the unit, null for the masked-out one");
+        var found = WaitFor(() => Hits(SwitchDoc(), sv).FirstOrDefault(x => x.ScoringResult.Match == 100));
+        Check(found != null, $"found through Studio's Cascade {sw.ElapsedMilliseconds / 1000.0:F1} s after confirming");
+        var tags = found?.TranslationProposal.TargetSegment.Elements.OfType<Tag>().ToList();
+        Check(tags != null && tags.Count == 2 && tags.All(t => t.TagID == "pt9"), "its formatting is kept: the document's own tags are placed in the target");
+
+        // The translator corrects the translation and confirms again.
+        sv.AddOrUpdateTranslationUnitsMasked(new[] { Tu(SwitchDoc(), "Set the ", Open("pt9", 1), "switch", Close("pt9", 1), " to off.") }, new[] { 0 }, new ImportSettings(), new[] { true });
+        var fixedOne = WaitFor(() => Hits(SwitchDoc(), sv).FirstOrDefault(x => Text(x.TranslationProposal?.TargetSegment) == "Set the switch to off."));
+        var all = Hits(SwitchDoc(), sv).Where(x => x.ScoringResult.Match >= 99).ToList();
+        Check(fixedOne != null && all.Count == 1, "a corrected translation replaces the one learned before: " + Show(Cascade(SwitchDoc(), sv)));
+        Check(Hits(Doc("Deze zin is uitgemaskeerd."), sv).Count == 0, "the masked-out unit was not stored");
+
+        // Editing a unit from the Translation Results window.
+        var u = sv.UpdateTranslationUnits(new[] { Tu(Doc("De lamp brandt."), "The lamp is on.") });
+        Check(u.Length == 1 && u[0].Action == Sdl.LanguagePlatform.TranslationMemory.Action.Add && WaitFor(() => Hits(Doc("De lamp brandt."), sv).FirstOrDefault()) != null,
+              "UpdateTranslationUnits (an edited TM unit) is stored too");
+
+        // A SuperVault folder that can't be written: confirming still returns at once and throws nothing.
+        var file = Path.Combine(_scratch, "a-file");
+        File.WriteAllText(file, "x");
+        var broken = new SuperVaultProvider(Path.Combine(file, "supervault")).GetLanguageDirection(new LanguagePair(NlBe, EnUs));
+        sw.Restart();
+        ImportResult[] br = null; Exception thrown = null;
+        try { br = broken.AddOrUpdateTranslationUnitsMasked(new[] { tu }, new[] { 0 }, new ImportSettings(), new[] { true }); }
+        catch (Exception ex) { thrown = ex; }
+        Check(thrown == null && br?.Length == 1 && sw.ElapsedMilliseconds < 100, $"an unwritable SuperVault folder: confirm returns in {sw.ElapsedMilliseconds} ms, no exception reaches Studio");
+        Check(broken.AddOrUpdateTranslationUnitsMasked(null, null, null, null).Length == 0, "no units: an empty answer, no exception");
+    }
+
+    static List<SearchResult> Hits(Segment doc, ITranslationProviderLanguageDirection dir) => Cascade(doc, dir)?.Results.ToList() ?? new List<SearchResult>();
+
+    static T WaitFor<T>(Func<T> probe) where T : class
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed.TotalSeconds < 20)
+        {
+            var v = probe();
+            if (v != null) return v;
+            Thread.Sleep(200);
+        }
+        return null;
     }
 
     static void TagsAndPenalties(SuperVaultProvider vault)
