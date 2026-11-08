@@ -63,14 +63,30 @@ namespace Supervertaler.Trados.SuperVault
             return new SuperVaultLanguageDirection(this, pair);
         }
 
+        /// <summary>
+        /// Available unless the index is damaged. An empty SuperVault (no folder, a store with no index yet, or an index
+        /// with no units) is a normal state: lookups give no matches and confirmed segments are learned, which creates
+        /// the store and index. Studio's Editor disables a TM that reports itself unavailable when a file is opened, and
+        /// saves that in the project, so this must never say "unavailable" just because SuperVault holds nothing yet.
+        /// Never throws: Studio's Editor reads this without catching.
+        /// </summary>
         public ProviderStatusInfo StatusInfo
         {
             get
             {
-                var s = Library.Status;
-                if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "SuperVault: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
-                if (s.Building) return new ProviderStatusInfo(true, "SuperVault is importing or building its index: " + s.BuildProgress);
-                return new ProviderStatusInfo(false, s.Message + " Select SuperVault and click Settings... to import or rebuild.");
+                try
+                {
+                    var s = Library.Status;
+                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "SuperVault: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
+                    if (s.Building) return new ProviderStatusInfo(true, "SuperVault is importing or building its index: " + s.BuildProgress);
+                    if (s.State == VaultState.Missing) return new ProviderStatusInfo(true, s.Message);
+                    return new ProviderStatusInfo(false, s.Message + " To do so, select SuperVault and click Settings...");
+                }
+                catch (Exception ex)
+                {
+                    try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Status failed: " + ex); } catch { }
+                    return new ProviderStatusInfo(true, "SuperVault (status unknown: " + ex.Message + ")");
+                }
             }
         }
 

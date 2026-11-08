@@ -398,10 +398,31 @@ static class Checks
         Console.WriteLine("Failure modes");
         var pair = new LanguagePair(NlBe, EnUs);
 
-        var none = new SuperVaultProvider(Path.Combine(_scratch, "no-index"));
-        Check(!none.StatusInfo.Available && none.StatusInfo.StatusMessage.Contains("import"), "no index: provider unavailable with a message: " + none.StatusInfo.StatusMessage);
-        var r = Cascade(SaveDoc(), clientTm, none.GetLanguageDirection(pair));
-        Check(r.Results.Count == 1 && r.Results[0].ScoringResult.Match == 100, "no index: the client TM works as before");
+        // An empty SuperVault is a normal state: available (Studio's Editor disables a TM that says it isn't, and saves
+        // that in the project), no matches, the client TM unaffected, and the first confirmation fills it.
+        SearchResults r = null;
+        var emptyIndex = Path.Combine(_scratch, "empty-index");
+        VaultLibrary.For(emptyIndex).Import((store, p, c) => { using (var w = new VaultStore.Writer(store)) { w.Commit(); return w.Result; } }, null, CancellationToken.None);
+        var emptyStore = Path.Combine(_scratch, "empty-store");
+        Directory.CreateDirectory(emptyStore);
+        VaultStore.Create(Path.Combine(emptyStore, "supervault.db"));
+        foreach (var (what, root) in new[] { ("no folder", Path.Combine(_scratch, "no-folder", "supervault")), ("empty store, no index", emptyStore), ("index with 0 units", emptyIndex) })
+        {
+            var empty = new SuperVaultProvider(root);
+            Check(empty.StatusInfo.Available, what + ": available, with a message: " + empty.StatusInfo.StatusMessage);
+            var frDe = new LanguagePair(new CultureCode("fr-FR"), new CultureCode("de-DE"));
+            Check(empty.SupportsLanguageDirection(pair) && empty.SupportsLanguageDirection(frDe), what + ": offered for nl-BE>en-US and fr-FR>de-DE");
+            var dir = empty.GetLanguageDirection(pair);
+            r = Cascade(SaveDoc(), clientTm, dir);
+            Check(r.Results.Count == 1 && r.Results[0].ScoringResult.Match == 100, what + ": no matches of its own, the client TM works as before");
+            Check(Hits(Doc("Een zin die er niet in staat."), dir).Count == 0, what + ": a lookup gives nothing and throws nothing");
+            var conc = dir.SearchSegment(new SearchSettings { Mode = SearchMode.ConcordanceSearch, MinScore = 50, MaxResults = 5 }, Doc("pomp"));
+            Check(conc.Results.Count == 0, what + ": concordance gives nothing and throws nothing");
+            var learned = Doc("Een eerste zin in een lege SuperVault.");
+            dir.AddOrUpdateTranslationUnitsMasked(new[] { Tu(learned, "A first sentence in an empty SuperVault.") }, new[] { 0 }, new ImportSettings(), new[] { true });
+            Check(WaitFor(() => Hits(learned, dir).FirstOrDefault(x => x.ScoringResult.Match == 100)) != null && empty.StatusInfo.Available,
+                  what + ": the first confirmed segment is stored, indexed and found");
+        }
 
         // A damaged index: every file of the generation overwritten.
         var damagedRoot = Path.Combine(_scratch, "vault-damaged");

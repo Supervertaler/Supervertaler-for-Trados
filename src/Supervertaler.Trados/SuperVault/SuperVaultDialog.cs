@@ -164,7 +164,7 @@ namespace Supervertaler.Trados.SuperVault
                                      (_outOfDate && !s.Building && _learnWaiting == 0 && s.LearnError == null ? ". Out of date: click Rebuild index." : ""));
                     break;
                 case VaultState.Broken: lines.AppendLine(s.Message); break;
-                default: lines.AppendLine(_storeUnits > 0 ? "No index yet: click Rebuild index." : "Empty. Import a TMX file or a Studio TM to start."); break;
+                default: lines.AppendLine(_storeUnits > 0 ? "No index yet: it is built when you next confirm a segment, or click Rebuild index." : "Empty. It fills as you confirm segments (tick SuperVault's Update box in the project's TM settings), or import a TMX file or a Studio TM."); break;
             }
             if (s.LearnedThisSession > 0 || _learnWaiting > 0 || s.LearnError != null)
                 lines.AppendLine("Confirmed segments: " + s.LearnedThisSession.ToString("N0", CultureInfo.CurrentCulture) + " stored since Studio started" +
