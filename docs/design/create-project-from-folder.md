@@ -1,6 +1,6 @@
 # Create a Trados project from a folder
 
-**Status:** designed, not started. Build after the 199 release, in a fresh session,
+**Status:** phase 0 built on branch `claude/mcp-create-project` (8 Nov 2026), not yet tried in Studio – see *Phase 0 result* at the end. Originally: Build after the 199 release, in a fresh session,
 on a branch.
 **Date:** 2026-10-10
 **Prompted by:** wanting to hand Claude Desktop (or a small tool of our own) a folder
@@ -242,3 +242,51 @@ build.
   folder used?
 - Should `create_project` also accept a package (`.sdlppx`) and simply open it? Out of
   scope for now; the scan only flags them.
+
+## Phase 0 result (8 Nov 2026)
+
+Built: `create_project` (MCP), `Core/ProjectCreator.cs` (checks, plan, clean-up; no
+Studio needed) and `Core/ProjectCreatorStudio.cs` (Project Automation API).
+`list_project_templates` already read the registered list (done before this branch).
+Offline test: `tools/create_project_test.ps1` (71 checks, all three builds).
+
+**Licence – answered from Studio's own DLLs** (`Sdl.ProjectAutomation.FileBased.dll`,
+2022/2024/2026). `new FileBasedProject(...)` runs `PerformPreChecks`, which throws a
+`LicensingException` when:
+1. the licence is not valid on this machine (`IsLicenseValidForCurrentMachine`);
+2. the code runs **outside** Studio (`IsStandalone`) and the licence is not
+   Professional – this is the check that makes Paul Filkin's PowerShell route
+   Professional-only;
+3. the licence is Starter (2022 and 2024 only; the 2026 DLL has no Starter check);
+4. the licence lacks the feature `AllowProjectCreation` (`IsFeatureActive`).
+Inside Studio, check 2 does not apply, so a **Freelance** licence passes the edition
+check. Whether Freelance has `AllowProjectCreation` is not in the DLL (it comes from
+the licence); since Freelance users create projects with New Project every day, it
+almost certainly does. One run in Studio 2024 or 2022 (regular licence) settles it.
+A refusal is reported in plain words, never as a raw exception.
+
+**Decisions taken in phase 0**
+- The project always gets its own folder, `<location>\<name>`; `location` defaults to
+  the running Studio's `Documents\Studio 20xx\Projects`. An existing folder is used
+  only when empty, and then only emptied (not deleted) on failure.
+- Preparation is the file part of Studio's Prepare: Scan, Convert to Translatable
+  Format, Copy to Target Languages (one `RunAutomaticTasks` call). Analyse,
+  pre-translate and project-TM creation are left to phase 1 (`prepare`).
+- With a template, everything comes from the template (TMs, termbases, settings);
+  explicit TMs/termbases are phase 1.
+- Files in subfolders keep their subfolder in the project (one `AddFiles` per
+  subfolder), so two `intro.docx` in different folders do not clash.
+- The project is added to the Projects list (`ProjectsController.Add`, UI thread,
+  skipped if Studio already lists it) but not opened.
+- A failed step deletes the project through `FileBasedProject.Delete()` and then
+  whatever is left in the folder; a failure to add it to the Projects list counts
+  as a failure too, so nothing half-registered is left.
+
+**Later phase – SuperVault in the TM list with Update ticked: sensible.** The API has
+it directly: `GetTranslationProviderConfiguration()` → add
+`new TranslationProviderCascadeEntry("supervault:///", performUpdate: true,
+performNormalSearch: true, performConcordanceSearch: true, penalty)` →
+`UpdateTranslationProviderConfiguration(config)` (per target language with the
+`Language` overloads). Studio only honours Update when the provider's
+`SupportsUpdate` is true – false in stage 1, true on `claude/supervault-learn`. Build
+it after that branch is merged, and test whether Studio keeps the tick.

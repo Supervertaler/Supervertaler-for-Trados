@@ -1145,7 +1145,8 @@ namespace Supervertaler.Trados
                     getCoverage: BridgeGetCoverage,
                     getTrackedChanges: BridgeGetTrackedChanges,
                     importTermbase: BridgeImportTermbase,
-                    getInstanceInfo: BuildBridgeInstanceInfo);
+                    getInstanceInfo: BuildBridgeInstanceInfo,
+                    createProject: BridgeCreateProject);
                 _supervertalerBridge.Start();
             }
             catch (Exception ex)
@@ -6549,6 +6550,10 @@ namespace Supervertaler.Trados
             public string Error;
             public string Note;
             public string SafetyNote;
+            // create_project only
+            public string ProjectFile;
+            public List<string> Files;
+            public string Progress;
         }
 
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunTaskJob> _runTaskJobs
@@ -6641,6 +6646,117 @@ namespace Supervertaler.Trados
             }
         }
 
+        /// <summary>Taken while checking for a running job and registering a new
+        /// one, so two create_project calls cannot both pass the check.</summary>
+        private readonly object _jobStartLock = new object();
+
+        /// <summary>
+        /// Bridge delegate for POST /v1/create-project (MCP create_project).
+        /// Checks the request first and refuses with every problem it finds,
+        /// having written nothing. Then creates the project in the background
+        /// (Core/ProjectCreatorStudio) as a job that get_task_status reports on;
+        /// a failed job leaves no project, folder or Projects-list entry behind.
+        /// </summary>
+        private BridgeRunTaskResponse BridgeCreateProject(BridgeCreateProjectRequest req)
+        {
+            const string task = "create-project";
+            var studioDocs = ProjectCreator.RunningStudioDocumentsFolder();
+            var defaultLocation = studioDocs != null ? System.IO.Path.Combine(studioDocs, "Projects") : null;
+            var registered = ProjectCreator.RegisteredProjectNames(
+                studioDocs != null ? System.IO.Path.Combine(studioDocs, "Projects", "projects.xml") : null);
+
+            var plan = ProjectCreator.Plan(req.Name, req.SourceLanguage, req.TargetLanguages, req.Files,
+                req.Template, req.Location, defaultLocation, registered);
+            if (plan.Errors.Count > 0)
+                return new BridgeRunTaskResponse
+                {
+                    Ok = false,
+                    Task = task,
+                    Error = "Nothing was created. " + string.Join(" ", plan.Errors),
+                    Messages = plan.Errors
+                };
+
+            RunTaskJob job;
+            lock (_jobStartLock)
+            {
+                var busy = GetRunningJob();
+                if (busy != null)
+                    return new BridgeRunTaskResponse
+                    {
+                        Ok = false,
+                        Task = task,
+                        Error = $"a batch task ({busy.Friendly}, jobId \"{busy.Id}\") is still running – " +
+                                "wait for it to finish (poll get_task_status) before creating a project."
+                    };
+                job = new RunTaskJob
+                {
+                    Id = Guid.NewGuid().ToString("N").Substring(0, 8),
+                    Task = task,
+                    Friendly = "Create project",
+                    Status = "running",
+                    StartedUtc = DateTime.UtcNow,
+                    FileCount = plan.Files.Count,
+                    Progress = "starting"
+                };
+                RegisterJob(job);
+            }
+
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => CreateProjectJobBody(job, plan));
+
+            return new BridgeRunTaskResponse
+            {
+                Ok = true,
+                Started = true,
+                JobId = job.Id,
+                Task = task,
+                FilesProcessed = plan.Files.Count,
+                Note = $"Creating project \"{plan.Name}\" in {plan.ProjectFolder} with {plan.Files.Count} file(s) " +
+                       "in the background. Poll get_task_status with jobId \"" + job.Id + "\" until it is done; " +
+                       "it then gives the project file and its files."
+            };
+        }
+
+        private void CreateProjectJobBody(RunTaskJob job, ProjectPlan plan)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            BridgeLog.Write($"[create-project] job {job.Id} started: {plan.Files.Count} file(s) into {plan.ProjectFolder}");
+            ProjectCreatorStudio.Result result;
+            try
+            {
+                result = ProjectCreatorStudio.Run(plan,
+                    p => { lock (job.Sync) job.Progress = p; },
+                    m => { lock (job.Sync) { if (job.Messages.Count < 50) job.Messages.Add(m); } });
+            }
+            catch (Exception ex)
+            {
+                // Run catches everything itself; this is the last line of defence
+                // so the job can never stay "running" for ever.
+                result = new ProjectCreatorStudio.Result { Ok = false, Error = "Creating the project failed: " + ex.Message };
+            }
+            sw.Stop();
+            lock (job.Sync)
+            {
+                job.FinishedUtc = DateTime.UtcNow;
+                if (result.Ok)
+                {
+                    job.Status = "done";
+                    job.ProjectFile = result.ProjectFile;
+                    job.Files = result.Files;
+                    job.Note = $"Project \"{plan.Name}\" created with {result.Files.Count} file(s), prepared for " +
+                               (plan.TargetLanguages.Count > 0 ? string.Join(", ", plan.TargetLanguages) : "the template's target languages") +
+                               ", and added to Studio's Projects list. Open it from the Projects view to start translating." +
+                               (result.Warnings.Count > 0 ? " Warnings: " + string.Join(" ", result.Warnings) : "");
+                }
+                else
+                {
+                    job.Status = "failed";
+                    job.Error = result.Error;
+                }
+            }
+            BridgeLog.Write($"[create-project] job {job.Id} {job.Status} in {sw.Elapsed.TotalSeconds:F1}s" +
+                            (result.Ok ? "" : ": " + result.Error));
+        }
+
         /// <summary>Bridge delegate for GET /v1/task-status (MCP get_task_status).</summary>
         private BridgeTaskStatusResponse BridgeGetTaskStatus(string jobId)
         {
@@ -6670,7 +6786,10 @@ namespace Supervertaler.Trados
                     FilesProcessed = job.FileCount,
                     ElapsedSeconds = (int)Math.Round((end - job.StartedUtc).TotalSeconds),
                     Messages = job.Messages.Count > 0 ? new List<string>(job.Messages) : null,
-                    Note = job.Status == "failed" ? job.Error : job.Note
+                    Note = job.Status == "failed" ? job.Error : job.Note,
+                    ProjectFile = job.ProjectFile,
+                    Files = job.Files != null ? new List<string>(job.Files) : null,
+                    Progress = job.Status == "running" ? job.Progress : null
                 };
             }
         }
