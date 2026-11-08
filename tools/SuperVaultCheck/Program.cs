@@ -76,6 +76,7 @@ static class Checks
             CountingConfirmations(root);
             FailureModes(clientTm);
             DialogShowsAllItsText(root);
+            WorkbenchChoice();
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
@@ -370,6 +371,84 @@ static class Checks
             }
         }
     }
+
+    /// <summary>
+    /// Import from Workbench, the choice of TMs, in the real window: names (the tm_id where Workbench has none),
+    /// pairs and counts; last time's unticked TM stays unticked; a TM with no units can't be ticked; Select all /
+    /// Select none; Import only with something ticked; closing while the list is still being read does no harm.
+    /// </summary>
+    static void WorkbenchChoice()
+    {
+        Console.WriteLine("Import from Workbench: choosing TMs");
+        var db = Path.Combine(_scratch, "workbench-choice.db");
+        using (var c = new SqliteConnection("Data Source=" + db + ";Pooling=False"))
+        {
+            c.Open();
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = @"CREATE TABLE translation_units (id INTEGER PRIMARY KEY AUTOINCREMENT, source_text TEXT, target_text TEXT, source_lang TEXT, target_lang TEXT, tm_id TEXT NOT NULL);
+                    CREATE TABLE translation_memories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, tm_id TEXT NOT NULL UNIQUE);
+                    INSERT INTO translation_memories (name, tm_id) VALUES ('Acme main', 'a'), ('PROJ-001', 'b'), ('Acme empty', 'd');
+                    INSERT INTO translation_units (source_text, target_text, source_lang, target_lang, tm_id) VALUES
+                      ('Een', 'One', 'nl', 'en', 'a'), ('Twee', 'Two', 'nl', 'en', 'a'), ('Three', 'Drie', 'en', 'nl', 'a'),
+                      ('Eins', 'Een', 'de', 'nl', 'b'), ('Uno', 'Een', 'es', 'nl', 'c');";
+                cmd.ExecuteNonQuery();
+            }
+        }
+        SqliteConnection.ClearAllPools();
+        var type = typeof(SuperVaultProvider).Assembly.GetType("Supervertaler.Trados.SuperVault.WorkbenchChoiceDialog", true);
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        System.Windows.Forms.Form Open(float points)
+        {
+            var f = (System.Windows.Forms.Form)Activator.CreateInstance(type, any, null, new object[] { db, new[] { "b" } }, null);
+            f.Font = new System.Drawing.Font("Segoe UI", points);
+            f.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+            f.Location = new System.Drawing.Point(-10000, -10000);
+            f.Show();
+            return f;
+        }
+        T Get<T>(object o, string name) => (T)type.GetProperty(name, any).GetValue(o);
+        void Call(object o, string name, params object[] a) => type.GetMethod(name, any).Invoke(o, a);
+
+        // Closing at once, while the list is still being read: nothing breaks, nothing chosen.
+        using (var early = Open(9f)) { early.Close(); }
+        System.Windows.Forms.Application.DoEvents();
+
+        foreach (var (scale, points) in new[] { ("100%", 9f), ("150%", 13.5f) })
+            using (var f = Open(points))
+            {
+                var view = AllControls(f).OfType<System.Windows.Forms.ListView>().Single();
+                var sw = Stopwatch.StartNew();
+                while (view.Items.Count == 0 && sw.Elapsed.TotalSeconds < 10) { System.Windows.Forms.Application.DoEvents(); Thread.Sleep(20); }
+                var rows = view.Items.Cast<System.Windows.Forms.ListViewItem>().Select(i => $"{(i.Checked ? "x" : " ")} {i.SubItems[0].Text} | {i.SubItems[1].Text} | {i.SubItems[2].Text}").ToList();
+                if (scale == "100%")
+                {
+                    Check(rows.SequenceEqual(new[] { "x Acme empty | (no units) | 0".Replace("x ", "  "), "x Acme main | nl > en, en > nl | 3", "x c | es > nl | 1", "  PROJ-001 | de > nl | 1" }),
+                          "names (tm_id without one), pairs and counts; last time's unticked TM unticked; no units: unticked: " + string.Join(" / ", rows));
+                    Call(f, "SetTicked", "d", true);
+                    Check(!Get<List<string>>(f, "Ticked").Contains("d"), "a TM with no units can't be ticked");
+                    Call(f, "SelectNone");
+                    Check(!Get<bool>(f, "ImportEnabled") && Get<List<string>>(f, "Ticked").Count == 0, "Select none: nothing ticked, Import disabled");
+                    Call(f, "SelectAll");
+                    Check(Get<bool>(f, "ImportEnabled") && string.Join(",", Get<List<string>>(f, "Ticked").OrderBy(x => x)) == "a,b,c", "Select all: every TM with units, Import enabled");
+                    Call(f, "SetTicked", "a", false);
+                    Check(string.Join(",", Get<List<string>>(f, "Unticked")) == "a", "the unticked TM is what gets remembered");
+                }
+                var cut = AllControls(f).OfType<System.Windows.Forms.Button>().Where(b => b.Visible && !f.ClientRectangle.Contains(f.RectangleToClient(b.RectangleToScreen(b.ClientRectangle)))).Select(b => b.Text).ToList();
+                Check(cut.Count == 0, $"at {scale}: every button inside the window" + (cut.Count > 0 ? "; cut off: " + string.Join(", ", cut) : ""));
+                var shots = Environment.GetEnvironmentVariable("SVCHECK_SHOTS");
+                if (!string.IsNullOrEmpty(shots))
+                    using (var bmp = new System.Drawing.Bitmap(f.Width, f.Height))
+                    {
+                        f.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, f.Width, f.Height));
+                        bmp.Save(Path.Combine(shots, "workbench-choice-" + scale.TrimEnd('%') + ".png"));
+                    }
+                f.Close();
+            }
+    }
+
+    static IEnumerable<System.Windows.Forms.Control> AllControls(System.Windows.Forms.Control c) =>
+        c.Controls.Cast<System.Windows.Forms.Control>().SelectMany(x => new[] { x }.Concat(AllControls(x)));
 
     static List<SearchResult> Hits(Segment doc, ITranslationProviderLanguageDirection dir) => Cascade(doc, dir)?.Results.ToList() ?? new List<SearchResult>();
 

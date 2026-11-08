@@ -106,7 +106,7 @@ namespace Supervertaler.Trados.SuperVault
 
             _importTmx.Click += (s, e) => PickAndImport("TMX files (*.tmx)|*.tmx|All files (*.*)|*.*", (store, path, p, c) => VaultTmx.Import(store, path, p, c));
             _importTm.Click += (s, e) => PickAndImport("Studio translation memories (*.sdltm)|*.sdltm", (store, path, p, c) => SuperVaultImport.Sdltm(store, path, p, c));
-            _importWorkbench.Click += (s, e) => Start(_library.StartImport((store, p, c) => VaultStore.ImportWorkbench(store, VaultLibrary.WorkbenchDatabase, p, c)));
+            _importWorkbench.Click += (s, e) => ChooseAndImportWorkbench();
             _rebuild.Click += (s, e) => Start(_library.StartBuild());
             _stop.Click += (s, e) => _library.CancelBuild();
             _timer.Tick += (s, e) => Refresh2();
@@ -132,6 +132,24 @@ namespace Supervertaler.Trados.SuperVault
                     return total;
                 }));
             }
+        }
+
+        /// <summary>
+        /// Shows Workbench's TMs to choose from, then imports only the ticked ones. The unticked ones are remembered
+        /// for next time; a TM added to Workbench since then shows up ticked. Cancel imports and remembers nothing.
+        /// </summary>
+        void ChooseAndImportWorkbench()
+        {
+            var db = VaultLibrary.WorkbenchDatabase;
+            System.Collections.Generic.List<string> ticked;
+            using (var choose = new WorkbenchChoiceDialog(db, _library.WorkbenchUnticked()))
+            {
+                if (choose.ShowDialog(this) != DialogResult.OK) return;
+                ticked = choose.Ticked;
+                if (ticked.Count == 0) return;
+                _library.RememberWorkbenchUnticked(choose.Unticked);
+            }
+            Start(_library.StartImport((store, p, c) => VaultStore.ImportWorkbench(store, db, p, c, tmIds: ticked)));
         }
 
         void Start(bool started)
