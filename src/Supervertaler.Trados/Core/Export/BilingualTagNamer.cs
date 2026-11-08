@@ -54,8 +54,12 @@ namespace Supervertaler.Trados.Core.Export
 
         // Pattern that matches semantic <b>, </b>, <i>, </i>, etc. in
         // proofreader-edited text. Case-insensitive to be forgiving.
+        // Group 3 catches the self-closing form (<u/>, <b />): there is no
+        // such tag - every semantic name stands for a PAIR - but an AI writes
+        // it, and until 206 it fell through as literal text "<u/>" in the
+        // target (seen live 6 Nov 2026 in update_segments).
         private static readonly Regex SemanticTagRe =
-            new Regex(@"<(/?)(bi|b|i|u)>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            new Regex(@"<(/?)(bi|b|i|u)(\s*/\s*)?>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // ─── Export: <tN> → <b> ───────────────────────────────────────
 
@@ -122,10 +126,15 @@ namespace Supervertaler.Trados.Core.Export
         /// <c>&lt;u&gt;</c>, <c>&lt;bi&gt;</c> with the matching
         /// <c>&lt;tN&gt;</c> / <c>&lt;/tN&gt;</c> markers, using positional
         /// matching against the live source's <paramref name="tagMap"/>.
-        /// Unknown semantic names and stray markers are left as-is —
-        /// SegmentTagHandler.ReconstructTarget will fall back to plain
-        /// text if reconstruction fails.</summary>
-        public static string ResolveSemanticNames(string editedText, Dictionary<int, TagInfo> tagMap)
+        /// A self-closing <c>&lt;u/&gt;</c> is removed (see the loop). A
+        /// marker with no tag left to bind to is left as-is: ReconstructTarget
+        /// does NOT reject it, it writes it as text, so a caller must remove
+        /// it - <see cref="TargetBuilder.FromText"/> does, with
+        /// <see cref="TargetBuilder.RemoveUnknownMarkers"/>.
+        /// <paramref name="removed"/>, when given, receives each marker
+        /// removed, as written, so the caller can say so.</summary>
+        public static string ResolveSemanticNames(string editedText, Dictionary<int, TagInfo> tagMap,
+            List<string> removed = null)
         {
             if (string.IsNullOrEmpty(editedText) || tagMap == null) return editedText;
 
@@ -157,6 +166,19 @@ namespace Supervertaler.Trados.Core.Export
 
                 bool isClosing = m.Groups[1].Value == "/";
                 var name = m.Groups[2].Value.ToLowerInvariant();
+
+                if (m.Groups[3].Success)
+                {
+                    // <u/>: a stand-alone marker for what is always a tag pair.
+                    // Handled as <tN/> for a source pair is (SegmentTagHandler,
+                    // 206): it writes nothing and does not use up a tag, so the
+                    // pair is missing from the target and every write path
+                    // treats it as the tag mismatch it is. Never literal text,
+                    // and never silent: the caller is handed it to report.
+                    removed?.Add(m.Value);
+                    lastEnd = m.Index + m.Length;
+                    continue;
+                }
 
                 int tagNum = -1;
                 if (isClosing)

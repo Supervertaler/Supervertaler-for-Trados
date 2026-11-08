@@ -1009,7 +1009,7 @@
             "type": "string"
           },
           "searchIn": {
-            "description": "Which side to search: \"source\", \"target\", or \"both\" (default).",
+            "description": "Which side to search: \"source\", \"target\", or \"both\" (default). \"source\" is the open project's source language and \"target\" its target language, also in a TM stored the other way round; every match comes back with the project's source as source.",
             "type": "string",
             "default": null
           },
