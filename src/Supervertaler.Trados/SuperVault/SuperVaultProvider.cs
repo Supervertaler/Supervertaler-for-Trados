@@ -142,12 +142,12 @@ namespace Supervertaler.Trados.SuperVault
             if (segment == null || settings == null) return results;
             try
             {
-                var idx = _provider.Library.Current;
-                if (idx == null) return results;
                 int max = Math.Max(1, settings.MaxResults);
 
                 if (settings.Mode == SearchMode.ConcordanceSearch || settings.Mode == SearchMode.TargetConcordanceSearch)
                 {
+                    var idx = _provider.Library.Current;
+                    if (idx == null) return results;
                     bool onTarget = settings.Mode == SearchMode.TargetConcordanceSearch;
                     var query = VaultLookup.PlainOf(SuperVaultResults.Pieces(segment));
                     foreach (var m in VaultLookup.Concordance(idx, query, onTarget ? _target : _source, onTarget ? _source : _target, settings.MinScore, max))
@@ -161,7 +161,9 @@ namespace Supervertaler.Trados.SuperVault
                 }
 
                 var doc = SuperVaultResults.Pieces(results.SourceSegment);
-                var matches = VaultLookup.Search(idx, doc, _source, _target, settings.MinScore, max);
+                // Library.Lookup also sees the units just handed over and not yet stored: Studio looks a segment up
+                // again right after confirming it and caches the result, so the new unit must be there at once.
+                var matches = _provider.Library.Lookup(doc, _source, _target, settings.MinScore, max);
                 if (matches.Count == 0) return results;
                 // Our tokens on the document copy: Studio pairs each provider's results with that provider's copy of the
                 // document segment when it draws the differences, so these never meet another TM's tokens.

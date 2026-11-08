@@ -170,11 +170,11 @@ namespace Supervertaler.Trados.SuperVault
                 _storeCheckedAt = DateTime.UtcNow;
             }
             var lines = new System.Text.StringBuilder();
-            lines.AppendLine("Memory: " + _storeUnits.ToString("N0", CultureInfo.CurrentCulture) + " units");
+            lines.AppendLine("Memory: " + VaultLibrary.Units(_storeUnits));
             switch (s.State)
             {
                 case VaultState.Ready:
-                    lines.AppendLine("Index: " + s.Units.ToString("N0", CultureInfo.CurrentCulture) + " units" +
+                    lines.AppendLine("Index: " + VaultLibrary.Units(s.Units) +
                                      (s.BuiltAt.HasValue ? ", built " + s.BuiltAt.Value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : "") +
                                      (_outOfDate && !s.Building && _learnWaiting == 0 && s.LearnError == null ? ". Out of date: click Rebuild index." : ""));
                     break;

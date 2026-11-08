@@ -275,6 +275,9 @@ static class Checks
         var r = sv.AddOrUpdateTranslationUnitsMasked(new[] { tu, masked }, new[] { 0, 0 }, new ImportSettings(), new[] { true, false });
         Check(sw.ElapsedMilliseconds < 100 && r.Length == 2 && r[0]?.Action == Sdl.LanguagePlatform.TranslationMemory.Action.Add && r[1] == null,
               $"confirm returns at once ({sw.ElapsedMilliseconds} ms): Add for the unit, null for the masked-out one");
+        var immediate = Hits(SwitchDoc(), sv).FirstOrDefault(x => x.ScoringResult.Match == 100);
+        Check(immediate != null && immediate.TranslationProposal.TargetSegment.Elements.OfType<Tag>().Count() == 2,
+              "with an index too: found straight after the confirm, tags placed, before it is stored");
         var found = WaitFor(() => Hits(SwitchDoc(), sv).FirstOrDefault(x => x.ScoringResult.Match == 100));
         Check(found != null, $"found through Studio's Cascade {sw.ElapsedMilliseconds / 1000.0:F1} s after confirming");
         var tags = found?.TranslationProposal.TargetSegment.Elements.OfType<Tag>().ToList();
@@ -315,6 +318,10 @@ static class Checks
         Console.WriteLine("Counting confirmations");
         var vault = new SuperVaultProvider(root);
         var lib = VaultLibrary.For(root);
+        // Earlier checks' units may still be on their way (lookups find them before they are stored): let them land.
+        var settle = Stopwatch.StartNew();
+        while (lib.LearnWaiting() > 0 && settle.Elapsed.TotalSeconds < 20) Thread.Sleep(100);
+        Thread.Sleep(500);
         var before = lib.LearnedThisSession;
         var sv = vault.GetLanguageDirection(new LanguagePair(NlBe, EnUs));
         // The confirm, then the auto-propagated repetition: two calls, each with the previous segment as unmasked context.
@@ -569,8 +576,14 @@ static class Checks
             Check(conc.Results.Count == 0, what + ": concordance gives nothing and throws nothing");
             var learned = Doc("Een eerste zin in een lege SuperVault.");
             dir.AddOrUpdateTranslationUnitsMasked(new[] { Tu(learned, "A first sentence in an empty SuperVault.") }, new[] { 0 }, new ImportSettings(), new[] { true });
-            Check(WaitFor(() => Hits(learned, dir).FirstOrDefault(x => x.ScoringResult.Match == 100)) != null && empty.StatusInfo.Available,
-                  what + ": the first confirmed segment is stored, indexed and found");
+            // Studio looks the segment up again straight after the confirm and caches what it gets (8 Nov: the first
+            // learned unit stayed invisible until SuperVault's settings were reopened). No waiting, nothing reopened:
+            var atOnce = Hits(learned, dir).FirstOrDefault(x => x.ScoringResult.Match == 100);
+            Check(atOnce != null && Text(atOnce.TranslationProposal.TargetSegment) == "A first sentence in an empty SuperVault.",
+                  what + ": the first confirmed segment is found by a lookup straight after the confirm, as Studio makes it");
+            Check(WaitFor(() => VaultLibrary.For(root).Current != null && VaultLibrary.For(root).Current.Count > 0 ? "" : null) != null &&
+                  Hits(learned, dir).Count(x => x.ScoringResult.Match == 100) == 1 && empty.StatusInfo.Available,
+                  what + ": then stored and indexed, and still found once");
         }
 
         // A damaged index: every file of the generation overwritten.

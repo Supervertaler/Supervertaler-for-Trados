@@ -141,7 +141,7 @@ namespace Supervertaler.Trados.SuperVault
         void UpdateTotal()
         {
             var ticked = Tms().Where(x => x.Item2).Select(x => x.Item1).ToList();
-            _total.Text = ticked.Count.ToString("N0", CultureInfo.CurrentCulture) + " ticked, " + ticked.Sum(t => t.Units).ToString("N0", CultureInfo.CurrentCulture) + " units";
+            _total.Text = ticked.Count.ToString("N0", CultureInfo.CurrentCulture) + " ticked, " + VaultLibrary.Units(ticked.Sum(t => t.Units));
             _import.Enabled = ticked.Count > 0;
         }
 
