@@ -73,7 +73,9 @@ static class Checks
             FuzzyDifferences(vault);
             Concordance(vault, clientTm);
             Learning(vault);
+            CountingConfirmations(root);
             FailureModes(clientTm);
+            DialogShowsAllItsText(root);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
@@ -299,6 +301,74 @@ static class Checks
         catch (Exception ex) { thrown = ex; }
         Check(thrown == null && br?.Length == 1 && sw.ElapsedMilliseconds < 100, $"an unwritable SuperVault folder: confirm returns in {sw.ElapsedMilliseconds} ms, no exception reaches Studio");
         Check(broken.AddOrUpdateTranslationUnitsMasked(null, null, null, null).Length == 0, "no units: an empty answer, no exception");
+    }
+
+    /// <summary>
+    /// Michael's acceptance test, 8 Nov: segment 1 was a 100% SuperVault match, he confirmed only it, and the window said
+    /// "2 stored". Studio calls the update twice for it when it also auto-propagates the translation to a repetition and
+    /// confirms that (TranslatableDocument.UpdateAutopropagatedSegmentsToTranslationMemory, a second call a moment after
+    /// the confirm's). The same unit twice counts once, and one SuperVault already holds is "already in SuperVault".
+    /// </summary>
+    static void CountingConfirmations(string root)
+    {
+        Console.WriteLine("Counting confirmations");
+        var vault = new SuperVaultProvider(root);
+        var lib = VaultLibrary.For(root);
+        var before = lib.LearnedThisSession;
+        var sv = vault.GetLanguageDirection(new LanguagePair(NlBe, EnUs));
+        // The confirm, then the auto-propagated repetition: two calls, each with the previous segment as unmasked context.
+        var context = Tu(Doc("Een zin ervoor."), "A sentence before.");
+        sv.AddOrUpdateTranslationUnitsMasked(new[] { context, Tu(PumpDoc(), "The pump is started.") }, new[] { 0, 0 }, new ImportSettings(), new[] { false, true });
+        sv.AddOrUpdateTranslationUnitsMasked(new[] { context, Tu(PumpDoc(), "The pump is started.") }, new[] { 0, 0 }, new ImportSettings(), new[] { false, true });
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed.TotalSeconds < 20 && (lib.LearnWaiting() > 0 || lib.LearnedThisSession.Total == before.Total)) Thread.Sleep(100);
+        Thread.Sleep(500);
+        var now = lib.LearnedThisSession;
+        Check(now.Total - before.Total == 1 && now.Already - before.Already == 1 && now.Added == before.Added,
+              $"a 100% match confirmed and auto-propagated: counted once, as already in SuperVault ({now.Total - before.Total} confirmed, {now.Added - before.Added} added, {now.Already - before.Already} already there)");
+        Check(Hits(Doc("Een zin ervoor."), sv).Count == 0, "the unmasked context segment Studio sends along is not stored");
+        Check(now.ToString().Contains(" added") && now.ToString().Contains("already in SuperVault"), "the window's wording: " + now);
+    }
+
+    /// <summary>
+    /// The SuperVault window at 100%, 125% and 150% display scaling (as font sizes): the description and the status are
+    /// never cut off. Before 8 Nov the description had a fixed height and ended at "Its matches never lower your
+    /// project TMs'" on Michael's screen.
+    /// </summary>
+    static void DialogShowsAllItsText(string root)
+    {
+        Console.WriteLine("The SuperVault window");
+        var type = typeof(SuperVaultProvider).Assembly.GetType("Supervertaler.Trados.SuperVault.SuperVaultDialog", true);
+        const System.Windows.Forms.TextFormatFlags flags = System.Windows.Forms.TextFormatFlags.WordBreak | System.Windows.Forms.TextFormatFlags.TextBoxControl;
+        foreach (var (scale, points) in new[] { ("100%", 9f), ("125%", 11.25f), ("150%", 13.5f) })
+        {
+            using (var form = (System.Windows.Forms.Form)Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { VaultLibrary.For(root), false }, null))
+            {
+                form.Font = new System.Drawing.Font("Segoe UI", points);
+                form.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                form.Location = new System.Drawing.Point(-10000, -10000);
+                form.ShowInTaskbar = false;
+                form.Show();
+                System.Windows.Forms.Application.DoEvents();
+                var intro = (System.Windows.Forms.Label)type.GetProperty("IntroLabel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
+                var status = (System.Windows.Forms.Label)type.GetProperty("StatusLabel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
+                int needIntro = System.Windows.Forms.TextRenderer.MeasureText(intro.Text, intro.Font, new System.Drawing.Size(intro.ClientSize.Width, int.MaxValue), flags).Height;
+                int needStatus = System.Windows.Forms.TextRenderer.MeasureText(status.Text, status.Font, new System.Drawing.Size(status.ClientSize.Width, int.MaxValue), flags).Height;
+                Check(intro.Text.EndsWith("matches.") && needIntro <= intro.ClientSize.Height && needStatus <= status.ClientSize.Height,
+                      $"at {scale}: description needs {needIntro} px, has {intro.ClientSize.Height}; status needs {needStatus} px, has {status.ClientSize.Height}");
+                var hidden = form.Controls.OfType<System.Windows.Forms.FlowLayoutPanel>().SelectMany(p => p.Controls.OfType<System.Windows.Forms.Button>()
+                    .Where(b => b.Visible && (b.Bottom > p.ClientSize.Height || b.Right > p.ClientSize.Width)).Select(b => b.Text)).ToList();
+                Check(hidden.Count == 0, $"at {scale}: every button fully shown" + (hidden.Count > 0 ? "; cut off: " + string.Join(", ", hidden) : ""));
+                var shots = Environment.GetEnvironmentVariable("SVCHECK_SHOTS");
+                if (!string.IsNullOrEmpty(shots))
+                    using (var bmp = new System.Drawing.Bitmap(form.Width, form.Height))
+                    {
+                        form.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
+                        bmp.Save(Path.Combine(shots, "supervault-window-" + scale.TrimEnd('%') + ".png"));
+                    }
+                form.Close();
+            }
+        }
     }
 
     static List<SearchResult> Hits(Segment doc, ITranslationProviderLanguageDirection dir) => Cascade(doc, dir)?.Results.ToList() ?? new List<SearchResult>();

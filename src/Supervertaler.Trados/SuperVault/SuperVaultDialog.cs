@@ -57,6 +57,10 @@ namespace Supervertaler.Trados.SuperVault
     {
         readonly VaultLibrary _library;
         readonly Label _status = new Label { AutoSize = false, Dock = DockStyle.Fill };
+        readonly Label _intro = new Label { Dock = DockStyle.Top };
+        readonly Panel _body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
+        readonly FlowLayoutPanel _imports = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(0, 4, 0, 0) };
+        readonly FlowLayoutPanel _buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40, Padding = new Padding(0, 6, 0, 0) };
         readonly Button _importTmx = new Button { Text = "Import TMX...", AutoSize = true };
         readonly Button _importTm = new Button { Text = "Import Studio TM...", AutoSize = true };
         readonly Button _importWorkbench = new Button { Text = "Import from Workbench", AutoSize = true };
@@ -84,28 +88,21 @@ namespace Supervertaler.Trados.SuperVault
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(660, 360);
 
-            var intro = new Label
-            {
-                Dock = DockStyle.Top, Height = 84,
-                Text = "SuperVault is one memory for every language variant, in both directions: an English–Dutch unit serves " +
+            _intro.Text = "SuperVault is one memory for every language variant, in both directions: an English–Dutch unit serves " +
                        "nl-BE > en-US, en-GB > nl-NL and the rest. Fill it by importing TMX files or Studio TMs; duplicates are stored once. " +
                        "With its Update box ticked in the project's TM settings, the segments you confirm are added as you work. " +
-                       "Its matches never lower your project TMs' matches.",
-            };
-            var imports = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(0, 4, 0, 0) };
-            imports.Controls.AddRange(new Control[] { _importTmx, _importTm, _importWorkbench, _rebuild, _stop });
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40, Padding = new Padding(0, 6, 0, 0) };
+                       "Its matches never lower your project TMs' matches.";
+            _imports.Controls.AddRange(new Control[] { _importTmx, _importTm, _importWorkbench, _rebuild, _stop });
             var ok = new Button { Text = adding ? "Add" : "Close", DialogResult = DialogResult.OK, AutoSize = true };
-            buttons.Controls.Add(ok);
-            if (adding) buttons.Controls.Add(new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true });
+            _buttons.Controls.Add(ok);
+            if (adding) _buttons.Controls.Add(new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true });
             AcceptButton = ok;
 
-            var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
-            body.Controls.Add(_status);
-            body.Controls.Add(intro);
-            Controls.Add(body);
-            Controls.Add(imports);
-            Controls.Add(buttons);
+            _body.Controls.Add(_status);
+            _body.Controls.Add(_intro);
+            Controls.Add(_body);
+            Controls.Add(_imports);
+            Controls.Add(_buttons);
 
             _importTmx.Click += (s, e) => PickAndImport("TMX files (*.tmx)|*.tmx|All files (*.*)|*.*", (store, path, p, c) => VaultTmx.Import(store, path, p, c));
             _importTm.Click += (s, e) => PickAndImport("Studio translation memories (*.sdltm)|*.sdltm", (store, path, p, c) => SuperVaultImport.Sdltm(store, path, p, c));
@@ -166,20 +163,45 @@ namespace Supervertaler.Trados.SuperVault
                 case VaultState.Broken: lines.AppendLine(s.Message); break;
                 default: lines.AppendLine(_storeUnits > 0 ? "No index yet: it is built when you next confirm a segment, or click Rebuild index." : "Empty. It fills as you confirm segments (tick SuperVault's Update box in the project's TM settings), or import a TMX file or a Studio TM."); break;
             }
-            if (s.LearnedThisSession > 0 || _learnWaiting > 0 || s.LearnError != null)
-                lines.AppendLine("Confirmed segments: " + s.LearnedThisSession.ToString("N0", CultureInfo.CurrentCulture) + " stored since Studio started" +
-                                 (_learnWaiting > 0 ? ", " + _learnWaiting.ToString("N0", CultureInfo.CurrentCulture) + " waiting" : "") +
+            if (s.Learned.Total > 0 || _learnWaiting > 0 || s.LearnError != null)
+                lines.AppendLine("Since Studio started, " + s.Learned +
+                                 (_learnWaiting > 0 ? "; " + _learnWaiting.ToString("N0", CultureInfo.CurrentCulture) + " more waiting to be stored" : "") +
                                  (s.LearnError != null ? ". Last attempt failed (" + s.LearnError + "); they are kept and tried again." : "."));
             if (s.Building) lines.AppendLine("Working: " + s.BuildProgress + ". You can close this window; Studio keeps working meanwhile.");
             else if (_library.LastJobResult != null) lines.AppendLine("Last import or build: " + _library.LastJobResult);
             lines.AppendLine();
             lines.AppendLine("Stored in: " + _library.Root);
             _status.Text = lines.ToString();
+            FitText();
             _importTmx.Enabled = _importTm.Enabled = _rebuild.Enabled = !s.Building;
             _importWorkbench.Visible = File.Exists(VaultLibrary.WorkbenchDatabase);
             _importWorkbench.Enabled = !s.Building;
             _rebuild.Enabled = !s.Building && _storeUnits > 0;
             _stop.Visible = s.Building;
         }
+
+        /// <summary>
+        /// Sizes the description to its text and makes the window tall enough for the description and the status, so
+        /// neither is cut off at any display scaling or font size (fixed heights cut the description off at 125%+).
+        /// The window only grows, so it doesn't jump while the status changes.
+        /// </summary>
+        internal void FitText()
+        {
+            int width = _body.ClientSize.Width - _body.Padding.Horizontal;
+            if (width <= 0) return;
+            const TextFormatFlags flags = TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl;
+            int line = TextRenderer.MeasureText("Xg", Font, new Size(width, int.MaxValue), flags).Height;
+            _intro.Height = TextRenderer.MeasureText(_intro.Text, Font, new Size(width, int.MaxValue), flags).Height + line / 2;
+            int status = TextRenderer.MeasureText(_status.Text ?? "", Font, new Size(width, int.MaxValue), flags).Height;
+            // The import buttons wrap to a second row when the font is large: make room for every row.
+            _imports.Height = Math.Max(_imports.Height, _imports.GetPreferredSize(new Size(ClientSize.Width, 0)).Height);
+            // A line to spare: a long folder path breaks inside the word, where measuring and drawing can differ by a line.
+            int needed = _body.Padding.Vertical + _intro.Height + status + line + _imports.Height + _buttons.Height;
+            if (ClientSize.Height < needed) ClientSize = new Size(ClientSize.Width, needed);
+        }
+
+        /// <summary>Tests: the description and status labels, to check nothing is cut off.</summary>
+        internal Label IntroLabel => _intro;
+        internal Label StatusLabel => _status;
     }
 }
