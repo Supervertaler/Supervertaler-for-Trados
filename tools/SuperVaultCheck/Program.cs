@@ -391,7 +391,7 @@ static class Checks
                 var status = (System.Windows.Forms.Label)type.GetProperty("StatusLabel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
                 int needIntro = System.Windows.Forms.TextRenderer.MeasureText(intro.Text, intro.Font, new System.Drawing.Size(intro.ClientSize.Width, int.MaxValue), flags).Height;
                 int needStatus = System.Windows.Forms.TextRenderer.MeasureText(status.Text, status.Font, new System.Drawing.Size(status.ClientSize.Width, int.MaxValue), flags).Height;
-                Check(intro.Text.EndsWith("matches.") && needIntro <= intro.ClientSize.Height && needStatus <= status.ClientSize.Height,
+                Check(intro.Text.EndsWith("is added too.") && intro.Text.Contains("\n\nFill it") && needIntro <= intro.ClientSize.Height && needStatus <= status.ClientSize.Height,
                       $"at {scale}: description needs {needIntro} px, has {intro.ClientSize.Height}; status needs {needStatus} px, has {status.ClientSize.Height}");
                 var hidden = form.Controls.OfType<System.Windows.Forms.FlowLayoutPanel>().SelectMany(p => p.Controls.OfType<System.Windows.Forms.Button>()
                     .Where(b => b.Visible && (b.Bottom > p.ClientSize.Height || b.Right > p.ClientSize.Width)).Select(b => b.Text)).ToList();

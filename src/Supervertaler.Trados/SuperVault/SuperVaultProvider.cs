@@ -89,7 +89,7 @@ namespace Supervertaler.Trados.SuperVault
                 try
                 {
                     var s = Library.Status;
-                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "EverTM: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
+                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "EverTM: " + s.Message + (s.Building ? " (" + s.BuildProgress + ")" : ""));
                     if (s.Building) return new ProviderStatusInfo(true, "EverTM is busy (" + s.BuildProgress + ")");
                     if (s.State == VaultState.Missing) return new ProviderStatusInfo(true, s.Message);
                     return new ProviderStatusInfo(false, s.Message + " To do so, select EverTM and click Settings...");

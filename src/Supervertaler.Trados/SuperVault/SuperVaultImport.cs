@@ -54,7 +54,7 @@ namespace Supervertaler.Trados.SuperVault
                     if (units == null || units.Length == 0) break;
                     foreach (var tu in units)
                         w.Add(tu.SourceSegment?.Culture?.Name ?? sourceLang, Codes(tu.SourceSegment), tu.TargetSegment?.Culture?.Name ?? targetLang, Codes(tu.TargetSegment), origin, null, Info(tu, Path.GetFileName(path)));
-                    progress?.Invoke(Path.GetFileName(path) + ": " + w.Result.Read.ToString("N0", CultureInfo.InvariantCulture) + " units read");
+                    progress?.Invoke("Importing " + Path.GetFileName(path) + ": " + w.Result.Read.ToString("N0", CultureInfo.InvariantCulture) + " units read");
                 }
                 cancel.ThrowIfCancellationRequested();
                 w.Commit();
