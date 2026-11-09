@@ -38,7 +38,7 @@ static class XliffLookup
             Console.WriteLine($"{(string)mrk.Attribute("mid"),4} {(best == null ? "  -" : best.Score + "%"),5}  {Short(text)}");
             if (best != null) Console.WriteLine($"            vault: {Short(VaultLookup.PlainOf(best.Source))}");
         }
-        Console.WriteLine($"{found} of {n} segments have a SuperVault match of 30% or more; {sw.ElapsedMilliseconds / Math.Max(1, n)} ms a segment");
+        Console.WriteLine($"{found} of {n} segments have an EverTM match of 30% or more; {sw.ElapsedMilliseconds / Math.Max(1, n)} ms a segment");
         return 0;
     }
 }

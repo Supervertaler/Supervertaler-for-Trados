@@ -20,30 +20,41 @@ namespace Supervertaler.Trados.SuperVault
     [TranslationProviderFactory(Id = "SupervertalerSuperVaultFactory", Name = "SupervertalerSuperVaultFactory", Description = "SupervertalerSuperVaultFactory_Description")]
     public sealed class SuperVaultProviderFactory : ITranslationProviderFactory
     {
-        public bool SupportsTranslationProviderUri(Uri uri) => uri != null && uri.Scheme == SuperVaultProvider.Scheme;
-        public ITranslationProvider CreateTranslationProvider(Uri uri, string state, ITranslationProviderCredentialStore store) => new SuperVaultProvider();
+        public bool SupportsTranslationProviderUri(Uri uri) => SuperVaultProvider.IsOurs(uri);
+        public ITranslationProvider CreateTranslationProvider(Uri uri, string state, ITranslationProviderCredentialStore store) => new SuperVaultProvider(null, uri);
         public TranslationProviderInfo GetTranslationProviderInfo(Uri uri, string state) =>
             new TranslationProviderInfo { Name = SuperVaultProvider.DisplayName, TranslationMethod = TranslationMethod.TranslationMemory };
     }
 
     public sealed class SuperVaultProvider : ITranslationProvider
     {
-        public const string Scheme = "supervault";
-        public const string DisplayName = "SuperVault";
-        public static readonly Uri DefaultUri = new Uri("supervault:///");
+        public const string Scheme = "evertm";
+        /// <summary>The scheme before the rename (it was called SuperVault). Projects saved then keep it and still open.</summary>
+        public const string OldScheme = "supervault";
+        public const string DisplayName = "EverTM";
+        public static readonly Uri DefaultUri = new Uri("evertm:///");
+
+        public static bool IsOurs(Uri uri) => uri != null && (uri.Scheme == Scheme || uri.Scheme == OldScheme);
 
         internal VaultLibrary Library { get; }
+        readonly Uri _uri;
 
-        public SuperVaultProvider() : this(VaultLibrary.For(VaultLibrary.DefaultRoot)) { }
+        /// <summary>A new EverTM in a project: the user's folder, the new scheme.</summary>
+        public SuperVaultProvider() : this(null, DefaultUri) { }
 
         /// <summary>For tests: a provider on a scratch index.</summary>
-        public SuperVaultProvider(string root) : this(VaultLibrary.For(root)) { }
+        public SuperVaultProvider(string root) : this(root, DefaultUri) { }
 
-        SuperVaultProvider(VaultLibrary library)
+        /// <summary>
+        /// <paramref name="root"/> null means the user's folder (moved from <c>supervault</c> to <c>evertm</c> the first
+        /// time). <see cref="Uri"/> stays the one the project saved, old scheme or new, so Studio finds the same entry.
+        /// </summary>
+        public SuperVaultProvider(string root, Uri uri)
         {
-            Library = library;
             if (VaultLibrary.Log == null)
-                VaultLibrary.Log = message => Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", message);
+                VaultLibrary.Log = message => Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", message);
+            Library = VaultLibrary.For(root ?? VaultLibrary.DefaultRootInUse);   // the log is set first: the move logs what it did
+            _uri = IsOurs(uri) ? uri : DefaultUri;
         }
 
         /// <summary>
@@ -59,7 +70,7 @@ namespace Supervertaler.Trados.SuperVault
         public ITranslationProviderLanguageDirection GetLanguageDirection(LanguagePair pair)
         {
             if (!SupportsLanguageDirection(pair))
-                throw new NotSupportedException($"SuperVault holds no {pair?.SourceCultureName} / {pair?.TargetCultureName} units.");
+                throw new NotSupportedException($"EverTM holds no {pair?.SourceCultureName} / {pair?.TargetCultureName} units.");
             return new SuperVaultLanguageDirection(this, pair);
         }
 
@@ -77,15 +88,15 @@ namespace Supervertaler.Trados.SuperVault
                 try
                 {
                     var s = Library.Status;
-                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "SuperVault: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
-                    if (s.Building) return new ProviderStatusInfo(true, "SuperVault is importing or building its index: " + s.BuildProgress);
+                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "EverTM: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
+                    if (s.Building) return new ProviderStatusInfo(true, "EverTM is busy (" + s.BuildProgress + ")");
                     if (s.State == VaultState.Missing) return new ProviderStatusInfo(true, s.Message);
-                    return new ProviderStatusInfo(false, s.Message + " To do so, select SuperVault and click Settings...");
+                    return new ProviderStatusInfo(false, s.Message + " To do so, select EverTM and click Settings...");
                 }
                 catch (Exception ex)
                 {
-                    try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Status failed: " + ex); } catch { }
-                    return new ProviderStatusInfo(true, "SuperVault (status unknown: " + ex.Message + ")");
+                    try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Status failed: " + ex); } catch { }
+                    return new ProviderStatusInfo(true, "EverTM (status unknown: " + ex.Message + ")");
                 }
             }
         }
@@ -94,7 +105,7 @@ namespace Supervertaler.Trados.SuperVault
         public string SerializeState() => "";
         public void LoadState(string translationProviderState) { }
 
-        public Uri Uri => DefaultUri;
+        public Uri Uri => _uri;
         public string Name => DisplayName;
 
         public bool SupportsTaggedInput => true;
@@ -175,7 +186,7 @@ namespace Supervertaler.Trados.SuperVault
             catch (Exception ex)
             {
                 // A lookup must never take Studio's lookup, Analyze or Pre-translate down with it.
-                try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Lookup failed: " + ex); } catch { }
+                try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Lookup failed: " + ex); } catch { }
                 return results;
             }
         }
@@ -252,7 +263,7 @@ namespace Supervertaler.Trados.SuperVault
             }
             catch (Exception ex)
             {
-                try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Could not take confirmed segments: " + ex); } catch { }
+                try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Could not take confirmed segments: " + ex); } catch { }
                 for (int i = 0; i < results.Length; i++) if (results[i] == null && (mask == null || (i < mask.Length && mask[i]))) results[i] = Discarded;
             }
             return results;

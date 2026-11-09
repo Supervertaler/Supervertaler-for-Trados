@@ -44,12 +44,12 @@ $held = @()
 $writer = New-Object System.Resources.ResourceWriter($Out)
 try {
     $writer.AddResource('Plugin_Name', $PluginName)
-    # SuperVault's translation-provider extensions: their Name/Description in
+    # EverTM's (formerly SuperVault) translation-provider extensions: their Name/Description in
     # Supervertaler.Trados.plugin.xml are keys into this bundle.
-    $writer.AddResource('SupervertalerSuperVaultFactory', 'SuperVault')
-    $writer.AddResource('SupervertalerSuperVaultFactory_Description', 'SuperVault: your Supervertaler memory for every language variant, in both directions')
-    $writer.AddResource('SupervertalerSuperVaultUi', 'SuperVault')
-    $writer.AddResource('SupervertalerSuperVaultUi_Description', 'Adds SuperVault to a project and builds its index')
+    $writer.AddResource('SupervertalerSuperVaultFactory', 'EverTM')
+    $writer.AddResource('SupervertalerSuperVaultFactory_Description', 'Supervertaler EverTM: your Supervertaler memory for every language variant, in both directions')
+    $writer.AddResource('SupervertalerSuperVaultUi', 'EverTM')
+    $writer.AddResource('SupervertalerSuperVaultUi_Description', 'Adds EverTM to a project and builds its index')
     foreach ($name in $icons.Keys) {
         $path = Join-Path $IconsDir ($icons[$name] + '.ico')
         if (-not (Test-Path $path)) { throw "Icon not found: $path" }
