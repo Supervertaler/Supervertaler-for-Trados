@@ -77,6 +77,8 @@ static class Checks
             FailureModes(clientTm);
             DialogShowsAllItsText(root);
             WorkbenchChoice();
+            ExportIntoStudio(root);
+            ExportChoice(root);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
@@ -449,6 +451,120 @@ static class Checks
                     {
                         f.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, f.Width, f.Height));
                         bmp.Save(Path.Combine(shots, "workbench-choice-" + scale.TrimEnd('%') + ".png"));
+                    }
+                f.Close();
+            }
+    }
+
+    /// <summary>
+    /// Export TMX, then Studio's own TMX import (TranslationMemoryImporter, as Import in Studio's Translation Memories
+    /// view) into new file-based TMs, in both directions: no errors, the units of that direction added, a tagged unit
+    /// found again at 100% with its tags. (The origin prop is shown, not checked: see below.)
+    /// </summary>
+    static void ExportIntoStudio(string root)
+    {
+        Console.WriteLine("Export TMX, imported by Studio");
+        var lib = VaultLibrary.For(root);
+        var tmx = Path.Combine(_scratch, "SuperVault export.tmx");
+        var r = VaultExport.Export(lib.StorePath, tmx, null, null, null, CancellationToken.None);
+        var doc = new System.Xml.XmlDocument();
+        doc.Load(tmx);
+        var tus = doc.SelectNodes("/tmx/body/tu").Cast<System.Xml.XmlElement>().ToList();
+        Check(r.Units > 0 && tus.Count == r.Units, $"exported {r.Units} units");
+        string Base(string lang) => VaultMarkup.BaseLanguage(lang);
+        string Lang(System.Xml.XmlElement tu, int n) => ((System.Xml.XmlElement)tu.SelectSingleNode("tuv[" + n + "]")).GetAttribute("xml:lang");
+        foreach (var (src, trg) in new[] { (NlBe, EnUs), (new CultureCode("en-GB"), new CultureCode("nl-NL")) })
+        {
+            var path = Path.Combine(_scratch, "imported " + src.Name + ".sdltm");
+            var tm = new FileBasedTranslationMemory(path, "export check", src, trg, FuzzyIndexes.SourceWordBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
+            // The field set up beforehand, as a user could: even then Studio leaves it empty for a TMX it didn't write.
+            tm.FieldDefinitions.Add(new FieldDefinition("SuperVault-Origin", FieldValueType.SingleString));
+            tm.Save();
+            var importer = new TranslationMemoryImporter(tm.LanguageDirection);
+            var settings = importer.ImportSettings ?? new ImportSettings();
+            settings.CheckMatchingSublanguages = false;   // Studio's "import units with other sub-languages" (nl-NL into nl-BE)
+            settings.NewFields = ImportSettings.NewFieldsOption.AddToSetup;   // Studio's "add new fields to the TM"
+            importer.ImportSettings = settings;
+            importer.Import(tmx);
+            var st = importer.Statistics;
+            // The 30,000-unit TMX of the failure-mode checks is one sentence with a number in it: Studio's TM treats
+            // numbers as placeables, so to Studio those are all one unit. Counted apart.
+            bool Series(System.Xml.XmlElement t) => t.SelectSingleNode("prop")?.InnerText == "tmx:big.tmx";
+            int sameDirection = tus.Count(t => !Series(t) && Base(Lang(t, 1)) == Base(src.Name) && Base(Lang(t, 2)) == Base(trg.Name));
+            int reversed = tus.Count(t => !Series(t) && Base(Lang(t, 1)) == Base(trg.Name) && Base(Lang(t, 2)) == Base(src.Name));
+            int series = tus.Count(Series);
+            int inTm = tm.LanguageDirection.GetTranslationUnitCount();
+            Console.WriteLine($"        Studio import into {src.Name}>{trg.Name}: added {st.AddedTranslationUnits}, merged {st.MergedTranslationUnits}, discarded {st.DiscardedTranslationUnits}, errors {st.Errors}; " +
+                              $"TM holds {inTm}; the TMX has {sameDirection} units in this direction, {reversed} the other way round, and the {series}-unit number series");
+            Check(st.Errors == 0 && inTm == sameDirection + reversed + 1, $"{src.Name}>{trg.Name}: Studio imports SuperVault's TMX without errors: every unit of the pair, in both directions (the number series as one)");
+            var origins = new List<string>();
+            var it = new RegularIterator { MaxCount = 1000 };
+            for (var batch = tm.LanguageDirection.GetTranslationUnits(ref it); batch != null && batch.Length > 0; batch = tm.LanguageDirection.GetTranslationUnits(ref it))
+                foreach (var u in batch) origins.Add(u.FieldValues.Lookup("SuperVault-Origin")?.ToString() ?? "(none)");
+            // Not a check: Studio keeps x- props as field values only from TMX files Studio wrote itself (its own export
+            // with a Client field comes through, under either NewFields setting; the same prop from another tool doesn't).
+            Console.WriteLine("        origin in Studio's SuperVault-Origin field (informational; Studio keeps fields only from its own TMX files): " + string.Join(", ", origins.Distinct()));
+            if (src == NlBe)
+            {
+                var hit = Hits(SaveDoc(), tm.LanguageDirection).FirstOrDefault();
+                var tags = hit?.TranslationProposal.TargetSegment.Elements.OfType<Tag>().ToList();
+                Check(hit != null && hit.ScoringResult.Match >= 99 && tags.Count == 2,
+                      $"the tagged unit is found in Studio's TM at {hit?.ScoringResult.Match}% with {tags?.Count} tags: {hit?.TranslationProposal.TargetSegment}");
+            }
+
+        }
+    }
+
+    /// <summary>The Export TMX window: the pairs and origins SuperVault holds, ticking, the count, at 100% and 150%.</summary>
+    static void ExportChoice(string root)
+    {
+        Console.WriteLine("Export TMX: choosing what to export");
+        var type = typeof(SuperVaultProvider).Assembly.GetType("Supervertaler.Trados.SuperVault.ExportChoiceDialog", true);
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var store = VaultLibrary.For(root).StorePath;
+        var holdings = VaultExport.Holdings(store, CancellationToken.None);
+        System.Windows.Forms.Form Open(float points)
+        {
+            var f = (System.Windows.Forms.Form)Activator.CreateInstance(type, any, null, new object[] { store }, null);
+            f.Font = new System.Drawing.Font("Segoe UI", points);
+            f.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+            f.Location = new System.Drawing.Point(-10000, -10000);
+            f.Show();
+            return f;
+        }
+        T Get<T>(object o, string name) => (T)type.GetProperty(name, any).GetValue(o);
+        void Call(object o, string name, params object[] a) => type.GetMethod(name, any).Invoke(o, a);
+
+        using (var early = Open(9f)) { early.Close(); }   // closed while still reading: no harm
+        System.Windows.Forms.Application.DoEvents();
+        foreach (var (scale, points) in new[] { ("100%", 9f), ("150%", 13.5f) })
+            using (var f = Open(points))
+            {
+                var sw = Stopwatch.StartNew();
+                while (Get<int>(f, "PairChoices") == 0 && sw.Elapsed.TotalSeconds < 10) { System.Windows.Forms.Application.DoEvents(); Thread.Sleep(20); }
+                if (scale == "100%")
+                {
+                    int pairs = holdings.Select(h => h.Pair).Distinct().Count();
+                    Check(Get<int>(f, "PairChoices") == pairs + 1, $"\"All language pairs\" plus each of the {pairs} pairs");
+                    var listed = Get<List<string>>(f, "ListedOrigins");
+                    Check(listed.Contains("studio") && listed.Contains("sdltm:for-supervault.sdltm") && listed.Any(o => o.StartsWith("tmx:")), "origins listed: " + string.Join(", ", listed));
+                    Check(Get<List<string>>(f, "Origins") == null && Get<long>(f, "ChosenUnits") == holdings.Sum(h => h.Units), "everything ticked: no origin filter, every unit");
+                    Call(f, "SetTicked", "studio", false);
+                    var origins = Get<List<string>>(f, "Origins");
+                    Check(origins != null && !origins.Contains("studio") && Get<long>(f, "ChosenUnits") == holdings.Where(h => h.Origin != "studio").Sum(h => h.Units), "unticking one origin leaves it out; the count follows");
+                    Call(f, "ChoosePair", "en|nl");
+                    Check(Get<string>(f, "Pair") == "en|nl" && Get<long>(f, "ChosenUnits") == holdings.Where(h => h.Pair == "en|nl" && h.Origin != "studio").Sum(h => h.Units), "one pair: its units only; the unticked origin stays unticked");
+                    Call(f, "TickAll", false);
+                    Check(!Get<bool>(f, "ExportEnabled"), "nothing ticked: Export disabled");
+                }
+                var cut = AllControls(f).Where(b => (b is System.Windows.Forms.Button || b is System.Windows.Forms.ComboBox) && b.Visible && !f.ClientRectangle.Contains(f.RectangleToClient(b.RectangleToScreen(b.ClientRectangle)))).Select(b => b.Text).ToList();
+                Check(cut.Count == 0, $"at {scale}: every button inside the window" + (cut.Count > 0 ? "; cut off: " + string.Join(", ", cut) : ""));
+                var shots = Environment.GetEnvironmentVariable("SVCHECK_SHOTS");
+                if (!string.IsNullOrEmpty(shots))
+                    using (var bmp = new System.Drawing.Bitmap(f.Width, f.Height))
+                    {
+                        f.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, f.Width, f.Height));
+                        bmp.Save(Path.Combine(shots, "export-choice-" + scale.TrimEnd('%') + ".png"));
                     }
                 f.Close();
             }

@@ -78,7 +78,7 @@ namespace Supervertaler.Trados.SuperVault
                 {
                     var s = Library.Status;
                     if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "SuperVault: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
-                    if (s.Building) return new ProviderStatusInfo(true, "SuperVault is importing or building its index: " + s.BuildProgress);
+                    if (s.Building) return new ProviderStatusInfo(true, "SuperVault is busy (" + s.BuildProgress + ")");
                     if (s.State == VaultState.Missing) return new ProviderStatusInfo(true, s.Message);
                     return new ProviderStatusInfo(false, s.Message + " To do so, select SuperVault and click Settings...");
                 }
