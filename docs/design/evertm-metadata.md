@@ -136,7 +136,8 @@ unit can come from several projects, clients and subjects.
 
 **Merge rules** (when an import or a confirmation brings a unit EverTM already holds):
 
-- Text fields: **the union of values**. At most 20 values per field per unit, keeping the newest. Very common segments
+- Text fields: **the union of values**. At most 20 values per field per unit, keeping the first 20 (built: simpler than
+  keeping the newest, which would mean deleting values; Studio shows three anyway). Very common segments
   ("Figure 1", "Claims") would otherwise collect hundreds of project names.
 - Created date and user: **the earliest** seen. Changed date and user: **the latest** seen. Confirming a unit that is
   already there sets its changed date to now (section 3f).
@@ -170,7 +171,7 @@ CREATE TRIGGER unit_vals_ad AFTER DELETE ON unit_vals BEGIN INSERT INTO changes 
 - Today, importing a unit EverTM already holds changes nothing. In schema 3, **a re-import merges the file's
   metadata and dates into the units already there**, so re-importing his TMX files and Studio TMs fills them in
   without duplicating anything.
-- The import summary would say e.g. "0 units added, 52,113 already in EverTM (metadata or dates added to 6,201)".
+- The import summary would say e.g. "0 units added, 52,113 already in EverTM (6,201 of them brought metadata or dates)".
 - Touching more than a quarter of the store rebuilds the index (about 6 minutes at 1.5M units).
 
 ## 3. One translation per source, newest wins
@@ -540,7 +541,7 @@ Not for phases 1–2. A later throw-away experiment, only if the Filters page tu
 
 1. **None for showing.** Studio's field column and info bar do it. EverTM orders the values Project, Client,
    Subject first (Studio shows the first three), then "Older translations: N".
-2. **Import:** no field picker. The import summary gains "metadata or dates added to N units" and "N TM names split
+2. **Import:** no field picker. The import summary gains "(N of them brought metadata or dates)" and "N TM names split
    into Client / End client".
 3. **EverTM window:**
    - phase 1: a line "Metadata: 285 projects, 55 clients, 15 subjects; older translations hidden for 17,531 nl > en sources";
@@ -594,6 +595,27 @@ Rules for the build:
   - lookups stay index-only;
   - the protected files unchanged.
 - Scale: 10M-unit lookup with large groups; re-import of 1.5M with metadata; memory in 32-bit Studio 2024.
+
+**Phase 1 as built (9 Nov, branches `claude/supervault-metadata-design` and core `claude/evertm-metadata-core`).**
+
+- Everything in the list above, plus:
+  - **exact target variant first** (decision 12), passed from the project's target language;
+  - "Older translations: N" as a field on a match;
+  - EverTM's TMX export writes the units' own dates, users, fields and notes (creationtoolversion 2); a version-1
+    export is still read as before (its creationdate was the added date).
+- **Where the project name and customer are read:** on EverTM's learning thread, not Studio's UI thread. The unit
+  carries the document's path; `VaultLibrary.ProjectOf` (the plugin's `StudioProjects.Describe`) reads the `.sdlproj`
+  once per folder and caches it. The project's Subject comes from Studio's "field values on update"
+  (`ImportSettings.ProjectSettings`), the user from the unit's `SystemFields` as Studio sets them on confirm.
+- **Index format 3.** An index of format 2 is still searched, without newest-wins or metadata, and a rebuild in
+  format 3 starts by itself in the background, once per process; so Studio never sees EverTM as unavailable after the
+  update. An older plugin can't read format 3 (it reports the index as built by another version): install the new
+  version in every Studio.
+- **Out-of-order confirmations:** a confirmation older than the unit learned since for the same source changes
+  nothing, in the store and in the read-your-writes list alike.
+- The EverTM window's metadata line (section 6.3) says "Metadata: 285 projects, 55 clients, 15 subjects" (one GROUP BY
+  over `vals`). The "older translations hidden for N sources" part is left out: it would need a pass over the whole
+  index each time the window opens.
 
 **Phase 2: filter, client first, context matches.**
 

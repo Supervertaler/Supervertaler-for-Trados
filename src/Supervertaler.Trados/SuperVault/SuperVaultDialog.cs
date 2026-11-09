@@ -177,18 +177,21 @@ namespace Supervertaler.Trados.SuperVault
             Refresh2();
         }
 
+        string _metadata;   // "Metadata: 285 projects, ..." or null; read with the store count
+
         void Refresh2()
         {
             var s = _library.Status;
             // The store is a file to open: look at it every 5 s at most, and when a job ends.
             if (_storeUnits < 0 || (!s.Building && (DateTime.UtcNow - _storeCheckedAt).TotalSeconds > 5))
             {
-                try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); _learnWaiting = _library.LearnWaiting(); }
+                try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); _learnWaiting = _library.LearnWaiting(); _metadata = _library.MetadataSummary(); }
                 catch (Exception ex) { _storeUnits = 0; _outOfDate = false; Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Store check failed: " + ex.Message); }
                 _storeCheckedAt = DateTime.UtcNow;
             }
             var lines = new System.Text.StringBuilder();
             lines.AppendLine("Memory: " + VaultLibrary.Units(_storeUnits));
+            if (_metadata != null) lines.AppendLine(_metadata);
             switch (s.State)
             {
                 case VaultState.Ready:

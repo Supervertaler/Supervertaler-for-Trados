@@ -140,7 +140,6 @@ namespace Supervertaler.Trados.SuperVault
 
         static SearchResult Make(Segment src, Segment trg, VaultMatch m, ScoringResult scoring)
         {
-            var now = DateTime.UtcNow;
             int.TryParse(m.Candidate.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id);
             var tu = new TranslationUnit(src, trg)
             {
@@ -148,10 +147,49 @@ namespace Supervertaler.Trados.SuperVault
                 OriginSystem = "EverTM",
                 ConfirmationLevel = ConfirmationLevel.Translated,
                 ResourceId = new PersistentObjectToken(id, Guid.Empty),
-                SystemFields = new SystemFields { CreationDate = now, ChangeDate = now, UseDate = now, CreationUser = "EverTM", ChangeUser = "EverTM", UseUser = "EverTM" },
-                FieldValues = new FieldValues(),
+                SystemFields = SystemFieldsOf(m.Candidate),
+                FieldValues = FieldValuesOf(m.Candidate),
             };
             return new SearchResult(tu) { ScoringResult = scoring, TranslationProposal = new TranslationUnit(tu) };
+        }
+
+        /// <summary>
+        /// The dates and users Studio shows under the results (its info bar): the unit's own. A unit with no known date
+        /// shows when it entered EverTM, by "EverTM", which is true, rather than a made-up translation date.
+        /// </summary>
+        internal static SystemFields SystemFieldsOf(VaultCandidate c)
+        {
+            var fallback = c.Added ?? DateTime.UtcNow;
+            var created = c.Created ?? c.Changed ?? fallback;
+            var changed = c.Changed ?? c.Created ?? fallback;
+            string createdBy = c.Created != null || c.Changed != null ? c.CreatedBy ?? c.ChangedBy ?? "EverTM" : "EverTM";
+            string changedBy = c.Created != null || c.Changed != null ? c.ChangedBy ?? c.CreatedBy ?? "EverTM" : "EverTM";
+            return new SystemFields
+            {
+                CreationDate = created, ChangeDate = changed, UseDate = changed,
+                CreationUser = createdBy, ChangeUser = changedBy, UseUser = changedBy,
+            };
+        }
+
+        /// <summary>
+        /// The unit's fields, for Studio's field column in Translation Results and Concordance (it shows the first three:
+        /// Project, Client, Subject come first), then "Older translations: N" when newest-wins hid others.
+        /// </summary>
+        internal static FieldValues FieldValuesOf(VaultCandidate c)
+        {
+            var values = new FieldValues();
+            foreach (var g in c.Fields.GroupBy(f => f.Field).OrderBy(g => Rank(g.Key)))
+                values.Add(new MultipleStringFieldValue(g.Key, g.Select(f => f.Value).Distinct().ToList()));
+            if (c.Older > 0) values.Add(new SingleStringFieldValue(OlderField, c.Older.ToString(CultureInfo.CurrentCulture)));
+            return values;
+        }
+
+        internal const string OlderField = "Older translations";
+
+        static int Rank(string field)
+        {
+            int i = Array.IndexOf(VaultFields.Order, field);
+            return i < 0 ? VaultFields.Order.Length : i;
         }
 
         static void ApplyPenalty(SearchResult r, SearchSettings settings, PenaltyType type, int fallback)

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -14,6 +16,11 @@ namespace Supervertaler.Trados.SuperVault
     /// Imports a Studio file-based TM (.sdltm) into SuperVault's store, through Studio's public TM API: every unit, read
     /// in batches with a <see cref="RegularIterator"/>, tags kept. Units are added in one transaction, so a TM that
     /// can't be read to the end adds nothing.
+    ///
+    /// With each unit, its metadata (schema 3): its creation and change dates and users (Studio's system fields), the
+    /// fields EverTM keeps (<see cref="VaultFields.Canonical"/>: a TM's "Project", "Projekt", "Client", "Subject",
+    /// "Fachgebiet", ...; others are dropped) and the TM's file name as Source. Re-importing a TM fills them into units
+    /// imported before.
     /// </summary>
     public static class SuperVaultImport
     {
@@ -46,12 +53,49 @@ namespace Supervertaler.Trados.SuperVault
                     var units = dir.GetTranslationUnits(ref iterator);
                     if (units == null || units.Length == 0) break;
                     foreach (var tu in units)
-                        w.Add(tu.SourceSegment?.Culture?.Name ?? sourceLang, Codes(tu.SourceSegment), tu.TargetSegment?.Culture?.Name ?? targetLang, Codes(tu.TargetSegment), origin);
+                        w.Add(tu.SourceSegment?.Culture?.Name ?? sourceLang, Codes(tu.SourceSegment), tu.TargetSegment?.Culture?.Name ?? targetLang, Codes(tu.TargetSegment), origin, null, Info(tu, Path.GetFileName(path)));
                     progress?.Invoke(Path.GetFileName(path) + ": " + w.Result.Read.ToString("N0", CultureInfo.InvariantCulture) + " units read");
                 }
                 cancel.ThrowIfCancellationRequested();
                 w.Commit();
                 return w.Result;
+            }
+        }
+
+        /// <summary>A Studio TM unit's metadata: its system fields' dates and users, its kept fields, and Source.</summary>
+        internal static VaultUnitInfo Info(TranslationUnit tu, string source)
+        {
+            var info = new VaultUnitInfo();
+            var sf = tu.SystemFields;
+            if (sf != null)
+            {
+                if (Plausible(sf.CreationDate)) { info.Created = sf.CreationDate.ToUniversalTime(); info.CreatedBy = User(sf.CreationUser); }
+                if (Plausible(sf.ChangeDate)) { info.Changed = sf.ChangeDate.ToUniversalTime(); info.ChangedBy = User(sf.ChangeUser); }
+            }
+            if (tu.FieldValues != null)
+                foreach (var fv in tu.FieldValues)
+                {
+                    var field = VaultFields.Canonical(fv?.Name);
+                    if (field == null) continue;
+                    foreach (var v in Values(fv)) info.Add(field, v);
+                }
+            info.Add(VaultFields.Source, source);
+            return info;
+        }
+
+        static bool Plausible(DateTime t) => t.Year >= 1980 && t.Year <= 2100;
+        static string User(string u) { var c = VaultFields.Clean(u); return c.Length == 0 ? null : c; }
+
+        /// <summary>A text or picklist field's values; other types (dates, numbers) give none.</summary>
+        public static IEnumerable<string> Values(FieldValue fv)
+        {
+            switch (fv)
+            {
+                case MultipleStringFieldValue m: return m.Values?.ToList() ?? new List<string>();
+                case SingleStringFieldValue s: return new[] { s.Value };
+                case MultiplePicklistFieldValue mp: return mp.Values?.Select(i => i?.Name).ToList() ?? new List<string>();
+                case SinglePicklistFieldValue sp: return new[] { sp.Value?.Name };
+                default: return new string[0];
             }
         }
 

@@ -80,6 +80,7 @@ static class Checks
             WorkbenchChoice();
             ExportIntoStudio(root);
             ExportChoice(root);
+            MetadataChecks.Run(_scratch, Check);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
@@ -515,7 +516,7 @@ static class Checks
             var st = importer.Statistics;
             // The 30,000-unit TMX of the failure-mode checks is one sentence with a number in it: Studio's TM treats
             // numbers as placeables, so to Studio those are all one unit. Counted apart.
-            bool Series(System.Xml.XmlElement t) => t.SelectSingleNode("prop")?.InnerText == "tmx:big.tmx";
+            bool Series(System.Xml.XmlElement t) => t.SelectSingleNode("prop[@type='x-EverTM-Origin']")?.InnerText == "tmx:big.tmx";
             int sameDirection = tus.Count(t => !Series(t) && Base(Lang(t, 1)) == Base(src.Name) && Base(Lang(t, 2)) == Base(trg.Name));
             int reversed = tus.Count(t => !Series(t) && Base(Lang(t, 1)) == Base(trg.Name) && Base(Lang(t, 2)) == Base(src.Name));
             int series = tus.Count(Series);
