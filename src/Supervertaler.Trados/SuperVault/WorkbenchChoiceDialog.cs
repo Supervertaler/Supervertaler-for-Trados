@@ -44,7 +44,7 @@ namespace Supervertaler.Trados.SuperVault
             _info.Text = "Reading Workbench's translation memories...";
             _list.Columns.Add("Translation memory", 330);
             _list.Columns.Add("Languages", 150);
-            _list.Columns.Add("Units", 100, HorizontalAlignment.Right);
+            _list.Columns.Add("Translation units", 120, HorizontalAlignment.Right);
             _list.ItemCheck += (s, e) => { if (!_filling && _list.Items[e.Index].Tag is WorkbenchTm tm && tm.Units == 0) e.NewValue = CheckState.Unchecked; };
             _list.ItemChecked += (s, e) => { if (!_filling) UpdateTotal(); };
 
@@ -99,7 +99,7 @@ namespace Supervertaler.Trados.SuperVault
                 _list.Items.Clear();
                 foreach (var tm in tms)
                 {
-                    var item = new ListViewItem(new[] { tm.Name, tm.Units == 0 ? "(no units)" : tm.PairsText, tm.Units.ToString("N0", f) }) { Tag = tm };
+                    var item = new ListViewItem(new[] { tm.Name, tm.Units == 0 ? "(no translation units)" : tm.PairsText, tm.Units.ToString("N0", f) }) { Tag = tm };
                     if (tm.Units == 0) item.ForeColor = SystemColors.GrayText;
                     item.Checked = tm.Units > 0 && !_unticked.Contains(tm.TmId);
                     _list.Items.Add(item);
@@ -116,7 +116,7 @@ namespace Supervertaler.Trados.SuperVault
             finally { _list.EndUpdate(); _filling = false; }
             _info.Text = tms.Count == 0
                 ? "Workbench has no translation memories."
-                : "Tick the translation memories to import. Units EverTM already holds are not added again; Workbench's database is only read.";
+                : "Tick the translation memories to import. Translation units EverTM already holds are not added again; Workbench's database is only read.";
             _all.Enabled = _none.Enabled = tms.Any(t => t.Units > 0);
             FitInfo();
             UpdateTotal();

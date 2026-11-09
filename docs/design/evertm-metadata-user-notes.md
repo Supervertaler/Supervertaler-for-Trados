@@ -31,7 +31,9 @@ User-facing notes, kept while building, for docs.supervertaler.com/trados/evertm
 ## Units imported before this version
 
 - They have no metadata or dates. **Import the same files again**: nothing is added twice, and the summary says e.g.
-  "0 units added, 52,113 already in EverTM (6,201 of them brought metadata or dates)".
+  "52,113 translation units read: 0 new, all others already in EverTM (6,201 of them brought metadata or dates)".
+  - The counts are of translation units *read*: a unit that is in two of Workbench's TMs is read twice, so "already in
+    EverTM" can be larger than EverTM's own count.
 - A large re-import (more than a quarter of EverTM) rebuilds the index afterwards.
 
 ## What you see in Studio
@@ -40,7 +42,10 @@ User-facing notes, kept while building, for docs.supervertaler.com/trados/evertm
   Client, Subject; the rest in the tooltip), plus "Older translations: N" when EverTM hid other translations.
 - Under the results: the created and changed dates and users. A unit with no known date shows when it entered EverTM,
   by "EverTM".
-- EverTM's window: "Metadata: 285 projects, 55 clients, 15 subjects".
+- EverTM's window: "Translation units: 871,290", "Indexed translation units: 871,290, built ...", and "Metadata: 285
+  projects, 55 clients, 15 subjects". While it works: "Indexing: 190,000 of 871,290 translation units. You can close this
+  window and keep working." Afterwards: "Last task: ...".
+- Every count EverTM shows says "translation units" in full (Michael: "sure to not be misunderstood").
 
 ## One translation per sentence: the newest
 
@@ -57,11 +62,11 @@ User-facing notes, kept while building, for docs.supervertaler.com/trados/evertm
 - *(planned)* The client's own translation first ("client first"), then the newest.
 - *(planned)* Context matches: a translation made after a particular previous segment wins as a CM when that context
   comes back (Trados only).
-- *(planned)* Per-project rules: "only use units with Subject: ..." and "never use ...".
+- *(planned)* Per-project rules: "only use translation units with Subject: ..." and "never use ...".
 
 ## After updating
 
-- The first start rebuilds EverTM's index in the background (about 6 minutes with 1.5 million units); matches go on
+- The first start rebuilds EverTM's index in the background (about 4–5 minutes with 870,000 translation units); matches go on
   meanwhile, from the old index.
 - Install the new version in every Studio you use with EverTM: an older one can't read the new index.
 

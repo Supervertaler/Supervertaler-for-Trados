@@ -459,7 +459,7 @@ static class Checks
                 var rows = view.Items.Cast<System.Windows.Forms.ListViewItem>().Select(i => $"{(i.Checked ? "x" : " ")} {i.SubItems[0].Text} | {i.SubItems[1].Text} | {i.SubItems[2].Text}").ToList();
                 if (scale == "100%")
                 {
-                    Check(rows.SequenceEqual(new[] { "x Acme empty | (no units) | 0".Replace("x ", "  "), "x Acme main | nl > en, en > nl | 3", "x c | es > nl | 1", "  PROJ-001 | de > nl | 1" }),
+                    Check(rows.SequenceEqual(new[] { "x Acme empty | (no translation units) | 0".Replace("x ", "  "), "x Acme main | nl > en, en > nl | 3", "x c | es > nl | 1", "  PROJ-001 | de > nl | 1" }),
                           "names (tm_id without one), pairs and counts; last time's unticked TM unticked; no units: unticked: " + string.Join(" / ", rows));
                     Call(f, "SetTicked", "d", true);
                     Check(!Get<List<string>>(f, "Ticked").Contains("d"), "a TM with no units can't be ticked");

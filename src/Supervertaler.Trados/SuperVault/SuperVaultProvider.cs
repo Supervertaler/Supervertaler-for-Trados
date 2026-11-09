@@ -71,7 +71,7 @@ namespace Supervertaler.Trados.SuperVault
         public ITranslationProviderLanguageDirection GetLanguageDirection(LanguagePair pair)
         {
             if (!SupportsLanguageDirection(pair))
-                throw new NotSupportedException($"EverTM holds no {pair?.SourceCultureName} / {pair?.TargetCultureName} units.");
+                throw new NotSupportedException($"EverTM holds no {pair?.SourceCultureName} / {pair?.TargetCultureName} translation units.");
             return new SuperVaultLanguageDirection(this, pair);
         }
 

@@ -191,12 +191,12 @@ namespace Supervertaler.Trados.SuperVault
                 _storeCheckedAt = DateTime.UtcNow;
             }
             var lines = new System.Text.StringBuilder();
-            lines.AppendLine("Memory: " + VaultLibrary.Units(_storeUnits));
+            lines.AppendLine("Translation units: " + _storeUnits.ToString("N0", CultureInfo.CurrentCulture));
             if (_metadata != null) lines.AppendLine(_metadata);
             switch (s.State)
             {
                 case VaultState.Ready:
-                    lines.AppendLine("Index: " + VaultLibrary.Units(s.Units) +
+                    lines.AppendLine("Indexed translation units: " + s.Units.ToString("N0", CultureInfo.CurrentCulture) +
                                      (s.BuiltAt.HasValue ? ", built " + s.BuiltAt.Value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : "") +
                                      (_outOfDate && !s.Building && _learnWaiting == 0 && s.LearnError == null ? ". Out of date: click Rebuild index." : ""));
                     break;
@@ -207,7 +207,7 @@ namespace Supervertaler.Trados.SuperVault
                 lines.AppendLine("Since Studio started, " + s.Learned +
                                  (_learnWaiting > 0 ? "; " + _learnWaiting.ToString("N0", CultureInfo.CurrentCulture) + " more waiting to be stored" : "") +
                                  (s.LearnError != null ? ". Last attempt failed (" + s.LearnError + "); they are kept and tried again." : "."));
-            // The progress is its own label ("Indexing: 190,000 of 871,290 units"), capitalised by EverTM itself.
+            // The progress is its own label ("Indexing: 190,000 of 871,290 translation units"), capitalised by EverTM itself.
             if (s.Building) lines.AppendLine(s.BuildProgress + ". You can close this window and keep working.");
             else if (_library.LastJobResult != null) lines.AppendLine("Last task: " + _library.LastJobResult);
             lines.AppendLine();
