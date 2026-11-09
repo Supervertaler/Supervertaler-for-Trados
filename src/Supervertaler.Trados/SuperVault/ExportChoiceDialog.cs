@@ -34,7 +34,7 @@ namespace Supervertaler.Trados.SuperVault
         public ExportChoiceDialog(string store)
         {
             _store = store;
-            Text = "Export SuperVault to TMX";
+            Text = "Export EverTM to TMX";
             Icon = Supervertaler.Trados.Core.IconHelper.AppIcon;
             Font = new Font("Segoe UI", 9F);
             StartPosition = FormStartPosition.CenterParent;
@@ -43,7 +43,7 @@ namespace Supervertaler.Trados.SuperVault
             ClientSize = new Size(600, 420);
             MinimumSize = new Size(420, 300);
 
-            _info.Text = "Reading what SuperVault holds...";
+            _info.Text = "Reading what EverTM holds...";
             _list.Columns.Add("From", 380);
             _list.Columns.Add("Units", 100, HorizontalAlignment.Right);
             _list.ItemChecked += (s, e) => { if (!_filling) UpdateTotal(); };
@@ -106,7 +106,7 @@ namespace Supervertaler.Trados.SuperVault
             Task.Run(() => VaultExport.Holdings(_store, token), token).ContinueWith(t =>
             {
                 if (token.IsCancellationRequested || IsDisposed) return;   // closed meanwhile: nothing to show, nothing exported
-                if (t.IsFaulted) { _info.Text = "Could not read what SuperVault holds: " + t.Exception?.GetBaseException().Message; FitInfo(); }
+                if (t.IsFaulted) { _info.Text = "Could not read what EverTM holds: " + t.Exception?.GetBaseException().Message; FitInfo(); }
                 else if (!t.IsCanceled) Fill(t.Result);
             }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
         }
@@ -131,7 +131,7 @@ namespace Supervertaler.Trados.SuperVault
             }
             finally { _filling = false; }
             _info.Text = holdings.Count == 0
-                ? "SuperVault is empty: there is nothing to export."
+                ? "EverTM is empty: there is nothing to export."
                 : "Choose what to export. Each unit is written in the direction and language variants it was first stored with, " +
                   "with the date it was added and where it came from.";
             FitInfo();
@@ -189,8 +189,8 @@ namespace Supervertaler.Trados.SuperVault
         void ChooseFile()
         {
             var pair = Pair;
-            var name = "SuperVault" + (pair == null ? "" : " " + pair.Replace('|', '-')) + " " + DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ".tmx";
-            using (var dlg = new SaveFileDialog { Filter = "TMX files (*.tmx)|*.tmx", FileName = name, Title = "Export SuperVault to TMX", OverwritePrompt = true, AddExtension = true, DefaultExt = "tmx" })
+            var name = "EverTM" + (pair == null ? "" : " " + pair.Replace('|', '-')) + " " + DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ".tmx";
+            using (var dlg = new SaveFileDialog { Filter = "TMX files (*.tmx)|*.tmx", FileName = name, Title = "Export EverTM to TMX", OverwritePrompt = true, AddExtension = true, DefaultExt = "tmx" })
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
                 FilePath = dlg.FileName;

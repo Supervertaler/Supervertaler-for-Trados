@@ -14,7 +14,7 @@ namespace Supervertaler.Trados.SuperVault
     [TranslationProviderWinFormsUi(Id = "SupervertalerSuperVaultUi", Name = "SupervertalerSuperVaultUi", Description = "SupervertalerSuperVaultUi_Description")]
     public sealed class SuperVaultWinFormsUI : ITranslationProviderWinFormsUI
     {
-        public string TypeName => "SuperVault...";
+        public string TypeName => "EverTM...";
         public string TypeDescription => "One Supervertaler memory for every language variant, in both directions.";
         public bool SupportsEditing => true;
 
@@ -27,13 +27,13 @@ namespace Supervertaler.Trados.SuperVault
 
         public bool Edit(IWin32Window owner, ITranslationProvider translationProvider, LanguagePair[] languagePairs, ITranslationProviderCredentialStore credentialStore)
         {
-            var library = (translationProvider as SuperVaultProvider)?.Library ?? VaultLibrary.For(VaultLibrary.DefaultRoot);
+            var library = (translationProvider as SuperVaultProvider)?.Library ?? VaultLibrary.For(VaultLibrary.DefaultRootInUse);
             using (var dlg = new SuperVaultDialog(library, adding: false)) dlg.ShowDialog(owner);
             return false;   // nothing about the provider itself changes
         }
 
         public bool GetCredentialsFromUser(IWin32Window owner, Uri translationProviderUri, string translationProviderState, ITranslationProviderCredentialStore credentialStore) => false;
-        public bool SupportsTranslationProviderUri(Uri translationProviderUri) => translationProviderUri != null && translationProviderUri.Scheme == SuperVaultProvider.Scheme;
+        public bool SupportsTranslationProviderUri(Uri translationProviderUri) => SuperVaultProvider.IsOurs(translationProviderUri);
 
         public TranslationProviderDisplayInfo GetDisplayInfo(Uri translationProviderUri, string translationProviderState)
         {
@@ -41,7 +41,7 @@ namespace Supervertaler.Trados.SuperVault
             return new TranslationProviderDisplayInfo
             {
                 Name = SuperVaultProvider.DisplayName,
-                TooltipText = "SuperVault: your Supervertaler memory, every variant, both directions",
+                TooltipText = "EverTM: your Supervertaler memory, every variant, both directions",
                 TranslationProviderIcon = icon,
                 SearchResultImage = new Icon(icon, 16, 16).ToBitmap(),
             };
@@ -76,7 +76,7 @@ namespace Supervertaler.Trados.SuperVault
         public SuperVaultDialog(VaultLibrary library, bool adding)
         {
             _library = library;
-            Text = adding ? "Add SuperVault" : "SuperVault";
+            Text = adding ? "Add EverTM" : "EverTM";
             Icon = Supervertaler.Trados.Core.IconHelper.AppIcon;
             Font = new Font("Segoe UI", 9F);
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -89,7 +89,7 @@ namespace Supervertaler.Trados.SuperVault
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(660, 360);
 
-            _intro.Text = "SuperVault is one memory for every language variant, in both directions: an English–Dutch unit serves " +
+            _intro.Text = "Supervertaler EverTM is one memory for every language variant, in both directions: an English–Dutch unit serves " +
                        "nl-BE > en-US, en-GB > nl-NL and the rest. Fill it by importing TMX files or Studio TMs; duplicates are stored once. " +
                        "With its Update box ticked in the project's TM settings, the segments you confirm are added as you work. " +
                        "Its matches never lower your project TMs' matches.";
@@ -118,7 +118,7 @@ namespace Supervertaler.Trados.SuperVault
 
         void PickAndImport(string filter, Func<string, string, Action<string>, System.Threading.CancellationToken, VaultImportResult> importer)
         {
-            using (var dlg = new OpenFileDialog { Filter = filter, Multiselect = true, Title = "Import into SuperVault" })
+            using (var dlg = new OpenFileDialog { Filter = filter, Multiselect = true, Title = "Import into EverTM" })
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
                 var files = dlg.FileNames;
@@ -172,7 +172,7 @@ namespace Supervertaler.Trados.SuperVault
 
         void Start(bool started)
         {
-            if (!started) MessageBox.Show(this, "SuperVault is already busy importing, building or exporting. Wait for it to finish.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (!started) MessageBox.Show(this, "EverTM is already busy importing, building or exporting. Wait for it to finish.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
             _storeCheckedAt = DateTime.MinValue;
             Refresh2();
         }
@@ -184,7 +184,7 @@ namespace Supervertaler.Trados.SuperVault
             if (_storeUnits < 0 || (!s.Building && (DateTime.UtcNow - _storeCheckedAt).TotalSeconds > 5))
             {
                 try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); _learnWaiting = _library.LearnWaiting(); }
-                catch (Exception ex) { _storeUnits = 0; _outOfDate = false; Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("SuperVault", "Store check failed: " + ex.Message); }
+                catch (Exception ex) { _storeUnits = 0; _outOfDate = false; Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Store check failed: " + ex.Message); }
                 _storeCheckedAt = DateTime.UtcNow;
             }
             var lines = new System.Text.StringBuilder();
@@ -197,7 +197,7 @@ namespace Supervertaler.Trados.SuperVault
                                      (_outOfDate && !s.Building && _learnWaiting == 0 && s.LearnError == null ? ". Out of date: click Rebuild index." : ""));
                     break;
                 case VaultState.Broken: lines.AppendLine(s.Message); break;
-                default: lines.AppendLine(_storeUnits > 0 ? "No index yet: it is built when you next confirm a segment, or click Rebuild index." : "Empty. It fills as you confirm segments (tick SuperVault's Update box in the project's TM settings), or import a TMX file or a Studio TM."); break;
+                default: lines.AppendLine(_storeUnits > 0 ? "No index yet: it is built when you next confirm a segment, or click Rebuild index." : "Empty. It fills as you confirm segments (tick EverTM's Update box in the project's TM settings), or import a TMX file or a Studio TM."); break;
             }
             if (s.Learned.Total > 0 || _learnWaiting > 0 || s.LearnError != null)
                 lines.AppendLine("Since Studio started, " + s.Learned +

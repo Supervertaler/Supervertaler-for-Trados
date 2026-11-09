@@ -35,7 +35,7 @@ static class Program
             return null;
         };
         if (args.Length > 0 && args[0] == "kit")
-            return Kit.Run(args.Length > 1 ? args[1] : "SuperVault acceptance", args.Length > 2 ? args[2] : @"D:\Supervertaler\resources\supervertaler.db");
+            return Kit.Run(args.Length > 1 ? args[1] : "EverTM acceptance", args.Length > 2 ? args[2] : @"D:\Supervertaler\resources\supervertaler.db");
         if (args.Length > 1 && args[0] == "lookup-xliff")
             return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : null);
         if (args.Length > 1 && args[0] == "import-sdltm")
@@ -67,6 +67,7 @@ static class Checks
             var root = BuildScratchVault();
             var clientTm = ClientTm();
             var vault = new SuperVaultProvider(root);
+            OldProjectsStillOpen(root, clientTm);
             LanguageDirections(vault);
             NeverLowersTheClientTm(vault, clientTm);
             TagsAndPenalties(vault);
@@ -120,7 +121,7 @@ static class Checks
     static string BuildScratchVault()
     {
         _vaultTmx = WriteTmx("vault.tmx", VaultUnits);
-        var studioTm = new FileBasedTranslationMemory(Path.Combine(_scratch, "for-supervault.sdltm"), "for SuperVault", NlBe, EnUs,
+        var studioTm = new FileBasedTranslationMemory(Path.Combine(_scratch, "for-supervault.sdltm"), "for EverTM", NlBe, EnUs,
             FuzzyIndexes.SourceWordBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
         studioTm.Save();
         studioTm.LanguageDirection.AddTranslationUnitsMasked(new[] { Tu(WaterDoc(), Open("5", 1), "Never", Close("5", 1), " use water.") }, new ImportSettings(), new[] { true });
@@ -130,7 +131,7 @@ static class Checks
         var r2 = lib.Import((store, p, c) => SuperVaultImport.Sdltm(store, studioTm.FilePath, p, c), null, CancellationToken.None);
         var r3 = lib.Import((store, p, c) => VaultTmx.Import(store, _vaultTmx, p, c), null, CancellationToken.None);
         Check(r1.Added == 5 && r2.Added == 1 && r3.Added == 0 && r3.Duplicates == 5 && lib.Status.Units == 6,
-              $"SuperVault filled without Workbench: TMX {r1.Added}, Studio TM {r2.Added}, same TMX again {r3.Added} added / {r3.Duplicates} duplicates; index {lib.Status.Units} units");
+              $"EverTM filled without Workbench: TMX {r1.Added}, Studio TM {r2.Added}, same TMX again {r3.Added} added / {r3.Duplicates} duplicates; index {lib.Status.Units} units");
         return lib.Root;
     }
 
@@ -197,7 +198,7 @@ static class Checks
         return cascade.SearchSegmentsMasked(Settings(), docs, docs.Select(_ => true).ToArray());
     }
 
-    static bool IsVault(SearchResult r) => r.MemoryTranslationUnit?.OriginSystem == "SuperVault";
+    static bool IsVault(SearchResult r) => r.MemoryTranslationUnit?.OriginSystem == "EverTM";
     static string Text(Segment s) => s == null ? "" : string.Concat(s.Elements.OfType<Text>().Select(t => t.Value));
     static string Show(SearchResults r) => r == null ? "(none)" : string.Join("; ", r.Results.Select(x => (IsVault(x) ? "SV " : "TM ") + x.ScoringResult.Match + "% " + Text(x.TranslationProposal?.TargetSegment)));
 
@@ -219,9 +220,34 @@ static class Checks
     }
 
     /// <summary>The acceptance rule: with SuperVault in the cascade, in either position, the client TM's matches are exactly as without it.</summary>
+    /// <summary>
+    /// Projects saved before the rename refer to "supervault:///": the factory and the settings UI still take it, a
+    /// provider made for it keeps that URI (so Studio finds the same entry in the project) and looks up as before; a
+    /// newly added EverTM gets "evertm:///". The factory's own CreateTranslationProvider is not called here: it opens
+    /// the user's real folder (and would move it).
+    /// </summary>
+    static void OldProjectsStillOpen(string root, ITranslationProviderLanguageDirection clientTm)
+    {
+        Console.WriteLine("Projects saved with the old name (supervault:///) still open");
+        var oldUri = new Uri("supervault:///");
+        var newUri = new Uri("evertm:///");
+        var factory = new SuperVaultProviderFactory();
+        var ui = new SuperVaultWinFormsUI();
+        Check(factory.SupportsTranslationProviderUri(oldUri) && factory.SupportsTranslationProviderUri(newUri) && !factory.SupportsTranslationProviderUri(new Uri("sdltm.file:///x.sdltm")),
+              "the factory takes both supervault:/// and evertm:///, and nothing else");
+        Check(ui.SupportsTranslationProviderUri(oldUri) && ui.SupportsTranslationProviderUri(newUri), "the settings UI takes both");
+        Check(ui.GetDisplayInfo(oldUri, "").Name == "EverTM" && factory.GetTranslationProviderInfo(oldUri, "").Name == "EverTM", "an old project shows it as EverTM");
+        var old = new SuperVaultProvider(root, oldUri);
+        Check(old.Uri == oldUri, "a provider for an old project keeps its URI: " + old.Uri);
+        Check(new SuperVaultProvider(root).Uri == newUri && SuperVaultProvider.DefaultUri == newUri, "a newly added EverTM: " + SuperVaultProvider.DefaultUri);
+        var r = Cascade(PumpDoc(), clientTm, old.GetLanguageDirection(new LanguagePair(NlBe, EnUs)));
+        Check(r.Results.Any(x => IsVault(x) && x.ScoringResult.Match == 100), "an old project's EverTM looks up as before: " + Show(r));
+        Check(old.StatusInfo.Available, "and is available: " + old.StatusInfo.StatusMessage);
+    }
+
     static void NeverLowersTheClientTm(SuperVaultProvider vault, ITranslationProviderLanguageDirection clientTm)
     {
-        Console.WriteLine("Client TM matches are unchanged by SuperVault");
+        Console.WriteLine("Client TM matches are unchanged by EverTM");
         var sv = vault.GetLanguageDirection(new LanguagePair(NlBe, EnUs));
         foreach (var (name, make) in new (string, Func<Segment>)[] { ("same translation, formatted", SaveDoc), ("different translation", PumpDoc), ("same translation, pt tags", WaterDoc) })
         {
@@ -235,7 +261,7 @@ static class Checks
                 // SuperVault's match is either listed after the client TM at 100%, or - when it is the very same translation
                 // with the same tags - merged away by Studio as a duplicate of the client TM's, which is kept.
                 Check(tmBoth.SequenceEqual(tmScores) && both.Results[0] != null && !IsVault(both.Results[0]) && (svTop == null || svTop.ScoringResult.Match == 100),
-                      $"{name}, SuperVault {(first ? "first" : "last")}: client TM {string.Join("/", tmBoth)}% (alone {string.Join("/", tmScores)}%), listed first; SuperVault {(svTop == null ? "merged into it as the same translation" : svTop.ScoringResult.Match + "%")}   [{Show(both)}]");
+                      $"{name}, EverTM {(first ? "first" : "last")}: client TM {string.Join("/", tmBoth)}% (alone {string.Join("/", tmScores)}%), listed first; EverTM {(svTop == null ? "merged into it as the same translation" : svTop.ScoringResult.Match + "%")}   [{Show(both)}]");
             }
         }
         // Batch path (Analyze, Pre-translate).
@@ -250,7 +276,7 @@ static class Checks
             same &= a.SequenceEqual(b);
         }
         Check(same, "batch search (SearchSegmentsMasked, as Analyze): every client TM match unchanged");
-        Check(bothB[3].Results.Any(IsVault) && bothB[4].Results.Any(IsVault), "batch search: SuperVault fills segments the client TM doesn't have");
+        Check(bothB[3].Results.Any(IsVault) && bothB[4].Results.Any(IsVault), "batch search: EverTM fills segments the client TM doesn't have");
 
         // Control: Studio's own penalty between two client TMs that disagree still happens with SuperVault present.
         var tm2 = new FileBasedTranslationMemory(Path.Combine(_scratch, "client2.sdltm"), "client2", NlBe, EnUs,
@@ -305,7 +331,7 @@ static class Checks
         ImportResult[] br = null; Exception thrown = null;
         try { br = broken.AddOrUpdateTranslationUnitsMasked(new[] { tu }, new[] { 0 }, new ImportSettings(), new[] { true }); }
         catch (Exception ex) { thrown = ex; }
-        Check(thrown == null && br?.Length == 1 && sw.ElapsedMilliseconds < 100, $"an unwritable SuperVault folder: confirm returns in {sw.ElapsedMilliseconds} ms, no exception reaches Studio");
+        Check(thrown == null && br?.Length == 1 && sw.ElapsedMilliseconds < 100, $"an unwritable EverTM folder: confirm returns in {sw.ElapsedMilliseconds} ms, no exception reaches Studio");
         Check(broken.AddOrUpdateTranslationUnitsMasked(null, null, null, null).Length == 0, "no units: an empty answer, no exception");
     }
 
@@ -335,9 +361,9 @@ static class Checks
         Thread.Sleep(500);
         var now = lib.LearnedThisSession;
         Check(now.Total - before.Total == 1 && now.Already - before.Already == 1 && now.Added == before.Added,
-              $"a 100% match confirmed and auto-propagated: counted once, as already in SuperVault ({now.Total - before.Total} confirmed, {now.Added - before.Added} added, {now.Already - before.Already} already there)");
+              $"a 100% match confirmed and auto-propagated: counted once, as already in EverTM ({now.Total - before.Total} confirmed, {now.Added - before.Added} added, {now.Already - before.Already} already there)");
         Check(Hits(Doc("Een zin ervoor."), sv).Count == 0, "the unmasked context segment Studio sends along is not stored");
-        Check(now.ToString().Contains(" added") && now.ToString().Contains("already in SuperVault"), "the window's wording: " + now);
+        Check(now.ToString().Contains(" added") && now.ToString().Contains("already in EverTM"), "the window's wording: " + now);
     }
 
     /// <summary>
@@ -347,7 +373,7 @@ static class Checks
     /// </summary>
     static void DialogShowsAllItsText(string root)
     {
-        Console.WriteLine("The SuperVault window");
+        Console.WriteLine("The EverTM window");
         var type = typeof(SuperVaultProvider).Assembly.GetType("Supervertaler.Trados.SuperVault.SuperVaultDialog", true);
         const System.Windows.Forms.TextFormatFlags flags = System.Windows.Forms.TextFormatFlags.WordBreak | System.Windows.Forms.TextFormatFlags.TextBoxControl;
         foreach (var (scale, points) in new[] { ("100%", 9f), ("125%", 11.25f), ("150%", 13.5f) })
@@ -465,7 +491,7 @@ static class Checks
     {
         Console.WriteLine("Export TMX, imported by Studio");
         var lib = VaultLibrary.For(root);
-        var tmx = Path.Combine(_scratch, "SuperVault export.tmx");
+        var tmx = Path.Combine(_scratch, "EverTM export.tmx");
         var r = VaultExport.Export(lib.StorePath, tmx, null, null, null, CancellationToken.None);
         var doc = new System.Xml.XmlDocument();
         doc.Load(tmx);
@@ -478,7 +504,7 @@ static class Checks
             var path = Path.Combine(_scratch, "imported " + src.Name + ".sdltm");
             var tm = new FileBasedTranslationMemory(path, "export check", src, trg, FuzzyIndexes.SourceWordBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
             // The field set up beforehand, as a user could: even then Studio leaves it empty for a TMX it didn't write.
-            tm.FieldDefinitions.Add(new FieldDefinition("SuperVault-Origin", FieldValueType.SingleString));
+            tm.FieldDefinitions.Add(new FieldDefinition("EverTM-Origin", FieldValueType.SingleString));
             tm.Save();
             var importer = new TranslationMemoryImporter(tm.LanguageDirection);
             var settings = importer.ImportSettings ?? new ImportSettings();
@@ -496,14 +522,14 @@ static class Checks
             int inTm = tm.LanguageDirection.GetTranslationUnitCount();
             Console.WriteLine($"        Studio import into {src.Name}>{trg.Name}: added {st.AddedTranslationUnits}, merged {st.MergedTranslationUnits}, discarded {st.DiscardedTranslationUnits}, errors {st.Errors}; " +
                               $"TM holds {inTm}; the TMX has {sameDirection} units in this direction, {reversed} the other way round, and the {series}-unit number series");
-            Check(st.Errors == 0 && inTm == sameDirection + reversed + 1, $"{src.Name}>{trg.Name}: Studio imports SuperVault's TMX without errors: every unit of the pair, in both directions (the number series as one)");
+            Check(st.Errors == 0 && inTm == sameDirection + reversed + 1, $"{src.Name}>{trg.Name}: Studio imports EverTM's TMX without errors: every unit of the pair, in both directions (the number series as one)");
             var origins = new List<string>();
             var it = new RegularIterator { MaxCount = 1000 };
             for (var batch = tm.LanguageDirection.GetTranslationUnits(ref it); batch != null && batch.Length > 0; batch = tm.LanguageDirection.GetTranslationUnits(ref it))
-                foreach (var u in batch) origins.Add(u.FieldValues.Lookup("SuperVault-Origin")?.ToString() ?? "(none)");
+                foreach (var u in batch) origins.Add(u.FieldValues.Lookup("EverTM-Origin")?.ToString() ?? "(none)");
             // Not a check: Studio keeps x- props as field values only from TMX files Studio wrote itself (its own export
             // with a Client field comes through, under either NewFields setting; the same prop from another tool doesn't).
-            Console.WriteLine("        origin in Studio's SuperVault-Origin field (informational; Studio keeps fields only from its own TMX files): " + string.Join(", ", origins.Distinct()));
+            Console.WriteLine("        origin in Studio's EverTM-Origin field (informational; Studio keeps fields only from its own TMX files): " + string.Join(", ", origins.Distinct()));
             if (src == NlBe)
             {
                 var hit = Hits(SaveDoc(), tm.LanguageDirection).FirstOrDefault();
@@ -607,7 +633,7 @@ static class Checks
         var penalised = new SearchSettings { Mode = SearchMode.NormalSearch, MinScore = 70, MaxResults = 5 };
         penalised.AddPenalty(PenaltyType.ProviderPenalty, 3);
         r = sv.SearchSegment(penalised, PumpDoc()).Results.First();
-        Check(r.ScoringResult.Match == 97, "the provider penalty the project sets for SuperVault is applied: " + r.ScoringResult.Match + "%");
+        Check(r.ScoringResult.Match == 97, "the provider penalty the project sets for EverTM is applied: " + r.ScoringResult.Match + "%");
     }
 
     static void FuzzyDifferences(SuperVaultProvider vault)
@@ -690,12 +716,12 @@ static class Checks
             Check(Hits(Doc("Een zin die er niet in staat."), dir).Count == 0, what + ": a lookup gives nothing and throws nothing");
             var conc = dir.SearchSegment(new SearchSettings { Mode = SearchMode.ConcordanceSearch, MinScore = 50, MaxResults = 5 }, Doc("pomp"));
             Check(conc.Results.Count == 0, what + ": concordance gives nothing and throws nothing");
-            var learned = Doc("Een eerste zin in een lege SuperVault.");
-            dir.AddOrUpdateTranslationUnitsMasked(new[] { Tu(learned, "A first sentence in an empty SuperVault.") }, new[] { 0 }, new ImportSettings(), new[] { true });
+            var learned = Doc("Een eerste zin in een lege EverTM.");
+            dir.AddOrUpdateTranslationUnitsMasked(new[] { Tu(learned, "A first sentence in an empty EverTM.") }, new[] { 0 }, new ImportSettings(), new[] { true });
             // Studio looks the segment up again straight after the confirm and caches what it gets (8 Nov: the first
             // learned unit stayed invisible until SuperVault's settings were reopened). No waiting, nothing reopened:
             var atOnce = Hits(learned, dir).FirstOrDefault(x => x.ScoringResult.Match == 100);
-            Check(atOnce != null && Text(atOnce.TranslationProposal.TargetSegment) == "A first sentence in an empty SuperVault.",
+            Check(atOnce != null && Text(atOnce.TranslationProposal.TargetSegment) == "A first sentence in an empty EverTM.",
                   what + ": the first confirmed segment is found by a lookup straight after the confirm, as Studio makes it");
             Check(WaitFor(() => VaultLibrary.For(root).Current != null && VaultLibrary.For(root).Current.Count > 0 ? "" : null) != null &&
                   Hits(learned, dir).Count(x => x.ScoringResult.Match == 100) == 1 && empty.StatusInfo.Available,

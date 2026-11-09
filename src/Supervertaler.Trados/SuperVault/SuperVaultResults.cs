@@ -145,10 +145,10 @@ namespace Supervertaler.Trados.SuperVault
             var tu = new TranslationUnit(src, trg)
             {
                 Origin = TranslationUnitOrigin.TM,
-                OriginSystem = "SuperVault",
+                OriginSystem = "EverTM",
                 ConfirmationLevel = ConfirmationLevel.Translated,
                 ResourceId = new PersistentObjectToken(id, Guid.Empty),
-                SystemFields = new SystemFields { CreationDate = now, ChangeDate = now, UseDate = now, CreationUser = "SuperVault", ChangeUser = "SuperVault", UseUser = "SuperVault" },
+                SystemFields = new SystemFields { CreationDate = now, ChangeDate = now, UseDate = now, CreationUser = "EverTM", ChangeUser = "EverTM", UseUser = "EverTM" },
                 FieldValues = new FieldValues(),
             };
             return new SearchResult(tu) { ScoringResult = scoring, TranslationProposal = new TranslationUnit(tu) };

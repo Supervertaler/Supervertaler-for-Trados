@@ -38,26 +38,26 @@ static class Kit
         units.AddRange(plain.Take(4).Select(u => new Unit { Group = "B", Nl = u.nl, En = u.en, ClientEn = u.en }));
         units.AddRange(formatted.Skip(8).Take(2).Concat(plain.Skip(4).Take(2)).Select(u => new Unit { Group = "C", Nl = u.nl, En = u.en, ClientEn = Different(u.en) }));
         units.AddRange(formatted.Skip(10).Take(2).Concat(plain.Skip(6).Take(2)).Select(u => new Unit { Group = "D", Nl = u.nl, En = u.en, ClientEn = null }));
-        foreach (var s in new[] { "Deze zin staat in geen enkel geheugen, ook niet in SuperVault.", "Controlezin twee voor de acceptatietest van SuperVault.",
+        foreach (var s in new[] { "Deze zin staat in geen enkel geheugen, ook niet in EverTM.", "Controlezin twee voor de acceptatietest van EverTM.",
                                   "De derde controlezin heeft ook geen <b>enkele</b> treffer.", "Tot slot een vierde zin zonder treffers." })
             units.Add(new Unit { Group = "E", Nl = s, En = null, ClientEn = null });
 
-        WriteDocx(Path.Combine(folder, "SuperVault acceptance.docx"), units);
+        WriteDocx(Path.Combine(folder, "EverTM acceptance.docx"), units);
         WriteTmx(Path.Combine(folder, "client TM.tmx"), units.Where(u => u.ClientEn != null), "nl-BE", u => u.Nl, "en-US", u => u.ClientEn);
-        WriteTmx(Path.Combine(folder, "SuperVault.tmx"), units.Where(u => u.En != null), "en-GB", u => u.En, "nl-NL", u => u.Nl);
+        WriteTmx(Path.Combine(folder, "EverTM.tmx"), units.Where(u => u.En != null), "en-GB", u => u.En, "nl-NL", u => u.Nl);
         var sb = new StringBuilder();
-        sb.AppendLine("SuperVault acceptance test - what is in the test document (paragraph order)");
+        sb.AppendLine("EverTM acceptance test - what is in the test document (paragraph order)");
         sb.AppendLine("A = formatted, client TM has the same translation; B = plain, same; C = client TM has a different translation;");
-        sb.AppendLine("D = only in SuperVault; E = in neither.");
+        sb.AppendLine("D = only in EverTM; E = in neither.");
         sb.AppendLine();
-        sb.AppendLine("Setup: import client TM.tmx into a new Studio TM (nl-BE > en-US); import SuperVault.tmx into SuperVault (en-GB > nl-NL on purpose).");
-        sb.AppendLine("Expected: the client TM's 100% / Context Match counts are identical with SuperVault on and off.");
-        sb.AppendLine("With SuperVault on, group D moves from No Match to 100%. Groups A-C keep the client TM's match, listed first.");
+        sb.AppendLine("Setup: import client TM.tmx into a new Studio TM (nl-BE > en-US); import EverTM.tmx into EverTM (en-GB > nl-NL on purpose).");
+        sb.AppendLine("Expected: the client TM's 100% / Context Match counts are identical with EverTM on and off.");
+        sb.AppendLine("With EverTM on, group D moves from No Match to 100%. Groups A-C keep the client TM's match, listed first.");
         sb.AppendLine();
         int i = 1;
         foreach (var u in units) sb.AppendLine($"{i++,2}. {u.Group}  {u.Nl}");
         File.WriteAllText(Path.Combine(folder, "expected.txt"), sb.ToString(), new UTF8Encoding(true));
-        Console.WriteLine($"Kit written to {folder}: {units.Count} paragraphs, {units.Count(u => u.ClientEn != null)} client TM units, {units.Count(u => u.En != null)} SuperVault units.");
+        Console.WriteLine($"Kit written to {folder}: {units.Count} paragraphs, {units.Count(u => u.ClientEn != null)} client TM units, {units.Count(u => u.En != null)} EverTM units.");
         return 0;
     }
 
@@ -139,7 +139,7 @@ static class Kit
     {
         var sb = new StringBuilder();
         sb.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-        sb.AppendLine("<tmx version=\"1.4\"><header creationtool=\"SuperVaultCheck\" creationtoolversion=\"1\" segtype=\"sentence\" o-tmf=\"none\" adminlang=\"en-US\" srclang=\"" + sourceLang + "\" datatype=\"plaintext\"/><body>");
+        sb.AppendLine("<tmx version=\"1.4\"><header creationtool=\"EverTMCheck\" creationtoolversion=\"1\" segtype=\"sentence\" o-tmf=\"none\" adminlang=\"en-US\" srclang=\"" + sourceLang + "\" datatype=\"plaintext\"/><body>");
         foreach (var u in units)
         {
             sb.Append("<tu><tuv xml:lang=\"" + sourceLang + "\"><seg>").Append(Seg(source(u))).Append("</seg></tuv>");

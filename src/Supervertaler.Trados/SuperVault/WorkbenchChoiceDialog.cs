@@ -116,7 +116,7 @@ namespace Supervertaler.Trados.SuperVault
             finally { _list.EndUpdate(); _filling = false; }
             _info.Text = tms.Count == 0
                 ? "Workbench has no translation memories."
-                : "Tick the translation memories to import. Units SuperVault already holds are not added again; Workbench's database is only read.";
+                : "Tick the translation memories to import. Units EverTM already holds are not added again; Workbench's database is only read.";
             _all.Enabled = _none.Enabled = tms.Any(t => t.Units > 0);
             FitInfo();
             UpdateTotal();
