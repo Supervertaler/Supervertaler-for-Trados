@@ -1,9 +1,13 @@
-# SuperVault metadata: keeping, showing and filtering on it
+# EverTM metadata: keeping, showing and filtering on it
 
-Design note, 9 Nov 2026. Status: proposal, no code yet. Base: Trados main a01b262, Plugin Core main 69f9aa1.
+Design note, 9 Nov 2026. Status: decided; phase 1 being built. Base: Trados main 92a4862, Plugin Core main c6e46d6
+(EverTM was called SuperVault until 9 Nov; code names such as `VaultStore` and the `core/supervault` folder keep the
+old name).
 Revision 2 (9 Nov): Michael's answers to the first version's questions are built in. The big change is **one
 translation per source sentence, newest wins** (section 3). Revision 3 (9 Nov): **per context**: a translation made
 in a particular context is kept and wins as a context match when that context comes round again (section 3h).
+Revision 4 (9 Nov): renamed to EverTM; Michael's answers to the last six questions are built in (see "Decisions").
+New from them: **the project's exact target variant (en-GB or en-US) comes first** (3b).
 
 ## In short
 
@@ -18,17 +22,17 @@ in a particular context is kept and wins as a context match when that context co
     35,000 units that are still the only translation the other way round (section 3e).
   - Hiding happens at lookup, so imports stay as fast as today.
 - **Studio already does most of the showing.** Field values on a match appear in Translation Results and Concordance.
-  A match's created/changed date and user appear in the info bar under the results. No SuperVault UI is needed.
-- **Studio hands SuperVault the project's TM filters on every lookup**, but leaves applying them to each TM. SuperVault
+  A match's created/changed date and user appear in the info bar under the results. No EverTM UI is needed.
+- **Studio hands EverTM the project's TM filters on every lookup**, but leaves applying them to each TM. EverTM
   would apply them inside its index search.
-- **Studio's Filters page can't offer SuperVault's own field names.** So per-project rules ("only Subject = Patents")
-  live in SuperVault's settings window, which Studio already saves per project.
+- **Studio's Filters page can't offer EverTM's own field names.** So per-project rules ("only Subject = Patents")
+  live in EverTM's settings window, which Studio already saves per project.
 - **Fields kept:** Project, Client, End client, Subject (memoQ's Domain merged into it), Document, Source, created and
   changed date and user (other translators' and reviewers' names kept, as Michael asked), Note.
 - **Phase 1:**
   - keep and show those fields;
   - learn Project and Client from the Studio project;
-  - newest wins;
+  - newest wins, the project's exact target variant first;
   - re-importing adds metadata and dates to units already there.
 - **Phase 2:** "only / never" rules, which hide; the project's client first when choosing the newest; context
   matches.
@@ -85,8 +89,8 @@ Read from Studio 2026's Editor (`TranslationUpdate.AddSegment`, `InteractiveTmUp
   `OverrideTuUserIdWithCurrentContextUser`).
 - `TranslationUnit.DocumentProperties` / `FileProperties`: the document's path and original file name.
 - `ImportSettings.ProjectSettings`: the field values the project says to add on update (Project Settings >
-  Translation Memory > Update). SuperVault receives these today and ignores them.
-- **Not given:** the Studio project's name or customer. SuperVault reads them from the `.sdlproj` in the folder above
+  Translation Memory > Update). EverTM receives these today and ignores them.
+- **Not given:** the Studio project's name or customer. EverTM reads them from the `.sdlproj` in the folder above
   the document (the plugin already parses that XML in `TradosTools.cs`). This works for confirms and for the batch
   task "Update Main Translation Memories" alike, and doesn't depend on which document is active.
 
@@ -130,7 +134,7 @@ Canonical fields, with the spellings mapped onto them (case-insensitive, `x-` an
 A unit (one source + one translation) is stored once per language pair, whatever its direction and variants. One
 unit can come from several projects, clients and subjects.
 
-**Merge rules** (when an import or a confirmation brings a unit SuperVault already holds):
+**Merge rules** (when an import or a confirmation brings a unit EverTM already holds):
 
 - Text fields: **the union of values**. At most 20 values per field per unit, keeping the newest. Very common segments
   ("Figure 1", "Claims") would otherwise collect hundreds of project names.
@@ -163,10 +167,10 @@ CREATE TRIGGER unit_vals_ad AFTER DELETE ON unit_vals BEGIN INSERT INTO changes 
 **Existing units and re-importing (backfill).**
 
 - Existing units have no metadata and no dates.
-- Today, importing a unit SuperVault already holds changes nothing. In schema 3, **a re-import merges the file's
+- Today, importing a unit EverTM already holds changes nothing. In schema 3, **a re-import merges the file's
   metadata and dates into the units already there**, so re-importing his TMX files and Studio TMs fills them in
   without duplicating anything.
-- The import summary would say e.g. "0 units added, 52,113 already in SuperVault (metadata or dates added to 6,201)".
+- The import summary would say e.g. "0 units added, 52,113 already in EverTM (metadata or dates added to 6,201)".
 - Touching more than a quarter of the store rebuilds the index (about 6 minutes at 1.5M units).
 
 ## 3. One translation per source, newest wins
@@ -187,7 +191,7 @@ A unit's date is its **changed date**, or its created date when there is no chan
 1. the unit itself (`changedate`/`creationdate` in TMX, the system fields of a Studio TM);
 2. when a whole TMX file has no unit dates: its `<header creationdate>`, marked `date_from = 'file'`. This covers
    Supervertaler's and CafeTran's exports;
-3. a **confirmed segment counts as the moment it was confirmed**, in Studio, not when SuperVault stored it (3f).
+3. a **confirmed segment counts as the moment it was confirmed**, in Studio, not when EverTM stored it (3f).
 
 Never the import time: importing an old TM today must not hide the translation you made last month. Workbench's
 dates are import dates, so they are not used either.
@@ -209,8 +213,16 @@ dates are import dates, so they are not used either.
   - Measured on the store copy: grouping by text alone hides 22,786 units in nl > en; grouping by text + formatting
     hides only 14,322. Text-only grouping is what keeps "16 matches" from coming back as "100% + 99% formatting
     variants".
-- **Target variant (en-GB vs en-US):** not part of the rule; the newest wins across variants, as in Michael's "one
-  memory for all variants".
+- **Target variant (en-GB vs en-US): the exact variant first** (Michael, 9 Nov). The group still spans all variants
+  ("one memory for all variants"), but the winner is the newest unit whose target language is exactly the project's
+  (en-GB in an en-GB project); only if the group has none is it the newest in any variant.
+  - Only the target's variant decides; the source's never does.
+  - A unit stores its languages as imported (e.g. `en-US`), so this needs no new data. A unit whose target has no
+    variant (plain `en`) counts as a variant match for neither, so an exact en-GB unit beats it, and it competes with
+    en-US ones on date.
+  - Order with client first (3d, phase 2): **client and variant both > client only > variant only > newest**.
+    Reason: a client's own wording matters more than spelling; a variant mismatch is visible and easily fixed, a
+    wrong client term is not.
 - Fuzzy matches are grouped the same way: a fuzzy source with three translations offers only its newest.
 
 ### (c) Metadata when a newer translation wins
@@ -221,7 +233,7 @@ translations: 3", so Michael knows others exist.
 
 ### (d) Clients
 
-One winner across all clients can hide a translation a particular client insists on. The recommendation is
+One winner across all clients can hide a translation a particular client insists on. Decided (Michael, 9 Nov):
 **client first, then newest**, still one match:
 
 - If the project has a client, the group's winner is the newest unit carrying that Client or End client.
@@ -230,7 +242,7 @@ One winner across all clients can hide a translation a particular client insists
 This keeps one match per segment and never shows another client's wording when this client's own exists. It needs to
 know the project's client at lookup time:
 
-- from the project's SuperVault setting (phase 2);
+- from the project's EverTM setting (phase 2);
 - or from the active document's Studio project.
 
 Whether Studio's batch tasks pass the document with each lookup is still to be checked. So this comes in **phase
@@ -238,7 +250,7 @@ Whether Studio's batch tasks pass the document with each lookup is still to be c
 
 ### (e) Michael's real store: what would collapse
 
-Measured read-only on a copy of `D:\Supervertaler\supervault\supervault.db` (871,121 units, schema 1, all from
+Measured read-only on a copy of `D:\Supervertaler\evertm\evertm.db` (871,121 units, schema 1, all from
 Workbench, no learned units; the original's checksum was unchanged afterwards):
 
 | | en > nl | nl > en |
@@ -273,8 +285,8 @@ Checked against today's code (`VaultStore.Writer.Learn`, `VaultInbox`, `VaultLib
 - **A confirmation that differs from an imported unit** already adds a second unit. With newest-wins it hides the
   imported one at lookup. That fits, and is the point.
 - **Changes needed:**
-  1. **Re-confirming an existing translation** must make it the newest. Confirming a 100% SuperVault match unchanged,
-     or a translation identical to an imported unit, today stores nothing ("already in SuperVault"). It must set that
+  1. **Re-confirming an existing translation** must make it the newest. Confirming a 100% EverTM match unchanged,
+     or a translation identical to an imported unit, today stores nothing ("already in EverTM"). It must set that
      unit's changed date and user, and log a change so the index updates. Otherwise an older translation, re-approved
      today, would still lose to a newer one from another TM.
   2. **The confirm time travels with the unit:** `VaultLearnUnit` and `inbox.db` gain `confirmed_at`.
@@ -283,16 +295,16 @@ Checked against today's code (`VaultStore.Writer.Learn`, `VaultInbox`, `VaultLib
      - The in-place update of a learned unit happens only if its `confirmed_at` is not older than the unit's changed
        date. A late-arriving older confirmation never overwrites a newer one.
   3. **Units just confirmed and not yet stored** (the read-your-writes list) count as the newest in their group.
-- The "1 confirmed: 0 added, 1 already in SuperVault" count stays.
+- The "1 confirmed: 0 added, 1 already in EverTM" count stays.
 
 ### (g) Studio's "multiple translations" penalty
 
 - Read from Studio 2026: `Cascade.ProcessSearchResults` calls `SearchResults.CheckForMultipleTranslations`. It
   marks down the 100% matches when two or more of them, from any TMs, have different translations.
-- With one translation per source, SuperVault never returns two different 100% matches for a segment. **SuperVault on
+- With one translation per source, EverTM never returns two different 100% matches for a segment. **EverTM on
   its own can no longer trigger the 99% penalty.**
 - If a project TM gives a different 100% translation, Studio still applies its penalty between the two TMs. Today's
-  rule (SuperVault's match ranks after another TM's match of the same score, so the project TM's match stays as it
+  rule (EverTM's match ranks after another TM's match of the same score, so the project TM's match stays as it
   was) keeps handling that.
 
 ### (h) One translation per source PER CONTEXT (Michael, 9 Nov)
@@ -309,7 +321,7 @@ So the rule becomes:
 - A translation made for one context is **kept** even if a newer, different translation of the same source exists.
   It wins whenever its context comes round again.
 
-#### What context SuperVault can get
+#### What context EverTM can get
 
 **Trados**, read from Studio 2026's code:
 
@@ -319,7 +331,7 @@ So the rule becomes:
   passed.
 - **At lookup:** the same. The editor (`TranslationMemorySegmentSearch.DoSearch`) and the batch tasks (Analyze,
   Pre-translate: `TranslationMemoryLookupContentProcessor`) call `SearchTranslationUnitsMasked` with the previous
-  segment as an unmasked context unit. SuperVault receives the previous source and translation with every lookup.
+  segment as an unmasked context unit. EverTM receives the previous source and translation with every lookup.
   Today it ignores them.
 - **Returning a real context match:** a match is a context match when its `ScoringResult.TextContextMatch` is
   `SourceTargetMatch`. Nothing checks which TM it came from:
@@ -328,16 +340,17 @@ So the rule becomes:
     (`SegmentCategoryCountData.DetermineSegmentInTMCategory`);
   - Pre-translate treats it as a CM (`TranslateContentProcessor`).
   - Studio downgrades a CM to a plain 100% when the previous segment was itself searched and had no 100% match
-    (`SearchResults.CheckCMValidity`). That rule applies to SuperVault automatically.
+    (`SearchResults.CheckCMValidity`). That rule applies to EverTM automatically.
 - **What Studio's own TMs store:** two 64-bit hashes per context, previous source and previous translation
   (`translation_unit_contexts`), made by Studio's internal hashing (`GetSegmentHashAsync`). They are not text.
-  SuperVault can't reproduce them through Studio's public API. So contexts in `.sdltm` files are not imported. Studio
-  TMs reach SuperVault's context only via a TMX export (below).
+  EverTM can't reproduce them through Studio's public API. So contexts in `.sdltm` files are not imported. Studio
+  TMs reach EverTM's context only via a TMX export (below).
   - REA could check whether Studio's hash can be reproduced, if this ever matters.
 - **Mind the billing effect:**
-  - SuperVault CMs would count as Context Matches in Studio's Analyze reports, which drive quotes and invoices.
+  - EverTM CMs would count as Context Matches in Studio's Analyze reports, which drive quotes and invoices.
   - Pre-translate settings such as "lock context matches" would apply to them.
-  - A per-project switch "SuperVault never reports context matches" is proposed (phase 2), defaulting to report them.
+  - Decided (Michael, 9 Nov): EverTM reports context matches **by default**, with a per-project switch "EverTM never
+    reports context matches" (phase 2).
 
 **memoQ** (Supervertaler for memoQ plugs in as an MT plugin, `MemoQ.MTInterfaces`):
 
@@ -360,7 +373,7 @@ So the rule becomes:
 About 16% of units carry some usable context. **Workbench:** none: `context_before`/`context_after` are empty in all
 1,554,005 rows. Only 1,147 Workbench sources have more than one translation.
 
-#### The context SuperVault keeps
+#### The context EverTM keeps
 
 Per unit, a set of contexts. Each context is:
 
@@ -376,7 +389,7 @@ CREATE TABLE unit_ctx (unit_id INTEGER NOT NULL, prev_src INTEGER NOT NULL, prev
 -- plus a trigger into the change log, like unit_vals
 ```
 
-Hashes are 64-bit: the first 8 bytes of the MD5 SuperVault already uses for exact matches.
+Hashes are 64-bit: the first 8 bytes of the MD5 EverTM already uses for exact matches.
 
 #### Storage key and merge rule
 
@@ -475,86 +488,86 @@ nothing even when allowed matches exist further down. So restrictions become par
   Subject = Culinary" is a filter that excludes units whose subjects are all Culinary. For this, each unit's index
   entry gets a marker when it has exactly one subject (`f_subject_only`), so "all excluded" stays a term query.
 
-**Showing values on a match** stays index-only: lookups never open `supervault.db`. The values to show go into a stored
+**Showing values on a match** stays index-only: lookups never open `evertm.db`. The values to show go into a stored
 Lucene field, about 5–10% of the index size at Michael's fill rate.
 
 **Studio's own filters.** Read from Studio 2026's code:
 
 - `TranslationMemorySettings.CreateSearchSettings` copies the project's **Filters** (penalty filters) and
   **HardFilter** into the `SearchSettings` passed to every TM, a third-party provider included.
-- Studio's `Cascade` does not apply them; each TM does. So today SuperVault silently ignores both.
+- Studio's `Cascade` does not apply them; each TM does. So today EverTM silently ignores both.
 - The expressions are public objects: `AtomicExpression` (a field value plus `Equal`, `NotEqual`, `Smaller`,
   `SmallerEqual`, `Greater`, `GreaterEqual`, `Contains`, `ContainsNot`, `Matches`, `MatchesNot`) and
   `ComposedExpression` (`And`, `Or`, `Not`).
-- SuperVault can translate a HardFilter into the same Lucene filter as its own rules, matching field names
+- EverTM can translate a HardFilter into the same Lucene filter as its own rules, matching field names
   case-insensitively against its canonical names. Two exceptions: `Matches` (a regular expression) and fields it
   doesn't keep. For those it fetches more candidates and filters afterwards, and logs that it did.
 - Filter penalties only lower a score, never remove a match. So they can be applied to the few matches returned.
 
 **Per-project rules.**
 
-- When SuperVault's Settings window is opened from a project's TM settings and closed with OK, Studio calls
+- When EverTM's Settings window is opened from a project's TM settings and closed with OK, Studio calls
   `SerializeState()` and saves the result in that project's TM entry (`TranslationMemoriesControl.EditPlugInProvider`).
 - It creates one provider object per state (`TranslationProviderCache`).
-- Today SuperVault returns an empty state and its factory ignores the state it is given. Both would change.
+- Today EverTM returns an empty state and its factory ignores the state it is given. Both would change.
 
 ## 5. Studio's own machinery: what works for a third-party TM
 
 Read from Studio 2026's assemblies (Studio 2022 and 2024 not yet compared). Nothing here has been tried in Studio.
 
-| Studio feature | Works for SuperVault? | Evidence |
+| Studio feature | Works for EverTM? | Evidence |
 |---|---|---|
 | Field values shown on matches in **Translation Results** and **Concordance** | **Yes**, from `SearchResult.MemoryTranslationUnit.FieldValues`; no field definitions needed. On by default ("Show field values", 3 values, the rest in a tooltip). | `CompoundTranslationMemorySearchResultsControl.ApplyPreferences`, `TranslationUnitFieldValuesColumn`, defaults in `AbstractTranslationMemorySearchResultsPreferences` |
 | Created/changed date and user under the results | **Yes**, from the match's `SystemFields` | `TmInfoBar.UpdateControls` |
 | Project **Filters** and **HardFilter** reaching the TM | **Yes**: passed in `SearchSettings` | `TranslationMemorySettings.CreateSearchSettings` |
-| Studio applying those filters to SuperVault's matches | **No**: each TM applies them itself | only `TranslationMemoryImpl` reads them |
-| The **Filters** page listing SuperVault's fields | **No**: it lists only fields of TMs whose language direction is `ITranslationMemoryLanguageDirection` | `FieldDefinitionHelper.GetTranslationMemories` |
-| Filters on fields that another Studio TM in the project defines | **Yes, by name**: the filter reaches SuperVault, and SuperVault can honour it if it keeps a field of that name | as above |
-| The **Penalties** page | **Partly**: its penalties arrive in `SearchSettings.Penalties`. SuperVault already applies the formatting ones; status penalties need a confirmation status, which it doesn't keep | `CreateSearchSettings` |
-| The "multiple translations" penalty | Applied by Studio's `Cascade` across all TMs' 100% matches; with newest-wins, SuperVault alone no longer triggers it (3g) | `SearchResults.CheckForMultipleTranslations` |
+| Studio applying those filters to EverTM's matches | **No**: each TM applies them itself | only `TranslationMemoryImpl` reads them |
+| The **Filters** page listing EverTM's fields | **No**: it lists only fields of TMs whose language direction is `ITranslationMemoryLanguageDirection` | `FieldDefinitionHelper.GetTranslationMemories` |
+| Filters on fields that another Studio TM in the project defines | **Yes, by name**: the filter reaches EverTM, and EverTM can honour it if it keeps a field of that name | as above |
+| The **Penalties** page | **Partly**: its penalties arrive in `SearchSettings.Penalties`. EverTM already applies the formatting ones; status penalties need a confirmation status, which it doesn't keep | `CreateSearchSettings` |
+| The "multiple translations" penalty | Applied by Studio's `Cascade` across all TMs' 100% matches; with newest-wins, EverTM alone no longer triggers it (3g) | `SearchResults.CheckForMultipleTranslations` |
 | Project "field values on update" | **Arrive** in `ImportSettings.ProjectSettings` at every confirm. The page that edits them lists only `ITranslationMemory` fields | `InteractiveTmUpdateImportSettingsBuilder` |
 
-**Becoming an `ITranslationMemory`** would give Studio's Filters and field-update pages SuperVault's field names. But
+**Becoming an `ITranslationMemory`** would give Studio's Filters and field-update pages EverTM's field names. But
 it means 20 members on the TM and 15 on the language direction:
 
 - TM maintenance iterators, batch edit and delete;
 - fuzzy-index statistics, `Save`, `Delete`;
-- and Studio code that then treats SuperVault as a TM it may upgrade, reindex or health-check.
+- and Studio code that then treats EverTM as a TM it may upgrade, reindex or health-check.
 
 Not for phases 1–2. A later throw-away experiment, only if the Filters page turns out to matter.
 
 ## 6. The UI we'd still need (minimal)
 
-1. **None for showing.** Studio's field column and info bar do it. SuperVault orders the values Project, Client,
+1. **None for showing.** Studio's field column and info bar do it. EverTM orders the values Project, Client,
    Subject first (Studio shows the first three), then "Older translations: N".
 2. **Import:** no field picker. The import summary gains "metadata or dates added to N units" and "N TM names split
    into Client / End client".
-3. **SuperVault window:**
+3. **EverTM window:**
    - phase 1: a line "Metadata: 285 projects, 55 clients, 15 subjects; older translations hidden for 17,531 nl > en sources";
    - phase 2, when opened from a project's TM settings: "Use only units with Subject: [ ]" and "Never use units with
-     Subject: [ ]", picked from the values SuperVault holds, and the same for Client and Project; plus "This project's
+     Subject: [ ]", picked from the values EverTM holds, and the same for Client and Project; plus "This project's
      client: [ ]" for client-first. Saved in the project.
 
 ## 7. Privacy
 
 Client and project names, and other translators' and reviewers' user names from agency TMs, will be stored in:
 
-- `D:\Supervertaler\supervault\supervault.db` (tables `vals`, `unit_vals`; user columns on `units`);
-- the index under `D:\Supervertaler\supervault\gen-*` (terms and the stored display field);
+- `D:\Supervertaler\evertm\evertm.db` (tables `vals`, `unit_vals`; user columns on `units`);
+- the index under `D:\Supervertaler\evertm\gen-*` (terms and the stored display field);
 - `inbox.db` briefly, for learned units.
 
 They are shown:
 
 - in Studio's Translation Results and Concordance windows, and so in screenshots and screen shares;
 - in Studio's info bar;
-- in the SuperVault window.
+- in the EverTM window.
 
 Learned "Project" comes from Studio project names, which often contain a client name.
 
 Rules for the build:
 
 - metadata never goes into AI prompts or the MCP server's answers unless a later feature asks for it explicitly;
-- a SuperVault TMX export includes it, and should say so;
+- a EverTM TMX export includes it, and should say so;
 - tests and docs use Acme / PROJ-001 only.
 
 ## 8. Phases
@@ -569,7 +582,7 @@ Rules for the build:
   - `confirmed_at` through the inbox;
   - re-confirming bumps the date.
 - Matches carry `FieldValues` and `SystemFields`.
-- Newest-wins collapse at lookup and in Concordance.
+- Newest-wins collapse at lookup and in Concordance, the exact target variant first.
 - Tests:
   - merge rules and the 20-value cap;
   - date precedence, including undated units and the file date;
@@ -586,7 +599,7 @@ Rules for the build:
 
 - Index terms and cached Lucene filters.
 - Honour Studio's HardFilter and filter penalties.
-- Per-project "only / never" rules and "this project's client" in the provider state, edited from the SuperVault
+- Per-project "only / never" rules and "this project's client" in the provider state, edited from the EverTM
   window.
 - Client-first winner selection.
 - Context:
@@ -595,7 +608,7 @@ Rules for the build:
   - learned key per context;
   - the per-project "never report context matches" switch.
 - Context tests:
-  - Analyze counts a SuperVault CM;
+  - Analyze counts a EverTM CM;
   - `CheckCMValidity` downgrades it after a non-100% previous segment;
   - a correction replaces only within its context.
 - Measured on a 10M-unit copy.
@@ -624,18 +637,15 @@ Decided with Michael:
 8. **One translation per source, newest wins, but per context**: a translation made in a different context is kept,
    and wins as a context match when that context comes back.
 
-Still open, in plain words:
+Decided with Michael later on 9 Nov (the six questions of revision 3):
 
-1. A translation with **no date** counts as older than any dated one. So if your own undated export and an old agency
-   TM both translate a sentence, the agency's dated one shows. Fine? (Most of your own exports have a file date,
-   which SuperVault then uses.)
-2. Only TM names that look exactly like `ACME_Globex` are split into Client and End client, and only for Workbench
-   TMs and Studio project names. Is that the right reach?
-3. When a client's own translation exists, should it beat a newer translation made for someone else ("client
-   first")? This is the recommendation; it comes in phase 2.
-4. Newest wins across en-GB and en-US alike. Is that fine, or should your project's English variant come first?
-5. SuperVault's context matches would count as **Context Matches in Studio's Analyze reports**, which drive quotes,
-   and Pre-translate settings like "lock context matches" would apply to them. Fine by default, with a per-project
-   switch to turn them off?
-6. Trados only tells SuperVault the **previous** segment, not the next one, and memoQ gives it no context at all. Is a
-   Trados-only, previous-segment context match what you had in mind?
+9. A translation with **no date counts as older** than any dated one.
+10. The CLIENT_Endclient split reaches **only** Workbench TM names and Studio project names that look exactly like
+    `ACME_Globex`, as proposed.
+11. **Client first**: a client's own translation beats a newer one made for someone else (phase 2).
+12. **The project's exact target variant first** (en-GB over en-US in an en-GB project), then newest (3b). Phase 1.
+13. EverTM's context matches **count as Context Matches** in Analyze by default, with a **per-project switch** to turn
+    them off (phase 2).
+14. Context from the **previous segment only**, in Trados; memoQ gets newest-wins without context.
+
+Nothing is open. The orchestrator decides with Michael when a phase is ready to try in Studio.
