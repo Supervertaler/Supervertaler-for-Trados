@@ -1,12 +1,12 @@
 # The "New issue" chooser. Bug reports and feature requests use the forms below
 # and become normal GitHub issues ([Bug] / [Feature]); questions and general
-# discussion go to the org-level GitHub Discussions board (shared with Workbench).
+# discussion go to r/Supervertaler on Reddit (shared by all the products).
 # blank_issues_enabled stays true so the maintainer can open issues directly.
 blank_issues_enabled: true
 contact_links:
   - name: ❓ Questions & how-to help
-    url: https://github.com/orgs/Supervertaler/discussions
-    about: For usage questions, installation, licensing and general discussion, please post in GitHub Discussions.
+    url: https://www.reddit.com/r/Supervertaler/
+    about: For usage questions, installation, licensing and general discussion, please post on r/Supervertaler, our community on Reddit.
   - name: 🛟 RWS App Store listing
     url: https://appstore.rws.com/plugin/432
     about: Plugin page and reviews on the RWS App Store.
