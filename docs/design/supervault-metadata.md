@@ -2,13 +2,18 @@
 
 Design note, 9 Nov 2026. Status: proposal, no code yet. Base: Trados main a01b262, Plugin Core main 69f9aa1.
 Revision 2 (9 Nov): Michael's answers to the first version's questions are built in. The big change is **one
-translation per source sentence, newest wins** (section 3).
+translation per source sentence, newest wins** (section 3). Revision 3 (9 Nov): **per context**: a translation made
+in a particular context is kept and wins as a context match when that context comes round again (section 3h).
 
 ## In short
 
-- **One translation per source, newest wins.** For a given source sentence and language pair, SuperVault shows only
-  its newest translation. "Newest" is the translation's own date (from the TMX or TM, or the moment you confirm it),
-  never the import time.
+- **One translation per source, newest wins, per context.** A plain lookup shows only the newest translation of
+  a source.
+  - When the previous segment matches a context stored with a translation, that translation wins, as a real Studio
+    context match (CM), which Analyze also counts as CM (3h).
+  - memoQ gets newest-wins but no context: its plugin interface passes none.
+- **Newest wins, details.** "Newest" is the translation's own date (from the TMX or TM, or the moment you confirm
+  it), never the import time.
   - The older translations are **hidden, not deleted**. On Michael's real store, deleting them would throw away
     35,000 units that are still the only translation the other way round (section 3e).
   - Hiding happens at lookup, so imports stay as fast as today.
@@ -25,7 +30,8 @@ translation per source sentence, newest wins** (section 3).
   - learn Project and Client from the Studio project;
   - newest wins;
   - re-importing adds metadata and dates to units already there.
-- **Phase 2:** "only / never" rules, which hide; and the project's client first when choosing the newest.
+- **Phase 2:** "only / never" rules, which hide; the project's client first when choosing the newest; context
+  matches.
 
 ## 1. Which fields to keep
 
@@ -263,7 +269,7 @@ delete only units hidden in both directions, and would first export them to a TM
 Checked against today's code (`VaultStore.Writer.Learn`, `VaultInbox`, `VaultLibrary.Learn`):
 
 - **Correcting and re-confirming** already replaces the translation learned before (same source key, the same unit
-  updated). That fits.
+  updated). That fits, but it must become **per context**: the key becomes source + previous source (3h).
 - **A confirmation that differs from an imported unit** already adds a second unit. With newest-wins it hides the
   imported one at lookup. That fits, and is the point.
 - **Changes needed:**
@@ -289,6 +295,131 @@ Checked against today's code (`VaultStore.Writer.Learn`, `VaultInbox`, `VaultLib
   rule (SuperVault's match ranks after another TM's match of the same score, so the project TM's match stays as it
   was) keeps handling that.
 
+### (h) One translation per source PER CONTEXT (Michael, 9 Nov)
+
+Michael: "an identical source segment [sometimes] needs to be translated differently, depending on the surrounding
+context … A context match matches the previous and the one after that segment to help identify how to translate the
+middle segment."
+
+So the rule becomes:
+
+- **A plain lookup** (no stored context fits) shows **one match: the newest** translation of the source.
+- **When the lookup's surrounding segments match a context stored with a translation**, the newest translation made
+  in that context wins, shown as a **context match**.
+- A translation made for one context is **kept** even if a newer, different translation of the same source exists.
+  It wins whenever its context comes round again.
+
+#### What context SuperVault can get
+
+**Trados**, read from Studio 2026's code:
+
+- **At confirm:** the previous segment arrives, as translation units marked "don't store" ahead of the confirmed one
+  (`TranslationUpdate.AddSegment`). It brings its source and its current translation. One segment back, within the
+  same file (`SegmentContextHelper.GetSegmentsForContext`, `segmentsRequiredForContext = 1`). The next segment is not
+  passed.
+- **At lookup:** the same. The editor (`TranslationMemorySegmentSearch.DoSearch`) and the batch tasks (Analyze,
+  Pre-translate: `TranslationMemoryLookupContentProcessor`) call `SearchTranslationUnitsMasked` with the previous
+  segment as an unmasked context unit. SuperVault receives the previous source and translation with every lookup.
+  Today it ignores them.
+- **Returning a real context match:** a match is a context match when its `ScoringResult.TextContextMatch` is
+  `SourceTargetMatch`. Nothing checks which TM it came from:
+  - Translation Results shows it as CM (`DisplayInfoProvider`);
+  - Analyze counts it under "Context Match" when it is the top 100% result
+    (`SegmentCategoryCountData.DetermineSegmentInTMCategory`);
+  - Pre-translate treats it as a CM (`TranslateContentProcessor`).
+  - Studio downgrades a CM to a plain 100% when the previous segment was itself searched and had no 100% match
+    (`SearchResults.CheckCMValidity`). That rule applies to SuperVault automatically.
+- **What Studio's own TMs store:** two 64-bit hashes per context, previous source and previous translation
+  (`translation_unit_contexts`), made by Studio's internal hashing (`GetSegmentHashAsync`). They are not text.
+  SuperVault can't reproduce them through Studio's public API. So contexts in `.sdltm` files are not imported. Studio
+  TMs reach SuperVault's context only via a TMX export (below).
+  - REA could check whether Studio's hash can be reproduced, if this ever matters.
+- **Mind the billing effect:**
+  - SuperVault CMs would count as Context Matches in Studio's Analyze reports, which drive quotes and invoices.
+  - Pre-translate settings such as "lock context matches" would apply to them.
+  - A per-project switch "SuperVault never reports context matches" is proposed (phase 2), defaulting to report them.
+
+**memoQ** (Supervertaler for memoQ plugs in as an MT plugin, `MemoQ.MTInterfaces`):
+
+- memoQ never fills `TranslationBundle.SegmentContext` for third-party plugins. This is recorded in the memoQ plugin's
+  `PromptBuilder.cs`.
+- `StoreTranslation` gives only source and target, with no neighbours and no segment index.
+- Results show as MT, never as memoQ's 101% context match.
+- So **memoQ gets newest-wins but no context**. memoQ's metadata per request (`Client`, `Domain`, `Subject`,
+  `PorjectID`, sic) is useful later for client-first and filters.
+
+**TMX** (Michael's files, read-only; 890,000 units):
+
+| Context in the file | Units | What it is |
+|---|---|---|
+| memoQ `x-context-pre` / `x-context-post` on the source `<tuv>` (filled) | ~50,000 | the previous and next **source** text |
+| Studio `x-ContextContent` | ~34,000 (Studio and memoQ-exported files) | the previous segment as text: "previous source &#124; … &#124; previous translation &#124; …" |
+| Studio `x-Context` | ~5,500 | Studio's hash pair: not usable (see above) |
+| Smartcat, Olifant, MateCat `x-context-pre`/`-post` | ~2,300 | previous / next source text |
+
+About 16% of units carry some usable context. **Workbench:** none: `context_before`/`context_after` are empty in all
+1,554,005 rows. Only 1,147 Workbench sources have more than one translation.
+
+#### The context SuperVault keeps
+
+Per unit, a set of contexts. Each context is:
+
+- `prev_src`: hash of the previous segment's source, normalised as exact matches are; "start of file" when there is
+  none;
+- `prev_tgt`: hash of the previous segment's translation, or empty when unknown (memoQ files have none);
+- `next_src`: hash of the next segment's source, or empty (Trados never gives one).
+
+```
+CREATE TABLE unit_ctx (unit_id INTEGER NOT NULL, prev_src INTEGER NOT NULL, prev_tgt INTEGER, next_src INTEGER,
+                       seen INTEGER,                      -- the date of the translation in that context
+                       PRIMARY KEY (unit_id, prev_src, prev_tgt, next_src)) WITHOUT ROWID;
+-- plus a trigger into the change log, like unit_vals
+```
+
+Hashes are 64-bit: the first 8 bytes of the MD5 SuperVault already uses for exact matches.
+
+#### Storage key and merge rule
+
+- **A unit is still one source + one translation per language pair.** An identical translation met in several
+  contexts is one unit with several contexts (union; at most 100 per unit, keeping the newest). Very common segments
+  ("Figure 1") would otherwise collect thousands.
+- **The winner, for a lookup in direction X > Y with the previous segment P (source and translation):**
+  1. units of the group with a context whose `prev_src` and `prev_tgt` both equal P's: the newest of them wins, as a
+     **context match** (`SourceTargetMatch`);
+  2. otherwise, units with a context whose `prev_src` equals P's source (memoQ-style, or the previous translation
+     differs): the newest of them wins as a plain 100% (`SourceMatch`, which Studio doesn't show as CM);
+  3. otherwise the newest unit of the group, as a plain 100%.
+- **A unit without any context** competes only in step 3. A context unit competes in steps 1–3 with its own date.
+  So for plain lookups the newest wins whether or not it has contexts, which is exactly Michael's "one match".
+- Studio lookups never give `next_src`, so memoQ's next-source context only counts in step 2, via the previous
+  source. It's kept in case a later route provides the next segment.
+- Filters (section 4) apply first, as before: only allowed units take part.
+
+#### Effect on the migration count (3e) and on corrections
+
+- **Michael's current store has no context at all** (it comes from Workbench), so the count in (e) is unchanged:
+  22,786 units hidden in nl > en and 30,701 in en > nl, all by plain newest-wins. Contexts arrive only with
+  re-imports of memoQ and Studio TMX files and with confirmations, and they can only make a hidden translation win in
+  its own context. Still nothing is deleted.
+- **Corrections replace only within the same context.** The learned key becomes source + `prev_src`:
+  - Correcting segment 5 and confirming again replaces the translation learned for segment 5's context.
+  - Confirming the same source elsewhere (another `prev_src`) with a different translation adds a unit; with the same
+    translation it adds a context to the existing unit.
+  - The previous **translation** is deliberately not part of this key. Otherwise editing segment 4 and then
+    re-confirming segment 5 would add a second unit instead of replacing.
+- Read-your-writes (units just confirmed and not yet stored) carries the context too. A segment confirmed a moment
+  ago is then found at once as a context match.
+
+#### Cost at 10M units
+
+- **Store:** assuming about 16% of units with one or two contexts, as in Michael's TMX data, about 2–3M `unit_ctx`
+  rows of ~30 bytes, so **60–90 MB**.
+- **Index:** each unit gets untokenised context terms per side: `cs_<lang>` = `prev_src`, and `cst_<lang>` =
+  `prev_src`+`prev_tgt` combined. That's about 20–40 MB at 10M.
+- **Lookup:** one extra exact query, "source hash AND context term", which returns the few units for that exact
+  context. Microseconds: no reading of the whole group's contexts.
+- **Import:** contexts merge like other metadata, one indexed insert per context.
+
 ### Scale at 10M units
 
 - **Import:** no extra work for newest-wins, because nothing is compared or deleted at import. Imports stay as fast
@@ -313,6 +444,10 @@ Checked against today's code (`VaultStore.Writer.Learn`, `VaultInbox`, `VaultLib
 - Once schema 3 lands, the export should write each unit's own dates (`creationdate`/`changedate`, `creationid`/
   `changeid`) and its fields as `<prop>`s. Then exporting and re-importing keeps the order of "newest".
 - Undated units should be exported without dates, not with the export time.
+- Contexts (3h) are stored as hashes, not text, so an export can't write them back as `x-context-pre` or
+  `x-ContextContent`.
+  - If exporting contexts matters, phase 2 would also keep the previous source text (memoQ-style `x-context-pre`).
+  - Otherwise a TMX round trip loses context matches. The export worker should know this before choosing a format.
 
 ## 4. Filtering and restricting at 10M units
 
@@ -447,13 +582,22 @@ Rules for the build:
   - the protected files unchanged.
 - Scale: 10M-unit lookup with large groups; re-import of 1.5M with metadata; memory in 32-bit Studio 2024.
 
-**Phase 2: filter and client first.**
+**Phase 2: filter, client first, context matches.**
 
 - Index terms and cached Lucene filters.
 - Honour Studio's HardFilter and filter penalties.
 - Per-project "only / never" rules and "this project's client" in the provider state, edited from the SuperVault
   window.
 - Client-first winner selection.
+- Context:
+  - store contexts from confirmations and TMX (`x-context-pre`/`-post`, `x-ContextContent`);
+  - winner by context, then newest; return `SourceTargetMatch`;
+  - learned key per context;
+  - the per-project "never report context matches" switch.
+- Context tests:
+  - Analyze counts a SuperVault CM;
+  - `CheckCMValidity` downgrades it after a non-100% previous segment;
+  - a correction replaces only within its context.
 - Measured on a 10M-unit copy.
 
 **Phase 3: extras, if wanted.**
@@ -477,7 +621,8 @@ Decided with Michael:
 5. Confirmed segments take **Project from the Studio project name and Client from Studio's Customer** field.
 6. Other translators' and reviewers' **user names are kept**.
 7. Re-import backfills metadata and dates (the design is unchanged; the orchestrator will explain it).
-8. **One translation per source, newest wins.**
+8. **One translation per source, newest wins, but per context**: a translation made in a different context is kept,
+   and wins as a context match when that context comes back.
 
 Still open, in plain words:
 
@@ -489,3 +634,8 @@ Still open, in plain words:
 3. When a client's own translation exists, should it beat a newer translation made for someone else ("client
    first")? This is the recommendation; it comes in phase 2.
 4. Newest wins across en-GB and en-US alike. Is that fine, or should your project's English variant come first?
+5. SuperVault's context matches would count as **Context Matches in Studio's Analyze reports**, which drive quotes,
+   and Pre-translate settings like "lock context matches" would apply to them. Fine by default, with a per-project
+   switch to turn them off?
+6. Trados only tells SuperVault the **previous** segment, not the next one, and memoQ gives it no context at all. Is a
+   Trados-only, previous-segment context match what you had in mind?
