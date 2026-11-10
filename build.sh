@@ -53,6 +53,11 @@ STALE_LOCAL_19_DIR="$LOCALAPPDATA/Trados/Trados Studio/19/Plugins/Packages"
 # the App Store stripping the "(Studio 2026)" suffix), so this is swept by
 # prefix rather than by a literal name.
 STALE_LOCAL_19_UNPACKED_ROOT="$LOCALAPPDATA/Trados/Trados Studio/19/Plugins/Unpacked"
+# Studio 2026 BETA, installed beside the release: same package, its own "19beta"
+# settings key, Roaming like the release.
+STUDIO19BETA_INSTALL="/c/Program Files/Trados/Trados Studio/Studio19Beta"
+PACKAGES_DIR_19BETA="$APPDATA/Trados/Trados Studio/19beta/Plugins/Packages"
+UNPACKED_ROOT_19BETA="$APPDATA/Trados/Trados Studio/19beta/Plugins/Unpacked"
 
 OLD_UNPACKED_DIR_18="$LOCALAPPDATA/Trados/Trados Studio/18/Plugins/Unpacked/TermLens"
 # build.sh used to deploy to Roaming; switched to Local in v4.19.25 to match
@@ -413,6 +418,30 @@ if [ -d "$STUDIO19_INSTALL" ]; then
             && echo "  Installed: $PACKAGES_DIR_19/$PLUGIN_FILENAME_19"
     fi
     echo ""
+
+    # The Studio 2026 BETA, when installed: a separate Studio beside the release
+    # (Program Files\...\Studio19Beta, settings under the "19beta" key), which
+    # loads the same 2026 package from Roaming\19beta. Michael tests the beta
+    # too, so every build goes there as well. The package is the release build,
+    # checked against the beta's own assemblies first: a beta that has dropped
+    # an API we use is reported and skipped, never installed into, and does not
+    # stop the other installs.
+    if [ -f "$STUDIO19BETA_INSTALL/Sdl.Desktop.IntegrationApi.dll" ]; then
+        echo "=== [Studio19] Deploying to Trados Studio 2026 beta ==="
+        if check_studio_references "$STUDIO19BETA_INSTALL" "$DIST_DIR/$PLUGIN_FILENAME_19"; then
+            if claim_unpacked "$UNPACKED_ROOT_19BETA" "Trados Studio 2026 beta"; then
+                mkdir -p "$PACKAGES_DIR_19BETA"
+                sweep_other_packages "$PACKAGES_DIR_19BETA" "$PLUGIN_FILENAME_19"
+                install_package "$DIST_DIR/$PLUGIN_FILENAME_19" "$PACKAGES_DIR_19BETA/$PLUGIN_FILENAME_19" \
+                    && echo "  Installed: $PACKAGES_DIR_19BETA/$PLUGIN_FILENAME_19"
+            fi
+        else
+            echo "  SKIPPING Trados Studio 2026 beta: the 2026 build uses something its assemblies lack (above)."
+            SKIPPED="$SKIPPED
+    - Trados Studio 2026 beta (reference check failed)"
+        fi
+        echo ""
+    fi
 else
     echo "  [Studio19] Trados Studio 2026 not installed at $STUDIO19_INSTALL — skipping 19 build."
     echo "  Install Studio 2026 to ${STUDIO19_INSTALL/\/c\//C:\\} to enable the 19 build."
