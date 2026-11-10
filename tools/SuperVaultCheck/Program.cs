@@ -38,6 +38,8 @@ static class Program
             return Kit.Run(args.Length > 1 ? args[1] : "EverTM acceptance", args.Length > 2 ? args[2] : @"D:\Supervertaler\resources\supervertaler.db");
         if (args.Length > 1 && args[0] == "lookup-xliff")
             return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : null);
+        if (args.Length > 1 && args[0] == "tmmatch-scale")
+            return TmMatchChecks.Scale(args[1], args.Length > 2 ? int.Parse(args[2]) : 20000);
         if (args.Length > 1 && args[0] == "import-sdltm")
             return RealTm.Run(args[1], args.Length > 2 ? args[2] : null);
         return Checks.Run(args);
@@ -81,6 +83,7 @@ static class Checks
             ExportIntoStudio(root);
             ExportChoice(root);
             MetadataChecks.Run(_scratch, Check);
+            TmMatchChecks.Run(_scratch, Check);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }

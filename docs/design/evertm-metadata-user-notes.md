@@ -64,6 +64,17 @@ User-facing notes, kept while building, for docs.supervertaler.com/trados/evertm
   comes back (Trados only).
 - *(planned)* Per-project rules: "only use translation units with Subject: ..." and "never use ...".
 
+## AI Batch Translate
+
+- With **Send TM matches** on, Batch Translate also searches EverTM when the project has it with **Lookup** ticked
+  (not only the project's Studio TMs). EverTM's best match at or above the lowest score to send takes part in the
+  "best match" choice, with its own source sentence; a project TM's match of the same score wins; an exact match
+  already on the segment is never replaced by a lower one.
+- An empty, damaged or rebuilding EverTM gives no matches: the batch goes on.
+- Time: about 4 minutes in Studio 2026 and 2 minutes in Studio 2024 (4 lookups at once; one at a time it was 7.7 and 5.0 minutes) for 20,000 segments on 871,000 translation units.
+- *Not (yet)*: the AI Assistant chat's TM context (it shows what Studio put on the active segment, from any TM,
+  without searching), and the MCP server's TM tools (`search_studio_tm`, `compare_document_to_tm`, `list_resources`).
+
 ## After updating
 
 - The first start rebuilds EverTM's index in the background (about 4–5 minutes with 870,000 translation units); matches go on

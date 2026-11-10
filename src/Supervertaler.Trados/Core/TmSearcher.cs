@@ -112,6 +112,62 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// True when the project that contains <paramref name="anyProjectFilePath"/> has EverTM
+        /// (<c>evertm:///</c>, or <c>supervault:///</c> from before the rename) in its TM settings, enabled and with
+        /// Lookup ticked (<c>PerformNormalSearch</c>), in the project's own list or a language pair's. EverTM is not in
+        /// <see cref="FindProjectTms"/>'s list, which is of files and server URIs that other features open
+        /// themselves; the TM-match lookup searches EverTM through its own provider instead.
+        /// Never throws; false when the project file can't be found or read.
+        /// </summary>
+        public static bool ProjectUsesEverTm(string anyProjectFilePath)
+        {
+            try
+            {
+                var projPath = FindProjectFile(anyProjectFilePath);
+                if (projPath == null) return false;
+                return UsesEverTm(XDocument.Load(projPath));
+            }
+            catch { return false; }
+        }
+
+        public static bool UsesEverTm(XDocument projDoc)
+        {
+            foreach (var entry in projDoc.Descendants().Where(e => e.Name.LocalName == "CascadeEntryItem"))
+            {
+                if (string.Equals(entry.Attribute("PerformNormalSearch")?.Value, "false", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var item in entry.Elements().Where(e => e.Name.LocalName == "MainTranslationProviderItem"))
+                {
+                    if (string.Equals(item.Attribute("Enabled")?.Value, "false", StringComparison.OrdinalIgnoreCase)) continue;
+                    Uri uri;
+                    if (Uri.TryCreate(item.Attribute("Uri")?.Value ?? "", UriKind.Absolute, out uri)
+                        && Supervertaler.Trados.SuperVault.SuperVaultProvider.IsOurs(uri))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>The .sdlproj in the folder of <paramref name="anyProjectFilePath"/> or above it, or null.</summary>
+        static string FindProjectFile(string anyProjectFilePath)
+        {
+            if (string.IsNullOrEmpty(anyProjectFilePath)) return null;
+            var dir = Path.GetDirectoryName(anyProjectFilePath);
+            while (!string.IsNullOrEmpty(dir))
+            {
+                try
+                {
+                    var found = Directory.GetFiles(dir, "*.sdlproj", SearchOption.TopDirectoryOnly);
+                    if (found.Length > 0) return found[0];
+                }
+                catch { /* permission denied */ }
+                var parent = Path.GetDirectoryName(dir);
+                if (parent == dir) break;
+                dir = parent;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Friendly display name for a TM entry returned by <see cref="FindProjectTms"/>:
         /// the file name (no extension) for a file-based <c>.sdltm</c>, or the
         /// GroupShare TM name with a "(GroupShare)" suffix for a server
