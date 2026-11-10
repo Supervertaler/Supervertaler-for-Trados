@@ -1221,6 +1221,18 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "jobId", Order = 7, EmitDefaultValue = false)] public string JobId { get; set; }
     }
 
+    /// <summary>POST /v1/create-project (MCP create_project).</summary>
+    [DataContract]
+    public class BridgeCreateProjectRequest
+    {
+        [DataMember(Name = "name")] public string Name { get; set; }
+        [DataMember(Name = "sourceLanguage")] public string SourceLanguage { get; set; }
+        [DataMember(Name = "targetLanguages")] public List<string> TargetLanguages { get; set; }
+        [DataMember(Name = "files")] public List<string> Files { get; set; }
+        [DataMember(Name = "template")] public string Template { get; set; }
+        [DataMember(Name = "location")] public string Location { get; set; }
+    }
+
     [DataContract]
     public class BridgeTaskStatusResponse
     {
@@ -1236,6 +1248,12 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "elapsedSeconds", Order = 8)] public int ElapsedSeconds { get; set; }
         [DataMember(Name = "messages", Order = 9, EmitDefaultValue = false)] public List<string> Messages { get; set; }
         [DataMember(Name = "note", Order = 10, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>create_project: the .sdlproj once it is done.</summary>
+        [DataMember(Name = "projectFile", Order = 11, EmitDefaultValue = false)] public string ProjectFile { get; set; }
+        /// <summary>create_project: the translatable files in the project, as Studio lists them.</summary>
+        [DataMember(Name = "files", Order = 12, EmitDefaultValue = false)] public List<string> Files { get; set; }
+        /// <summary>create_project: what it is doing now (running) – e.g. "adding the files (120/500)".</summary>
+        [DataMember(Name = "progress", Order = 13, EmitDefaultValue = false)] public string Progress { get; set; }
     }
 
     [DataContract]
@@ -1759,6 +1777,7 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeFindReplaceRequest, BridgeFindReplaceResponse> _findReplace;
         private readonly Func<BridgeRunTaskRequest, BridgeRunTaskResponse> _runTask;
         private readonly Func<string, BridgeTaskStatusResponse> _getTaskStatus;
+        private readonly Func<BridgeCreateProjectRequest, BridgeRunTaskResponse> _createProject;
         private readonly Func<int, BridgePromptContextResponse> _getPromptContext;
         private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _updateTerm;
         private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _deleteTerm;
@@ -1878,8 +1897,10 @@ namespace Supervertaler.Trados.Core
             Func<BridgeCoverageResponse> getCoverage = null,
             Func<BridgeTrackedChangesQuery, BridgeTrackedChangesResponse> getTrackedChanges = null,
             Func<BridgeImportTermbaseRequest, BridgeImportTermbaseResponse> importTermbase = null,
-            Func<BridgeInstanceInfo> getInstanceInfo = null)
+            Func<BridgeInstanceInfo> getInstanceInfo = null,
+            Func<BridgeCreateProjectRequest, BridgeRunTaskResponse> createProject = null)
         {
+            _createProject = createProject;
             _getInstanceInfo = getInstanceInfo;
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -2419,6 +2440,11 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/run-task")
             {
                 HandleRunTask(context);
+                return;
+            }
+            if (method == "POST" && path == "/v1/create-project")
+            {
+                HandleCreateProject(context);
                 return;
             }
             if (method == "GET" && path == "/v1/task-status")
@@ -4393,6 +4419,43 @@ namespace Supervertaler.Trados.Core
             {
                 BridgeLog.Write($"[SupervertalerBridge] run-task threw: {ex.Message}");
                 response = new BridgeRunTaskResponse { Ok = false, Error = "task failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleCreateProject(HttpListenerContext context)
+        {
+            if (_createProject == null)
+            {
+                TryWriteError(context, 501, "create-project endpoint not wired");
+                return;
+            }
+
+            BridgeCreateProjectRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<BridgeCreateProjectRequest>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeRunTaskResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            BridgeRunTaskResponse response;
+            try
+            {
+                response = _createProject(req ?? new BridgeCreateProjectRequest())
+                    ?? new BridgeRunTaskResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] create-project threw: {ex.Message}");
+                response = new BridgeRunTaskResponse { Ok = false, Error = "create-project failed: " + ex.Message };
             }
 
             WriteJson(context, 200, response);

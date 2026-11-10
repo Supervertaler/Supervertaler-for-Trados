@@ -504,7 +504,7 @@
     {
       "name": "get_task_status",
       "access": "read",
-      "description": "Check a background batch task started by analyze_files, pretranslate, update_tm, or export_target. Pass the jobId that tool returned. Returns status ('running', 'done', or 'failed'), elapsed seconds, any task messages (e.g. pre-translate match counts), and a note. Poll this every 20-30 seconds until status is no longer 'running'. For analyze, once it's 'done', call get_project_statistics to read the leverage bands.",
+      "description": "Check a background batch task started by analyze_files, pretranslate, update_tm, export_target or create_project. Pass the jobId that tool returned. Returns status ('running', 'done', or 'failed'), elapsed seconds, any task messages (e.g. pre-translate match counts), and a note. Poll this every 20-30 seconds until status is no longer 'running'. For analyze, once it's 'done', call get_project_statistics to read the leverage bands. For create_project, 'done' also gives projectFile and files, and 'progress' says what it is doing while it runs.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -935,6 +935,55 @@
       },
       "method": "GET",
       "path": "/v1/project-templates",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "create_project",
+      "access": "write",
+      "description": "Create a new Trados Studio project in the Studio you are connected to, the way New Project does: the files are copied into the project and converted to SDLXLIFF for every target language, and with a template the project gets that template's settings, TMs and termbases. BEFORE CALLING: show the user the plan - name, languages, template, location and the file list - and get their yes; it writes a project folder to disk and adds the project to Studio's Projects list. Start from list_project_templates when the user has templates: a template for the client or job type is the normal route, and with a template the languages may be left out when the template has one language pair (they are taken from it); a template with several pairs is refused with the list of its pairs - ask the user which and pass sourceLanguage (and targetLanguages). files are full paths to source documents (not .sdlxliff files or packages); files in subfolders keep those subfolders in the project. The project is made in its own new folder <location>\\<name>; location defaults to Studio's own Projects folder. It REFUSES, writing nothing, when the name is already a project in Studio or the folder exists and is not empty, a file is missing, empty, open in another program or not a source document (archives such as .zip, programs, audio/video, Trados files), a language code is unknown, or the template is missing or unreadable - relay the reasons. If the start reply has warnings (e.g. a TM or termbase the template points to is missing), tell the user. Runs in the BACKGROUND: it returns a jobId at once; poll get_task_status every 10-20 seconds until status is 'done' (then it gives projectFile and the list of files) or 'failed' (then nothing is left behind - no folder, no Projects-list entry). If Studio cannot convert any one of the files, the whole job fails and names those files: never tell the user a project was made unless status is 'done'. If progress says 'waiting for Studio', a message is open in Studio: tell the user to answer it there. It does not open the project, analyse or pre-translate: tell the user to open it from Studio's Projects view. If Studio's licence does not allow creating projects through the API, it says so in plain words.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Project name, e.g. 'Acme PROJ-001'. Also the project folder's name, so no \\ / : * ? \" < > |.",
+            "type": "string"
+          },
+          "sourceLanguage": {
+            "description": "Source language code, e.g. 'nl-NL'. Optional when a template is given (the template's is used).",
+            "type": "string"
+          },
+          "targetLanguages": {
+            "description": "Target language codes, e.g. ['en-GB']. Optional when a template is given (the template's are used).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files": {
+            "description": "Full paths of the source documents to translate (e.g. .docx, .xlsx, .pdf). Studio copies them; the originals are never changed.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "template": {
+            "description": "Optional: full path of a project template (.sdltpl), as list_project_templates returns it.",
+            "type": "string"
+          },
+          "location": {
+            "description": "Optional: the folder to create the project folder in. Default: Studio's own Projects folder (Documents\\Studio 20xx\\Projects).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "files"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/create-project",
       "paramMap": {},
       "fixedQuery": {},
       "fixedBody": {}

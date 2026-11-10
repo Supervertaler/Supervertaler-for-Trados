@@ -168,7 +168,7 @@ that specific change:
 `update_segments` `find_and_replace` `pretranslate` `insert_into_active_segment`
 `mark_reviewed` `save_document` `export_target` `update_tm` `add_comment`
 `update_comment` `delete_comment` `add_term` `update_term` `delete_term`
-`import_project_termbase` `save_prompt`
+`import_project_termbase` `save_prompt` `create_project`
 
 Everything else only reads. Prefer reading, and show the user what you found
 before proposing a change.
@@ -196,13 +196,17 @@ before proposing a change.
 - A target written without an explicit status becomes **Draft**, so the user can
   review it. Leave it that way unless they ask for Translated.
 
-## Two that behave unusually
+## Some that behave unusually
 
 - **`pretranslate`** runs in the BACKGROUND and returns a `jobId` immediately -
   poll `get_task_status`. It writes from the LAST SAVED state, so the document
   must be saved first (with the user's OK), and they may need to close and
   reopen it to see the results.
 - **`export_target`** and **`save_document`** touch files on disk. Ask first.
+- **`create_project`** makes a new Studio project from source files. Show the
+  user the plan (name, languages, template, location, files) and get their yes
+  first. It runs in the BACKGROUND like `pretranslate`: poll `get_task_status`.
+  A refusal or a failed job leaves nothing behind.
 
 ## Never write into the project folder
 
