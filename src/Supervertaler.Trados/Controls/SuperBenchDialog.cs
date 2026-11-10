@@ -118,7 +118,7 @@ namespace Supervertaler.Trados.Controls
             };
             _layout.Controls.Add(_lblMtNote, 1, row); row++;
             UpdateMtNote();
-            var judge = MakeModelRow(providerKeys, LlmModels.ProviderClaude, "claude-fable-5-1");
+            var judge = MakeModelRow(providerKeys, LlmModels.ProviderClaude, "claude-fable-5-2");
             _cboJudgeProvider = judge.provider; _cboJudgeModel = judge.model;
             _layout.Controls.Add(L("Judge:"), 0, row);
             _layout.Controls.Add(Host(judge.provider, judge.model), 1, row); row++;
