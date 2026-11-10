@@ -89,6 +89,7 @@ namespace Supervertaler.Trados.VoiceControl
             from = to = 0;
             var tokens = (utterance ?? "").ToLowerInvariant()
                 .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            ReadLeadingToAsTwo(tokens);
             var numbers = new List<int>();
             int? pendingTens = null;
             foreach (var tok in tokens)
@@ -132,6 +133,45 @@ namespace Supervertaler.Trados.VoiceControl
             to = numbers[numbers.Count - 1];
             if (to < from) { var t = from; from = to; to = t; }
             return true;
+        }
+
+        /// <summary>
+        /// "Select two to three" came back from the recogniser as "select to to
+        /// three" and "select to thru three" (2026-11-10): right after "select",
+        /// "to" is the likelier English word. The "to" was then taken as a range
+        /// word, only "three" was left, and word 3 alone was selected - reported as
+        /// a success. A "to" (or "too") that comes before any number and is
+        /// followed by a range word is the number two; so is a "to" straight after
+        /// "select" that ends the utterance ("select to"). A lone "select to
+        /// three" stays as it was: two-to-three with a word lost, or twenty-three,
+        /// cannot be told apart. Rewrites <paramref name="tokens"/> in place.
+        /// </summary>
+        private static void ReadLeadingToAsTwo(string[] tokens)
+        {
+            bool sawNumber = false;
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                var tok = tokens[i];
+                if (IsNumberToken(tok)) { sawNumber = true; continue; }
+                if (sawNumber || (tok != "to" && tok != "too")) continue;
+                bool rangeNext = i + 1 < tokens.Length && RangeWords.Contains(tokens[i + 1]);
+                bool numberLater = false;
+                for (int j = i + 1; j < tokens.Length && !numberLater; j++) numberLater = IsNumberToken(tokens[j]);
+                // The lone "to" only straight after "select": a stray "go to" or
+                // "to" while the popup is open must not select word 2.
+                bool loneAfterSelect = !numberLater && i == tokens.Length - 1 && i > 0 && tokens[i - 1] == "select";
+                if (rangeNext || loneAfterSelect)
+                {
+                    tokens[i] = "two";
+                    sawNumber = true;
+                }
+            }
+        }
+
+        private static bool IsNumberToken(string tok)
+        {
+            int n;
+            return Array.IndexOf(Ones, tok) >= 0 || Array.IndexOf(Tens, tok) >= 2 || int.TryParse(tok, out n);
         }
     }
 }
