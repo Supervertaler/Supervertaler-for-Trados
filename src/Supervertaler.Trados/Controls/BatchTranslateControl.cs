@@ -439,6 +439,9 @@ namespace Supervertaler.Trados.Controls
             };
             _cmbPrompt.Items.Add(BuiltInItem);
             _cmbPrompt.SelectedIndex = 0;
+            // Type to filter: the prompt library grows per client and per task.
+            ComboFilter.Attach(_cmbPrompt, "Type to filter prompts",
+                item => item as string == BuiltInItem);
             _promptTip = new ToolTip { AutoPopDelay = 20000, InitialDelay = 300 };
             UpdatePromptTip();
             Controls.Add(_lblPromptLabel);
