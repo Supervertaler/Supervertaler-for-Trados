@@ -155,21 +155,35 @@ namespace Supervertaler.Trados.SuperVault
 
         /// <summary>
         /// The dates and users Studio shows under the results (its info bar): the unit's own. A unit with no known date
-        /// shows when it entered EverTM, by "EverTM", which is true, rather than a made-up translation date.
+        /// shows when it entered EverTM, rather than a made-up translation date.
+        ///
+        /// A user EverTM doesn't know is left out (null), never "EverTM" (Michael, 10 Nov: "EverTM is the system, not a
+        /// user"). Read from Studio 2024 and 2026, every place that reads these users takes a null:
+        ///  - the info bar (TmInfoBar.UpdateControls) shows the date and no user, and hides the separator before it;
+        ///    its tooltip shows "Never" / "N/A" for a date without a user (Studio's own rule, as for any TM unit with no
+        ///    user);
+        ///  - applying a match in the Editor and Pre-translate (TranslationOriginOperations, TranslateContentProcessor)
+        ///    copy it into the segment's origin; the .sdlxliff writer appends it as text, so null writes an empty value;
+        ///  - AutoSuggest's MT-user check (a list Contains), the TU's field lookup ("cru"/"chu") and the BCM converter
+        ///    just carry it.
+        /// An empty string would show the separator with nothing after it, so null it is.
         /// </summary>
         internal static SystemFields SystemFieldsOf(VaultCandidate c)
         {
             var fallback = c.Added ?? DateTime.UtcNow;
             var created = c.Created ?? c.Changed ?? fallback;
             var changed = c.Changed ?? c.Created ?? fallback;
-            string createdBy = c.Created != null || c.Changed != null ? c.CreatedBy ?? c.ChangedBy ?? "EverTM" : "EverTM";
-            string changedBy = c.Created != null || c.Changed != null ? c.ChangedBy ?? c.CreatedBy ?? "EverTM" : "EverTM";
+            bool dated = c.Created != null || c.Changed != null;
+            string createdBy = dated ? Known(c.CreatedBy) ?? Known(c.ChangedBy) : null;
+            string changedBy = dated ? Known(c.ChangedBy) ?? Known(c.CreatedBy) : null;
             return new SystemFields
             {
                 CreationDate = created, ChangeDate = changed, UseDate = changed,
                 CreationUser = createdBy, ChangeUser = changedBy, UseUser = changedBy,
             };
         }
+
+        static string Known(string user) => string.IsNullOrWhiteSpace(user) ? null : user;
 
         /// <summary>
         /// The unit's fields, for Studio's field column in Translation Results and Concordance (it shows the first three:

@@ -40,8 +40,10 @@ User-facing notes, kept while building, for docs.supervertaler.com/trados/evertm
 
 - Translation Results and Concordance: the fields on each EverTM match (Studio shows the first three: Project,
   Client, Subject; the rest in the tooltip), plus "Older translations: N" when EverTM hid other translations.
-- Under the results: the created and changed dates and users. A unit with no known date shows when it entered EverTM,
-  by "EverTM".
+- Under the results: the created and changed dates and users. A unit with no known date shows when it entered EverTM.
+  When EverTM doesn't know who made or changed a unit, no user is shown (EverTM is the system, not a user). Studio's
+  tooltip over that line then says "Never" and "N/A" for the dates and users, as it does for any TM unit without a
+  user; the line itself shows the date.
 - EverTM's window: "Translation units: 871,290", "Indexed translation units: 871,290, built ...", and "Metadata: 285
   projects, 55 clients, 15 subjects". While it works: "Indexing: 190,000 of 871,290 translation units. You can close this
   window and keep working." Afterwards: "Last task: ...".

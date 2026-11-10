@@ -38,6 +38,57 @@ static class MetadataChecks
         MatchesCarryFieldsAndDates(root);
         NewestAndVariantThroughCascade(root);
         ConfirmedSegmentsAreTagged(root);
+        UnknownUsersAreLeftOut(root);
+    }
+
+    /// <summary>
+    /// A unit EverTM knows no user for gives Studio no user (null), never "EverTM" (Michael, 10 Nov), and keeps its
+    /// date: the undated one shows when it entered EverTM. Where Studio copies the users into a segment (applying a
+    /// match, Pre-translate), a null value goes through its origin and its .sdlxliff writer without trouble.
+    /// </summary>
+    static void UnknownUsersAreLeftOut(string root)
+    {
+        var tmx = Path.Combine(_scratch, "nousers.tmx");
+        File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"nl-NL\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+            "<tu><tuv xml:lang=\"nl-NL\"><seg>Het deksel blijft dicht.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>The lid stays closed.</seg></tuv></tu>" +
+            "<tu creationdate=\"20230405T060708Z\"><tuv xml:lang=\"nl-NL\"><seg>Het deksel gaat open.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>The lid opens.</seg></tuv></tu>" +
+            "</body></tmx>");
+        var before = DateTime.UtcNow.AddSeconds(-2);
+        VaultLibrary.For(root).Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
+        var vault = new SuperVaultProvider(root).GetLanguageDirection(new LanguagePair(NlNl, EnGb));
+        var undated = Search(vault, "Het deksel blijft dicht.", NlNl, EnGb).Results.FirstOrDefault()?.MemoryTranslationUnit.SystemFields;
+        Check(undated != null && undated.CreationUser == null && undated.ChangeUser == null && undated.UseUser == null,
+              "no date, no user: Studio gets no user, not \"EverTM\" (" + (undated?.ChangeUser ?? "null") + ")");
+        Check(undated != null && undated.ChangeDate >= before && undated.ChangeDate <= DateTime.UtcNow.AddSeconds(2),
+              "and its date is when it entered EverTM: " + undated?.ChangeDate.ToString("u"));
+        var dated = Search(vault, "Het deksel gaat open.", NlNl, EnGb).Results.FirstOrDefault()?.MemoryTranslationUnit.SystemFields;
+        Check(dated != null && dated.CreationUser == null && dated.ChangeUser == null && dated.ChangeDate == new DateTime(2023, 4, 5, 6, 7, 8, DateTimeKind.Utc),
+              "a date but no user (a TMX without creationid): its own date, no user");
+
+        // What Pre-translate and the Editor do with a match's users: copy them into the segment's origin, which the
+        // .sdlxliff writer then writes as text (XliffWriter: XmlEscape, then XmlBuilderText appended).
+        Exception error = null;
+        string written = null;
+        try
+        {
+            var origin = new Sdl.FileTypeSupport.Framework.Native.TranslationOrigin { OriginType = "tm" };
+            origin.SetMetaData("created_by", undated?.CreationUser);
+            origin.SetMetaData("last_modified_by", undated?.ChangeUser);
+            var b = new Sdl.FileTypeSupport.Bilingual.SdlXliff.XmlNodeBuilder.XmlBuilder();
+            b.StartElement("seg");
+            foreach (var kv in origin.MetaData)
+            {
+                b.StartElement("value");
+                b.SetAttribute("key", kv.Key);
+                ((Sdl.FileTypeSupport.Bilingual.SdlXliff.XmlNodeBuilder.IXmlBuilderElement)b.CurrentNode).Add(new Sdl.FileTypeSupport.Bilingual.SdlXliff.XmlNodeBuilder.XmlBuilderText { Text = Sdl.FileTypeSupport.Bilingual.SdlXliff.XmlNodeBuilder.XmlBuilder.XmlEscape(kv.Value) });
+                b.EndElement();
+            }
+            b.EndElement();
+            written = b.BuildXmlString(Sdl.FileTypeSupport.Bilingual.SdlXliff.XmlNodeBuilder.TreeGeneration.FullTree);
+        }
+        catch (Exception ex) { error = ex; }
+        Check(error == null && written != null && written.Contains("key=\"created_by\"") && !written.Contains("EverTM"),
+              "a null user goes into the segment's origin and the .sdlxliff writer as an empty value: " + (error?.Message ?? written));
     }
 
     static Segment Seg(CultureCode c, string text) { var s = new Segment(c); s.Add(text); return s; }
