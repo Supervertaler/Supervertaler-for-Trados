@@ -1221,6 +1221,20 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "jobId", Order = 7, EmitDefaultValue = false)] public string JobId { get; set; }
     }
 
+    /// <summary>POST /v1/open-project (MCP open_project).</summary>
+    [DataContract]
+    public class BridgeOpenProjectRequest
+    {
+        /// <summary>Project name (exact, or a unique part of it) or full .sdlproj path.</summary>
+        [DataMember(Name = "project")] public string Project { get; set; }
+        /// <summary>Open every target file of the language in the Editor.</summary>
+        [DataMember(Name = "allFiles")] public bool AllFiles { get; set; }
+        /// <summary>Open these files (names as get_project lists them).</summary>
+        [DataMember(Name = "files")] public List<string> Files { get; set; }
+        /// <summary>Target language of the files to open; needed when the project has several.</summary>
+        [DataMember(Name = "targetLanguage")] public string TargetLanguage { get; set; }
+    }
+
     /// <summary>POST /v1/create-project (MCP create_project).</summary>
     [DataContract]
     public class BridgeCreateProjectRequest
@@ -1778,6 +1792,8 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeRunTaskRequest, BridgeRunTaskResponse> _runTask;
         private readonly Func<string, BridgeTaskStatusResponse> _getTaskStatus;
         private readonly Func<BridgeCreateProjectRequest, BridgeRunTaskResponse> _createProject;
+        private readonly Func<BridgeOpenProjectRequest, BridgeTaskStatusResponse> _openProject;
+        private readonly Func<bool> _editorReady;
         private readonly Func<int, BridgePromptContextResponse> _getPromptContext;
         private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _updateTerm;
         private readonly Func<BridgeEditTermRequest, BridgeEditTermResponse> _deleteTerm;
@@ -1898,9 +1914,13 @@ namespace Supervertaler.Trados.Core
             Func<BridgeTrackedChangesQuery, BridgeTrackedChangesResponse> getTrackedChanges = null,
             Func<BridgeImportTermbaseRequest, BridgeImportTermbaseResponse> importTermbase = null,
             Func<BridgeInstanceInfo> getInstanceInfo = null,
-            Func<BridgeCreateProjectRequest, BridgeRunTaskResponse> createProject = null)
+            Func<BridgeCreateProjectRequest, BridgeRunTaskResponse> createProject = null,
+            Func<BridgeOpenProjectRequest, BridgeTaskStatusResponse> openProject = null,
+            Func<bool> editorReady = null)
         {
             _createProject = createProject;
+            _openProject = openProject;
+            _editorReady = editorReady;
             _getInstanceInfo = getInstanceInfo;
             _getContext = getContext ?? throw new ArgumentNullException(nameof(getContext));
             _insertText = insertText ?? throw new ArgumentNullException(nameof(insertText));
@@ -2269,6 +2289,16 @@ namespace Supervertaler.Trados.Core
             // response side is tallied in WriteJson/WriteRawJson.
             RecordRequestPayload(context);
 
+            // The bridge starts when Studio starts, before the AI Assistant pane
+            // that reads the Editor exists (in Studio 2022 the pane only appears
+            // once a document has been opened). Endpoints that need it answer one
+            // plain sentence until then; everything on the list below works at once.
+            if (_editorReady != null && !NeedsNoEditor(path) && !EditorReadySafe())
+            {
+                TryWriteError(context, 503, EditorNotReadyMessage);
+                return;
+            }
+
             if (method == "GET" && path == SessionReportPath)
             {
                 HandleSessionReport(context);
@@ -2445,6 +2475,11 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/create-project")
             {
                 HandleCreateProject(context);
+                return;
+            }
+            if (method == "POST" && path == "/v1/open-project")
+            {
+                HandleOpenProject(context);
                 return;
             }
             if (method == "GET" && path == "/v1/task-status")
@@ -4459,6 +4494,77 @@ namespace Supervertaler.Trados.Core
             }
 
             WriteJson(context, 200, response);
+        }
+
+        private void HandleOpenProject(HttpListenerContext context)
+        {
+            if (_openProject == null)
+            {
+                TryWriteError(context, 501, "open-project endpoint not wired");
+                return;
+            }
+
+            BridgeOpenProjectRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    req = DeserializeJson<BridgeOpenProjectRequest>(reader.ReadToEnd());
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeTaskStatusResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            BridgeTaskStatusResponse response;
+            try
+            {
+                response = _openProject(req ?? new BridgeOpenProjectRequest())
+                    ?? new BridgeTaskStatusResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] open-project threw: {ex.Message}");
+                response = new BridgeTaskStatusResponse { Ok = false, Error = "open-project failed: " + ex.Message };
+            }
+
+            WriteJson(context, 200, response);
+        }
+
+        // ── Editor gate ──────────────────────────────────────────────────
+
+        /// <summary>What an endpoint that needs the Editor answers before the AI
+        /// Assistant pane exists.</summary>
+        public const string EditorNotReadyMessage =
+            "This needs the Trados Studio Editor, which Supervertaler has not loaded yet. " +
+            "If Studio has only just started, wait about 20 seconds and try again; otherwise open a document " +
+            "in the Editor (open_project can do that) and ask again. Tools that work without the Editor - " +
+            "list_projects, get_project, list_project_templates, list_tms, create_project, open_project, " +
+            "get_task_status, the prompt and SuperMemory tools, lookup_term, help - work now.";
+
+        /// <summary>Endpoints that never touch the Editor or the AI Assistant pane:
+        /// disk reads, the prompt library, SuperMemory banks on disk, the term
+        /// database, and the project tools that run their own jobs. Anything NOT
+        /// here waits for the pane, so a new endpoint is safe by default.</summary>
+        private static readonly HashSet<string> EditorFreePaths = new HashSet<string>(StringComparer.Ordinal)
+        {
+            SessionReportPath, "/v1/tools", "/v1/help",
+            "/v1/projects", "/v1/project-info", "/v1/tms", "/v1/project-templates",
+            "/v1/prompts", "/v1/prompt", "/v1/save-prompt",
+            "/v1/term-lookup",
+            "/v1/supermemory-banks", "/v1/supermemory-search",
+            "/v1/supermemory-file", "/v1/supermemory-write", "/v1/supermemory-section", "/v1/supermemory-term-row",
+            "/v1/create-project", "/v1/open-project", "/v1/task-status",
+        };
+
+        internal static bool NeedsNoEditor(string path) => path != null && EditorFreePaths.Contains(path);
+
+        private bool EditorReadySafe()
+        {
+            try { return _editorReady(); }
+            catch { return false; }
         }
 
         private void HandleGetTaskStatus(HttpListenerContext context)

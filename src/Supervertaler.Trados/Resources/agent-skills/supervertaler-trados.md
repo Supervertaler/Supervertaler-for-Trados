@@ -14,6 +14,13 @@ is the ONLY correct way to read or change its state.
 Try `get_active_project`. If it is unavailable, STOP and tell the user the
 Supervertaler MCP server is not connected - do not fall back to another method.
 
+The bridge starts with Studio, so no project needs to be open. If a tool says
+Studio is still starting, wait about 20 seconds and try again. If an editor tool
+(`get_active_project`, `get_segments` …) says the Editor is not loaded yet, nothing
+is open in it: the project tools (`list_projects`, `get_project`,
+`list_project_templates`, `create_project`, `open_project`) still work, and
+`open_project` can open what the user wants to work on.
+
 ## Never read Trados state from the shell or the filesystem
 
 This is the most common and most damaging mistake. Studio holds the document in
@@ -168,7 +175,7 @@ that specific change:
 `update_segments` `find_and_replace` `pretranslate` `insert_into_active_segment`
 `mark_reviewed` `save_document` `export_target` `update_tm` `add_comment`
 `update_comment` `delete_comment` `add_term` `update_term` `delete_term`
-`import_project_termbase` `save_prompt` `create_project`
+`import_project_termbase` `save_prompt` `create_project` `open_project`
 
 Everything else only reads. Prefer reading, and show the user what you found
 before proposing a change.
@@ -206,7 +213,14 @@ before proposing a change.
 - **`create_project`** makes a new Studio project from source files. Show the
   user the plan (name, languages, template, location, files) and get their yes
   first. It runs in the BACKGROUND like `pretranslate`: poll `get_task_status`.
-  A refusal or a failed job leaves nothing behind.
+  A refusal or a failed job leaves nothing behind. It does not open the new
+  project: offer `open_project` with the `projectFile` it returned.
+- **`open_project`** opens a project from Studio's Projects list (by name or
+  `.sdlproj`) and, with `allFiles: true` or `files: [...]`, its target files in
+  the Editor - as ONE document, at most 50 files. Open only what the user asked
+  for: it changes what they see in Studio. It usually answers when done; if it
+  returns `running`, poll `get_task_status`, and if progress says "waiting for
+  Studio", tell the user to answer the message in Studio.
 
 ## Never write into the project folder
 

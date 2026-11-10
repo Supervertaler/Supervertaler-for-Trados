@@ -109,13 +109,15 @@ namespace Supervertaler.Trados
             // Trados instead of sinking behind it.
             try { Core.ForegroundWindow.CaptureHostMainWindow(); } catch { }
 
-            // Start the Supervertaler bridge (MCP / Workbench) and TermLens
-            // independent of their panes. Both live in ViewParts, which Trados
-            // instantiates lazily only when the pane is first activated – so a user
-            // who never opens them would have no bridge (silent MCP failure) and no
-            // terminology in any AI prompt (issue #56). Here we force both
-            // controllers to load, which runs their Initialize() regardless of
-            // layout.
+            // Load the AI Assistant and TermLens panes independent of their
+            // layout. Both live in ViewParts, which Trados instantiates lazily only
+            // when the pane is first activated – so a user who never opens them
+            // would have no Editor-side MCP tools and no terminology in any AI
+            // prompt (issue #56). Here we force both controllers to load, which
+            // runs their Initialize() regardless of layout. (The bridge itself no
+            // longer depends on this: it is started at the end of Execute. Until
+            // the AI Assistant pane is up - in Studio 2022 not before a document
+            // is opened - its Editor tools answer "open a document first".)
             try { EnsureBridgeViewPartLoads(); } catch { }
 
             // Order matters:
@@ -206,6 +208,17 @@ namespace Supervertaler.Trados
 
             // Initialize licensing - loads cached state, triggers background validation
             LicenseManager.Instance.InitializeAsync();
+
+            // Start the Supervertaler bridge (MCP / Workbench) now, in every Studio
+            // version, with no document open: the tools that need no Editor (list
+            // projects/templates/banks, create/open project) must work straight
+            // away, and in Studio 2022 the AI Assistant pane - which used to start
+            // the bridge - does not exist until a document is opened. Last in
+            // Execute: it needs the data folder (first-run setup, migration) and
+            // the licence state above. Opens a localhost port and writes the
+            // handshake, milliseconds. Never throws; a failure is logged once and
+            // Studio carries on without a bridge. See AiAssistantViewPart.Bridge.cs.
+            AiAssistantViewPart.EnsureBridgeStarted("studio-startup");
         }
 
         // ── Windows shown during Execute ─────────────────────────────
