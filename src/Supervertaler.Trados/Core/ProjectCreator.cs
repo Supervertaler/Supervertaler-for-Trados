@@ -32,6 +32,22 @@ namespace Supervertaler.Trados.Core
             ".sdlxliff", ".sdlppx", ".sdlrpx", ".sdlproj", ".sdltpl", ".sdltm", ".sdltb", ".ttb",
         };
 
+        /// <summary>
+        /// Extensions Studio's standard file types never open: archives,
+        /// programs, media. Refused before anything is created, because Studio
+        /// itself only warns about them and copies them unconverted. Anything
+        /// else is left to Studio, and a file it cannot convert still fails the
+        /// job (ProjectCreatorStudio checks every file after preparing).
+        /// Images are not listed: Studio 2024 and later can translate some.
+        /// </summary>
+        private static readonly string[] NotADocument =
+        {
+            ".zip", ".7z", ".rar", ".gz", ".tgz", ".tar", ".bz2", ".xz", ".cab", ".iso",
+            ".exe", ".dll", ".msi", ".com", ".bat", ".cmd", ".ps1", ".lnk",
+            ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4", ".mov", ".avi", ".mkv", ".wmv",
+            ".db", ".sqlite", ".mdb", ".accdb",
+        };
+
         private static readonly string[] ReservedNames =
         {
             "CON", "PRN", "AUX", "NUL",
@@ -83,9 +99,15 @@ namespace Supervertaler.Trados.Core
                     errors.Add($"The project template \"{template}\" does not exist (it may have been moved or deleted).");
                 else
                 {
-                    string why = CheckTemplateReadable(template);
+                    string why = ReadTemplate(template, out var info);
                     if (why != null) errors.Add(why);
-                    else plan.TemplatePath = Path.GetFullPath(template);
+                    else
+                    {
+                        plan.TemplatePath = Path.GetFullPath(template);
+                        plan.TemplatePairs = info.Pairs;
+                        foreach (var r in info.MissingResources)
+                            plan.Warnings.Add($"The template uses {r}, which does not exist; the project will be created without it (Studio may show a message about it).");
+                    }
                 }
             }
 
@@ -124,6 +146,8 @@ namespace Supervertaler.Trados.Core
             if (targets.Count == 0 && !haveTemplate && !badTarget)
                 errors.Add("No target language given (e.g. [\"en-GB\"]). It may only be left out when a template supplies it.");
             plan.TargetLanguages = targets;
+            if (plan.TemplatePath != null && !badTarget && (sourceLanguage.Length == 0 || plan.SourceLanguage != null))
+                FillLanguagesFromTemplate(plan, Path.GetFileNameWithoutExtension(plan.TemplatePath));
 
             // ---- files -----------------------------------------------------------
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -144,6 +168,11 @@ namespace Supervertaler.Trados.Core
                 if (Directory.Exists(full)) { errors.Add($"\"{full}\" is a folder; list the files in it instead."); continue; }
                 if (!File.Exists(full)) { errors.Add($"The file \"{full}\" does not exist."); continue; }
                 if (fileName.StartsWith("~$")) { errors.Add($"\"{fileName}\" is an Office lock file, not a document; leave it out."); continue; }
+                if (NotADocument.Contains(ext, StringComparer.OrdinalIgnoreCase))
+                {
+                    errors.Add($"\"{fileName}\" is {Article(ext)} {ext} file (an archive, program, image, audio or video file). Studio has no file type to translate it; leave it out{(ext.Equals(".zip", StringComparison.OrdinalIgnoreCase) ? ", or unpack it and list the documents inside" : "")}.");
+                    continue;
+                }
                 if (BilingualOrPackage.Contains(ext, StringComparer.OrdinalIgnoreCase))
                 {
                     errors.Add($"\"{fileName}\" is a Trados {ext} file (bilingual file, package, project, template or resource), not a source document. Open packages with Studio's Open Package instead.");
@@ -216,23 +245,141 @@ namespace Supervertaler.Trados.Core
             return true;
         }
 
-        /// <summary>Null when a template can be read as XML; otherwise the reason.</summary>
-        private static string CheckTemplateReadable(string path)
+        /// <summary>What create_project needs from a template: its language
+        /// pairs and the TM and termbase files it points to that are missing.</summary>
+        internal sealed class TemplateInfo
         {
+            public List<KeyValuePair<string, string>> Pairs = new List<KeyValuePair<string, string>>();
+            public List<string> MissingResources = new List<string>();
+        }
+
+        /// <summary>
+        /// Reads a .sdltpl: its LanguageDirection pairs (SourceLanguageCode →
+        /// TargetLanguageCode) and the local TMs (sdltm.file:// URIs) and
+        /// termbases (TermbaseSettings Path with Local=true) it uses. Null when
+        /// readable; otherwise the reason. Server TMs and termbases are not checked.
+        /// </summary>
+        internal static string ReadTemplate(string path, out TemplateInfo info)
+        {
+            info = new TemplateInfo();
+            XDocument doc;
             try
             {
                 using (var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                {
-                    var doc = XDocument.Load(s);
-                    if (doc.Root == null) return $"The template \"{path}\" is empty.";
-                }
-                return null;
+                    doc = XDocument.Load(s);
+                if (doc.Root == null) return $"The template \"{path}\" is empty.";
             }
             catch (Exception ex)
             {
-                return $"The template \"{path}\" could not be read as a Studio project template ({ex.GetType().Name}: {ex.Message}).";
+                return $"The template \"{path}\" could not be read as a Studio project template ({ex.GetType().Name}: {Sentence(ex.Message, false)}).";
+            }
+
+            foreach (var d in doc.Descendants().Where(e => e.Name.LocalName == "LanguageDirection"))
+            {
+                var src = d.Attribute("SourceLanguageCode")?.Value;
+                var tgt = d.Attribute("TargetLanguageCode")?.Value;
+                if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt)) continue;
+                if (IsKnownLanguage(src, out var sc)) src = sc;
+                if (IsKnownLanguage(tgt, out var tc)) tgt = tc;
+                if (!info.Pairs.Any(p => p.Key.Equals(src, StringComparison.OrdinalIgnoreCase)
+                                      && p.Value.Equals(tgt, StringComparison.OrdinalIgnoreCase)))
+                    info.Pairs.Add(new KeyValuePair<string, string>(src, tgt));
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in doc.Descendants())
+            {
+                var uri = e.Attribute("Uri")?.Value;
+                if (uri == null || !uri.StartsWith("sdltm.file:", StringComparison.OrdinalIgnoreCase)) continue;
+                var tm = TmPathFromUri(uri);
+                if (tm != null && seen.Add(tm) && !File.Exists(tm))
+                    info.MissingResources.Add($"the TM \"{tm}\"");
+            }
+            foreach (var e in doc.Descendants().Where(x => x.Name.LocalName == "SettingsXml"))
+            {
+                try
+                {
+                    var inner = XDocument.Parse(e.Value);
+                    if (inner.Root?.Name.LocalName != "TermbaseSettings") continue;
+                    var tb = inner.Root.Elements().FirstOrDefault(x => x.Name.LocalName == "Path")?.Value?.Trim();
+                    var local = inner.Root.Elements().FirstOrDefault(x => x.Name.LocalName == "Local")?.Value?.Trim();
+                    if (string.IsNullOrEmpty(tb) || !string.Equals(local, "true", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (seen.Add(tb) && !File.Exists(tb))
+                        info.MissingResources.Add($"the termbase \"{tb}\"");
+                }
+                catch { /* not termbase settings, or unreadable: Studio will judge */ }
+            }
+            return null;
+        }
+
+        /// <summary>"sdltm.file:///D:/TMs/Acme%20(nl-NL→en-GB).sdltm" → "D:\TMs\Acme (nl-NL→en-GB).sdltm".</summary>
+        internal static string TmPathFromUri(string uri)
+        {
+            try
+            {
+                var rest = uri.Substring(uri.IndexOf(':') + 1).TrimStart('/');
+                var q = rest.IndexOf('?');
+                if (q >= 0) rest = rest.Substring(0, q);
+                rest = Uri.UnescapeDataString(rest).Replace('/', Path.DirectorySeparatorChar);
+                return Path.IsPathRooted(rest) ? rest : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Fills the languages a request left out from the template's pairs, so
+        /// Studio never has to choose (with several source languages it refuses
+        /// halfway through). Refuses, naming the pairs, when the choice is not
+        /// clear.
+        /// </summary>
+        private static void FillLanguagesFromTemplate(ProjectPlan plan, string templateName)
+        {
+            var pairs = plan.TemplatePairs;
+            string list = string.Join(", ", pairs.Select(p => p.Key + " → " + p.Value));
+            if (plan.SourceLanguage != null && plan.TargetLanguages.Count > 0) return;   // all given
+
+            if (pairs.Count == 0)
+            {
+                plan.Errors.Add($"The template \"{templateName}\" has no language pairs; give sourceLanguage and targetLanguages.");
+                return;
+            }
+
+            if (plan.SourceLanguage == null)
+            {
+                var candidates = plan.TargetLanguages.Count > 0
+                    ? pairs.Where(p => plan.TargetLanguages.Contains(p.Value, StringComparer.OrdinalIgnoreCase))
+                    : pairs;
+                var sources = candidates.Select(p => p.Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (sources.Count != 1)
+                {
+                    plan.Errors.Add(sources.Count == 0
+                        ? $"The template \"{templateName}\" has no pair into {string.Join(", ", plan.TargetLanguages)}; its language pairs are {list}. Give sourceLanguage too."
+                        : $"The template \"{templateName}\" has more than one language pair ({list}). Ask which one to use and give sourceLanguage (and targetLanguages).");
+                    return;
+                }
+                plan.SourceLanguage = sources[0];
+            }
+
+            if (plan.TargetLanguages.Count == 0)
+            {
+                var tgts = pairs.Where(p => p.Key.Equals(plan.SourceLanguage, StringComparison.OrdinalIgnoreCase))
+                                .Select(p => p.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (tgts.Count == 0)
+                    plan.Errors.Add($"The template \"{templateName}\" has no language pair from {plan.SourceLanguage}; its pairs are {list}. Give targetLanguages too.");
+                else
+                    plan.TargetLanguages = tgts;
             }
         }
+
+        /// <summary>One sentence: trimmed, ending in exactly one full stop (or none).</summary>
+        internal static string Sentence(string s, bool withStop)
+        {
+            s = (s ?? "").Trim().TrimEnd('.', ' ');
+            return withStop ? s + "." : s;
+        }
+
+        private static string Article(string ext) =>
+            "aeiou".IndexOf(char.ToLowerInvariant(ext.TrimStart('.').FirstOrDefault())) >= 0 ? "an" : "a";
 
         /// <summary>Null when the file can be opened for reading; otherwise why
         /// not (e.g. another program holds it exclusively).</summary>
@@ -392,5 +539,9 @@ namespace Supervertaler.Trados.Core
         public string FileRoot;
         public string TemplatePath;
         public List<string> Errors = new List<string>();
+        /// <summary>Things the user should hear about that do not stop the project (e.g. a template's missing TM).</summary>
+        public List<string> Warnings = new List<string>();
+        /// <summary>The template's language pairs (source → target).</summary>
+        public List<KeyValuePair<string, string>> TemplatePairs = new List<KeyValuePair<string, string>>();
     }
 }

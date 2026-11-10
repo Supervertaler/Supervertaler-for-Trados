@@ -6712,7 +6712,9 @@ namespace Supervertaler.Trados
                 FilesProcessed = plan.Files.Count,
                 Note = $"Creating project \"{plan.Name}\" in {plan.ProjectFolder} with {plan.Files.Count} file(s) " +
                        "in the background. Poll get_task_status with jobId \"" + job.Id + "\" until it is done; " +
-                       "it then gives the project file and its files."
+                       "it then gives the project file and its files." +
+                       (plan.Warnings.Count > 0 ? " Tell the user: " + string.Join(" ", plan.Warnings) : ""),
+                Messages = plan.Warnings.Count > 0 ? new List<string>(plan.Warnings) : null
             };
         }
 
@@ -6742,10 +6744,12 @@ namespace Supervertaler.Trados
                     job.Status = "done";
                     job.ProjectFile = result.ProjectFile;
                     job.Files = result.Files;
-                    job.Note = $"Project \"{plan.Name}\" created with {result.Files.Count} file(s), prepared for " +
+                    var warnings = plan.Warnings.Concat(result.Warnings).ToList();
+                    job.Note = $"Project \"{plan.Name}\" created with all {result.Files.Count} file(s) converted, " +
+                               $"{plan.SourceLanguage ?? "the template's source language"} to " +
                                (plan.TargetLanguages.Count > 0 ? string.Join(", ", plan.TargetLanguages) : "the template's target languages") +
-                               ", and added to Studio's Projects list. Open it from the Projects view to start translating." +
-                               (result.Warnings.Count > 0 ? " Warnings: " + string.Join(" ", result.Warnings) : "");
+                               ", and it is in Studio's Projects list. Open it from the Projects view to start translating." +
+                               (warnings.Count > 0 ? " Tell the user these warnings: " + string.Join(" ", warnings) : "");
                 }
                 else
                 {

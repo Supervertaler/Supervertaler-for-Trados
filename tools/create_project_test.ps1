@@ -76,7 +76,32 @@ try {
     $lockf = Join-Path $src '~$me PROJ-001 spec.docx'; Set-Content -LiteralPath $lockf -Value 'x'
     $xliff = Join-Path $src 'already.docx.sdlxliff'; Set-Content -LiteralPath $xliff -Value '<xliff/>'
     $pkg = Join-Path $src 'job.sdlppx'; Set-Content -LiteralPath $pkg -Value 'PK'
-    $tpl = Join-Path $work 'Acme legal.sdltpl'; Set-Content -LiteralPath $tpl -Value '<?xml version="1.0"?><ProjectTemplate/>' -Encoding UTF8
+    $tpl = Join-Path $work 'Acme legal.sdltpl'
+    Set-Content -LiteralPath $tpl -Encoding UTF8 -Value '<?xml version="1.0"?><ProjectTemplate><LanguageDirections><LanguageDirection SourceLanguageCode="nl-NL" TargetLanguageCode="en-GB" /></LanguageDirections></ProjectTemplate>'
+    # Like the real PATENTS template of 10 Nov: two pairs, a TM and a termbase that are gone.
+    $tmOk = Join-Path $work 'TMs\Acme (nl-NL→en-GB).sdltm'
+    New-Item -ItemType Directory -Path (Split-Path $tmOk) | Out-Null
+    Set-Content -LiteralPath $tmOk -Value 'tm'
+    $tmOkUri = 'sdltm.file:///' + ($tmOk -replace '\\', '/' -replace ' ', '%20')
+    $tmGone = Join-Path $work 'TMs\Acme gone.sdltm'
+    $tmGoneUri = 'sdltm.file:///' + ($tmGone -replace '\\', '/')
+    $tbGone = Join-Path $work 'TBs\Acme gone.sdltb'
+    $tpl2 = Join-Path $work 'Acme PATENTS (two pairs).sdltpl'
+    $tbXml = [Security.SecurityElement]::Escape("<?xml version=`"1.0`" encoding=`"utf-16`"?><TermbaseSettings><Path>$tbGone</Path><Local>true</Local></TermbaseSettings>")
+    Set-Content -LiteralPath $tpl2 -Encoding UTF8 -Value @"
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectTemplate Guid="00000000-0000-0000-0000-000000000001">
+  <LanguageDirections>
+    <LanguageDirection TargetLanguageCode="nl-BE" SourceLanguageCode="en-US"><CascadeItem OverrideParent="false" /></LanguageDirection>
+    <LanguageDirection TargetLanguageCode="en-GB" SourceLanguageCode="nl-NL"><CascadeItem OverrideParent="false" /></LanguageDirection>
+  </LanguageDirections>
+  <TermbaseConfiguration><Termbases><Name>Acme gone</Name><SettingsXml>$tbXml</SettingsXml><Enabled>true</Enabled></Termbases></TermbaseConfiguration>
+  <CascadeItem OverrideParent="true">
+    <CascadeEntryItem PerformUpdate="true"><MainTranslationProviderItem Uri="$tmOkUri" Enabled="true" /></CascadeEntryItem>
+    <CascadeEntryItem PerformUpdate="true"><MainTranslationProviderItem Uri="$tmGoneUri" Enabled="true" /></CascadeEntryItem>
+  </CascadeItem>
+</ProjectTemplate>
+"@
     $badTpl = Join-Path $work 'broken.sdltpl'; Set-Content -LiteralPath $badTpl -Value 'this is not xml <<<'
     $loc = Join-Path $work 'Projects'
     New-Item -ItemType Directory -Path $loc | Out-Null
@@ -99,6 +124,7 @@ try {
 
     $p = Plan 'Acme PROJ-001' $null @() @($doc1) $tpl $loc $null
     Check ($p.Errors.Count -eq 0 -and $p.TemplatePath -eq $tpl) "with a template, languages may be left out ($(Errs $p))"
+    Check ($p.SourceLanguage -eq 'nl-NL' -and ($p.TargetLanguages -join ',') -eq 'en-GB') "...and are taken from its one language pair, so Studio never guesses ($($p.SourceLanguage) -> $($p.TargetLanguages -join ','))"
 
     $p = Plan 'Acme PROJ-001' 'nl-NL' @('en-GB') @($doc1) $null $null (Join-Path $work 'StudioDefault')
     Check ($p.ProjectFolder -eq (Join-Path $work 'StudioDefault\Acme PROJ-001')) 'no location: the default (Studio''s Projects folder) is used'
@@ -146,6 +172,10 @@ try {
     Check (HasErr $p 'is empty') 'refuses: zero-byte file'
     $p = Plan 'Acme PROJ-001' 'nl-NL' @('en-GB') @($lockf) $null $loc $null
     Check (HasErr $p 'Office lock file') 'refuses: ~$ Office lock file'
+    $zip = Join-Path $src 'extra.zip'; Set-Content -LiteralPath $zip -Value 'PK'
+    $exe = Join-Path $src 'setup.exe'; Set-Content -LiteralPath $exe -Value 'MZ'
+    $p = Plan 'Acme PROJ-001' 'nl-NL' @('en-GB') @($doc1, $zip, $exe) $null $loc $null
+    Check ((HasErr $p '"extra.zip" is a .zip file') -and (HasErr $p 'unpack it') -and (HasErr $p '"setup.exe" is an .exe file') -and $p.Errors.Count -eq 2) "refuses up front: .zip and .exe, which Studio only warns about and copies unconverted ($(Errs $p))"
     $p = Plan 'Acme PROJ-001' 'nl-NL' @('en-GB') @($xliff, $pkg) $null $loc $null
     Check ((HasErr $p '.sdlxliff file') -and (HasErr $p '.sdlppx file')) 'refuses: .sdlxliff and .sdlppx (bilingual / package)'
     $fs = [IO.File]::Open($doc1, 'Open', 'ReadWrite', 'None')   # like a program holding it exclusively
@@ -184,6 +214,26 @@ try {
     Check (HasErr $p 'full path to an .sdltpl') 'refuses: template given by name, not path'
     $p = Plan 'Acme PROJ-001' 'nl-NL' @('en-GB') @($doc1) $badTpl $loc $null
     Check (HasErr $p 'could not be read as a Studio project template') 'refuses: template that is not XML'
+
+    # ---- templates with several language pairs (Studio 2024 finding, 10 Nov) -------
+    $p = Plan 'Acme PROJ-001' $null @() @($doc1) $tpl2 $loc $null
+    Check ((HasErr $p 'more than one language pair') -and (HasErr $p 'nl-NL → en-GB') -and (HasErr $p 'en-US → nl-BE')) "refuses up front: two-pair template, no languages - and lists the pairs ($(Errs $p))"
+    $p = Plan 'Acme PROJ-001' 'en-US' @() @($doc1) $tpl2 $loc $null
+    Check ($p.Errors.Count -eq 0 -and ($p.TargetLanguages -join ',') -eq 'nl-BE') "two-pair template + source en-US: target nl-BE taken from the template ($(Errs $p))"
+    $p = Plan 'Acme PROJ-001' $null @('en-GB') @($doc1) $tpl2 $loc $null
+    Check ($p.Errors.Count -eq 0 -and $p.SourceLanguage -eq 'nl-NL') "two-pair template + target en-GB: source nl-NL taken from the template ($(Errs $p))"
+    $p = Plan 'Acme PROJ-001' 'de-DE' @() @($doc1) $tpl2 $loc $null
+    Check (HasErr $p 'no language pair from de-DE') "refuses: source the template has no pair for, and names its pairs ($(Errs $p))"
+    $p = Plan 'Acme PROJ-001' 'de-DE' @('fr-FR') @($doc1) $tpl2 $loc $null
+    Check ($p.Errors.Count -eq 0) 'languages given in full: used as given, template pairs not consulted'
+    $p = Plan 'Acme PROJ-001' $null @() @($doc1) $tpl2 $loc $null
+    Check ((@($p.Warnings | Where-Object { $_ -like "*Acme gone.sdltm*" }).Count -eq 1) -and (@($p.Warnings | Where-Object { $_ -like "*Acme gone.sdltb*" }).Count -eq 1)) "warns: the template's missing TM and missing termbase are named ($($p.Warnings -join ' | '))"
+    Check (-not ($p.Warnings | Where-Object { $_ -like "*nl-NL→en-GB*" })) 'no warning for the template TM that exists (URI with %20 and an arrow decoded)'
+    $mUri = $PC.GetMethod('TmPathFromUri', $Static)
+    $decoded = $mUri.Invoke($null, [object[]]@(([string]$tmOkUri).psobject.BaseObject))
+    Check ($decoded -eq $tmOk) "sdltm.file URI decoded to the path ($decoded)"
+    $mSent = $PC.GetMethod('Sentence', $Static)
+    Check ($mSent.Invoke($null, [object[]]@('template..', $true)) -eq 'template.') 'messages end in one full stop, not two'
 
     # ---- refusals: location --------------------------------------------------------
     $p = Plan 'Acme PROJ-001' 'nl-NL' @('en-GB') @($doc1) $null 'Projects' $null
