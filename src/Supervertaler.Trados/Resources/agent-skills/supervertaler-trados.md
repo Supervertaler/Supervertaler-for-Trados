@@ -218,9 +218,10 @@ before proposing a change.
 - **`open_project`** opens a project from Studio's Projects list (by name or
   `.sdlproj`) and, with `allFiles: true` or `files: [...]`, its target files in
   the Editor - as ONE document, at most 50 files. Open only what the user asked
-  for: it changes what they see in Studio. It usually answers when done; if it
-  returns `running`, poll `get_task_status`, and if progress says "waiting for
-  Studio", tell the user to answer the message in Studio.
+  for: it changes what they see in Studio. It usually answers when done (Studio
+  takes several seconds); if it returns `running`, poll `get_task_status`. Only
+  when progress says Studio may be showing a message, ask the user to check
+  Studio and answer it there.
 
 ## Never write into the project folder
 

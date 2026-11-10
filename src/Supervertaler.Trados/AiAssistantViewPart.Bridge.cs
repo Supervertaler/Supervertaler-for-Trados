@@ -187,9 +187,9 @@ namespace Supervertaler.Trados
         // ─── open_project ──────────────────────────────────────────────────────
 
         /// <summary>How long the request waits for the open to finish before it
-        /// answers with the jobId instead. Opening normally takes a second or two;
-        /// longer means Studio is loading many files or showing a message.</summary>
-        private static readonly TimeSpan OpenProjectWait = TimeSpan.FromSeconds(10);
+        /// answers with the jobId instead. Two small files took 12 s in Studio 2022
+        /// (10 Nov 2026), so most opens answer within this.</summary>
+        private static readonly TimeSpan OpenProjectWait = TimeSpan.FromSeconds(25);
 
         /// <summary>
         /// Bridge: POST /v1/open-project. Runs as a job (get_task_status reports
@@ -239,12 +239,17 @@ namespace Supervertaler.Trados
 
             var status = BridgeGetTaskStatus(job.Id);
             if (status.Running)
-                status.Note = "Still opening – Studio is " + (status.Progress ?? "busy") +
-                              ". Poll get_task_status with jobId \"" + job.Id + "\" until it is done.";
+                status.Note = OpenProjectRunningNote(status.Progress, job.Id);
             if (status.Status == "failed") status.Ok = false;
             if (status.Status == "failed" && status.Error == null) status.Error = status.Note;
             return status;
         }
+
+        /// <summary>The note on an open that is still running: progress as is,
+        /// never wrapped in a sentence it could garble.</summary>
+        internal static string OpenProjectRunningNote(string progress, string jobId) =>
+            "Not finished yet: " + (string.IsNullOrWhiteSpace(progress) ? "Studio is busy" : progress) +
+            ". Poll get_task_status with jobId \"" + jobId + "\" until it is done.";
 
         private static void OpenProjectJobBody(RunTaskJob job, BridgeOpenProjectRequest req)
         {

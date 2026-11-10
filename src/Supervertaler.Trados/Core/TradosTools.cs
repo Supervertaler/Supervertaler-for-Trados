@@ -58,7 +58,7 @@ namespace Supervertaler.Trados.Core
       ""properties"": {
         ""status_filter"": {
           ""type"": ""string"",
-          ""description"": ""Optional filter: 'InProgress', 'Completed', or 'Archived'. Omit to list all."",
+          ""description"": ""Optional filter: 'InProgress' (Studio's projects.xml calls it Started), 'Completed', or 'Archived'. Omit to list all."",
           ""enum"": [""InProgress"", ""Completed"", ""Archived""]
         }
       },
@@ -267,11 +267,24 @@ namespace Supervertaler.Trados.Core
 
         // ─── Tool Implementations ───────────────────────────────────
 
-        private static string ListProjects(string statusFilter)
+        private static string ListProjects(string statusFilter) => ListProjects(statusFilter, GetProjectsXmlPaths());
+
+        /// <summary>list_projects over the given registries (test seam: the
+        /// public path reads the real Documents\Studio * folders).</summary>
+        internal static string ListProjects(string statusFilter, List<string> xmlPaths)
         {
-            var xmlPaths = GetProjectsXmlPaths();
-            if (xmlPaths.Count == 0)
+            if (xmlPaths == null || xmlPaths.Count == 0)
                 return JsonError("Could not find any Trados Studio projects.xml. Is Trados Studio installed?");
+
+            // Studio's projects.xml says "Started" where the tool (and Studio's
+            // API) say "InProgress": compare canonical names, never raw strings.
+            string wanted = null;
+            if (!string.IsNullOrWhiteSpace(statusFilter))
+            {
+                wanted = CanonicalStatus(statusFilter);
+                if (wanted == null)
+                    return JsonError($"Unknown status '{statusFilter.Trim()}'. Use InProgress, Completed, Archived or Pending, or leave it out to list all.");
+            }
 
             var sb = new StringBuilder();
             sb.Append("{\"projects\":[");
@@ -298,8 +311,7 @@ namespace Supervertaler.Trados.Core
                     var projectFilePath = item.Attribute("ProjectFilePath")?.Value ?? "";
 
                     // Apply status filter if specified
-                    if (!string.IsNullOrEmpty(statusFilter) &&
-                        !status.Equals(statusFilter, StringComparison.OrdinalIgnoreCase))
+                    if (wanted != null && CanonicalStatus(status) != wanted)
                         continue;
 
                     var projPath = ResolveProjectPath(projectFilePath, xmlPath);
@@ -1427,14 +1439,31 @@ namespace Supervertaler.Trados.Core
             return xmlDir != null ? Path.Combine(xmlDir, projectFilePath) : projectFilePath;
         }
 
-        private static string MapStatus(string status)
+        /// <summary>The status as list_projects/get_project report it: the same
+        /// names the status filter takes.</summary>
+        private static string MapStatus(string status) =>
+            CanonicalStatus(status) ?? (string.IsNullOrEmpty(status) ? "Unknown" : status);
+
+        /// <summary>
+        /// One name per project status, whichever spelling it arrives in.
+        /// projects.xml writes Studio's server-model names (Pending, Started,
+        /// Completed, Archived, Detached - Sdl.ProjectApi.Server.Model.ProjectStatus);
+        /// Studio's API and this tool say InProgress for Started
+        /// (Sdl.ProjectAutomation.Core.ProjectStatus); a person may write
+        /// "In progress". Null for anything else.
+        /// </summary>
+        internal static string CanonicalStatus(string status)
         {
-            switch (status)
+            var s = (status ?? "").Replace(" ", "").Replace("_", "").Replace("-", "").Trim().ToLowerInvariant();
+            switch (s)
             {
-                case "InProgress": return "Started";
-                case "Completed": return "Completed";
-                case "Archived": return "Archived";
-                default: return status ?? "Unknown";
+                case "started":
+                case "inprogress": return "InProgress";
+                case "completed": return "Completed";
+                case "archived": return "Archived";
+                case "pending": return "Pending";
+                case "detached": return "Detached";
+                default: return null;
             }
         }
 

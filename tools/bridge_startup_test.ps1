@@ -19,6 +19,8 @@
 #      sentence and the disk/project endpoints answer; open_project refuses a
 #      missing .sdlproj and an empty request without touching anything; one
 #      Studio closing leaves the other answering.
+#   E  list_projects' status filter (projects.xml says Started for InProgress), and
+#      open_project's progress and running-note wording and patience.
 #   D  failure path: a data folder that cannot be written - starting must not
 #      throw (Studio must still start).
 #
@@ -275,6 +277,60 @@ try {
     $p = P $bigFiles $true @() 'en-GB'
     $sw.Stop()
     Check ($p.Error -like '*5000 files*at most*') "B15 allFiles on 5,000 files refused by the cap in $($sw.ElapsedMilliseconds) ms"
+
+    # ---- E: list_projects status, open_project progress wording ------------------------
+    $TT = $plugin.GetType('Supervertaler.Trados.Core.TradosTools', $true)
+    $mCanon = $TT.GetMethod('CanonicalStatus', $Static)
+    $canon = @{ 'Started' = 'InProgress'; 'InProgress' = 'InProgress'; 'In progress' = 'InProgress'; 'in_progress' = 'InProgress';
+                'completed' = 'Completed'; 'Archived' = 'Archived'; 'Pending' = 'Pending'; 'Detached' = 'Detached' }
+    $ok = $true
+    foreach ($k in $canon.Keys) { if ($mCanon.Invoke($null, @([string]$k)) -ne $canon[$k]) { $ok = $false; Write-Host "  $k -> $($mCanon.Invoke($null, @([string]$k)))" } }
+    Check ($ok -and $null -eq $mCanon.Invoke($null, @('Open')) -and $null -eq $mCanon.Invoke($null, @([string]$null))) 'E1 status names: Started = InProgress = In progress; unknown = none'
+
+    $reg = Join-Path $work 'Studio 2026 Release\Projects'
+    New-Item -ItemType Directory -Force -Path $reg | Out-Null
+    $regXml = Join-Path $reg 'projects.xml'
+    Set-Content -LiteralPath $regXml -Encoding UTF8 -Value @"
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectServer><Projects>
+  <ProjectListItem ProjectFilePath="A\A.sdlproj"><ProjectInfo Name="Acme A" Status="Started" CreatedAt="2026-11-01T10:00:00Z" /></ProjectListItem>
+  <ProjectListItem ProjectFilePath="B\B.sdlproj"><ProjectInfo Name="Acme B" Status="Started" CreatedAt="2026-11-02T10:00:00Z" /></ProjectListItem>
+  <ProjectListItem ProjectFilePath="C\C.sdlproj"><ProjectInfo Name="Acme C" Status="Completed" CreatedAt="2026-10-01T10:00:00Z" /></ProjectListItem>
+  <ProjectListItem ProjectFilePath="D\D.sdlproj"><ProjectInfo Name="Acme D" Status="Archived" CreatedAt="2026-09-01T10:00:00Z" /></ProjectListItem>
+  <ProjectListItem ProjectFilePath="E\E.sdlproj"><ProjectInfo Name="Acme E" Status="Pending" CreatedAt="2026-09-01T10:00:00Z" /></ProjectListItem>
+</Projects></ProjectServer>
+"@
+    $mList = $TT.GetMethod('ListProjects', $Static, $null, [Type[]]@([string], [System.Collections.Generic.List[string]]), $null)
+    $regList = New-Object 'System.Collections.Generic.List[string]'
+    $regList.Add([string]$regXml)
+    function ListProj($f) {
+        $a = New-Object 'object[]' 2
+        $a[0] = if ($null -eq $f) { $null } else { [string]$f }
+        $a[1] = $regList.psobject.BaseObject
+        $raw = [string]$mList.Invoke($null, $a)
+        if ($env:SV_BST_DEBUG) { Write-Host "  ListProj($f): $raw" }
+        return ($raw | ConvertFrom-Json)
+    }
+    $r = ListProj 'InProgress'
+    Check ($r.total -eq 2 -and (@($r.projects | ForEach-Object status) -join ',') -eq 'InProgress,InProgress') "E2 status 'InProgress' finds the 2 'Started' projects and reports them as InProgress (was 0) - got $($r.total)"
+    Check ((ListProj 'Started').total -eq 2 -and (ListProj 'in progress').total -eq 2) "E3 'Started' and 'in progress' work too"
+    Check ((ListProj 'Completed').total -eq 1 -and (ListProj 'archived').total -eq 1 -and (ListProj 'Pending').total -eq 1) 'E4 Completed, Archived, Pending: 1 each'
+    Check ((ListProj $null).total -eq 5 -and (ListProj '  ').total -eq 5) 'E5 no filter: all 5'
+    $r = ListProj 'Open'
+    Check ($r.error -like "*Unknown status 'Open'*InProgress*" -and $null -eq $r.projects) 'E6 an unknown status is an error naming the valid ones, not a silent 0'
+
+    $POS = $plugin.GetType('Supervertaler.Trados.Core.ProjectOpenerStudio', $true)
+    $mPat = $POS.GetMethod('Patience', $Static); $mText = $POS.GetMethod('ProgressText', $Static)
+    $pat2 = $mPat.Invoke($null, @([int]2))
+    Check ($pat2.TotalSeconds -eq 34 -and $mPat.Invoke($null, @([int]50)).TotalSeconds -eq 130 -and $mPat.Invoke($null, @([int]0)).TotalSeconds -eq 30) 'E7 patience: 30 s + 2 s per file (34 s for 2 files, 130 s for 50)'
+    $t12 = $mText.Invoke($null, @('opening 2 file(s) in the Editor', [TimeSpan]::FromSeconds(12), $pat2))
+    Check ($t12 -eq 'opening 2 file(s) in the Editor (12 s)') "E8 the Studio 2022 case (2 files, 12 s): neutral '$t12'"
+    $t40 = $mText.Invoke($null, @('opening 2 file(s) in the Editor', [TimeSpan]::FromSeconds(40), $pat2))
+    Check ($t40 -like '*(40 s)*may be showing a message*answer it there*') "E9 past the patience it mentions a message: '$t40'"
+    $note = $Part.GetMethod('OpenProjectRunningNote', $Static).Invoke($null, @([string]$t12, 'abc12345'))
+    Check ($note -notlike '*Studio is waiting*' -and $note -notlike '*Studio is opening*' -and $note -like 'Not finished yet: opening 2 file(s) in the Editor (12 s). Poll get_task_status*abc12345*') "E10 running note reads cleanly: '$note'"
+    $note0 = $Part.GetMethod('OpenProjectRunningNote', $Static).Invoke($null, @([string]$null, 'x'))
+    Check ($note0 -like 'Not finished yet: Studio is busy.*') 'E11 running note without progress'
 
     # ---- C: two Studios ---------------------------------------------------------------
     $data = Join-Path $work 'data'

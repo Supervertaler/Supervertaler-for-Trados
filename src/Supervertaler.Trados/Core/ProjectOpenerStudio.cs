@@ -24,10 +24,12 @@ namespace Supervertaler.Trados.Core
     /// several files selected.</para>
     ///
     /// <para>Runs on a pool thread (a background job). The lookup and the file
-    /// choice happen off the UI thread; only the Studio calls go to it. A UI step
-    /// that takes longer than <see cref="UiPatience"/> sets progress to "waiting
-    /// for Studio": Studio may be showing a message (upgrade an old project,
-    /// project in use) that waits for a click.</para>
+    /// choice happen off the UI thread; only the Studio calls go to it. While a
+    /// UI step runs, progress counts the seconds ("opening 2 file(s) in the
+    /// Editor (8 s)"). Only past <see cref="Patience"/> does it add that a message
+    /// may be open in Studio (upgrade an old project, project in use): opening is
+    /// legitimately slow - two small files took 12 s in Studio 2022 on
+    /// 10 Nov 2026 with no message at all - so a short threshold cried wolf.</para>
     /// </summary>
     internal static class ProjectOpenerStudio
     {
@@ -41,7 +43,9 @@ namespace Supervertaler.Trados.Core
             public List<string> OpenedFiles = new List<string>();
         }
 
-        private static readonly TimeSpan UiPatience = TimeSpan.FromSeconds(4);
+        /// <summary>How long a UI step may take before progress says a message may
+        /// be open in Studio: 30 s, plus 2 s per file opened in the Editor.</summary>
+        internal static TimeSpan Patience(int files) => TimeSpan.FromSeconds(30 + 2 * Math.Max(0, files));
 
         internal static Result Run(string projectQuery, bool allFiles, IList<string> fileNames, string language,
             Action<string> progress)
@@ -60,7 +64,7 @@ namespace Supervertaler.Trados.Core
                 // moments ago). Only on a miss: ask Studio itself.
                 if (match.Project == null && !(projectQuery ?? "").Trim().EndsWith(".sdlproj", StringComparison.OrdinalIgnoreCase))
                 {
-                    var live = OnUi(() => LiveProjectList(), progress);
+                    var live = OnUi(() => LiveProjectList(), progress, "looking in Studio's Projects list", 0);
                     var liveMatch = ProjectOpener.Match(projectQuery, live);
                     if (liveMatch.Project != null) match = liveMatch;
                 }
@@ -77,7 +81,7 @@ namespace Supervertaler.Trados.Core
                 progress?.Invoke("opening the project");
                 var wanted = ProjectOpener.NormalPath(match.Project.ProjectFile);
                 var project = OnUi(() => Projects().GetAllProjects()
-                    .FirstOrDefault(p => ProjectOpener.NormalPath(SafePath(p)) == wanted), progress);
+                    .FirstOrDefault(p => ProjectOpener.NormalPath(SafePath(p)) == wanted), progress, "finding the project in Studio", 0);
                 if (project == null)
                 {
                     result.Error = $"Studio's Projects list names \"{match.Project.Name}\" but Studio has not loaded it " +
@@ -99,11 +103,10 @@ namespace Supervertaler.Trados.Core
                     }
                 }
 
-                OnUi(() => { Projects().Open(project); return true; }, progress);
+                OnUi(() => { Projects().Open(project); return true; }, progress, "opening the project", 0);
 
                 if (pick != null && pick.Files.Count > 0)
                 {
-                    progress?.Invoke($"opening {pick.Files.Count} file(s) in the Editor");
                     var files = pick.Files.Select(f => (ProjectFile)f.Tag).ToList();
                     OnUi(() =>
                     {
@@ -111,7 +114,7 @@ namespace Supervertaler.Trados.Core
                         if (files.Count == 1) editor.Open(files[0], EditingMode.Translation);
                         else editor.Open(files, EditingMode.Translation);
                         return true;
-                    }, progress);
+                    }, progress, $"opening {files.Count} file(s) in the Editor", files.Count);
                     result.Language = pick.Language;
                     result.OpenedFiles = pick.Files.Select(f => f.Display).ToList();
                 }
@@ -192,15 +195,28 @@ namespace Supervertaler.Trados.Core
             return "";
         }
 
-        private static T OnUi<T>(Func<T> f, Action<string> progress)
+        /// <summary>Runs <paramref name="f"/> on the UI thread; meanwhile progress
+        /// says <paramref name="step"/> with the seconds so far, and from
+        /// <see cref="Patience"/> on that a message may be open in Studio.</summary>
+        private static T OnUi<T>(Func<T> f, Action<string> progress, string step, int files)
         {
+            progress?.Invoke(step);
             var t = System.Threading.Tasks.Task.Run(() => UiThread.Invoke(f));
-            if (!t.Wait(UiPatience))
-            {
-                progress?.Invoke("waiting for Studio (a message may be open in Studio – answer it there)");
-                try { t.Wait(); } catch { }
-            }
+            var patience = Patience(files);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (!t.Wait(TimeSpan.FromSeconds(1)))
+                progress?.Invoke(ProgressText(step, sw.Elapsed, patience));
             return t.GetAwaiter().GetResult();
+        }
+
+        /// <summary>"opening 2 file(s) in the Editor (12 s)"; past the patience,
+        /// "… (45 s) – Studio may be showing a message: answer it there".</summary>
+        internal static string ProgressText(string step, TimeSpan elapsed, TimeSpan patience)
+        {
+            var text = $"{step} ({(int)elapsed.TotalSeconds} s)";
+            return elapsed < patience
+                ? text
+                : text + " – this is taking long: Studio may be showing a message (answer it there)";
         }
 
         private static string SafePath(FileBasedProject p)
