@@ -71,6 +71,7 @@ namespace Supervertaler.Trados.Settings
         private string _dataFolderMoveTarget; // where OK will copy the data folder; null = no move
         private bool _dataFolderSwitchOnly;   // the target already holds a data folder: switch, copy nothing
         private CheckBox _chkSuperSearchInTab;
+        private CheckBox _chkStampProject, _chkStampClient;   // Studio TMs: stamp the project's name / client (off by default)
         private CheckBox _chkDiagnosticLogging;
         private NumericUpDown _nudFontSize;
         private ComboBox _cboUiScale;
@@ -433,6 +434,31 @@ namespace Supervertaler.Trados.Settings
                 Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(4), UiScale.Pixels(3)),
                 Padding = new Padding(UiScale.Pixels(8), UiScale.Pixels(2), UiScale.Pixels(8), UiScale.Pixels(2))
             };
+
+            // ─── Studio translation memories: stamp project and client (Michael, 11 Nov) ───
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Studio translation memories"));
+            _chkStampProject = CheckG("Stamp the project's name on every unit Studio adds to the project's TMs");
+            _chkStampClient = CheckG("Stamp the project's client (its Customer) too");
+            tips.SetToolTip(_chkStampProject,
+                "Fills the project's field values (Project Settings > Translation Memory > Update) with the project's name,\n" +
+                "for a field called Project in its TMs. Studio then adds it to every unit it stores in them.");
+            tips.SetToolTip(_chkStampClient, "The same for a field called Client (or Customer), with the project's customer.");
+            SpanG(root, ref row, _chkStampProject);
+            SpanG(root, ref row, _chkStampClient);
+            var stampNote = NoteG(
+                "Studio stores a field only in a TM that has it: see which of this project's TMs do, and add it, with " +
+                "This project's TMs. A value you typed yourself is never changed. Projects that came in a package (or from " +
+                "GroupShare) are left alone unless you switch it on for that project there. EverTM's own choice is in its window.");
+            stampNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
+            SpanG(root, ref row, stampNote);
+            var btnProjectTms = mkSmallButton("This project's TMs...");
+            btnProjectTms.Click += (s, e) =>
+            {
+                // The switches as ticked now count for the window's preview, before OK.
+                using (var dlg = new TmStampDialog(_chkStampProject.Checked, _chkStampClient.Checked)) dlg.ShowDialog(this);
+            };
+            SpanG(root, ref row, FlowG(btnProjectTms));
 
             // ─── Data folder ───
             // Chosen by the first-run SetupDialog; Move… copies it elsewhere (on OK).
@@ -1394,6 +1420,8 @@ namespace Supervertaler.Trados.Settings
             _chkAdaptCasing.Checked = _settings.AdaptTermCasing;
             _chkUsageStats.Checked = _settings.UsageStatisticsEnabled;
             _chkSuperSearchInTab.Checked = _settings.SuperSearchInAssistantTab;
+            _chkStampProject.Checked = _settings.StampStudioTmProject;
+            _chkStampClient.Checked = _settings.StampStudioTmClient;
             _chkDiagnosticLogging.Checked = _settings.DiagnosticLogging;
             _nudFontSize.Value = Math.Max(_nudFontSize.Minimum, Math.Min(_nudFontSize.Maximum, (decimal)_settings.PanelFontSize));
             var curScaleText = ((int)Math.Round(_settings.UiScaleFactor * 100)) + "%";
@@ -2333,6 +2361,8 @@ namespace Supervertaler.Trados.Settings
             _settings.AdaptTermCasing = _chkAdaptCasing.Checked;
             _settings.UsageStatisticsEnabled = _chkUsageStats.Checked;
             _settings.SuperSearchInAssistantTab = _chkSuperSearchInTab.Checked;
+            _settings.StampStudioTmProject = _chkStampProject.Checked;
+            _settings.StampStudioTmClient = _chkStampClient.Checked;
             bool diagWasOff = !Core.DiagnosticLog.Enabled;
             _settings.DiagnosticLogging = _chkDiagnosticLogging.Checked;
             Core.DiagnosticLog.Enabled = _chkDiagnosticLogging.Checked;

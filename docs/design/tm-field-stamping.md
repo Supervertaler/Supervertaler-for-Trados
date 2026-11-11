@@ -1,6 +1,6 @@
 # Stamping project metadata on every translation unit (Studio TMs and EverTM)
 
-Design note, 11 Nov 2026. Status: proposal, nothing built. Base: Trados main fdc14c9, Plugin Core main d7f8c61.
+Design note, 11 Nov 2026. Status: decided 11 Nov (section 6); being built. Base: Trados main fdc14c9, Plugin Core main d7f8c61.
 
 Michael, 11 Nov: "without thinking about anything, the project name of my particular Trados Studio project I'm working
 on is always automatically stamped into my translation units. Whether these go to the Trados Studio translation memory
@@ -176,17 +176,52 @@ One small section in Supervertaler's settings ("Stamped on translation units"), 
 - **The settings section**: about 100 lines.
 - No change to EverTM's store or index.
 
-## 6. Open questions for Michael (each with a recommendation)
+## 6. Decisions (Michael, 11 Nov)
 
-1. **Studio TMs: switch on with Project only, or Project and Client?** Recommendation: Project only, as he asked.
-   Client is one tick away.
-2. **For a TM without a "Project" field: offer to add it (B), or only say which TMs lack it?** Recommendation: offer,
-   TM by TM, with the warning. Never for GroupShare or package TMs.
-3. **Is it fine that I test B once in his Studio 2026, on a copy TM, with a project open?** Recommendation: yes. The
-   API can add the field; what isn't known is whether the open editor sees it before the project is reopened.
-4. **Packages: should Studio-TM stamping stay off for projects created from a package, unless switched on per
-   project?** Recommendation: yes. A private project name must never reach an agency's TM unasked.
-5. **EverTM: keep all fields on by default (as now), with the choice to switch any off?** Recommendation: yes.
+1. **Studio TMs: Project and Client** (his words: "Project and client"; my recommendation was Project only). Client
+   = the Studio project's customer, as EverTM uses it. Two separate switches, both off by default.
+2. **A TM without the field: "Yes, offer to add".** TM by TM, with a warning. Never for GroupShare TMs, read-only
+   files, or projects created from a package.
+3. **Test in Studio 2026: "Yes, on a copy".** A copy of a TM in a test project (Acme), with Michael at the computer,
+   one step at a time. Never one of his real TMs.
+4. **Package projects: "Yes, off by default".** Studio-TM stamping stays off in a project created from a package
+   unless he switches it on for that project.
+5. **EverTM: "Yes, all on".** Every field stamped by default, with a switch per field; the confirm time has no switch.
+
+## 6b. As built (11 Nov)
+
+- **Studio TMs**:
+  - `Core/TmFieldStamping.cs`: the field rule, filling and adding a field;
+  - `Core/TmFieldStampMonitor.cs`: runs on project change, document change and settings change;
+  - settings: General > Studio translation memories (two switches, off) and **This project's TMs...**
+    (`Settings/TmStampDialog.cs`: the TM list, add a field after a warning, the per-project switch for package and
+    GroupShare projects, kept in the project's settings bundle).
+- **Only file TMs are read for their fields.** Reading a GroupShare TM's fields means signing in to the server at every
+  project open, so it isn't done. Studio still stamps a GroupShare TM that has the field, when a file TM of the
+  project defines the same field (Studio sends the values to every TM). Not filled for a project whose only TM with the
+  field is on GroupShare.
+- **EverTM**:
+  - Plugin Core `VaultLearnUnit.Omit` (also stored in the inbox, so the choice made at confirm time holds when another
+    Studio stores the unit);
+  - the switches are in EverTM's window, saved in settings.json (`everTmStampOff`).
+- **Checks** (SuperVaultCheck, Studio 2026 and 2024, own temp data folder):
+  - the union and type-conflict rule, picklists, spellings;
+  - never over a typed or existing value;
+  - project types;
+  - reading TM fields (missing and damaged TM, cache);
+  - refusing to add a field to GroupShare, package and read-only TMs, and when the field is there; adding it twice;
+  - filling a settings bundle and what Studio's own file TM then stores with and without the field;
+  - EverTM's switches through the provider.
+- **Not checkable offline**:
+  - making a Studio project outside Studio needs a full Studio licence ("Project Automation API in a standalone
+    application"), so reading a real project's TM list and writing its settings is tested in Studio;
+  - whether an open document sees values or a field added meanwhile (Studio 2022 reads the document's settings).
+  - Both are steps 4 to 6 of the test in the user notes.
+- **Scale**:
+  - tested with 10 TMs of 31 fields: first read 70 ms on the thread pool, then nothing (cached until the TM file
+    changes);
+  - filling the settings on the UI thread: 1 ms;
+  - a project open costs the UI thread only what Studio holds in memory.
 
 ## 7. Not in this note
 
