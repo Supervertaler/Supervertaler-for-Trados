@@ -301,7 +301,10 @@ one word changed; minimum 70%; median per lookup):
 | 32-bit (Studio 2024) | 20 ms (p90 26) | 33 ms (p90 53) |
 
 - Found: the same (111/111 exact; 109/111 found first with one word changed), before and after.
-- At 10 million units: measured on a padded copy once its index was built (added with decision 2, below).
+- At 10 million units (a copy of the store padded with marked copies of its units to 10,000,000; index 2.5 GB,
+  built in 51 minutes), median per lookup: 64-bit 77 → 82 ms (p90 118 → 119), 32-bit 56 → 57 ms (p90 92 → 93).
+  The index's candidate search is 75 ms (64-bit) and 50 ms (32-bit) of that, unchanged; scoring adds a few ms. Found:
+  111/111 exact and 109/111 first with one word changed, before and after.
 - Where the time goes, per lookup (64-bit): the index's candidate search 26 ms (unchanged), the estimates of about
   60 candidates 2 ms, aligning and scoring 4-6 ms (all of them 6.5 ms; 17 ms in 32-bit), the display alignment of
   the rows shown 0.4 ms.
