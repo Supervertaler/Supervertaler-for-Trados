@@ -10149,6 +10149,36 @@ namespace Supervertaler.Trados
                               "` bank found - house defaults are not being applied.");
                     }
 
+                    // Files written for one target language (style.nl-BE.md): which go
+                    // with this document and which don't. Said only when the bank has some.
+                    if (ctx != null)
+                    {
+                        var sent = ctx.ExtraPaths.Concat(ctx.SharedExtraPaths)
+                            .Where(p => BankLanguageFiles.TagOf(Path.GetFileName(p ?? "")) != null)
+                            .ToList();
+                        if (sent.Count > 0 || ctx.LanguageSkippedPaths.Count > 0)
+                        {
+                            sb.AppendLine();
+                            if (ctx.TargetLanguage == null)
+                            {
+                                sb.AppendLine("No document open, so every language file is sent: " +
+                                    string.Join(", ", sent.Select(p => "`" + p + "`")) +
+                                    ". With a document open, only the ones for its target language are.");
+                            }
+                            else
+                            {
+                                var lang = LanguageCodes.EnglishName(ctx.TargetLanguage) + " (" + ctx.TargetLanguage + ")";
+                                sb.AppendLine(sent.Count > 0
+                                    ? "Sent for this document's target language, " + lang + ": " +
+                                      string.Join(", ", sent.Select(p => "`" + p + "`")) + "."
+                                    : "No language file for this document's target language, " + lang + ".");
+                                if (ctx.LanguageSkippedPaths.Count > 0)
+                                    sb.AppendLine("Not sent, written for another language: " +
+                                        string.Join(", ", ctx.LanguageSkippedPaths.Select(p => "`" + p + "`")) + ".");
+                            }
+                        }
+                    }
+
                     if (ctx != null && ctx.AssistantOnlyPaths.Count > 0)
                     {
                         sb.AppendLine();
