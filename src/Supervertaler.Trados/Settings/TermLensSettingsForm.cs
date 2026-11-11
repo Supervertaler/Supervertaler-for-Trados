@@ -53,6 +53,8 @@ namespace Supervertaler.Trados.Settings
         private Label _lblTermbaseInfo;
         private DataGridView _dgvTermbases;
         private Label _lblTermbasesHeader;
+        private FilterTextBox _txtTermbaseFilter;
+        private Label _lblTermbaseFilterCount;
         private Button _btnAddTermbase;
         private Button _btnRemoveTermbase;
         private Button _btnImport;
@@ -707,9 +709,26 @@ namespace Supervertaler.Trados.Settings
                 Anchor = AnchorStyles.Left,
                 Margin = new Padding(0, UiScale.Pixels(7), 0, UiScale.Pixels(3))
             };
+            // Type-to-filter for a long termbase list: by name or language. It only
+            // hides rows; every tick stays as it is and still counts when saved.
+            _txtTermbaseFilter = new FilterTextBox
+            {
+                Cue = "Filter by name or language",
+                Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                Margin = new Padding(UiScale.Pixels(12), UiScale.Pixels(4), UiScale.Pixels(6), UiScale.Pixels(2))
+            };
+            _txtTermbaseFilter.TextChanged += (s, ev) => ApplyTermbaseFilter();
+            _txtTermbaseFilter.MoveToResults += (s, ev) => FocusFirstVisibleTermbase();
+            _lblTermbaseFilterCount = new Label
+            {
+                AutoSize = true,
+                ForeColor = Color.FromArgb(110, 110, 110),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, UiScale.Pixels(7), UiScale.Pixels(8), UiScale.Pixels(3))
+            };
             var tbHeaderHost = new TableLayoutPanel
             {
-                ColumnCount = 2,
+                ColumnCount = 4,
                 RowCount = 1,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -718,8 +737,12 @@ namespace Supervertaler.Trados.Settings
             };
             tbHeaderHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             tbHeaderHost.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            tbHeaderHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            tbHeaderHost.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             tbHeaderHost.Controls.Add(_lblTermbasesHeader, 0, 0);
-            tbHeaderHost.Controls.Add(tbButtonFlow, 1, 0);
+            tbHeaderHost.Controls.Add(_txtTermbaseFilter, 1, 0);
+            tbHeaderHost.Controls.Add(_lblTermbaseFilterCount, 2, 0);
+            tbHeaderHost.Controls.Add(tbButtonFlow, 3, 0);
             SpanG(topGrid, ref tr, tbHeaderHost);
 
             _dgvTermbases = new DataGridView
@@ -1261,13 +1284,16 @@ namespace Supervertaler.Trados.Settings
 
             if (_dgvTermbases.Rows.Count == 0) return;
 
+            // While the list is filtered, ticking or unticking a whole column acts
+            // on the rows the user can see, never on ones the filter hides.
+
             // For Write/Project, skip MultiTerm rows (they're read-only)
             bool skipMultiTerm = col.Name == "colWrite" || col.Name == "colProject";
 
             if (col.Name == "colProject")
             {
                 // Project is radio-button style – header click clears the selection
-                foreach (DataGridViewRow row in _dgvTermbases.Rows)
+                foreach (var row in TermbaseGridFilter.BulkTargets(_dgvTermbases))
                 {
                     if (skipMultiTerm && !IsDatabaseRow(row)) continue;
                     row.Cells[col.Name].Value = false;
@@ -1277,7 +1303,7 @@ namespace Supervertaler.Trados.Settings
             {
                 // Toggle: if all are checked → uncheck all, otherwise check all
                 bool allChecked = true;
-                foreach (DataGridViewRow row in _dgvTermbases.Rows)
+                foreach (var row in TermbaseGridFilter.BulkTargets(_dgvTermbases))
                 {
                     if (skipMultiTerm && !IsDatabaseRow(row)) continue;
                     if (!(row.Cells[col.Name].Value as bool? ?? false))
@@ -1288,7 +1314,7 @@ namespace Supervertaler.Trados.Settings
                 }
 
                 bool newValue = !allChecked;
-                foreach (DataGridViewRow row in _dgvTermbases.Rows)
+                foreach (var row in TermbaseGridFilter.BulkTargets(_dgvTermbases))
                 {
                     if (skipMultiTerm && !IsDatabaseRow(row)) continue;
 
@@ -1559,6 +1585,38 @@ namespace Supervertaler.Trados.Settings
                 }
             }
 
+            // A filter typed before an import, add or remove still applies to the new list.
+            ApplyTermbaseFilter();
+        }
+
+        /// <summary>
+        /// Shows only the termbases whose name or languages match the filter box.
+        /// Rows are hidden, never removed: their ticks are untouched and are saved
+        /// with the rest when the user clicks OK.
+        /// </summary>
+        private void ApplyTermbaseFilter()
+        {
+            if (_dgvTermbases == null || _txtTermbaseFilter == null) return;
+            var r = TermbaseGridFilter.Apply(_dgvTermbases, _txtTermbaseFilter.Text, "colName", "colLanguages",
+                new[] { "colRead", "colWrite", "colProject", "colAi" });
+            if (r.Shown == r.Total)
+                _lblTermbaseFilterCount.Text = "";
+            else
+                _lblTermbaseFilterCount.Text = $"{r.Shown:N0} of {r.Total:N0}" +
+                    (r.HiddenTicked > 0 ? $" – {r.HiddenTicked:N0} hidden still in use" : "");
+        }
+
+        private void FocusFirstVisibleTermbase()
+        {
+            foreach (DataGridViewRow row in _dgvTermbases.Rows)
+            {
+                if (!row.Visible) continue;
+                _dgvTermbases.Focus();
+                var col = _dgvTermbases.Columns["colName"];
+                _dgvTermbases.CurrentCell = row.Cells[col != null ? col.Index : 0];
+                row.Selected = true;
+                return;
+            }
         }
 
         private void OnCreateNewClick(object sender, EventArgs e)

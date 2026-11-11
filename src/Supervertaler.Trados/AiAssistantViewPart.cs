@@ -304,6 +304,7 @@ namespace Supervertaler.Trados
             batchControl.ScopeChanged += OnBatchScopeChanged;
             batchControl.OpenAiSettingsRequested += OnSettingsRequested;
             batchControl.BatchModeChanged += (s, e) => PopulateBatchPromptDropdown();
+            batchControl.PromptPicked += OnBatchPromptPicked;
             batchControl.GeneratePromptRequested += OnGeneratePromptRequested;
             batchControl.OpenBackupFolderRequested += OnOpenBackupFolderRequested;
             batchControl.CopyToClipboardRequested += OnCopyToClipboardRequested;
@@ -8381,23 +8382,15 @@ namespace Supervertaler.Trados
                 // The mode's own prompt: per-project override if set, else global.
                 var mode = _control.Value.BatchTranslateControl.CurrentMode;
                 var proofread = mode == BatchMode.Proofread;
-                var selectedPath = _settings?.AiSettings?.GetBatchPrompt(proofread) ?? "";
-                string activePromptPath = null;
+                Settings.ProjectSettings ps = null;
                 var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
                 if (!string.IsNullOrEmpty(projectPath))
                 {
-                    try
-                    {
-                        var ps = Settings.ProjectSettings.Load(projectPath);
-                        var psPath = ps?.GetBatchPrompt(proofread);
-                        if (!string.IsNullOrEmpty(psPath))
-                        {
-                            activePromptPath = psPath;
-                            selectedPath = activePromptPath;
-                        }
-                    }
+                    try { ps = Settings.ProjectSettings.Load(projectPath); }
                     catch { }
                 }
+                BatchPromptChoice.Stored(_settings?.AiSettings, ps, proofread,
+                    out var selectedPath, out var activePromptPath);
 
                 var categoryFilter = proofread ? "Proofread" : "Translate";
                 var projectName = TermLensEditorViewPart.GetCurrentProjectName();
@@ -8406,6 +8399,51 @@ namespace Supervertaler.Trados
                     prompts, selectedPath, categoryFilter, projectName, activePromptPath,
                     BatchPromptChoice.DefaultPath(prompts, proofread));
             });
+        }
+
+        /// <summary>
+        /// A prompt picked in the Batch Operations list is stored as the mode's
+        /// active prompt, globally and for the open project, so that every later
+        /// rebuild of the list shows it (see BatchPromptChoice.Remember).
+        ///
+        /// <para>If storing fails, the pick still holds for the runs started from
+        /// the list as it stands; it is logged and said in the chat, because the
+        /// next rebuild of the list will not show it.</para>
+        /// </summary>
+        private void OnBatchPromptPicked(object sender, string path)
+        {
+            var proofread = _control.Value.BatchTranslateControl.CurrentMode == BatchMode.Proofread;
+            try
+            {
+                SettingsService.Update(s =>
+                {
+                    if (s.AiSettings == null) s.AiSettings = new AiSettings();
+                    BatchPromptChoice.Remember(s.AiSettings, null, proofread, path);
+                });
+
+                var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+                if (!string.IsNullOrEmpty(projectPath))
+                {
+                    var ps = TermLensEditorViewPart.LoadOrCreateProjectSettings(projectPath,
+                        TermLensEditorViewPart.GetCurrentProjectName());
+                    if (ps != null)
+                    {
+                        BatchPromptChoice.Remember(null, ps, proofread, path);
+                        Settings.ProjectSettings.Save(projectPath, ps);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.Log("BatchPrompt", "could not store the picked prompt: " + ex.Message); } catch { }
+                AddErrorMessage("The prompt you picked is used, but could not be saved as the active prompt: " + ex.Message);
+                return;
+            }
+
+            // The tick moves to the pick - after this event has finished, as the
+            // list is in the middle of its own selection change right now.
+            try { _control.Value.BeginInvoke(new Action(PopulateBatchPromptDropdown)); }
+            catch { }
         }
 
         /// <summary>

@@ -228,6 +228,7 @@ namespace Supervertaler.Trados.Controls
 
             SuperMemoryQuickAddDialog.FillBankList(_cmbBank, activeBank);
             _cmbBank.SelectedIndexChanged += (s, e) => { LoadBank(); Recompute(); };
+            ComboFilter.Attach(_cmbBank, "Type to filter memory banks");
             _numFrom.ValueChanged += (s, e) => Recompute();
             _numTo.ValueChanged += (s, e) => Recompute();
             if (_cmbFromFile != null) _cmbFromFile.SelectedIndexChanged += (s, e) => Recompute();

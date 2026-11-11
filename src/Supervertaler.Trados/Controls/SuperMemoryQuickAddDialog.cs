@@ -141,6 +141,7 @@ namespace Supervertaler.Trados.Controls
             };
             PopulateBanks(activeBankName);
             _cmbBank.SelectedIndexChanged += (s, e) => UpdateDestinationLabel();
+            ComboFilter.Attach(_cmbBank, "Type to filter memory banks");
             Controls.Add(_cmbBank);
             y += 26;
 

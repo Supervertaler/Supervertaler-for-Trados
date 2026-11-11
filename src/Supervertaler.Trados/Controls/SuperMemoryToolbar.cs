@@ -164,6 +164,12 @@ namespace Supervertaler.Trados.Controls
                 TabStop = false
             };
             _cmbMemoryBank.SelectedIndexChanged += OnMemoryBankComboChanged;
+            // Type to filter: there can be dozens of client banks. The rows that
+            // are not banks stay visible whatever is typed - "New memory bank..."
+            // is wanted precisely when no bank matches.
+            ComboFilter.Attach(_cmbMemoryBank, "Type to filter memory banks",
+                item => item is string s && (s == NewBankSentinel || s == MatchByNameSentinel
+                                             || s == NoBankPlaceholder || s == "(no memory banks)"));
 
             // ─── Help link ──────────────────────────────────────────
             _lnkHelp = new LinkLabel
