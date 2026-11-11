@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Sdl.LanguagePlatform.Core;
 using Sdl.LanguagePlatform.TranslationMemory;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
@@ -67,16 +68,21 @@ namespace Supervertaler.Trados.Core
         /// matches degrades the prompt; failing the run would lose the
         /// translator's work.
         /// </summary>
+        /// <param name="everTm">EverTM's language direction for the document's pair, when the project uses EverTM
+        /// for lookups; null otherwise. Searched after the memories in <paramref name="tmEntries"/>, through EverTM's
+        /// own running index (<see cref="SearchEverTm"/>). A project TM's match of the same score wins.</param>
         public static Match[] FindBest(
             List<string> tmEntries,
             IList<string> sourceTexts,
             CultureInfo sourceCulture,
             int minScore,
             Action<int, int> progress,
-            CancellationToken ct)
+            CancellationToken ct,
+            ITranslationProviderLanguageDirection everTm = null)
         {
             var results = new Match[sourceTexts == null ? 0 : sourceTexts.Count];
-            if (results.Length == 0 || tmEntries == null || tmEntries.Count == 0) return results;
+            tmEntries = tmEntries ?? new List<string>();
+            if (results.Length == 0 || (tmEntries.Count == 0 && everTm == null)) return results;
             if (sourceCulture == null) return results;
 
             // Deduplicate: the same sentence repeated forty times is one lookup.
@@ -111,6 +117,11 @@ namespace Supervertaler.Trados.Core
                     SearchOne(ld, DisplayNameOf(entry), keys, sourceCulture,
                               minScore, best, progress, ct);
                 }
+            }
+            if (everTm != null)
+            {
+                tmsSearched++;
+                SearchEverTm(everTm, keys, sourceCulture, minScore, best, progress, ct);
             }
 
             // Fan the per-distinct-text results back out to every segment.
@@ -268,6 +279,74 @@ namespace Supervertaler.Trados.Core
                 DiagnosticLog.Log(LogCategory, string.Format(
                     "'{0}': {1} distinct text(s) in {2} ms, {3} new best match(es).",
                     tmName, keys.Count, sw.ElapsedMilliseconds, hits));
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Lookups EverTM runs at once. Its index serves any number of lookups in parallel (one Lucene reader, shared),
+        /// and a lookup is mostly CPU (candidate scoring), so a few threads divide the time; more would take cores from
+        /// Studio. Measured 10 Nov 2026 on a copy of the real EverTM (871,290 translation units), 20,000 distinct fuzzy
+        /// texts: 64-bit 1 thread 23 ms each (7.7 min), 2: 4.9 min, 4: 3.9 min, 8: 4.2 min; 32-bit 1 thread 15 ms
+        /// (5.0 min), 4: 2.0 min. Beyond 4 nothing is gained. Settable for the scale check.
+        /// </summary>
+        public static int EverTmThreads = Math.Max(1, Math.Min(4, Environment.ProcessorCount - 1));
+
+        /// <summary>
+        /// Searches EverTM for every distinct text and keeps a hit where it beats what a project memory offered (a tie
+        /// keeps the project memory's). One <c>SearchSegment</c> per text, <see cref="EverTmThreads"/> at a time:
+        /// EverTM's lookup is about 26 ms at 871,000 translation units, so 20,000 distinct texts one after another
+        /// would hold a batch up for about 9 minutes before its first request.
+        ///
+        /// EverTM never throws from a lookup (an empty, rebuilding or damaged EverTM gives no matches), and anything
+        /// unexpected here is caught per text and logged once: the batch always goes on, with fewer matches at worst.
+        /// Cancellable between texts.
+        /// </summary>
+        internal static void SearchEverTm(
+            ITranslationProviderLanguageDirection ld,
+            List<string> keys,
+            CultureInfo sourceCulture,
+            int minScore,
+            Match[] best,
+            Action<int, int> progress,
+            CancellationToken ct)
+        {
+            var sw = Stopwatch.StartNew();
+            var found = new Match[keys.Count];
+            int done = 0, failed = 0;
+            string firstError = null;
+            int threads = Math.Max(1, EverTmThreads);
+            var options = new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = threads };
+            Parallel.For(0, keys.Count, options, k =>
+            {
+                try
+                {
+                    var settings = new SearchSettings { Mode = SearchMode.NormalSearch, MinScore = minScore, MaxResults = 3 };
+                    var seg = new Segment(sourceCulture);
+                    seg.Add(keys[k]);
+                    var hit = TakeBest(ld.SearchSegment(settings, seg), "EverTM");
+                    if (hit != null && hit.Score >= minScore) found[k] = hit;
+                }
+                catch (Exception ex)
+                {
+                    if (Interlocked.Increment(ref failed) == 1) firstError = ex.GetType().Name + ": " + ex.Message;
+                }
+                int n = Interlocked.Increment(ref done);
+                if (progress != null && (n % 50 == 0 || n == keys.Count))
+                    try { progress(n, keys.Count); } catch { }
+            });
+
+            int hits = 0;
+            for (int k = 0; k < keys.Count; k++)
+                if (found[k] != null && (best[k] == null || found[k].Score > best[k].Score)) { best[k] = found[k]; hits++; }
+
+            sw.Stop();
+            try
+            {
+                DiagnosticLog.WriteAlways(LogCategory, string.Format(
+                    "EverTM: {0} distinct text(s) in {1} ms on {2} thread(s), {3} new best match(es){4}.",
+                    keys.Count, sw.ElapsedMilliseconds, threads, hits,
+                    failed == 0 ? "" : "; " + failed + " lookup(s) failed, first: " + firstError));
             }
             catch { }
         }

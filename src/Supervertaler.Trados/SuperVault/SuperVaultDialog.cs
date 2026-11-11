@@ -89,10 +89,11 @@ namespace Supervertaler.Trados.SuperVault
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(660, 360);
 
-            _intro.Text = "Supervertaler EverTM is one memory for every language variant, in both directions: an English–Dutch unit serves " +
-                       "nl-BE > en-US, en-GB > nl-NL and the rest. Fill it by importing TMX files or Studio TMs; duplicates are stored once. " +
-                       "With its Update box ticked in the project's TM settings, the segments you confirm are added as you work. " +
-                       "Its matches never lower your project TMs' matches.";
+            _intro.Text = "Supervertaler EverTM is one translation memory for all your work. Its matches work in both directions and for every " +
+                       "language variant: your Dutch–English translations also help in English–Dutch projects, and en-GB translations show up " +
+                       "in en-US projects.\n\n" +
+                       "Fill it by importing your TMX files and Studio TMs. If you tick its Update box in the project's TM settings, every " +
+                       "segment you confirm is added too.";
             _imports.Controls.AddRange(new Control[] { _importTmx, _importTm, _importWorkbench, _rebuild, _export, _stop });
             var ok = new Button { Text = adding ? "Add" : "Close", DialogResult = DialogResult.OK, AutoSize = true };
             _buttons.Controls.Add(ok);
@@ -177,22 +178,25 @@ namespace Supervertaler.Trados.SuperVault
             Refresh2();
         }
 
+        string _metadata;   // "Metadata: 285 projects, ..." or null; read with the store count
+
         void Refresh2()
         {
             var s = _library.Status;
             // The store is a file to open: look at it every 5 s at most, and when a job ends.
             if (_storeUnits < 0 || (!s.Building && (DateTime.UtcNow - _storeCheckedAt).TotalSeconds > 5))
             {
-                try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); _learnWaiting = _library.LearnWaiting(); }
+                try { _storeUnits = _library.StoreCount(); _outOfDate = _library.IndexOutOfDate(); _learnWaiting = _library.LearnWaiting(); _metadata = _library.MetadataSummary(); }
                 catch (Exception ex) { _storeUnits = 0; _outOfDate = false; Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Store check failed: " + ex.Message); }
                 _storeCheckedAt = DateTime.UtcNow;
             }
             var lines = new System.Text.StringBuilder();
-            lines.AppendLine("Memory: " + VaultLibrary.Units(_storeUnits));
+            lines.AppendLine("Translation units: " + _storeUnits.ToString("N0", CultureInfo.CurrentCulture));
+            if (_metadata != null) lines.AppendLine(_metadata);
             switch (s.State)
             {
                 case VaultState.Ready:
-                    lines.AppendLine("Index: " + VaultLibrary.Units(s.Units) +
+                    lines.AppendLine("Indexed translation units: " + s.Units.ToString("N0", CultureInfo.CurrentCulture) +
                                      (s.BuiltAt.HasValue ? ", built " + s.BuiltAt.Value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : "") +
                                      (_outOfDate && !s.Building && _learnWaiting == 0 && s.LearnError == null ? ". Out of date: click Rebuild index." : ""));
                     break;
@@ -203,8 +207,9 @@ namespace Supervertaler.Trados.SuperVault
                 lines.AppendLine("Since Studio started, " + s.Learned +
                                  (_learnWaiting > 0 ? "; " + _learnWaiting.ToString("N0", CultureInfo.CurrentCulture) + " more waiting to be stored" : "") +
                                  (s.LearnError != null ? ". Last attempt failed (" + s.LearnError + "); they are kept and tried again." : "."));
-            if (s.Building) lines.AppendLine("Working: " + s.BuildProgress + ". You can close this window; Studio keeps working meanwhile.");
-            else if (_library.LastJobResult != null) lines.AppendLine("Last import, build or export: " + _library.LastJobResult);
+            // The progress is its own label ("Indexing: 190,000 of 871,290 translation units"), capitalised by EverTM itself.
+            if (s.Building) lines.AppendLine(s.BuildProgress + ". You can close this window and keep working.");
+            else if (_library.LastJobResult != null) lines.AppendLine("Last task: " + _library.LastJobResult);
             lines.AppendLine();
             lines.AppendLine("Stored in: " + _library.Root);
             _status.Text = lines.ToString();
@@ -228,7 +233,7 @@ namespace Supervertaler.Trados.SuperVault
             if (width <= 0) return;
             const TextFormatFlags flags = TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl;
             int line = TextRenderer.MeasureText("Xg", Font, new Size(width, int.MaxValue), flags).Height;
-            _intro.Height = TextRenderer.MeasureText(_intro.Text, Font, new Size(width, int.MaxValue), flags).Height + line / 2;
+            _intro.Height = TextRenderer.MeasureText(_intro.Text, Font, new Size(width, int.MaxValue), flags).Height + line;   // a blank line before the status
             int status = TextRenderer.MeasureText(_status.Text ?? "", Font, new Size(width, int.MaxValue), flags).Height;
             // The import buttons wrap to a second row when the font is large: make room for every row.
             _imports.Height = Math.Max(_imports.Height, _imports.GetPreferredSize(new Size(ClientSize.Width, 0)).Height);

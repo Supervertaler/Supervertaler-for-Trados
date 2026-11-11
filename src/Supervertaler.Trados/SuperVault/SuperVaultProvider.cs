@@ -53,6 +53,7 @@ namespace Supervertaler.Trados.SuperVault
         {
             if (VaultLibrary.Log == null)
                 VaultLibrary.Log = message => Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", message);
+            if (VaultLibrary.ProjectOf == null) VaultLibrary.ProjectOf = StudioProjects.Describe;   // on the learning thread
             Library = VaultLibrary.For(root ?? VaultLibrary.DefaultRootInUse);   // the log is set first: the move logs what it did
             _uri = IsOurs(uri) ? uri : DefaultUri;
         }
@@ -70,7 +71,7 @@ namespace Supervertaler.Trados.SuperVault
         public ITranslationProviderLanguageDirection GetLanguageDirection(LanguagePair pair)
         {
             if (!SupportsLanguageDirection(pair))
-                throw new NotSupportedException($"EverTM holds no {pair?.SourceCultureName} / {pair?.TargetCultureName} units.");
+                throw new NotSupportedException($"EverTM holds no {pair?.SourceCultureName} / {pair?.TargetCultureName} translation units.");
             return new SuperVaultLanguageDirection(this, pair);
         }
 
@@ -88,7 +89,7 @@ namespace Supervertaler.Trados.SuperVault
                 try
                 {
                     var s = Library.Status;
-                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "EverTM: " + s.Message + (s.Building ? " (working: " + s.BuildProgress + ")" : ""));
+                    if (s.State == VaultState.Ready) return new ProviderStatusInfo(true, "EverTM: " + s.Message + (s.Building ? " (" + s.BuildProgress + ")" : ""));
                     if (s.Building) return new ProviderStatusInfo(true, "EverTM is busy (" + s.BuildProgress + ")");
                     if (s.State == VaultState.Missing) return new ProviderStatusInfo(true, s.Message);
                     return new ProviderStatusInfo(false, s.Message + " To do so, select EverTM and click Settings...");
@@ -161,7 +162,8 @@ namespace Supervertaler.Trados.SuperVault
                     if (idx == null) return results;
                     bool onTarget = settings.Mode == SearchMode.TargetConcordanceSearch;
                     var query = VaultLookup.PlainOf(SuperVaultResults.Pieces(segment));
-                    foreach (var m in VaultLookup.Concordance(idx, query, onTarget ? _target : _source, onTarget ? _source : _target, settings.MinScore, max))
+                    var otherCulture = (onTarget ? SourceLanguage : TargetLanguage)?.Name;
+                    foreach (var m in VaultLookup.Concordance(idx, query, onTarget ? _target : _source, onTarget ? _source : _target, settings.MinScore, max, otherCulture))
                     {
                         // Concordance matches come back oriented search language -> other; a TU is always source -> target.
                         var searched = Plain(onTarget ? TargetLanguage : SourceLanguage, m.Source);
@@ -174,7 +176,8 @@ namespace Supervertaler.Trados.SuperVault
                 var doc = SuperVaultResults.Pieces(results.SourceSegment);
                 // Library.Lookup also sees the units just handed over and not yet stored: Studio looks a segment up
                 // again right after confirming it and caches the result, so the new unit must be there at once.
-                var matches = _provider.Library.Lookup(doc, _source, _target, settings.MinScore, max);
+                // The project's exact target variant (en-GB) first, then the newest (docs/design/evertm-metadata.md, 3b).
+                var matches = _provider.Library.Lookup(doc, _source, _target, settings.MinScore, max, TargetLanguage?.Name);
                 if (matches.Count == 0) return results;
                 // Our tokens on the document copy: Studio pairs each provider's results with that provider's copy of the
                 // document segment when it draws the differences, so these never meet another TM's tokens.
@@ -238,12 +241,13 @@ namespace Supervertaler.Trados.SuperVault
         /// Studio's confirm action must not fail or hang because of SuperVault. A unit Studio masked out gets null, as
         /// for searches. The result can only say "added": the unit is stored a moment later, in the background.
         /// </summary>
-        ImportResult[] Learn(TranslationUnit[] units, bool[] mask)
+        ImportResult[] Learn(TranslationUnit[] units, bool[] mask, ImportSettings settings = null)
         {
             var results = new ImportResult[units?.Length ?? 0];
             try
             {
                 var batch = new List<VaultLearnUnit>(results.Length);
+                var subject = Subject(settings);
                 for (int i = 0; i < results.Length; i++)
                 {
                     if (mask != null && (i >= mask.Length || !mask[i])) continue;
@@ -256,6 +260,12 @@ namespace Supervertaler.Trados.SuperVault
                         TargetCulture = tu.TargetSegment.Culture?.Name ?? TargetLanguage?.Name,
                         Target = SuperVaultImport.Codes(tu.TargetSegment),
                         Origin = "studio",
+                        // Who and where (only in-memory reads here, on Studio's UI thread; the project's name and
+                        // customer are read from its .sdlproj on EverTM's learning thread, from DocumentPath).
+                        User = User(tu),
+                        Subject = subject,
+                        Document = DocumentName(tu),
+                        DocumentPath = DocumentPath(tu),
                     });
                     results[i] = Added;
                 }
@@ -269,11 +279,54 @@ namespace Supervertaler.Trados.SuperVault
             return results;
         }
 
-        public ImportResult AddTranslationUnit(TranslationUnit translationUnit, ImportSettings settings) => Learn(new[] { translationUnit }, null)[0];
-        public ImportResult[] AddTranslationUnits(TranslationUnit[] translationUnits, ImportSettings settings) => Learn(translationUnits, null);
-        public ImportResult[] AddOrUpdateTranslationUnits(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings) => Learn(translationUnits, null);
-        public ImportResult[] AddTranslationUnitsMasked(TranslationUnit[] translationUnits, ImportSettings settings, bool[] mask) => Learn(translationUnits, mask);
-        public ImportResult[] AddOrUpdateTranslationUnitsMasked(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings, bool[] mask) => Learn(translationUnits, mask);
+        /// <summary>The Studio user Studio put on the unit (it sets the current user on confirm), else Windows' user name.</summary>
+        static string User(TranslationUnit tu)
+        {
+            var u = tu.SystemFields?.ChangeUser;
+            if (string.IsNullOrWhiteSpace(u)) u = tu.SystemFields?.CreationUser;
+            return string.IsNullOrWhiteSpace(u) ? Environment.UserName : u;
+        }
+
+        /// <summary>The original document's file name ("manual.docx"), else the bilingual file's.</summary>
+        static string DocumentName(TranslationUnit tu)
+        {
+            try
+            {
+                var original = tu.FileProperties?.FileConversionProperties?.OriginalFilePath;
+                var path = !string.IsNullOrEmpty(original) ? original : DocumentPath(tu);
+                return string.IsNullOrEmpty(path) ? null : System.IO.Path.GetFileName(path);
+            }
+            catch { return null; }
+        }
+
+        static string DocumentPath(TranslationUnit tu)
+        {
+            try { var p = tu.DocumentProperties?.LastOpenedAsPath; return string.IsNullOrEmpty(p) ? null : p; }
+            catch { return null; }
+        }
+
+        /// <summary>The project's "field values on update" (Project Settings > Translation Memory > Update) named Subject or Domain, if any.</summary>
+        static string Subject(ImportSettings settings)
+        {
+            try
+            {
+                if (settings?.ProjectSettings == null) return null;
+                var values = new List<string>();
+                foreach (var fv in settings.ProjectSettings)
+                {
+                    if (VaultFields.Canonical(fv?.Name) != VaultFields.Subject) continue;
+                    values.AddRange(SuperVaultImport.Values(fv));
+                }
+                return values.Count == 0 ? null : string.Join(", ", values);
+            }
+            catch { return null; }
+        }
+
+        public ImportResult AddTranslationUnit(TranslationUnit translationUnit, ImportSettings settings) => Learn(new[] { translationUnit }, null, settings)[0];
+        public ImportResult[] AddTranslationUnits(TranslationUnit[] translationUnits, ImportSettings settings) => Learn(translationUnits, null, settings);
+        public ImportResult[] AddOrUpdateTranslationUnits(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings) => Learn(translationUnits, null, settings);
+        public ImportResult[] AddTranslationUnitsMasked(TranslationUnit[] translationUnits, ImportSettings settings, bool[] mask) => Learn(translationUnits, mask, settings);
+        public ImportResult[] AddOrUpdateTranslationUnitsMasked(TranslationUnit[] translationUnits, int[] previousTranslationHashes, ImportSettings settings, bool[] mask) => Learn(translationUnits, mask, settings);
         public ImportResult UpdateTranslationUnit(TranslationUnit translationUnit) => Learn(new[] { translationUnit }, null)[0];
         public ImportResult[] UpdateTranslationUnits(TranslationUnit[] translationUnits) => Learn(translationUnits, null);
     }

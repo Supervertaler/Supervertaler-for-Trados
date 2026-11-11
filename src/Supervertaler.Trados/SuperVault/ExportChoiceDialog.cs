@@ -45,7 +45,7 @@ namespace Supervertaler.Trados.SuperVault
 
             _info.Text = "Reading what EverTM holds...";
             _list.Columns.Add("From", 380);
-            _list.Columns.Add("Units", 100, HorizontalAlignment.Right);
+            _list.Columns.Add("Translation units", 120, HorizontalAlignment.Right);
             _list.ItemChecked += (s, e) => { if (!_filling) UpdateTotal(); };
             _pair.SelectedIndexChanged += (s, e) => { if (!_filling) FillOrigins(); };
 
@@ -132,8 +132,8 @@ namespace Supervertaler.Trados.SuperVault
             finally { _filling = false; }
             _info.Text = holdings.Count == 0
                 ? "EverTM is empty: there is nothing to export."
-                : "Choose what to export. Each unit is written in the direction and language variants it was first stored with, " +
-                  "with the date it was added and where it came from.";
+                : "Choose what to export. Each translation unit is written in the direction and language variants it was first stored with, " +
+                  "with its dates, its fields and where it came from.";
             FitInfo();
             FillOrigins();
         }

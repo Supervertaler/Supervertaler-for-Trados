@@ -8046,6 +8046,9 @@ namespace Supervertaler.Trados
             public List<string> Tms;
             public System.Globalization.CultureInfo SourceCulture;
             public int MinScore;
+            /// <summary>The project looks things up in EverTM: search it too, for this target language (with its variant).</summary>
+            public bool EverTm;
+            public string TargetCulture;
         }
 
         /// <summary>MUST be called on the UI thread - it reads the Trados model.</summary>
@@ -8055,8 +8058,12 @@ namespace Supervertaler.Trados
             {
                 if (aiSettings == null || !aiSettings.SendTmMatchesInBatch) return null;
 
-                var tms = Core.TmSearcher.FindProjectTms(ResolveProjectAnchorPathCore());
-                if (tms == null || tms.Count == 0) return null;
+                var anchor = ResolveProjectAnchorPathCore();
+                var tms = Core.TmSearcher.FindProjectTms(anchor) ?? new List<string>();
+                // EverTM, when the project has it with Lookup ticked: searched through its own provider, not as a file.
+                var target = GetDocumentTargetCultureName();
+                bool everTm = target != null && Core.TmSearcher.ProjectUsesEverTm(anchor);
+                if (tms.Count == 0 && !everTm) return null;
 
                 var culture = GetDocumentSourceCulture();
                 if (culture == null) return null;
@@ -8064,7 +8071,7 @@ namespace Supervertaler.Trados
                 var min = aiSettings.TmFuzzyMinScore;
                 if (min < 1 || min > 100) min = 70;
 
-                return new TmLookupPlan { Tms = tms, SourceCulture = culture, MinScore = min };
+                return new TmLookupPlan { Tms = tms, SourceCulture = culture, MinScore = min, EverTm = everTm, TargetCulture = target };
             }
             catch (Exception ex)
             {
@@ -8094,7 +8101,7 @@ namespace Supervertaler.Trados
             foreach (var s in segments) texts.Add(s.SourceText);
 
             var matches = Core.TmFuzzyLookup.FindBest(
-                plan.Tms, texts, plan.SourceCulture, plan.MinScore, progress, ct);
+                plan.Tms, texts, plan.SourceCulture, plan.MinScore, progress, ct, OpenEverTm(plan));
 
             int applied = 0;
             for (int i = 0; i < segments.Count && i < matches.Length; i++)
@@ -8114,6 +8121,34 @@ namespace Supervertaler.Trados
                 applied++;
             }
             return applied;
+        }
+
+        /// <summary>
+        /// EverTM's language direction for the plan's pair, through the provider Studio uses (the same running
+        /// library and index, never a second one). Null when the project doesn't use EverTM or it can't be opened: the
+        /// batch then goes on with the project's other memories. Called off the UI thread.
+        /// </summary>
+        private static Sdl.LanguagePlatform.TranslationMemoryApi.ITranslationProviderLanguageDirection OpenEverTm(TmLookupPlan plan)
+        {
+            if (plan == null || !plan.EverTm) return null;
+            try
+            {
+                var pair = new Sdl.LanguagePlatform.Core.LanguagePair(plan.SourceCulture.Name, plan.TargetCulture);
+                var provider = new SuperVault.SuperVaultProvider();
+                return provider.SupportsLanguageDirection(pair) ? provider.GetLanguageDirection(pair) : null;
+            }
+            catch (Exception ex)
+            {
+                Core.DiagnosticLog.Log("TmFuzzy", "EverTM not searched: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>The document's target language name with its variant ("en-GB"), or null. UI thread.</summary>
+        private string GetDocumentTargetCultureName()
+        {
+            try { return _activeDocument?.ActiveFile?.Language?.CultureInfo?.Name; }
+            catch { return null; }
         }
 
         /// <summary>

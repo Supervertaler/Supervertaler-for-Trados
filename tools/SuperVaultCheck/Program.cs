@@ -34,13 +34,66 @@ static class Program
             }
             return null;
         };
+        // Supervertaler's data folder for this run: our own, never the user's. The plugin's diagnostic log, settings and
+        // EverTM's default folder all live under it, and the user's diagnostic.log is how real Studio problems are
+        // diagnosed: test lines there mislead. In memory only (config.json is not written). The real folder is
+        // remembered for the one mode that reads the real EverTM on purpose (lookup-xliff) and for the check that
+        // the run added nothing to the real log.
+        Isolation.Start();
         if (args.Length > 0 && args[0] == "kit")
             return Kit.Run(args.Length > 1 ? args[1] : "EverTM acceptance", args.Length > 2 ? args[2] : @"D:\Supervertaler\resources\supervertaler.db");
         if (args.Length > 1 && args[0] == "lookup-xliff")
-            return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : null);
+            return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : Path.Combine(Isolation.RealDataRoot, "evertm"));
+        if (args.Length > 1 && args[0] == "tmmatch-scale")
+            return TmMatchChecks.Scale(args[1], args.Length > 2 ? int.Parse(args[2]) : 20000);
         if (args.Length > 1 && args[0] == "import-sdltm")
             return RealTm.Run(args[1], args.Length > 2 ? args[2] : null);
         return Checks.Run(args);
+    }
+}
+
+/// <summary>This run's own Supervertaler data folder (see Main), and the check that the real one's log gained nothing.</summary>
+static class Isolation
+{
+    public static string RealDataRoot { get; private set; }
+    public static string DataRoot { get; private set; }
+    static string RealLog => Path.Combine(RealDataRoot, "trados", "logs", "diagnostic.log");
+    static long _realLogLength;
+
+    public static void Start()
+    {
+        RealDataRoot = Supervertaler.Core.SupervertalerPaths.Root;
+        DataRoot = Path.Combine(Path.GetTempPath(), "sv-supervault-check-data-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(DataRoot);
+        Supervertaler.Core.SupervertalerPaths.Set(DataRoot);
+        try { _realLogLength = File.Exists(RealLog) ? new FileInfo(RealLog).Length : 0; } catch { _realLogLength = -1; }
+        AppDomain.CurrentDomain.ProcessExit += (s, e) => { try { Directory.Delete(DataRoot, true); } catch { } };
+    }
+
+    /// <summary>
+    /// The plugin's log went to this run's folder, and the real log gained no line from this run. The real log may
+    /// grow meanwhile (a running Studio writes to it), so what was appended is read and searched for this run's
+    /// folders and categories, rather than requiring the file to be unchanged.
+    /// </summary>
+    public static void CheckNothingReachedTheRealLog(Action<bool, string> check)
+    {
+        var ours = Supervertaler.Trados.Core.DiagnosticLog.LogFilePath;
+        check(ours.StartsWith(DataRoot, StringComparison.OrdinalIgnoreCase) && File.Exists(ours),
+              "the plugin's diagnostic log went to this run's own folder (" + new FileInfo(ours).Length + " bytes there)");
+        if (_realLogLength < 0 || !File.Exists(RealLog)) { check(true, "the real diagnostic log: none to check"); return; }
+        string added = "";
+        try
+        {
+            using (var f = new FileStream(RealLog, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                if (f.Length < _realLogLength) { check(true, "the real diagnostic log rotated meanwhile: not compared"); return; }
+                f.Seek(_realLogLength, SeekOrigin.Begin);
+                using (var r = new StreamReader(f)) added = r.ReadToEnd();
+            }
+        }
+        catch (Exception ex) { check(false, "could not read the real diagnostic log: " + ex.Message); return; }
+        bool clean = added.IndexOf("sv-supervault-check", StringComparison.OrdinalIgnoreCase) < 0 && added.IndexOf(DataRoot, StringComparison.OrdinalIgnoreCase) < 0;
+        check(clean, "no line from this run in " + RealLog + " (" + added.Length + " characters added meanwhile, by Studio)");
     }
 }
 
@@ -80,6 +133,8 @@ static class Checks
             WorkbenchChoice();
             ExportIntoStudio(root);
             ExportChoice(root);
+            MetadataChecks.Run(_scratch, Check);
+            TmMatchChecks.Run(_scratch, Check);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
@@ -88,6 +143,8 @@ static class Checks
             SqliteConnection.ClearAllPools();
             try { Directory.Delete(_scratch, true); } catch { Console.WriteLine("(scratch left at " + _scratch + ")"); }
         }
+        Console.WriteLine("Isolation from the user's data folder");
+        Isolation.CheckNothingReachedTheRealLog(Check);
         Console.WriteLine(_failed == 0 ? $"ALL {_passed} CHECKS PASSED" : $"{_failed} FAILED, {_passed} passed");
         return _failed == 0 ? 0 : 1;
     }
@@ -390,7 +447,7 @@ static class Checks
                 var status = (System.Windows.Forms.Label)type.GetProperty("StatusLabel", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
                 int needIntro = System.Windows.Forms.TextRenderer.MeasureText(intro.Text, intro.Font, new System.Drawing.Size(intro.ClientSize.Width, int.MaxValue), flags).Height;
                 int needStatus = System.Windows.Forms.TextRenderer.MeasureText(status.Text, status.Font, new System.Drawing.Size(status.ClientSize.Width, int.MaxValue), flags).Height;
-                Check(intro.Text.EndsWith("matches.") && needIntro <= intro.ClientSize.Height && needStatus <= status.ClientSize.Height,
+                Check(intro.Text.EndsWith("is added too.") && intro.Text.Contains("\n\nFill it") && needIntro <= intro.ClientSize.Height && needStatus <= status.ClientSize.Height,
                       $"at {scale}: description needs {needIntro} px, has {intro.ClientSize.Height}; status needs {needStatus} px, has {status.ClientSize.Height}");
                 var hidden = form.Controls.OfType<System.Windows.Forms.FlowLayoutPanel>().SelectMany(p => p.Controls.OfType<System.Windows.Forms.Button>()
                     .Where(b => b.Visible && (b.Bottom > p.ClientSize.Height || b.Right > p.ClientSize.Width)).Select(b => b.Text)).ToList();
@@ -458,7 +515,7 @@ static class Checks
                 var rows = view.Items.Cast<System.Windows.Forms.ListViewItem>().Select(i => $"{(i.Checked ? "x" : " ")} {i.SubItems[0].Text} | {i.SubItems[1].Text} | {i.SubItems[2].Text}").ToList();
                 if (scale == "100%")
                 {
-                    Check(rows.SequenceEqual(new[] { "x Acme empty | (no units) | 0".Replace("x ", "  "), "x Acme main | nl > en, en > nl | 3", "x c | es > nl | 1", "  PROJ-001 | de > nl | 1" }),
+                    Check(rows.SequenceEqual(new[] { "x Acme empty | (no translation units) | 0".Replace("x ", "  "), "x Acme main | nl > en, en > nl | 3", "x c | es > nl | 1", "  PROJ-001 | de > nl | 1" }),
                           "names (tm_id without one), pairs and counts; last time's unticked TM unticked; no units: unticked: " + string.Join(" / ", rows));
                     Call(f, "SetTicked", "d", true);
                     Check(!Get<List<string>>(f, "Ticked").Contains("d"), "a TM with no units can't be ticked");
@@ -515,7 +572,7 @@ static class Checks
             var st = importer.Statistics;
             // The 30,000-unit TMX of the failure-mode checks is one sentence with a number in it: Studio's TM treats
             // numbers as placeables, so to Studio those are all one unit. Counted apart.
-            bool Series(System.Xml.XmlElement t) => t.SelectSingleNode("prop")?.InnerText == "tmx:big.tmx";
+            bool Series(System.Xml.XmlElement t) => t.SelectSingleNode("prop[@type='x-EverTM-Origin']")?.InnerText == "tmx:big.tmx";
             int sameDirection = tus.Count(t => !Series(t) && Base(Lang(t, 1)) == Base(src.Name) && Base(Lang(t, 2)) == Base(trg.Name));
             int reversed = tus.Count(t => !Series(t) && Base(Lang(t, 1)) == Base(trg.Name) && Base(Lang(t, 2)) == Base(src.Name));
             int series = tus.Count(Series);

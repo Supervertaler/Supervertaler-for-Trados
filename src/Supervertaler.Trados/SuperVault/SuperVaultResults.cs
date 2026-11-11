@@ -140,7 +140,6 @@ namespace Supervertaler.Trados.SuperVault
 
         static SearchResult Make(Segment src, Segment trg, VaultMatch m, ScoringResult scoring)
         {
-            var now = DateTime.UtcNow;
             int.TryParse(m.Candidate.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id);
             var tu = new TranslationUnit(src, trg)
             {
@@ -148,10 +147,63 @@ namespace Supervertaler.Trados.SuperVault
                 OriginSystem = "EverTM",
                 ConfirmationLevel = ConfirmationLevel.Translated,
                 ResourceId = new PersistentObjectToken(id, Guid.Empty),
-                SystemFields = new SystemFields { CreationDate = now, ChangeDate = now, UseDate = now, CreationUser = "EverTM", ChangeUser = "EverTM", UseUser = "EverTM" },
-                FieldValues = new FieldValues(),
+                SystemFields = SystemFieldsOf(m.Candidate),
+                FieldValues = FieldValuesOf(m.Candidate),
             };
             return new SearchResult(tu) { ScoringResult = scoring, TranslationProposal = new TranslationUnit(tu) };
+        }
+
+        /// <summary>
+        /// The dates and users Studio shows under the results (its info bar): the unit's own. A unit with no known date
+        /// shows when it entered EverTM, rather than a made-up translation date.
+        ///
+        /// A user EverTM doesn't know is left out (null), never "EverTM" (Michael, 10 Nov: "EverTM is the system, not a
+        /// user"). Read from Studio 2024 and 2026, every place that reads these users takes a null:
+        ///  - the info bar (TmInfoBar.UpdateControls) shows the date and no user, and hides the separator before it;
+        ///    its tooltip shows "Never" / "N/A" for a date without a user (Studio's own rule, as for any TM unit with no
+        ///    user);
+        ///  - applying a match in the Editor and Pre-translate (TranslationOriginOperations, TranslateContentProcessor)
+        ///    copy it into the segment's origin; the .sdlxliff writer appends it as text, so null writes an empty value;
+        ///  - AutoSuggest's MT-user check (a list Contains), the TU's field lookup ("cru"/"chu") and the BCM converter
+        ///    just carry it.
+        /// An empty string would show the separator with nothing after it, so null it is.
+        /// </summary>
+        internal static SystemFields SystemFieldsOf(VaultCandidate c)
+        {
+            var fallback = c.Added ?? DateTime.UtcNow;
+            var created = c.Created ?? c.Changed ?? fallback;
+            var changed = c.Changed ?? c.Created ?? fallback;
+            bool dated = c.Created != null || c.Changed != null;
+            string createdBy = dated ? Known(c.CreatedBy) ?? Known(c.ChangedBy) : null;
+            string changedBy = dated ? Known(c.ChangedBy) ?? Known(c.CreatedBy) : null;
+            return new SystemFields
+            {
+                CreationDate = created, ChangeDate = changed, UseDate = changed,
+                CreationUser = createdBy, ChangeUser = changedBy, UseUser = changedBy,
+            };
+        }
+
+        static string Known(string user) => string.IsNullOrWhiteSpace(user) ? null : user;
+
+        /// <summary>
+        /// The unit's fields, for Studio's field column in Translation Results and Concordance (it shows the first three:
+        /// Project, Client, Subject come first), then "Older translations: N" when newest-wins hid others.
+        /// </summary>
+        internal static FieldValues FieldValuesOf(VaultCandidate c)
+        {
+            var values = new FieldValues();
+            foreach (var g in c.Fields.GroupBy(f => f.Field).OrderBy(g => Rank(g.Key)))
+                values.Add(new MultipleStringFieldValue(g.Key, g.Select(f => f.Value).Distinct().ToList()));
+            if (c.Older > 0) values.Add(new SingleStringFieldValue(OlderField, c.Older.ToString(CultureInfo.CurrentCulture)));
+            return values;
+        }
+
+        internal const string OlderField = "Older translations";
+
+        static int Rank(string field)
+        {
+            int i = Array.IndexOf(VaultFields.Order, field);
+            return i < 0 ? VaultFields.Order.Length : i;
         }
 
         static void ApplyPenalty(SearchResult r, SearchSettings settings, PenaltyType type, int fallback)
