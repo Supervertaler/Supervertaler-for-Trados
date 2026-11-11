@@ -152,6 +152,7 @@ static class Checks
             TagsAndPenalties(vault);
             FuzzyDifferences(vault);
             DiffDisplayChecks.Run(_scratch, Check);
+            RowChecks.Run(_scratch, Check);
             Concordance(vault, clientTm);
             Learning(vault);
             CountingConfirmations(root);

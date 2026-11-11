@@ -434,6 +434,25 @@ Read from `Sdl.ProjectApi.Translation.FuzzyMatchRepair` and `Sdl.Core.MatchRepai
 - A unit differing only in formatting (other tags) is shown twice.
 - Checked: SuperVaultCheck, same unit in a Studio TM and EverTM, EverTM first or last: one row, the Studio TM's.
 
+**Decision 3, built (checks only: Studio's merge already does it).** EverTM's row replaces the project TM's for the
+very same unit when EverTM scores higher; no capping. `RowChecks` in SuperVaultCheck, EverTM first and last in the
+list:
+
+- a tie (Michael's second claim pair, 87% and 87%): one row, the project TM's;
+- EverTM higher (a moved word Studio's alignment doesn't see as a move: Studio 92%, EverTM 95%): one row, EverTM's,
+  at 95%;
+- "EverTM never lowers your project TMs' matches" (no "multiple translations" penalty because of EverTM) stays
+  checked by `NeverLowersTheClientTm`.
+
+**The Help wording ("one row, not two"):**
+
+> If EverTM holds the very same unit as one of your project's TMs – the same source sentence and the same
+> translation – Studio shows it once in Translation Results: the better match of the two, and your TM's when they
+> score the same. Now that EverTM scores like Studio, they usually score the same, so you see your TM's row; where
+> EverTM happens to score a point or two higher for the very same unit, you see EverTM's row instead, with the same
+> translation. EverTM never lowers a match from your project's TMs. A unit that differs only in its formatting (other
+> tags) is a different unit to Studio, and is shown twice.
+
 ## Questions for Michael (one at a time, each with a recommendation)
 
 1. **Make EverTM score like Studio (1c), knowing it can't be exact without Studio's own language resources?**

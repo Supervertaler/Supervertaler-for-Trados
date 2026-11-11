@@ -36,6 +36,7 @@
     <Compile Include="MetadataChecks.cs" />
     <Compile Include="TmMatchChecks.cs" />
     <Compile Include="DiffDisplayChecks.cs" />
+    <Compile Include="RowChecks.cs" />
     <Compile Include="ScoreCompare.cs" />
     <Compile Include="StudioLikeScore.cs" />
     <Reference Include="System.Windows.Forms" />
