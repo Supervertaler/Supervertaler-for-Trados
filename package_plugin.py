@@ -40,6 +40,7 @@ PLUGIN_FILES = [
     "System.Runtime.CompilerServices.Unsafe.dll",
     # --- Lucene.NET (SuperVault's index; Apache-2.0) and what it needs ---
     "Lucene.Net.dll",
+    "Lucene.Net.Analysis.Common.dll",   # Snowball stemmers and stopwords for the fuzzy score
     "J2N.dll",
     "Microsoft.Extensions.Configuration.Abstractions.dll",
     "Microsoft.Extensions.Primitives.dll",
@@ -66,6 +67,7 @@ INCLUDE_FILES = [
     "System.Runtime.CompilerServices.Unsafe.dll",
     # --- Lucene.NET (SuperVault's index; Apache-2.0) and what it needs ---
     "Lucene.Net.dll",
+    "Lucene.Net.Analysis.Common.dll",   # Snowball stemmers and stopwords for the fuzzy score
     "J2N.dll",
     "Microsoft.Extensions.Configuration.Abstractions.dll",
     "Microsoft.Extensions.Primitives.dll",

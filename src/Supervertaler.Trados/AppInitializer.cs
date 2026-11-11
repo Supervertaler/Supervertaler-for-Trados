@@ -780,6 +780,7 @@ namespace Supervertaler.Trados
             "System.Runtime.CompilerServices.Unsafe",
             // SuperVault's index
             "Lucene.Net",
+            "Lucene.Net.Analysis.Common",
             "J2N",
             "Microsoft.Extensions.Configuration.Abstractions",
             "Microsoft.Extensions.Primitives",
