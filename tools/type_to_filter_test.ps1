@@ -13,6 +13,8 @@
 #          a pending checkbox click is committed, not lost; a hidden row is
 #          deselected so Remove/Export can't act on it; header bulk ticks reach
 #          visible rows only; clearing the filter brings every row back unchanged.
+#  Part D  The mouse wheel over a CLOSED filtered list never changes it (each change of
+#          the prompt list is saved as the active prompt); it scrolls the pane instead.
 #  Scale   2,000 names / 2,000 grid rows, timed per keystroke.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\type_to_filter_test.ps1
@@ -162,6 +164,44 @@ public static class TypeToFilterTest {
         host.Dispose();
     }
 
+    // ── Part D ──
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
+    public static void Wheel(Control c, int notches) {
+        var pt = c.PointToScreen(new System.Drawing.Point(c.Width / 2, c.Height / 2));
+        for (int i = 0; i < Math.Abs(notches); i++)
+            SendMessage(c.Handle, 0x020A, (IntPtr)((notches < 0 ? -120 : 120) << 16), (IntPtr)((pt.Y << 16) | (pt.X & 0xFFFF)));
+        Application.DoEvents();
+    }
+
+    public static void PartD() {
+        Console.WriteLine("Part D  mouse wheel over a closed list");
+        var host = new Form { Width = 400, Height = 300, StartPosition = FormStartPosition.Manual, Location = new System.Drawing.Point(50, 50) };
+        var pane = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        host.Controls.Add(pane);
+        pane.Controls.Add(new Label { Top = 1500, Text = "bottom", AutoSize = true }); // makes the pane scroll
+        var plain = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Left = 10, Top = 10, Width = 150 };
+        var hooked = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Left = 10, Top = 50, Width = 150 };
+        foreach (var c in new[] { plain, hooked }) { for (int i = 0; i < 20; i++) c.Items.Add("prompt " + i); c.SelectedIndex = 5; pane.Controls.Add(c); }
+        ComboFilter.Attach(hooked, null);
+        int changes = 0; hooked.SelectedIndexChanged += delegate { changes++; };
+        host.Show(); Application.DoEvents();
+
+        Wheel(plain, -3);
+        Check(plain.SelectedIndex != 5, "control: a plain closed list DOES change on the wheel (" + plain.SelectedIndex + "), so the test means something");
+        int scrollBefore = pane.VerticalScroll.Value;
+        Wheel(hooked, -3);
+        Check(hooked.SelectedIndex == 5 && changes == 0, "wheel down x3 over the closed filtered list: selection unchanged, no change event");
+        Wheel(hooked, 3);
+        Check(hooked.SelectedIndex == 5 && changes == 0, "wheel up x3: still unchanged");
+        Wheel(hooked, -3);
+        Check(pane.VerticalScroll.Value > scrollBefore,
+              "the wheel goes on to the pane around it, which scrolls (" + scrollBefore + " -> " + pane.VerticalScroll.Value + ")");
+        hooked.Enabled = false; Wheel(hooked, -2); hooked.Enabled = true;
+        Check(hooked.SelectedIndex == 5, "disabled list: unchanged too");
+        host.Close(); host.Dispose();
+    }
+
     // ── Part C ────────────────────────────────────────────────────────
     static DataGridView Grid(Form host, int rows) {
         var g = new DataGridView { AllowUserToAddRows = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false };
@@ -254,6 +294,7 @@ public static class TypeToFilterTest {
 [TypeToFilterTest]::PartA()
 [TypeToFilterTest]::PartB()
 [TypeToFilterTest]::PartC()
+[TypeToFilterTest]::PartD()
 Write-Host ""
 Write-Host ("{0} passed, {1} failed" -f [TypeToFilterTest]::Pass, [TypeToFilterTest]::Fail)
 if ([TypeToFilterTest]::Fail -gt 0) { exit 1 }

@@ -51,6 +51,13 @@ namespace Supervertaler.Trados.Controls
         {
             private const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104, WM_CHAR = 0x0102;
             private const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONDBLCLK = 0x0203;
+            private const int WM_MOUSEWHEEL = 0x020A;
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr GetParent(IntPtr hWnd);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
             private readonly ComboBox _combo;
             private readonly string _cue;
@@ -68,6 +75,21 @@ namespace Supervertaler.Trados.Controls
 
             protected override void WndProc(ref Message m)
             {
+                // The wheel over the CLOSED list never changes it. Natively each
+                // notch moves the selection, and for the prompt list each change is
+                // now saved as the active prompt: scrolling the pane past it would
+                // silently change what the next Batch Translate uses. The wheel goes
+                // to the window around the list instead, so the pane scrolls as it
+                // would anywhere else. An open list is the popup, a window of its
+                // own, and scrolls as normal.
+                if (m.Msg == WM_MOUSEWHEEL && !_combo.DroppedDown)
+                {
+                    var parent = GetParent(m.HWnd);
+                    if (parent != IntPtr.Zero) SendMessage(parent, m.Msg, m.WParam, m.LParam);
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+
                 if (_combo.Enabled && _combo.Items.Count > 0)
                 {
                     switch (m.Msg)

@@ -17,6 +17,7 @@
 #   H  failure: the picked prompt's file is deleted -> the list shows the default, says
 #      nothing was picked, and the stored choice is NOT overwritten by that fallback
 #      (so the prompt comes back if the file does)
+#   J  the mouse wheel over the closed list changes nothing and saves nothing
 #   I  before the fix: the old rebuild (global choice only, nothing stored on a pick)
 #      shows the default after Settings - the reported bug, reproduced
 #
@@ -242,8 +243,25 @@ public static class BatchPromptPickTest {
             Check(Shown.StartsWith("Default Translation Prompt"), "without a stored pick the rebuild shows the default - the reported reset");
         }
 
+        Console.WriteLine("J  mouse wheel over the closed prompt list");
+        Rebuild(global, prompts, false);
+        host.Show(); Application.DoEvents();
+        var shownBefore = Shown;
+        var storedBefore = ProjectSettings.Load(ProjectPath).ActivePromptPath;
+        _picks = 0;
+        var pt = _combo.PointToScreen(new System.Drawing.Point(_combo.Width / 2, _combo.Height / 2));
+        foreach (var delta in new[] { -120, -120, 120, -120 })
+            SendMessage(_combo.Handle, 0x020A, (IntPtr)(delta << 16), (IntPtr)((pt.Y << 16) | (pt.X & 0xFFFF)));
+        Application.DoEvents();
+        Check(Shown == shownBefore, "the wheel leaves the shown prompt as it was (" + Shown + ")");
+        Check(_picks == 0, "no pick raised, so nothing is saved");
+        Check(ProjectSettings.Load(ProjectPath).ActivePromptPath == storedBefore, "the stored active prompt is unchanged");
+
         host.Dispose();
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
 }
 "@
 
