@@ -313,6 +313,50 @@ one word changed; minimum 70%; median per lookup):
 percentages, mostly higher than before (natural sentences by about 16 points on average), so matches that used to
 fall below the minimum now show, and Analyze's EverTM counts move up a band or two.
 
+### 1e. Built: replacing a different number (decision 2)
+
+`VaultNumbers` (Plugin Core). A number is a run of digits with "." or "," between digits ("1,000.5"), not glued to a
+letter ("M8", "2nd", "H2O" are words). EverTM puts the document's number into its proposal **only when all of these
+hold**, and otherwise leaves the proposal alone and the difference counts as a changed word (1.5):
+
+1. the document and the stored source have the same number of numbers, and the stored translation has exactly the
+   stored source's numbers, written the same way and in the same order;
+2. each number that differs occurs in the stored source (and so in the translation) only once;
+3. the document's number isn't one of the stored source's own numbers (that would be numbers moved around);
+4. the two are written the same way apart from their digits: the same separators in the same places.
+
+| Case | Replaced? |
+|---|---|
+| claim 8 → claim 9; "(116)" → "(118)" | yes |
+| a range "5-10 mm" → "6-12 mm"; "from 5 to 10" → "from 6 to 12" | yes, both ends |
+| one of two numbers changed ("8 or 9" → "8 or 10") | yes, that one |
+| "3.5" → "4.25", with "3.5" in the translation too | yes |
+| "1,000" → "2,000", written alike in the translation | yes |
+| a date in the same order in the translation, each part different and unique ("11-10-2026" → "13-12-2026") | yes |
+| numbers moved around ("8 and 9" → "9 and 8") | no (rule 3) |
+| the changed number occurs twice ("from 4 to 4") | no (rule 2) |
+| a date whose day and month are the same number | no (rule 2) |
+| a date the translation writes in another order | no (rule 1) |
+| decimal comma against point, either way | no (rules 1 and 4) |
+| "1,000" → "999" | no (rule 4) |
+| a number more or fewer in the document | no (rule 1) |
+| the translation has a number the source hasn't, or writes it in words | no (rule 1) |
+| "M8" → "M10", "2nd" → "3rd" | no: words, not numbers |
+| "5 mm" → "5 cm" | nothing to replace: the unit is a word |
+
+- A replaced number costs nothing toward the score, as in Studio, and the step is marked as Studio marks its own
+  replacements (a resolved substitution), so it isn't drawn as a difference, in the score's alignment and in the
+  display one alike.
+- A segment that differs only in a replaced number scores **99%**: 100% stays for identical text. Studio gives 100%.
+- Tags around a number are kept; a number split by a tag isn't a number to the rules, so nothing is replaced then.
+- The estimate (1d) counts two different numbers as free, so it stays an upper bound (core tests).
+- Checked through the cascade (SuperVaultCheck): claim 8 → 9 is replaced, 99% (Studio's own TM 100%); claims "8 and
+  9" → "9 and 8" are not, 88% (Studio 100%: Studio replaces more freely than EverTM does).
+
+**Measured** (the frozen project's claims, two TM copies): mean EverTM - Studio -7.8 → **-6.1** and -6.6 → **-5.3**,
+within ±2 22% → 33%. Less than the prototype's -2.6, which replaced every different number: most claim pairs differ
+in how many numbers they have ("claim 8 or 9" against a stored "claim 1"), and those are left alone by rule 1.
+
 ## Part 2: difference display and repair
 
 ### 2d. Source-side highlighting

@@ -138,7 +138,7 @@ static class ScoreCompare
         {
             int studio = StudioScore(tm, doc, mem);
             if (studio < 0) continue;   // Studio didn't return that unit (below 30%)
-            result.Add(new Pair { Kind = kind, Doc = doc, Mem = mem, Studio = studio, Ever = EverScore(doc, mem), Proto = StudioLikeScore.Score(doc, mem), Words = Words(doc) });
+            result.Add(new Pair { Kind = kind, Doc = doc, Mem = mem, Studio = studio, Ever = EverScore(doc, mem, "NL " + mem), Proto = StudioLikeScore.Score(doc, mem), Words = Words(doc) });
         }
         Console.WriteLine($"synthetic: {result.Count:N0} pairs in {sw.Elapsed.TotalSeconds:F0} s");
         return result;
@@ -171,7 +171,7 @@ static class ScoreCompare
             {
                 var mem = hit.MemoryTranslationUnit.SourceSegment.ToPlain();
                 if (mem == q.en) continue;
-                result.Add(new Pair { Kind = "natural", Doc = q.en, Mem = mem, Studio = hit.ScoringResult.BaseScore, Ever = EverScore(q.en, mem), Proto = StudioLikeScore.Score(q.en, mem), Words = Words(q.en) });
+                result.Add(new Pair { Kind = "natural", Doc = q.en, Mem = mem, Studio = hit.ScoringResult.BaseScore, Ever = EverScore(q.en, mem, hit.MemoryTranslationUnit.TargetSegment.ToPlain()), Proto = StudioLikeScore.Score(q.en, mem), Words = Words(q.en) });
             }
         }
         Console.WriteLine($"natural: {queries:N0} queries against {memory.Count:N0} units: {result.Count:N0} pairs in {sw.Elapsed.TotalSeconds:F0} s");
@@ -231,7 +231,7 @@ static class ScoreCompare
                 foreach (var hit in sr.Results)
                 {
                     var mem = hit.MemoryTranslationUnit.SourceSegment.ToPlain();
-                    var p = new Pair { Kind = "document", Doc = text, Mem = mem, Studio = hit.ScoringResult.BaseScore, Ever = EverScore(text, mem), Proto = StudioLikeScore.Score(text, mem), Words = Words(text) };
+                    var p = new Pair { Kind = "document", Doc = text, Mem = mem, Studio = hit.ScoringResult.BaseScore, Ever = EverScore(text, mem, hit.MemoryTranslationUnit.TargetSegment.ToPlain()), Proto = StudioLikeScore.Score(text, mem), Words = Words(text) };
                     pairs.Add(p);
                     for (int k = 0; k < prefixes.Count; k++)
                         if (text.StartsWith(prefixes[k], StringComparison.Ordinal))
@@ -276,11 +276,16 @@ static class ScoreCompare
     [ThreadStatic] static VaultWordRules _rules;
     static VaultWordRules Rules => _rules ?? (_rules = VaultLanguage.Rules("en"));
 
-    internal static int EverScore(string doc, string mem)
+    /// <summary>EverTM's score, with a different number replaced where VaultNumbers allows it (when the stored
+    /// translation <paramref name="trg"/> is known), as a lookup does.</summary>
+    internal static int EverScore(string doc, string mem, string trg = null)
     {
         var a = new List<VaultPiece> { new VaultPiece { Text = doc } };
         var b = new List<VaultPiece> { new VaultPiece { Text = mem } };
-        return VaultDiff.Compare(VaultDiff.Tokenize(a), VaultDiff.Tokenize(b), VaultLookup.PlainOf(a) == VaultLookup.PlainOf(b), Rules).Score;
+        var ta = VaultDiff.Tokenize(a); var tb = VaultDiff.Tokenize(b);
+        bool identical = VaultLookup.PlainOf(a) == VaultLookup.PlainOf(b);
+        var plan = trg == null || identical ? null : VaultNumbers.Make(a, b, new List<VaultPiece> { new VaultPiece { Text = trg } });
+        return VaultDiff.Compare(ta, tb, identical, Rules, plan == null ? null : ((HashSet<int>, HashSet<int>)?)VaultNumbers.Tokens(plan, ta, tb)).Score;
     }
 
     static int Words(string s) => VaultDiff.Words(s).Count;

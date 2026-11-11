@@ -59,6 +59,45 @@ static class DiffDisplayChecks
         Case("a deletion next to a tag", Seg("Press ", Open(1), "Start", Close(1), " now to begin."), Seg("Press ", Open(1), "Start", Close(1), " to begin."));
         Case("an insertion next to a tag", Seg("Press the ", Open(1), "Start", Close(1), " button."), Seg("Press ", Open(1), "Start", Close(1), " button."));
         TooLong();
+        Numbers();
+    }
+
+    /// <summary>
+    /// A different number, replaced in EverTM's proposal where that can't go wrong (Michael's decision 2): through the
+    /// cascade, the proposal carries the document's number, the step is marked as Studio marks its own replacements
+    /// (not drawn), and the score is 99 (100 stays for identical text). Where it could go wrong (numbers moved around),
+    /// nothing is replaced and the number counts.
+    /// </summary>
+    static void Numbers()
+    {
+        foreach (var (what, doc, src, trg, want) in new[]
+        {
+            ("a claim number", "The method of claim 9, wherein the valve closes.", "The method of claim 8, wherein the valve closes.", "De werkwijze van conclusie 8, waarbij de klep sluit.", "De werkwijze van conclusie 9, waarbij de klep sluit."),
+            ("numbers moved around", "The method of claims 9 and 8, wherein the valve closes.", "The method of claims 8 and 9, wherein the valve closes.", "De werkwijze van conclusies 8 en 9, waarbij de klep sluit.", null),
+        })
+        {
+            int n = ++_n;
+            var root = Path.Combine(_dir, "evertm" + n);
+            var tmx = Path.Combine(_dir, "case" + n + ".tmx");
+            File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"en-US\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+                "<tu><tuv xml:lang=\"en-US\"><seg>" + src + "</seg></tuv><tuv xml:lang=\"nl-NL\"><seg>" + trg + "</seg></tuv></tu></body></tmx>");
+            VaultLibrary.For(root).Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, System.Threading.CancellationToken.None);
+            var tm = new FileBasedTranslationMemory(Path.Combine(_dir, "case" + n + ".sdltm"), "case" + n, EnUs, NlNl, FuzzyIndexes.SourceWordBased | FuzzyIndexes.SourceCharacterBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
+            tm.Save();
+            var ts = new Segment(NlNl); ts.Add(trg);
+            tm.LanguageDirection.AddTranslationUnitsMasked(new[] { new TranslationUnit(Seg(src), ts) }, new ImportSettings(), new[] { true });
+            var studio = Through(tm.LanguageDirection, Seg(doc), null);
+            var ever = Through(new SuperVaultProvider(root).GetLanguageDirection(new LanguagePair(EnUs, NlNl)), Seg(doc), null);
+            if (ever == null) { Check(false, what + ": EverTM finds the unit"); continue; }
+            var proposal = ever.MemoryTranslationUnit.TargetSegment.ToPlain();
+            var marked = ever.ScoringResult.EditDistance.Items.Count(i => i.Resolution == EditDistanceResolution.Substitution);
+            if (want != null)
+                Check(proposal == want && ever.ScoringResult.BaseScore == 99 && marked == 1,
+                      $"{what}: replaced in EverTM's proposal (\"{proposal}\"), {ever.ScoringResult.BaseScore}%, {marked} step marked as replaced; Studio's own TM: {studio?.ScoringResult.BaseScore}%, \"{studio?.TranslationProposal?.TargetSegment?.ToPlain()}\"");
+            else
+                Check(proposal == trg && marked == 0 && ever.ScoringResult.BaseScore < 99,
+                      $"{what}: nothing replaced (\"{proposal}\"), the numbers count: {ever.ScoringResult.BaseScore}%; Studio's own TM: {studio?.ScoringResult.BaseScore}%");
+        }
     }
 
     // ---- one pair: Studio's TM and EverTM, through the cascade ----

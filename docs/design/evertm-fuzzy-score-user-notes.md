@@ -44,9 +44,15 @@ marked *(planned)*.
   it as before.
 - A unit that differs only in its formatting (other tags) is a different unit to Studio, and is shown twice.
 
-## Different numbers *(planned)*
+## Different numbers
 
-- When the only difference is a number, EverTM puts the document's number into its proposal, as Studio does, and
-  doesn't count it as a difference – but only when it can't go wrong: the same numbers in the same order on both
-  sides, each changed number only once in the sentence, written the same way. Otherwise the proposal is left as it
-  is, the number is shown as a difference, and it counts.
+- When a number in your document differs from the stored sentence's – another claim number, another reference
+  numeral – EverTM puts your document's number into its proposal, as Studio does, and doesn't count it as a
+  difference. The match then shows 99% (100% is only for exactly the same sentence).
+- It does so only when it can't go wrong: the same numbers in the same order on both sides and in the translation,
+  each changed number only once in the sentence, and written the same way. A number put in the wrong place would be
+  a real error, so when in doubt EverTM leaves the proposal as it is and shows the number as a difference: numbers
+  that changed places, a number that occurs twice, a date written in another order, a decimal comma against a point,
+  or one number more or fewer. Studio replaces numbers more freely, so in those cases Studio's TM may show a higher
+  percentage.
+- "M8", "2nd" and the like are words, not numbers.
