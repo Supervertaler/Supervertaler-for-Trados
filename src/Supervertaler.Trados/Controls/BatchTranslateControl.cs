@@ -439,6 +439,11 @@ namespace Supervertaler.Trados.Controls
             };
             _cmbPrompt.Items.Add(BuiltInItem);
             _cmbPrompt.SelectedIndex = 0;
+            _cmbPrompt.SelectedIndexChanged += (s, ev) =>
+            {
+                if (_fillingPrompts) return;
+                PromptPicked?.Invoke(this, GetSelectedPromptPath());
+            };
             // Type to filter: the prompt library grows per client and per task.
             ComboFilter.Attach(_cmbPrompt, "Type to filter prompts",
                 item => item as string == BuiltInItem);
@@ -1157,6 +1162,18 @@ namespace Supervertaler.Trados.Controls
 
         private ToolTip _promptTip;
 
+        /// <summary>Set while <see cref="SetPrompts"/> fills the list, whose own
+        /// selection is not the user's pick and must not be stored as one - least
+        /// of all the default it falls back to when the stored prompt is gone.</summary>
+        private bool _fillingPrompts;
+
+        /// <summary>
+        /// The user picked a prompt in the list (not a rebuild of it). Carries
+        /// the pick as stored: a prompt's relative path, or
+        /// <see cref="BatchPromptChoice.BuiltInOnly"/> for the first item.
+        /// </summary>
+        public event EventHandler<string> PromptPicked;
+
         /// <summary>What the prompt list's items mean, for the mode it is in. The
         /// first item said nothing about itself, and the shipped default prompt
         /// was the last of a long list (Michael, 16 Oct 2026).</summary>
@@ -1208,6 +1225,19 @@ namespace Supervertaler.Trados.Controls
             _activePromptPath = activePromptPath;
             // A deliberate "built-in only" is a choice: no prompt is guessed in its place.
             bool builtInChosen = selectedRelativePath == BatchPromptChoice.BuiltInOnly;
+            _fillingPrompts = true;
+            try
+            {
+                FillPrompts(prompts, selectedRelativePath, categoryFilter, projectName, activePromptPath,
+                    fallbackPath, builtInChosen);
+            }
+            finally { _fillingPrompts = false; }
+        }
+
+        private void FillPrompts(List<PromptTemplate> prompts, string selectedRelativePath,
+            string categoryFilter, string projectName, string activePromptPath,
+            string fallbackPath, bool builtInChosen)
+        {
             _cmbPrompt.Items.Clear();
             _cmbPrompt.Items.Add(BuiltInItem);
             _promptList.Clear();

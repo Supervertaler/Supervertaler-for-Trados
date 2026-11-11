@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Supervertaler.Core;
+using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Core
 {
@@ -64,6 +65,42 @@ namespace Supervertaler.Trados.Core
             if (stored == BuiltInOnly) return null;
             if (!string.IsNullOrEmpty(stored)) return stored;
             return DefaultPath(prompts, proofread);
+        }
+
+        /// <summary>
+        /// A prompt picked in the Batch Operations list becomes the mode's active
+        /// prompt: globally and, with a project open, for that project - the same
+        /// two places the Prompt Manager's "Set as active" writes. Before this the
+        /// pick was used for the run but stored nowhere, so every rebuild of the
+        /// list (Settings OK or Cancel, Translate/Proofread, another document)
+        /// put the stored prompt or the default back (reported by a user).
+        /// <paramref name="path"/> is <see cref="BuiltInOnly"/> for the first item.
+        /// </summary>
+        public static void Remember(AiSettings ai, ProjectSettings project, bool proofread, string path)
+        {
+            path = path ?? "";
+            ai?.SetBatchPrompt(proofread, path);
+            if (project == null) return;
+            if (proofread) project.ActiveProofreadPromptPath = path;
+            else project.ActivePromptPath = path;
+        }
+
+        /// <summary>
+        /// What the Batch list shows for the stored state: the project's prompt
+        /// for the mode when it has one (also the ticked, "active" one), else the
+        /// global choice. Every rebuild of the list goes through here.
+        /// </summary>
+        public static void Stored(AiSettings ai, ProjectSettings project, bool proofread,
+                                  out string selected, out string active)
+        {
+            selected = ai?.GetBatchPrompt(proofread) ?? "";
+            active = null;
+            var own = project?.GetBatchPrompt(proofread);
+            if (!string.IsNullOrEmpty(own))
+            {
+                active = own;
+                selected = own;
+            }
         }
     }
 }
