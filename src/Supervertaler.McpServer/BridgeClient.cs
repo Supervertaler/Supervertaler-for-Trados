@@ -192,12 +192,28 @@ public sealed class BridgeClient
         }
 
         var text = await resp.Content.ReadAsStringAsync(ct);
+        // 503 = the bridge is up but this tool needs the Editor, which the plugin
+        // has not loaded yet. Its message is written for the user: pass it as is.
+        if ((int)resp.StatusCode == 503 && ErrorText(text) is { Length: > 0 } notReady)
+            throw new BridgeUnavailableException(notReady);
         if (!resp.IsSuccessStatusCode)
         {
             throw new BridgeUnavailableException(
                 $"Bridge returned HTTP {(int)resp.StatusCode}: {Truncate(text, 500)}");
         }
         return text;
+    }
+
+    /// <summary>The "error" field of a bridge error body, or null.</summary>
+    internal static string? ErrorText(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String
+                ? e.GetString() : null;
+        }
+        catch { return null; }
     }
 
     /// <summary>
@@ -267,13 +283,7 @@ public sealed class BridgeClient
 
         if (live.Count == 0)
         {
-            throw new BridgeUnavailableException(IsMemoQ
-                ? "Supervertaler bridge handshake file not found. Start memoQ, open a project, and click " +
-                  "into a segment with Supervertaler selected as the MT engine – that starts the bridge. " +
-                  "Make sure Supervertaler for memoQ is installed (Resource console > MT settings)."
-                : "Supervertaler bridge handshake file not found. Start Trados Studio, open a project " +
-                  "in the editor, and make sure the Supervertaler for Trados plugin is installed with " +
-                  "the bridge enabled (Supervertaler settings > AI Assistant).");
+            throw new BridgeUnavailableException(NoInstanceMessage(IsMemoQ, !IsMemoQ && IsTradosStudioRunning()));
         }
 
         var selector = ActiveSelector;
@@ -304,6 +314,41 @@ public sealed class BridgeClient
             .First();
 
         return new BridgeSelection(chosen, live, candidates, selector);
+    }
+
+    /// <summary>
+    /// What to say when no live bridge was found. For Trados the bridge starts
+    /// with Studio (no project needs to be open), so a running Studio without one
+    /// is almost always still starting; there is no separate "bridge enabled"
+    /// setting - the only gate is a Supervertaler licence or trial.
+    /// </summary>
+    internal static string NoInstanceMessage(bool isMemoQ, bool studioRunning)
+    {
+        if (isMemoQ)
+            return "Supervertaler bridge handshake file not found. Start memoQ, open a project, and click " +
+                   "into a segment with Supervertaler selected as the MT engine – that starts the bridge. " +
+                   "Make sure Supervertaler for memoQ is installed (Resource console > MT settings).";
+        if (studioRunning)
+            return "Trados Studio is running, but Supervertaler's bridge in it is not up yet: Studio is still " +
+                   "starting, try again in about 20 seconds. If this keeps happening once Studio is fully open, " +
+                   "check that Supervertaler for Trados is installed and has a licence or trial " +
+                   "(Supervertaler settings > License), and look in the bridge.log in the Supervertaler data " +
+                   "folder (trados\\runtime).";
+        return "Trados Studio is not running (no Supervertaler bridge found). Start Trados Studio - no project " +
+               "needs to be open - and make sure the Supervertaler for Trados plugin is installed.";
+    }
+
+    /// <summary>Any Trados Studio process (SDLTradosStudio.exe) running for this user.</summary>
+    private static bool IsTradosStudioRunning()
+    {
+        try
+        {
+            var procs = Process.GetProcessesByName("SDLTradosStudio");
+            var any = procs.Length > 0;
+            foreach (var p in procs) p.Dispose();
+            return any;
+        }
+        catch { return false; }
     }
 
     private static List<BridgeInstance> DiscoverLiveInstances(string runtimeDir)

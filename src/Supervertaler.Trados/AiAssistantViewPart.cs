@@ -49,7 +49,7 @@ namespace Supervertaler.Trados
         /// whichever stale copy saved last won. See
         /// docs/design/settings-single-source-of-truth.md.
         /// </summary>
-        private TermLensSettings _settings => SettingsService.Current;
+        private static TermLensSettings _settings => SettingsService.Current;
 
         // Cached language pair – ActiveFile can be null when the AI panel has focus
         private string _cachedSourceLang;
@@ -80,11 +80,8 @@ namespace Supervertaler.Trados
         private FileSystemWatcher _inboxWatcher;
         private bool _fullyInitialized;
 
-        // Localhost HTTP bridge for the Workbench Sidekick Chat. See
-        // Core/SupervertalerBridge.cs for protocol details. Started at the end of
-        // InitializeFullIfNeeded when the user has Assistant access AND the
-        // the user has Assistant access.
-        private SupervertalerBridge _supervertalerBridge;
+        // The localhost HTTP bridge (MCP / Workbench) is static and lives in
+        // AiAssistantViewPart.Bridge.cs: Studio startup starts it, not this pane.
 
         // Memory-bank reader (lazy: created once, cached for the session).
         // Cached against _kbReaderBankName so that switching the active memory
@@ -105,7 +102,7 @@ namespace Supervertaler.Trados
         /// to <see cref="UserDataPath.DefaultMemoryBankName"/> when settings are
         /// not yet loaded or the field is blank.
         /// </summary>
-        private string ActiveMemoryBankDir
+        private static string ActiveMemoryBankDir
         {
             get
             {
@@ -125,7 +122,7 @@ namespace Supervertaler.Trados
         /// change within it.</summary>
         private string _bankProjectPath;
 
-        private string ActiveMemoryBankName =>
+        private static string ActiveMemoryBankName =>
             string.IsNullOrWhiteSpace(_settings?.AiSettings?.ActiveMemoryBankName)
                 ? UserDataPath.DefaultMemoryBankName
                 : _settings.AiSettings.ActiveMemoryBankName;
@@ -479,7 +476,7 @@ namespace Supervertaler.Trados
 
             // Keep the bridge handshake's project/document name current, so a
             // client naming this instance to the user names the right project.
-            try { _supervertalerBridge?.RefreshInstanceFile(); }
+            try { _bridge?.RefreshInstanceFile(); }
             catch { /* never let handshake bookkeeping break document switching */ }
         }
 
@@ -1095,65 +1092,11 @@ namespace Supervertaler.Trados
 
         private void StartSupervertalerBridge()
         {
-            try
-            {
-                BridgeLog.Write("StartSupervertalerBridge() called");
-
-                if (_supervertalerBridge != null)
-                {
-                    BridgeLog.Write("guard: bridge already non-null – no-op");
-                    return;
-                }
-                if (!LicenseManager.Instance.HasAssistantAccess)
-                {
-                    BridgeLog.Write("guard: HasAssistantAccess=false – bridge skipped");
-                    return;
-                }
-                BridgeLog.Write($"guards passed: tier={LicenseManager.Instance.CurrentTier}");
-
-                _supervertalerBridge = new SupervertalerBridge(
-                    getContext: BuildBridgeContextSnapshot,
-                    insertText: BridgeInsertTranslation,
-                    getProject: BuildBridgeProjectSnapshot,
-                    getSegments: BuildBridgeSegments,
-                    getDbPath: ResolveSupervertalerDbPath,
-                    updateSegments: BridgeUpdateSegments,
-                    addTerm: BridgeAddTerm,
-                    getFiles: BuildBridgeFiles,
-                    findInconsistencies: BuildBridgeInconsistencies,
-                    searchStudioTm: BridgeSearchStudioTm,
-                    runQaCheck: BridgeRunQaCheck,
-                    compareTm: BridgeCompareTm,
-                    listResources: BridgeListResources,
-                    goToSegment: BridgeGoToSegment,
-                    getComments: BridgeGetComments,
-                    addComment: BridgeAddComment,
-                    updateComment: BridgeUpdateComment,
-                    deleteComment: BridgeDeleteComment,
-                    runVerification: BridgeRunVerification,
-                    findReplace: BridgeFindReplace,
-                    runTask: BridgeRunTask,
-                    getTaskStatus: BridgeGetTaskStatus,
-                    getPromptContext: BuildPromptContext,
-                    updateTerm: BridgeUpdateTerm,
-                    deleteTerm: BridgeDeleteTerm,
-                    saveDocument: BridgeSaveDocument,
-                    getSuperMemoryContext: BridgeGetSuperMemoryContext,
-                    searchSuperMemory: BridgeSearchSuperMemory,
-                    listSuperMemoryBanks: BridgeListSuperMemoryBanks,
-                    markReviewed: BridgeMarkReviewed,
-                    getCoverage: BridgeGetCoverage,
-                    getTrackedChanges: BridgeGetTrackedChanges,
-                    importTermbase: BridgeImportTermbase,
-                    getInstanceInfo: BuildBridgeInstanceInfo,
-                    createProject: BridgeCreateProject);
-                _supervertalerBridge.Start();
-            }
-            catch (Exception ex)
-            {
-                BridgeLog.Write($"StartSupervertalerBridge() THREW: {ex.GetType().Name}: {ex.Message}\r\n{ex.StackTrace}");
-                _supervertalerBridge = null;
-            }
+            // Normally already running since Studio startup (AppInitializer); this
+            // starts it if that was skipped (no licence then) and refreshes the
+            // handshake now that the pane can name the project and document.
+            BridgeLog.Write("StartSupervertalerBridge() called (pane initialised)");
+            EnsureBridgeStarted("pane");
         }
 
         /// <summary>
@@ -1167,7 +1110,7 @@ namespace Supervertaler.Trados
         {
             get
             {
-                try { return _currentInstance?._supervertalerBridge?.IsRunning == true; }
+                try { return _bridge?.IsRunning == true; }
                 catch { return false; }
             }
         }
@@ -6556,10 +6499,12 @@ namespace Supervertaler.Trados
             public string Progress;
         }
 
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunTaskJob> _runTaskJobs
+        // Static: there is one pane per Studio, and create/open project and
+        // get_task_status run from the bridge before the pane exists.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunTaskJob> _runTaskJobs
             = new System.Collections.Concurrent.ConcurrentDictionary<string, RunTaskJob>();
 
-        private void RegisterJob(RunTaskJob job)
+        private static void RegisterJob(RunTaskJob job)
         {
             _runTaskJobs[job.Id] = job;
             // Bound memory: keep only the 20 most recent finished jobs.
@@ -6575,7 +6520,7 @@ namespace Supervertaler.Trados
             }
         }
 
-        private RunTaskJob GetRunningJob()
+        private static RunTaskJob GetRunningJob()
         {
             foreach (var j in _runTaskJobs.Values)
                 lock (j.Sync) { if (j.Status == "running") return j; }
@@ -6648,7 +6593,7 @@ namespace Supervertaler.Trados
 
         /// <summary>Taken while checking for a running job and registering a new
         /// one, so two create_project calls cannot both pass the check.</summary>
-        private readonly object _jobStartLock = new object();
+        private static readonly object _jobStartLock = new object();
 
         /// <summary>
         /// Bridge delegate for POST /v1/create-project (MCP create_project).
@@ -6657,7 +6602,7 @@ namespace Supervertaler.Trados
         /// (Core/ProjectCreatorStudio) as a job that get_task_status reports on;
         /// a failed job leaves no project, folder or Projects-list entry behind.
         /// </summary>
-        private BridgeRunTaskResponse BridgeCreateProject(BridgeCreateProjectRequest req)
+        private static BridgeRunTaskResponse BridgeCreateProject(BridgeCreateProjectRequest req)
         {
             const string task = "create-project";
             var studioDocs = ProjectCreator.RunningStudioDocumentsFolder();
@@ -6718,7 +6663,7 @@ namespace Supervertaler.Trados
             };
         }
 
-        private void CreateProjectJobBody(RunTaskJob job, ProjectPlan plan)
+        private static void CreateProjectJobBody(RunTaskJob job, ProjectPlan plan)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             BridgeLog.Write($"[create-project] job {job.Id} started: {plan.Files.Count} file(s) into {plan.ProjectFolder}");
@@ -6748,7 +6693,7 @@ namespace Supervertaler.Trados
                     job.Note = $"Project \"{plan.Name}\" created with all {result.Files.Count} file(s) converted, " +
                                $"{plan.SourceLanguage ?? "the template's source language"} to " +
                                (plan.TargetLanguages.Count > 0 ? string.Join(", ", plan.TargetLanguages) : "the template's target languages") +
-                               ", and it is in Studio's Projects list. Open it from the Projects view to start translating." +
+                               ", and it is in Studio's Projects list. To start translating, open it with open_project (allFiles: true opens its files in the Editor)." +
                                (warnings.Count > 0 ? " Tell the user these warnings: " + string.Join(" ", warnings) : "");
                 }
                 else
@@ -6762,7 +6707,7 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>Bridge delegate for GET /v1/task-status (MCP get_task_status).</summary>
-        private BridgeTaskStatusResponse BridgeGetTaskStatus(string jobId)
+        private static BridgeTaskStatusResponse BridgeGetTaskStatus(string jobId)
         {
             if (string.IsNullOrWhiteSpace(jobId))
                 return new BridgeTaskStatusResponse { Ok = true, Found = false, Error = "no jobId given" };
@@ -7412,7 +7357,7 @@ namespace Supervertaler.Trados
         /// termbase path first, then the shared user-data root, then the
         /// legacy default locations. Returns null if nothing exists.
         /// </summary>
-        private string ResolveSupervertalerDbPath()
+        private static string ResolveSupervertalerDbPath()
         {
             try
             {
@@ -8985,7 +8930,7 @@ namespace Supervertaler.Trados
         /// write about X?" question, as opposed to the automatic per-segment
         /// retrieval above.
         /// </summary>
-        private BridgeSuperMemorySearchResponse BridgeSearchSuperMemory(BridgeSuperMemorySearchQuery query)
+        private static BridgeSuperMemorySearchResponse BridgeSearchSuperMemory(BridgeSuperMemorySearchQuery query)
         {
             var bankName = ActiveMemoryBankName;
 
@@ -9075,7 +9020,7 @@ namespace Supervertaler.Trados
         /// Bridge: every memory bank on disk and which one is active, so an AI
         /// client can tell the user which knowledge it is actually working from.
         /// </summary>
-        private BridgeSuperMemoryBanksResponse BridgeListSuperMemoryBanks()
+        private static BridgeSuperMemoryBanksResponse BridgeListSuperMemoryBanks()
         {
             var activeName = ActiveMemoryBankName;
             var names = UserDataPath.ListMemoryBanks() ?? new List<string>();
@@ -15103,7 +15048,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         return;
                     }
 
-                    var settings = instance._settings;
+                    var settings = _settings;
                     var aiSettings = settings?.AiSettings;
                     if (aiSettings == null)
                     {
@@ -16484,11 +16429,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 _inboxWatcher = null;
             }
 
-            if (_supervertalerBridge != null)
-            {
-                try { _supervertalerBridge.Dispose(); } catch { /* never let bridge cleanup break Dispose */ }
-                _supervertalerBridge = null;
-            }
+            StopBridge();
 
             if (_editorController != null)
             {
