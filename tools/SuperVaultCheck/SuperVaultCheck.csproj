@@ -35,6 +35,7 @@
     <Compile Include="XliffLookup.cs" />
     <Compile Include="MetadataChecks.cs" />
     <Compile Include="TmMatchChecks.cs" />
+    <Compile Include="DiffDisplayChecks.cs" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <ProjectReference Include="..\..\src\Supervertaler.Trados\Supervertaler.Trados.csproj" AdditionalProperties="TradosStudioVersion=$(TradosStudioVersion)" />

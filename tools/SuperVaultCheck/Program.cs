@@ -44,6 +44,8 @@ static class Program
             return Kit.Run(args.Length > 1 ? args[1] : "EverTM acceptance", args.Length > 2 ? args[2] : @"D:\Supervertaler\resources\supervertaler.db");
         if (args.Length > 1 && args[0] == "lookup-xliff")
             return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : Path.Combine(Isolation.RealDataRoot, "evertm"));
+        if (args.Length > 0 && args[0] == "diff-display")
+            return Checks.RunOne(c => DiffDisplayChecks.Run(Path.Combine(Path.GetTempPath(), "sv-diffdisplay-" + Guid.NewGuid().ToString("N").Substring(0, 6)), c));
         if (args.Length > 1 && args[0] == "tmmatch-scale")
             return TmMatchChecks.Scale(args[1], args.Length > 2 ? int.Parse(args[2]) : 20000);
         if (args.Length > 1 && args[0] == "import-sdltm")
@@ -109,6 +111,14 @@ static class Checks
     static readonly CultureCode NlBe = new CultureCode("nl-BE"), EnUs = new CultureCode("en-US");
     static string _scratch;
 
+    /// <summary>One group of checks on its own (diff-display: the differences EverTM hands Studio to draw).</summary>
+    public static int RunOne(Action<Action<bool, string>> group)
+    {
+        try { group(Check); } catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
+        Console.WriteLine(_failed == 0 ? $"ALL {_passed} CHECKS PASSED" : $"{_failed} FAILED, {_passed} passed");
+        return _failed == 0 ? 0 : 1;
+    }
+
     public static int Run(string[] args)
     {
         Console.WriteLine($"{(Environment.Is64BitProcess ? "64" : "32")}-bit, Studio TM API {typeof(Cascade<>).Assembly.GetName().Version}");
@@ -125,6 +135,7 @@ static class Checks
             NeverLowersTheClientTm(vault, clientTm);
             TagsAndPenalties(vault);
             FuzzyDifferences(vault);
+            DiffDisplayChecks.Run(_scratch, Check);
             Concordance(vault, clientTm);
             Learning(vault);
             CountingConfirmations(root);

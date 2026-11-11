@@ -85,7 +85,10 @@ namespace Supervertaler.Trados.SuperVault
             return list;
         }
 
-        /// <summary>The alignment as Studio's EditDistance: Source = document token, Target = memory token, as Studio's own TMs do.</summary>
+        /// <summary>
+        /// The alignment as Studio's EditDistance: Source = document token, Target = memory token, as Studio's own TMs do;
+        /// an inserted or missing token carries the position it goes before (<see cref="VaultEdit"/>).
+        /// </summary>
         public static EditDistance ToEditDistance(VaultDiffResult diff, int documentTokens, int memoryTokens)
         {
             if (diff?.Edits == null) return null;
@@ -94,7 +97,10 @@ namespace Supervertaler.Trados.SuperVault
             {
                 var op = e.Op == VaultEditOp.Identity ? EditOperation.Identity : e.Op == VaultEditOp.Change ? EditOperation.Change
                        : e.Op == VaultEditOp.Insert ? EditOperation.Insert : EditOperation.Delete;
-                ed.Add(new EditDistanceItem { Operation = op, Source = e.A, Target = e.B, Costs = e.Cost, Resolution = op == EditOperation.Change ? EditDistanceResolution.Substitution : EditDistanceResolution.None });
+                // Resolution None, as Studio's own TMs give a changed word. "Substitution" means a placeable Studio
+                // replaced itself (a number), and its source panel and match row don't draw those: every changed word
+                // looked unchanged (11 Nov 2026).
+                ed.Add(new EditDistanceItem { Operation = op, Source = e.A, Target = e.B, Costs = e.Cost, Resolution = EditDistanceResolution.None });
             }
             return ed;
         }
