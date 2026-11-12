@@ -96,11 +96,13 @@ namespace Supervertaler.Trados.SuperVault
             foreach (var e in diff.Edits)
             {
                 var op = e.Op == VaultEditOp.Identity ? EditOperation.Identity : e.Op == VaultEditOp.Change ? EditOperation.Change
-                       : e.Op == VaultEditOp.Insert ? EditOperation.Insert : EditOperation.Delete;
+                       : e.Op == VaultEditOp.Move ? EditOperation.Move : e.Op == VaultEditOp.Insert ? EditOperation.Insert : EditOperation.Delete;
                 // Resolution None, as Studio's own TMs give a changed word. "Substitution" means a placeable Studio
                 // replaced itself (a number), and its source panel and match row don't draw those: every changed word
                 // looked unchanged (11 Nov 2026).
-                ed.Add(new EditDistanceItem { Operation = op, Source = e.A, Target = e.B, Costs = e.Cost, Resolution = EditDistanceResolution.None });
+                // A number EverTM replaced in the proposal is marked as Studio marks its own (a resolved substitution),
+                // so it isn't drawn as a difference.
+                ed.Add(new EditDistanceItem { Operation = op, Source = e.A, Target = e.B, Costs = e.Cost, Resolution = e.Replaced ? EditDistanceResolution.Substitution : EditDistanceResolution.None });
             }
             return ed;
         }

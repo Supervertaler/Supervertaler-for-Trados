@@ -35,6 +35,10 @@ static class DiffDisplayChecks
 
     internal const string ClaimDoc1 = "in response to the amount of memory bandwidth being consumed exceeding a second higher threshold, disabling, by the one or more processors, the hardware prefetcher (116) after a preconfigured time passes, and causing, by the one or more processors, the hardware prefetcher (116) to remain disabled until the memory bandwidth being consumed falls below the first lower threshold and stays below the first lower threshold for the preconfigured time;";
     internal const string ClaimMem1 = "in response to the amount of memory bandwidth being consumed exceeding the second higher threshold, disable the hardware prefetcher (116) after a preconfigured time passes, wherein the hardware prefetcher (116) is configured to remain disabled until the memory bandwidth being consumed falls below the first lower threshold and stays below the first lower threshold for the preconfigured time;";
+    // The rows as Michael saw them in Studio on 11 Nov with the display fix, and chose to keep ("clearer highlighting"):
+    // the score is the Studio-like one, the differences drawn by the display alignment (VaultDisplay).
+    internal const string ClaimRow1 = "in response to the amount of memory bandwidth being consumed exceeding [the>a] second higher threshold, [disable>disabling][+,][+ ][+by][+ ][+the][+ ][+one][+ ][+or][+ ][+more][+ ][+processors][+,] the hardware prefetcher (116) after a preconfigured time passes[+,][+ ][+and][+ ][+causing],[+ ][+by][+ ][+the][+ ][+one][+ ][+or][+ ][+more] [wherein>processors][+,] the hardware prefetcher (116)[- ][-is][- ][-configured] to remain disabled until the memory bandwidth being consumed falls below the first lower threshold and stays below the first lower threshold for the preconfigured time;";
+    internal const string ClaimRow2 = "[+The][+ ][+method][+ ][+of][+ ][+claim][+ ][+8][+ ][+or][+ ][+9][+,][+ ][+further][+ ][+comprising][+ ][determine>determining][+,][+ ][+by][+ ][+the][+ ][+one][+ ][+or][+ ][+more][+ ][+processors][+,] the first lower threshold and the second higher threshold based on ablation studies performed on a plurality of server machines, wherein the ablation studies use a first group of server machines running with a plurality of modulating hardware prefetchers and a second group of server machines running with a plurality of hardware prefetchers (116) that are always active.";
     internal const string ClaimDoc2 = "The method of claim 8 or 9, further comprising determining, by the one or more processors, the first lower threshold and the second higher threshold based on ablation studies performed on a plurality of server machines, wherein the ablation studies use a first group of server machines running with a plurality of modulating hardware prefetchers and a second group of server machines running with a plurality of hardware prefetchers (116) that are always active.";
     internal const string ClaimMem2 = "determine the first lower threshold and the second higher threshold based on ablation studies performed on a plurality of server machines, wherein the ablation studies use a first group of server machines running with a plurality of modulating hardware prefetchers and a second group of server machines running with a plurality of hardware prefetchers (116) that are always active.";
 
@@ -45,8 +49,8 @@ static class DiffDisplayChecks
         Directory.CreateDirectory(_dir);
         Console.WriteLine("Difference display: what EverTM hands Studio, against Studio's own TM");
 
-        Case("claim pair 1 (81% in Studio)", Seg(ClaimDoc1), Seg(ClaimMem1), show: true, score: 72, marks: new[] { "[the>a]", "[disable>disabling]", "[+,][+ ][+by]", "passes[+,][+ ][+and][+ ][+causing]," });
-        Case("claim pair 2 (87% in Studio)", Seg(ClaimDoc2), Seg(ClaimMem2), show: true, score: 76, sameAsStudio: true);
+        Case("claim pair 1 (81% in Studio)", Seg(ClaimDoc1), Seg(ClaimMem1), show: true, score: 81, row: ClaimRow1);
+        Case("claim pair 2 (87% in Studio)", Seg(ClaimDoc2), Seg(ClaimMem2), show: true, score: 87, row: ClaimRow2);
         Case("an insertion at the very start", Seg("Moreover, the pump starts when the valve opens."), Seg("the pump starts when the valve opens."));
         Case("an insertion at the very end", Seg("the pump starts when the valve opens fully"), Seg("the pump starts when the valve opens"));
         Case("a word missing at the very start", Seg("pump starts when the valve opens."), Seg("The pump starts when the valve opens."));
@@ -55,11 +59,50 @@ static class DiffDisplayChecks
         Case("a deletion next to a tag", Seg("Press ", Open(1), "Start", Close(1), " now to begin."), Seg("Press ", Open(1), "Start", Close(1), " to begin."));
         Case("an insertion next to a tag", Seg("Press the ", Open(1), "Start", Close(1), " button."), Seg("Press ", Open(1), "Start", Close(1), " button."));
         TooLong();
+        Numbers();
+    }
+
+    /// <summary>
+    /// A different number, replaced in EverTM's proposal where that can't go wrong (Michael's decision 2): through the
+    /// cascade, the proposal carries the document's number, the step is marked as Studio marks its own replacements
+    /// (not drawn), and the score is 99 (100 stays for identical text). Where it could go wrong (numbers moved around),
+    /// nothing is replaced and the number counts.
+    /// </summary>
+    static void Numbers()
+    {
+        foreach (var (what, doc, src, trg, want) in new[]
+        {
+            ("a claim number", "The method of claim 9, wherein the valve closes.", "The method of claim 8, wherein the valve closes.", "De werkwijze van conclusie 8, waarbij de klep sluit.", "De werkwijze van conclusie 9, waarbij de klep sluit."),
+            ("numbers moved around", "The method of claims 9 and 8, wherein the valve closes.", "The method of claims 8 and 9, wherein the valve closes.", "De werkwijze van conclusies 8 en 9, waarbij de klep sluit.", null),
+        })
+        {
+            int n = ++_n;
+            var root = Path.Combine(_dir, "evertm" + n);
+            var tmx = Path.Combine(_dir, "case" + n + ".tmx");
+            File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"en-US\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+                "<tu><tuv xml:lang=\"en-US\"><seg>" + src + "</seg></tuv><tuv xml:lang=\"nl-NL\"><seg>" + trg + "</seg></tuv></tu></body></tmx>");
+            VaultLibrary.For(root).Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, System.Threading.CancellationToken.None);
+            var tm = new FileBasedTranslationMemory(Path.Combine(_dir, "case" + n + ".sdltm"), "case" + n, EnUs, NlNl, FuzzyIndexes.SourceWordBased | FuzzyIndexes.SourceCharacterBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
+            tm.Save();
+            var ts = new Segment(NlNl); ts.Add(trg);
+            tm.LanguageDirection.AddTranslationUnitsMasked(new[] { new TranslationUnit(Seg(src), ts) }, new ImportSettings(), new[] { true });
+            var studio = Through(tm.LanguageDirection, Seg(doc), null);
+            var ever = Through(new SuperVaultProvider(root).GetLanguageDirection(new LanguagePair(EnUs, NlNl)), Seg(doc), null);
+            if (ever == null) { Check(false, what + ": EverTM finds the unit"); continue; }
+            var proposal = ever.MemoryTranslationUnit.TargetSegment.ToPlain();
+            var marked = ever.ScoringResult.EditDistance.Items.Count(i => i.Resolution == EditDistanceResolution.Substitution);
+            if (want != null)
+                Check(proposal == want && ever.ScoringResult.BaseScore == 99 && marked == 1,
+                      $"{what}: replaced in EverTM's proposal (\"{proposal}\"), {ever.ScoringResult.BaseScore}%, {marked} step marked as replaced; Studio's own TM: {studio?.ScoringResult.BaseScore}%, \"{studio?.TranslationProposal?.TargetSegment?.ToPlain()}\"");
+            else
+                Check(proposal == trg && marked == 0 && ever.ScoringResult.BaseScore < 99,
+                      $"{what}: nothing replaced (\"{proposal}\"), the numbers count: {ever.ScoringResult.BaseScore}%; Studio's own TM: {studio?.ScoringResult.BaseScore}%");
+        }
     }
 
     // ---- one pair: Studio's TM and EverTM, through the cascade ----
 
-    static void Case(string what, Segment doc, Segment mem, bool show = false, int score = -1, bool sameAsStudio = false, string[] marks = null)
+    static void Case(string what, Segment doc, Segment mem, bool show = false, int score = -1, bool sameAsStudio = false, string[] marks = null, string row = null)
     {
         int n = ++_n;
         var tm = new FileBasedTranslationMemory(Path.Combine(_dir, "case" + n + ".sdltm"), "case" + n, EnUs, NlNl, FuzzyIndexes.SourceWordBased | FuzzyIndexes.SourceCharacterBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
@@ -92,8 +135,10 @@ static class DiffDisplayChecks
                             .Select(i => ever.MemoryTranslationUnit.SourceSegment.Tokens[i.Target].Text + ">" + _lastDoc[i.Source].Text).ToList();
         Check(mixed.Count == 0, what + ": no word is shown changed into a punctuation mark or back" + (mixed.Count == 0 ? "" : ": " + string.Join(", ", mixed)));
         if (score >= 0)
-            Check(ever.ScoringResult.BaseScore == score, what + $": EverTM's score is unchanged by this fix ({score}%): {ever.ScoringResult.BaseScore}%");
+            Check(ever.ScoringResult.BaseScore == score && studio.ScoringResult.BaseScore == score,
+                  what + $": EverTM scores it as Studio's own TM does ({score}%): EverTM {ever.ScoringResult.BaseScore}%, Studio {studio.ScoringResult.BaseScore}%");
         if (sameAsStudio) Check(eRow == sRow, what + ": EverTM's row reads exactly as Studio's own TM draws it");
+        if (row != null) Check(eRow == row, what + ": EverTM's row reads as Michael saw it on 11 Nov (the clearer highlighting he chose), with the Studio-like score");
         foreach (var mk in marks ?? new string[0]) Check(eRow.Contains(mk), what + ": EverTM's row shows " + mk + " as Studio's does");
         var unmarked = UnmarkedDifferences(ever);
         Check(unmarked.Count == 0, what + ": no stored word that differs from the document is shown as kept" + (unmarked.Count == 0 ? "" : ": " + string.Join(", ", unmarked)));

@@ -36,6 +36,9 @@
     <Compile Include="MetadataChecks.cs" />
     <Compile Include="TmMatchChecks.cs" />
     <Compile Include="DiffDisplayChecks.cs" />
+    <Compile Include="RowChecks.cs" />
+    <Compile Include="ScoreCompare.cs" />
+    <Compile Include="StudioLikeScore.cs" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <ProjectReference Include="..\..\src\Supervertaler.Trados\Supervertaler.Trados.csproj" AdditionalProperties="TradosStudioVersion=$(TradosStudioVersion)" />

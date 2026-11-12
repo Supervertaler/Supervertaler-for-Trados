@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Reflection;
 using System.Threading;
 using Microsoft.Data.Sqlite;
@@ -45,7 +46,22 @@ static class Program
         if (args.Length > 1 && args[0] == "lookup-xliff")
             return XliffLookup.Run(args[1], args.Length > 2 ? args[2] : Path.Combine(Isolation.RealDataRoot, "evertm"));
         if (args.Length > 0 && args[0] == "diff-display")
-            return Checks.RunOne(c => DiffDisplayChecks.Run(Path.Combine(Path.GetTempPath(), "sv-diffdisplay-" + Guid.NewGuid().ToString("N").Substring(0, 6)), c));
+        {
+            var scratch = Path.Combine(Path.GetTempPath(), "sv-diffdisplay-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+            try { return Checks.RunOne(c => DiffDisplayChecks.Run(scratch, c)); }
+            finally
+            {
+                // Its own scratch folder goes, also when a check failed or threw (the TMs it made are closed by then).
+                SqliteConnection.ClearAllPools();
+                try { Directory.Delete(scratch, true); } catch { Console.WriteLine("(scratch left at " + scratch + ")"); }
+            }
+        }
+        if (args.Length > 1 && args[0] == "score-rescore")
+            return ScoreCompare.RunRescore(args);
+        if (args.Length > 2 && args[0] == "score-compare-xliff")
+            return ScoreCompare.RunXliff(args);
+        if (args.Length > 0 && args[0] == "score-compare")
+            return ScoreCompare.Run(args);
         if (args.Length > 1 && args[0] == "tmmatch-scale")
             return TmMatchChecks.Scale(args[1], args.Length > 2 ? int.Parse(args[2]) : 20000);
         if (args.Length > 1 && args[0] == "import-sdltm")
@@ -136,6 +152,7 @@ static class Checks
             TagsAndPenalties(vault);
             FuzzyDifferences(vault);
             DiffDisplayChecks.Run(_scratch, Check);
+            RowChecks.Run(_scratch, Check);
             Concordance(vault, clientTm);
             Learning(vault);
             CountingConfirmations(root);
@@ -278,6 +295,43 @@ static class Checks
         var refs = typeof(SuperVaultProvider).Assembly.GetReferencedAssemblies().Select(a => a.Name).ToList();
         Check(!refs.Contains("Sdl.Core.LanguageProcessing") && !refs.Contains("Sdl.LanguagePlatform.Lingua"),
               "no reference to Studio's non-public tokenizer/scorer assemblies (" + refs.Count(r => r.StartsWith("Sdl.")) + " Sdl.* references)");
+        ShippedWithThePlugin("Lucene.Net.Analysis.Common");
+    }
+
+    /// <summary>
+    /// A DLL the plugin needs that Studio doesn't have must be listed in the three plugin package manifests, in
+    /// package_plugin.py and in the plugin's assembly resolver, or Studio can't load it and EverTM fails. This checks one
+    /// assembly and everything it needs that isn't part of .NET or Studio.
+    /// </summary>
+    static void ShippedWithThePlugin(string assembly)
+    {
+        var dir = AppDomain.CurrentDomain.BaseDirectory;
+        var repo = dir;
+        while (repo != null && !File.Exists(Path.Combine(repo, "package_plugin.py"))) repo = Path.GetDirectoryName(repo.TrimEnd('\\'));
+        if (repo == null) { Check(false, assembly + " is shipped: the repository wasn't found from " + dir); return; }
+        var needed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<string>(new[] { assembly });
+        while (queue.Count > 0)
+        {
+            var name = queue.Dequeue();
+            var file = Path.Combine(dir, name + ".dll");
+            // .NET's own (in the folder or the framework: System.ValueTuple is part of .NET 4.7 and later), Studio's own, or seen.
+            if (!File.Exists(file) || name.StartsWith("Sdl.") || File.Exists(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), name + ".dll")) || !needed.Add(name)) continue;
+            foreach (var r in Assembly.LoadFrom(file).GetReferencedAssemblies()) queue.Enqueue(r.Name);
+        }
+        var resolver = typeof(SuperVaultProvider).Assembly.GetType("Supervertaler.Trados.AppInitializer")
+            ?.GetField("ManagedAssemblies", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null) as string[] ?? new string[0];
+        var lists = new[] { "pluginpackage.manifest.xml", "pluginpackage.manifest.17.xml", "pluginpackage.manifest.19.xml" }
+            .Select(f => (f, text: File.ReadAllText(Path.Combine(repo, "src", "Supervertaler.Trados", f))))
+            .Append(("package_plugin.py", File.ReadAllText(Path.Combine(repo, "package_plugin.py"))));
+        var missing = new List<string>();
+        foreach (var n in needed)
+        {
+            foreach (var (f, text) in lists)
+                if (f.EndsWith(".py") ? Regex.Matches(text, "\"" + Regex.Escape(n) + "\\.dll\"").Count < 2 : !text.Contains("<File>" + n + ".dll</File>")) missing.Add(n + " in " + f);
+            if (!resolver.Contains(n, StringComparer.OrdinalIgnoreCase)) missing.Add(n + " in AppInitializer.ManagedAssemblies");
+        }
+        Check(missing.Count == 0, $"{assembly} and what it needs ({string.Join(", ", needed)}) are shipped with the plugin and resolved at load" + (missing.Count == 0 ? "" : ": missing " + string.Join("; ", missing)));
     }
 
     static void LanguageDirections(SuperVaultProvider vault)

@@ -15,6 +15,7 @@
     <File>System.Numerics.Vectors.dll</File>
     <File>System.Runtime.CompilerServices.Unsafe.dll</File>
     <File>Lucene.Net.dll</File>
+    <File>Lucene.Net.Analysis.Common.dll</File>
     <File>J2N.dll</File>
     <File>Microsoft.Extensions.Configuration.Abstractions.dll</File>
     <File>Microsoft.Extensions.Primitives.dll</File>
