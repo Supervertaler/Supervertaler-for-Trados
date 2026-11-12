@@ -24,6 +24,9 @@ Each is built as its own commit, so it can be tested and merged on its own.
    "EverTM never lowers a match from your project TMs" must still hold, and its check stays.
 4. **Studio's match repair on EverTM's matches: try it later**, with Michael in Studio, after 1-3. Low priority.
 5. **Fix the two display defects now, separately: yes.** Done first: Trados 0c0c1fb, core 989de23.
+6. **A segment that differs only in a replaced number scores 99%, not 100%: "Keep 99%"** (12 Nov 2026). So 100%
+   always means identical text; Pre-translate set to 100% only doesn't fill those in (Studio's own TM gives 100%).
+   No code change. To be revisited after real use: it is a one-line change (`VaultDiff.ScoreFrom`).
 
 ## In short
 

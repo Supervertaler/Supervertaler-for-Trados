@@ -48,7 +48,9 @@ marked *(planned)*.
 
 - When a number in your document differs from the stored sentence's – another claim number, another reference
   numeral – EverTM puts your document's number into its proposal, as Studio does, and doesn't count it as a
-  difference. The match then shows 99% (100% is only for exactly the same sentence).
+  difference. The match then shows 99%, not 100%: in EverTM, 100% always means exactly the same sentence, so a match
+  whose number was changed for you is never taken for an exact one. Pre-translate set to apply 100% matches only
+  therefore doesn't fill those segments in; a minimum of 99% or lower does.
 - It does so only when it can't go wrong: the same numbers in the same order on both sides and in the translation,
   each changed number only once in the sentence, and written the same way. A number put in the wrong place would be
   a real error, so when in doubt EverTM leaves the proposal as it is and shows the number as a difference: numbers
