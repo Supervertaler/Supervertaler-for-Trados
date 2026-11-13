@@ -26,6 +26,18 @@ namespace Supervertaler.Trados.Controls
         public string Folder;
         /// <summary>Image files in that folder, when it is set and exists; -1 when it does not exist.</summary>
         public int FolderImages;
+        /// <summary>True when the folder holds more image files than one run takes; FolderImages is then only how far the count got.</summary>
+        public bool FolderTooMany;
+        /// <summary>Of the folder's image files, those whose name gives a figure number ("Figure 3.png").</summary>
+        public int FolderMatched;
+        /// <summary>Files in the folder that are not images (PDF, Word, ...) and are not used.</summary>
+        public int FolderOtherFiles;
+        /// <summary>Figures the documents' text describes ("Figuur 3 toont ..."), whether or not there is an image for them.</summary>
+        public int TextFigures;
+        /// <summary>Of those, the ones no file name in the folder gives.</summary>
+        public int FiguresWithoutFile;
+        /// <summary>How the last run ended, when there is something to say: stopped, nothing could be described, an error. Null otherwise.</summary>
+        public string LastOutcome;
         /// <summary>One row per Word document in the project that has images.</summary>
         public List<DocumentRow> Documents = new List<DocumentRow>();
         /// <summary>Every Word document in the project, images or not.</summary>
@@ -60,6 +72,8 @@ namespace Supervertaler.Trados.Controls
         public Action ChangeFolder;
         public Action OpenFolder;
         public Action Analyse;
+        /// <summary>Ends a running description; nothing is saved.</summary>
+        public Action Stop;
         public Action WriteFigures;
         public Action ShowReport;
         /// <summary>Create (or reuse) a memory bank named after the project and switch to it.</summary>
@@ -92,6 +106,7 @@ namespace Supervertaler.Trados.Controls
         private readonly Label _lblAnalyseNote;
         private readonly Button _btnWrite;
         private readonly Label _lblWriteNote;
+        private readonly Label _lblOutcome;
         private readonly Label _lblResult;
         private readonly Timer _poll;
 
@@ -129,6 +144,8 @@ namespace Supervertaler.Trados.Controls
             FiguresWritten = new DateTime(2026, 8, 26, 23, 58, 0),
             FiguresRows = 14, FiguresWithoutVision = true,
             ProviderName = "Claude (Anthropic)",
+            FolderMatched = 12, FolderOtherFiles = 3, TextFigures = 14, FiguresWithoutFile = 2,
+            LastOutcome = "None of the 14 image(s) could be described. figures.md was not changed. Reason given for the first: 401: the API key is not valid for this provider",
         }) { }
 
         public ImagesDialog(ImagesActions actions, ImagesState initial)
@@ -201,17 +218,27 @@ namespace Supervertaler.Trados.Controls
             // Step 2
             root.Controls.Add(Step("Step 2"), 0, row);
             _btnAnalyse = Btn("Describe images with AI");
-            _btnAnalyse.Click += (s, e) => Run(_actions.Analyse);
-            tips.SetToolTip(_btnAnalyse, "Shows each image to the AI, together with what the text says about it, and saves the descriptions where every prompt reads them. One paid request per image. Asks before replacing descriptions that already exist.");
+            // One button, two jobs: while a run is on it is the way to end it.
+            _btnAnalyse.Click += (s, e) => Run(_state.AnalysisRunning ? _actions.Stop : _actions.Analyse);
+            tips.SetToolTip(_btnAnalyse, "Shows each image to the AI, together with what the text says about it, and saves the descriptions where every prompt reads them. One paid request per image. "
+                + "When the documents hold no images, the image files in the folder above are used, each matched to a figure by its file name (Figure 3.png, fig3.jpg). "
+                + "Asks before replacing descriptions that already exist. While it runs, the button stops it; a stopped run saves nothing.");
             _lblAnalyseNote = Note("");
             root.Controls.Add(Pair(_btnAnalyse, _lblAnalyseNote), 1, row); row++;
 
             _btnWrite = Btn("Describe from the text only");
             _btnWrite.Click += (s, e) => Run(_actions.WriteFigures);
-            tips.SetToolTip(_btnWrite, "The free alternative: saves what the document itself says about each figure, without looking at the images. Use one or the other. Asks before replacing descriptions that already exist.");
+            tips.SetToolTip(_btnWrite, "The free alternative: saves what the document itself says about each figure, without looking at the images, so it needs no image files. Use one or the other. Asks before replacing descriptions that already exist.");
             _lblWriteNote = Note("");
             var alt = Pair(_btnWrite, _lblWriteNote); alt.Margin = new Padding(0, 0, 0, UiScale.Pixels(8));
             root.Controls.Add(alt, 1, row); row++;
+
+            // How the last run ended, when it did not simply succeed. The log it
+            // is also written to is behind this window.
+            _lblOutcome = Wrap("");
+            _lblOutcome.ForeColor = Color.Firebrick;
+            _lblOutcome.Visible = false;
+            root.Controls.Add(_lblOutcome, 1, row); row++;
 
             // Result
             root.Controls.Add(L("Result:"), 0, row);
@@ -294,11 +321,20 @@ namespace Supervertaler.Trados.Controls
         {
             var st = _state;
             bool folderSet = !string.IsNullOrEmpty(st.Folder);
-            bool haveImages = st.TotalImages > 0;
+            // Images come from the documents when they hold any. When they hold
+            // none, the image files in the chosen folder are used instead: the
+            // drawings of a patent usually arrive as separate files.
+            bool docImages = st.TotalImages > 0;
+            bool useFolder = !docImages && folderSet && st.FolderImages > 0;
+            bool haveImages = docImages || useFolder;
             bool haveBank = !string.IsNullOrEmpty(st.BankName) && !st.BankIsShared;
             string n = st.TotalImages + " image" + (st.TotalImages == 1 ? "" : "s");
+            string folderCount = st.FolderTooMany
+                ? "more than " + Supervertaler.Core.ReferenceImages.MaxImages + " image files"
+                : Plural(Math.Max(0, st.FolderImages), "image file");
 
-            _lblDocs.Text = DocumentsText(st);
+            _lblDocs.Text = DocumentsText(st)
+                + (useFolder ? " The " + folderCount + " in the folder below will be used." : "");
             _lstDocs.BeginUpdate();
             _lstDocs.Items.Clear();
             foreach (var d in st.Documents) AddDocumentRow(d, _lstDocs.ForeColor);
@@ -309,26 +345,44 @@ namespace Supervertaler.Trados.Controls
             FitColumns();
 
             // Step 1
-            _btnExtract.Enabled = st.ProjectOpen && haveImages && !st.AnalysisRunning;
-            _lblExtractNote.Text = !haveImages ? "Nothing to extract: the documents above have no images."
+            _btnExtract.Enabled = st.ProjectOpen && docImages && !st.AnalysisRunning;
+            _lblExtractNote.Text = useFolder ? "Nothing to extract, and not needed: your images are already in the folder below."
+                : !docImages ? "Nothing to extract: the documents above have no images. If the images came as separate files, choose their folder below."
                 : !folderSet ? "Copies the " + n + " out of the documents above. You will be asked where to put them; a new, empty folder next to the job is fine."
                 : "Copies the " + n + " out of the documents above into the folder below. Free, no AI.";
             _lblFolder.Text = !folderSet ? "Folder: not chosen yet."
                 : st.FolderImages < 0 ? "Folder: " + st.Folder + "  (no longer exists)"
-                : "Folder: " + st.Folder + "  (" + st.FolderImages + " image file" + (st.FolderImages == 1 ? "" : "s") + ")";
+                : "Folder: " + st.Folder + "  (" + folderCount
+                    + (useFolder && st.FolderOtherFiles > 0 ? "; " + Plural(st.FolderOtherFiles, "other file") + " not used: PDF and other formats are not read" : "")
+                    + ")";
             _lnkChange.Text = folderSet ? "Change\u2026" : "Already have the images in a folder? Choose it\u2026";
             _lnkOpen.Visible = folderSet && st.FolderImages >= 0;
 
             // Step 2
-            _btnAnalyse.Enabled = st.ProjectOpen && haveImages && folderSet && haveBank && !st.AnalysisRunning;
-            _lblAnalyseNote.Text = st.AnalysisRunning ? "Running\u2026"
-                : !haveImages ? "No images to describe."
+            bool tooMany = useFolder && st.FolderTooMany;
+            _btnAnalyse.Text = st.AnalysisRunning ? "Stop" : "Describe images with AI";
+            _btnAnalyse.Enabled = st.AnalysisRunning
+                || (st.ProjectOpen && haveImages && folderSet && haveBank && !tooMany);
+            string provider = st.ProviderName ?? "the provider";
+            _lblAnalyseNote.Text = st.AnalysisRunning ? "Running\u2026 Stop ends the run and saves nothing."
+                : !haveImages ? (!folderSet ? "No images to describe. If the images came as separate files, choose their folder under step 1."
+                    : st.FolderImages < 0 ? "No images in the documents, and the folder no longer exists. Choose it again under step 1."
+                    : "No images to describe: none in the documents, and no image files in the folder.")
                 : !folderSet ? "Do step 1 first."
+                : tooMany ? "The folder holds more than " + Supervertaler.Core.ReferenceImages.MaxImages + " image files, and each would be a paid request. Choose a folder that holds only this project\u2019s drawings."
                 : !haveBank ? "Needs a memory bank for this project to save the descriptions in \u2013 see Result."
-                : st.TotalImages + " AI request" + (st.TotalImages == 1 ? "" : "s") + " to " + (st.ProviderName ?? "the provider") + ", one per image.";
-            _btnWrite.Enabled = st.ProjectOpen && haveImages && haveBank && !st.AnalysisRunning;
+                : useFolder ? FolderRunText(st, provider)
+                : st.TotalImages + " AI request" + (st.TotalImages == 1 ? "" : "s") + " to " + provider + ", one per image.";
+
+            bool anyText = docImages || st.TextFigures > 0;
+            _btnWrite.Enabled = st.ProjectOpen && anyText && haveBank && !st.AnalysisRunning;
             _lblWriteNote.Text = !haveBank ? "Needs a memory bank for this project \u2013 see Result."
-                : "Free, no AI: only what the document says about each figure. The alternative to the button above, not a third step.";
+                : docImages ? "Free, no AI: only what the document says about each figure. The alternative to the button above, not a third step."
+                : st.TextFigures > 0 ? "Free, no AI: what the text says about each of the " + Plural(st.TextFigures, "figure") + " it describes. Needs no image files. The alternative to the button above, not a third step."
+                : "Nothing to write without the AI: the text describes no figures (no sentence opens with \u201cFigure 1 \u2026\u201d or \u201cFiguur 1 \u2026\u201d).";
+
+            _lblOutcome.Text = st.LastOutcome ?? "";
+            _lblOutcome.Visible = !st.AnalysisRunning && !string.IsNullOrEmpty(st.LastOutcome);
 
             // Result
             _lnkCreateBank.Visible = !haveBank && !string.IsNullOrEmpty(st.SuggestedBankName);
@@ -363,6 +417,27 @@ namespace Supervertaler.Trados.Controls
         }
 
         private static string Plural(int n, string noun) => n + " " + noun + (n == 1 ? "" : "s");
+
+        /// <summary>
+        /// The cost of describing the folder's files, and how they were matched,
+        /// said before the button is pressed: how many requests, how many files
+        /// got a figure number from their name, and what will happen to the rest.
+        /// </summary>
+        private static string FolderRunText(ImagesState st, string provider)
+        {
+            int files = st.FolderImages;
+            int unmatched = Math.Max(0, files - st.FolderMatched);
+            var text = files + " AI request" + (files == 1 ? "" : "s") + " to " + provider + ", one per image file in the folder. ";
+            if (unmatched == 0)
+                text += (files == 1 ? "It is" : "All are") + " matched to a figure by file name.";
+            else if (st.FolderMatched == 0)
+                text += "No file name gives a figure number (such as \u201cFigure 3.png\u201d), so " + (files == 1 ? "it" : "they") + " will be described without one.";
+            else
+                text += st.FolderMatched + " matched to a figure by file name; " + unmatched + " with no figure number in the name will be described without one.";
+            if (st.FiguresWithoutFile > 0)
+                text += " " + Plural(st.FiguresWithoutFile, "figure") + " in the text " + (st.FiguresWithoutFile == 1 ? "has" : "have") + " no file.";
+            return text;
+        }
 
         private void AddDocumentRow(DocumentRow row, Color colour)
         {

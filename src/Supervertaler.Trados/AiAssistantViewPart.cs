@@ -11617,6 +11617,34 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// </summary>
         private int _figureAnalysisRunning;
 
+        /// <summary>
+        /// The run in flight, so Stop can end it. Set on the UI thread before the
+        /// run starts and cleared by the run when it ends; Stop only ever cancels
+        /// it. Volatile because the two are different threads.
+        /// </summary>
+        private volatile System.Threading.CancellationTokenSource _figureCancel;
+
+        /// <summary>
+        /// How the last description run (or text-only write) ended, for the
+        /// FigureLens window: it is modal over the Batch Operations log, so a
+        /// message that goes only to the log is one the user never sees.
+        /// </summary>
+        private volatile string _figureLastOutcome;
+
+        /// <summary>Says it in the log and keeps it for the FigureLens window.</summary>
+        private void FigureOutcome(string message, bool isError)
+        {
+            _figureLastOutcome = message;
+            SafeInvoke(() => _control.Value.BatchTranslateControl.AppendLog(message, isError));
+        }
+
+        /// <summary>FigureLens Stop: ends the run after the request in flight; nothing is saved.</summary>
+        private void StopFigureAnalysis()
+        {
+            try { _figureCancel?.Cancel(); }
+            catch (ObjectDisposedException) { /* the run ended between the click and here */ }
+        }
+
         private void OnAnalyseFiguresRequested(object sender, EventArgs e)
         {
             var batchControl = _control.Value.BatchTranslateControl;
@@ -11636,7 +11664,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
             if (string.IsNullOrEmpty(projectPath))
             {
-                batchControl.AppendLog("No project open.", true);
+                FigureOutcome("No project open.", true);
                 return;
             }
 
@@ -11645,20 +11673,19 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             catch { }
             if (string.IsNullOrEmpty(folder))
             {
-                batchControl.AppendLog(
-                    "No images folder chosen yet - do step 1 in FigureLens first.", true);
+                FigureOutcome("No images folder chosen yet - do step 1 in FigureLens first.", true);
                 return;
             }
 
             var bankName = ActiveMemoryBankName;
             if (string.IsNullOrWhiteSpace(bankName))
             {
-                batchControl.AppendLog("No memory bank is active.", true);
+                FigureOutcome("No memory bank is active.", true);
                 return;
             }
             if (UserDataPath.IsSharedBankName(bankName))
             {
-                batchControl.AppendLog("The shared memory bank is read by every project, so descriptions of this project's images "
+                FigureOutcome("The shared memory bank is read by every project, so descriptions of this project's images "
                     + "cannot go there. Create or pick a memory bank for this project first (FigureLens).", true);
                 return;
             }
@@ -11666,7 +11693,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             var anchorPath = ResolveProjectAnchorPathCore();
             if (string.IsNullOrEmpty(anchorPath))
             {
-                batchControl.AppendLog("No project open.", true);
+                FigureOutcome("No project open.", true);
                 return;
             }
 
@@ -11698,152 +11725,212 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
 
             var docxFiles = FindProjectDocx(anchorPath);
-            if (docxFiles.Count == 0)
-            {
-                batchControl.AppendLog("No Word documents in this project.", true);
-                return;
-            }
 
-            // Count first, so the question can say what it will cost.
+            // Count first, so the question can say what it will cost. One read per
+            // document: which carry images, and what the text of each says about
+            // its figures.
             var figureCount = 0;
+            var withImages = new List<string>();
+            var sets = new List<Supervertaler.Core.DocxImageSet>();
             foreach (var f in docxFiles)
             {
-                try { figureCount += Supervertaler.Core.DocxImageExtractor.Extract(f).Images.Count; }
+                try
+                {
+                    var set = Supervertaler.Core.DocxImageExtractor.Extract(f);
+                    sets.Add(set);
+                    figureCount += set.Images.Count;
+                    if (set.Images.Count > 0) withImages.Add(f);
+                }
                 catch { }
             }
+
+            // The documents hold no images: the drawings came as separate files,
+            // and the folder the user chose is where they are. That is the usual
+            // shape of a patent job, and until now it ended here with "No images
+            // found" while the window counted the files in the folder.
+            Supervertaler.Core.FolderFigurePlan plan = null;
             if (figureCount == 0)
             {
-                batchControl.AppendLog("No images found in this project's Word documents.", true);
-                return;
+                plan = Supervertaler.Core.FolderFigures.Plan(folder, Supervertaler.Core.FolderFigures.MergeDescriptions(sets));
+                if (!plan.FolderExists)
+                {
+                    FigureOutcome("The images folder no longer exists: " + folder + ". Choose it again in FigureLens.", true);
+                    return;
+                }
+                if (plan.TooMany)
+                {
+                    FigureOutcome("The folder holds more than " + Supervertaler.Core.ReferenceImages.MaxImages
+                        + " image files, and each one is a paid request. Choose a folder that holds only this project's drawings.", true);
+                    return;
+                }
+                if (plan.Files.Count == 0)
+                {
+                    FigureOutcome("Nothing to describe: this project's documents hold no images, and the folder holds no image files ("
+                        + folder + ").", true);
+                    return;
+                }
             }
+            var requests = plan != null ? plan.Files.Count : figureCount;
+            var providerName = _settings?.AiSettings?.SelectedProvider ?? "the AI provider";
 
-            // Only ask when there is something to lose. figures.md is the file
-            // the user is told to read and correct, and this replaces it.
+            // Ask when there is something to lose - figures.md is the file the
+            // user is told to read and correct, and this replaces it - or when
+            // a folder holds more files than a set of drawings usually does.
             var existing = Path.Combine(UserDataPath.GetMemoryBankDir(bankName), "figures.md");
-            if (File.Exists(existing))
+            var replaces = File.Exists(existing);
+            var many = plan != null && requests > Supervertaler.Core.FolderFigures.AskAbove;
+            if (replaces || many)
             {
-                var answer = MessageBox.Show(_control.Value.FindForm(),
-                    "This will send " + figureCount + " image(s) to "
-                        + (_settings?.AiSettings?.SelectedProvider ?? "the AI provider")
-                        + " and REPLACE the existing figures.md in memory bank \""
-                        + bankName + "\"." + "\n\n"
-                        + "Any corrections you have made to that file will be lost."
-                        + "\n\nContinue?",
-                    "Analyse images",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2);
+                var question = "This will send " + requests + " image(s) to " + providerName + ", one paid request each"
+                    + (plan != null ? ", for the " + requests + " image file(s) in:\n" + folder : "")
+                    + (replaces
+                        ? (plan != null ? "\n\nIt will" : " and") + " REPLACE the existing figures.md in memory bank \"" + bankName + "\"."
+                          + "\n\nAny corrections you have made to that file will be lost. (If you stop the run, or no image can be described, the file is left as it is.)"
+                        : ".")
+                    + (many ? "\n\nThat is a lot of files for one document. If this is not the folder with this project's drawings, choose No." : "")
+                    + "\n\nContinue?";
+                var answer = MessageBox.Show(_control.Value.FindForm(), question, "Describe images with AI",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
                 if (answer != DialogResult.Yes)
                 {
-                    batchControl.AppendLog("Figure analysis cancelled - figures.md left alone.");
+                    FigureOutcome("Nothing sent" + (replaces ? " - figures.md left alone." : "."), false);
                     return;
                 }
             }
 
-            batchControl.AppendLog("Analysing " + figureCount
-                + " image(s) - one AI request each. This may take a minute.");
+            _figureLastOutcome = null;
+            batchControl.AppendLog("Describing " + requests + " image(s) - one AI request each. This may take a minute.");
 
+            var cts = new System.Threading.CancellationTokenSource();
+            _figureCancel = cts;
             started = true;
             Task.Run(async () =>
             {
                 try
                 {
-                    var visions = new List<Supervertaler.Core.FigureVision>();
-                    var documents = new List<Supervertaler.Core.FiguresFile.FigureDocument>();
+                    Supervertaler.Core.FigureRun.Result result;
+                    string path = null;
 
                     string clientError;
                     using (var client = CreateLlmClient(out clientError))
                     {
                         if (client == null)
                         {
-                            SafeInvoke(() => batchControl.AppendLog(clientError, true));
+                            FigureOutcome(clientError, true);
                             return;
                         }
 
-                        // Which documents actually carry images decides where the files
-                        // go, exactly as Extract does: several documents written into one
-                        // folder means the second document's "Figure 01.png" replaces the
-                        // first's, and the first is then analysed twice.
-                        var withImages = new List<string>();
-                        foreach (var f in docxFiles)
+                        Func<Supervertaler.Core.FigureRun.Job, System.Threading.CancellationToken, Task<Supervertaler.Core.FigureVision>> describe =
+                            (job, ct) => Supervertaler.Core.FigureAnalyzer.AnalyseAsync(client, job.Path, job.Label, job.Descriptions, ct);
+                        Action<int, int, Supervertaler.Core.FigureRun.Job> progress = (n, of, job) =>
+                            SafeInvoke(() => batchControl.AppendLog("  image " + n + " of " + of + ": " + Path.GetFileName(job.Path) + "…"));
+
+                        if (plan != null)
                         {
-                            try { if (Supervertaler.Core.DocxImageExtractor.Extract(f).Images.Count > 0) withImages.Add(f); }
-                            catch { }
+                            result = await Supervertaler.Core.FolderFigures.DescribeAndSaveAsync(plan, describe, existing,
+                                textSigns, rawSourceText,
+                                "Batch Operations → FigureLens → Describe images with AI",
+                                progress, cts.Token).ConfigureAwait(false);
+                            path = result.WrittenTo;
                         }
-
-                        foreach (var f in withImages)
+                        else
                         {
-                            var target = withImages.Count == 1
-                                ? folder
-                                : Path.Combine(folder, Path.GetFileNameWithoutExtension(f));
-
-                            var set = Supervertaler.Core.DocxImageExtractor.Extract(f, false, target);
-                            if (set.Images.Count == 0) continue;
-
-                            var doc = new Supervertaler.Core.FiguresFile.FigureDocument
+                            // Which documents actually carry images decides where the files
+                            // go, exactly as Extract does: several documents written into one
+                            // folder means the second document's "Figure 01.png" replaces the
+                            // first's, and the first is then analysed twice.
+                            var documents = new List<Supervertaler.Core.FiguresFile.FigureDocument>();
+                            var jobs = new List<Supervertaler.Core.FigureRun.Job>();
+                            var owners = new List<KeyValuePair<Supervertaler.Core.FiguresFile.FigureDocument, Supervertaler.Core.ExtractedImage>>();
+                            foreach (var f in withImages)
                             {
-                                Name = Path.GetFileName(f),
-                                Set = set,
-                            };
-                            documents.Add(doc);
+                                var target = withImages.Count == 1
+                                    ? folder
+                                    : Path.Combine(folder, Path.GetFileNameWithoutExtension(f));
 
-                            for (int i = 0; i < set.Images.Count; i++)
+                                var set = Supervertaler.Core.DocxImageExtractor.Extract(f, false, target);
+                                if (set.Images.Count == 0) continue;
+
+                                var doc = new Supervertaler.Core.FiguresFile.FigureDocument
+                                {
+                                    Name = Path.GetFileName(f),
+                                    Set = set,
+                                };
+                                documents.Add(doc);
+
+                                foreach (var img in set.Images)
+                                {
+                                    // The file this image was written to, taken from the image
+                                    // itself: indexing SavedFiles pairs every later image with
+                                    // the wrong file as soon as one fails to write.
+                                    if (string.IsNullOrEmpty(img.SavedFileName)) continue;
+                                    jobs.Add(new Supervertaler.Core.FigureRun.Job
+                                    {
+                                        Path = Path.Combine(target, img.SavedFileName),
+                                        Label = img.Label ?? ("image " + img.Ordinal),
+                                        Descriptions = img.Descriptions ?? new List<string>(),
+                                    });
+                                    owners.Add(new KeyValuePair<Supervertaler.Core.FiguresFile.FigureDocument, Supervertaler.Core.ExtractedImage>(doc, img));
+                                }
+                            }
+
+                            result = await Supervertaler.Core.FigureRun.DescribeAsync(jobs, describe, progress, cts.Token).ConfigureAwait(false);
+                            for (int i = 0; i < result.Visions.Count && i < owners.Count; i++)
                             {
-                                var img = set.Images[i];
-                                // The file this image was written to, taken from the image
-                                // itself: indexing SavedFiles pairs every later image with
-                                // the wrong file as soon as one fails to write.
-                                if (string.IsNullOrEmpty(img.SavedFileName)) continue;
-
-                                var n = i + 1; var of = set.Images.Count; var docName = doc.Name;
-                                SafeInvoke(() => batchControl.AppendLog(
-                                    "  " + docName + ": figure " + n + " of " + of + "\u2026"));
-
-                                var v = await Supervertaler.Core.FigureAnalyzer.AnalyseAsync(
-                                    client,
-                                    Path.Combine(target, img.SavedFileName),
-                                    img.Label ?? ("image " + img.Ordinal),
-                                    img.Descriptions).ConfigureAwait(false);
-                                doc.Images.Add(img);
-                                doc.Visions.Add(v);
-                                visions.Add(v);
+                                owners[i].Key.Images.Add(owners[i].Value);
+                                owners[i].Key.Visions.Add(result.Visions[i]);
+                            }
+                            // A stopped run, or one in which no image could be described,
+                            // writes nothing: an existing figures.md stays as it was.
+                            if (result.MayWrite)
+                            {
+                                path = WriteFiguresWithVision(bankName, documents, result.Visions, textSigns, rawSourceText);
+                                result.SignsNotInText = Supervertaler.Core.FiguresFile.SignsNotInText(result.Visions, textSigns, rawSourceText);
                             }
                         }
                     }
 
-                    if (visions.Count == 0)
+                    var unchanged = replaces ? "figures.md was not changed." : "Nothing was saved.";
+                    if (result.Stopped)
                     {
-                        SafeInvoke(() => batchControl.AppendLog("No figures to analyse.", true));
+                        FigureOutcome("Stopped after " + result.Visions.Count + " of " + requests + " image(s). " + unchanged, false);
+                        return;
+                    }
+                    if (result.NothingDescribed)
+                    {
+                        FigureOutcome("None of the " + requests + " image(s) could be described. " + unchanged
+                            + (string.IsNullOrEmpty(result.FirstError) ? "" : " Reason given for the first: " + result.FirstError), true);
                         return;
                     }
 
-                    var path = WriteFiguresWithVision(bankName, documents, visions, textSigns, rawSourceText);
-
+                    var failed = result.Failed;
+                    var count = result.Visions.Count;
+                    var drawingsOnly = result.SignsNotInText ?? new List<string>();
+                    FigureOutcome("Described " + count + " image(s)" + (failed > 0 ? ", " + failed + " failed (their rows say why)" : "")
+                        + ". Written to " + path, false);
                     SafeInvoke(() =>
                     {
-                        var failed = visions.Count(v => !string.IsNullOrEmpty(v.Error));
-                        batchControl.AppendLog("Figure analysis complete: " + visions.Count
-                            + " figure(s)" + (failed > 0 ? ", " + failed + " failed" : "")
-                            + ". Written to " + path);
-
-                        var drawingsOnly = Supervertaler.Core.FiguresFile.SignsNotInText(visions, textSigns, rawSourceText);
                         ShowSuperMemoryMessage(
-                            "Analysed **" + visions.Count + "** figure(s) and wrote **figures.md** to "
+                            "Analysed **" + count + "** figure(s) and wrote **figures.md** to "
                             + "memory bank **" + bankName + "**."
                             + (drawingsOnly.Count > 0
-                                ? "\n\n\u26A0 **" + drawingsOnly.Count + " reference sign(s) appear in the "
+                                ? "\n\n⚠ **" + drawingsOnly.Count + " reference sign(s) appear in the "
                                   + "images but nowhere in the text:** " + string.Join(", ", drawingsOnly)
                                   + ". That is worth raising with the client before filing."
                                 : "\n\nEvery sign read in the images also appears in the text.")
-                            + "\n\n*This file is read into every prompt from now on. Read it first \u2013 a "
+                            + "\n\n*This file is read into every prompt from now on. Read it first – a "
                             + "wrong caption would be invisible and everywhere.*");
                     });
                 }
                 catch (Exception ex)
                 {
-                    SafeInvoke(() => batchControl.AppendLog("Figure analysis failed: " + ex.Message, true));
+                    FigureOutcome("Figure analysis failed: " + ex.Message, true);
                 }
                 finally
                 {
+                    // In this order: Stop must find either a live source or none.
+                    _figureCancel = null;
+                    cts.Dispose();
                     System.Threading.Interlocked.Exchange(ref _figureAnalysisRunning, 0);
                 }
             });
@@ -11947,6 +12034,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     ChangeFolder = ChooseReferenceImagesFolder,
                     OpenFolder = OpenReferenceImagesFolder,
                     Analyse = () => OnAnalyseFiguresRequested(this, EventArgs.Empty),
+                    Stop = StopFigureAnalysis,
                     WriteFigures = WriteFiguresFile,
                     ShowReport = ShowDocumentImagesReport,
                     CreateProjectBank = CreateMemoryBankForProject,
@@ -12035,12 +12123,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 if (st.ProjectOpen)
                 {
                     try { st.Folder = Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? ""; } catch { st.Folder = ""; }
-                    if (!string.IsNullOrEmpty(st.Folder))
-                    {
-                        if (!Directory.Exists(st.Folder)) st.FolderImages = -1;
-                        else { try { st.FolderImages = Supervertaler.Core.ReferenceImages.CountImages(st.Folder); } catch { st.FolderImages = 0; } }
-                    }
                 }
+                var sets = new List<Supervertaler.Core.DocxImageSet>();
 
                 var anchorPath = ResolveProjectAnchorPathCore();
                 var docxFiles = string.IsNullOrEmpty(anchorPath) ? new List<string>() : FindProjectDocx(anchorPath);
@@ -12049,6 +12133,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     try
                     {
                         var set = Supervertaler.Core.DocxImageExtractor.Extract(f);
+                        sets.Add(set);
                         var n = set.Images.Count;
                         var labelled = set.Images.Count(i => !string.IsNullOrEmpty(i.Label));
                         st.TotalImages += n; st.Labelled += labelled;
@@ -12070,6 +12155,22 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         st.DocumentsUnreadable.Add(new Controls.DocumentRow { Name = Path.GetFileName(f), Note = "could not be read (" + ex.Message + ")" });
                     }
                 }
+
+                // The folder, and how its files match the figures the text describes:
+                // what step 2 works from when the documents hold no images. A capped
+                // directory listing, no file is opened (ReferenceImages.Scan).
+                var textFigures = Supervertaler.Core.FolderFigures.MergeDescriptions(sets);
+                st.TextFigures = textFigures.Count;
+                if (!string.IsNullOrEmpty(st.Folder))
+                {
+                    var plan = Supervertaler.Core.FolderFigures.Plan(st.Folder, textFigures);
+                    st.FolderImages = plan.FolderExists ? plan.Files.Count : -1;
+                    st.FolderTooMany = plan.TooMany;
+                    st.FolderMatched = plan.Matched;
+                    st.FolderOtherFiles = plan.OtherFiles;
+                    st.FiguresWithoutFile = plan.FiguresWithoutFile.Count;
+                }
+                st.LastOutcome = _figureLastOutcome;
 
                 st.BankName = ActiveMemoryBankName;
                 // The shared bank is read by every project; a file saying what THIS
@@ -12298,6 +12399,46 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             var docxFiles = ProjectSourceDocx();
 
+            // What there is to write is worked out BEFORE asking whether to
+            // replace the file: asking first, and then having nothing to write,
+            // is a question about nothing.
+            var documents = new List<KeyValuePair<string, Supervertaler.Core.DocxImageSet>>();
+            foreach (var f in docxFiles)
+            {
+                try { documents.Add(new KeyValuePair<string, Supervertaler.Core.DocxImageSet>(Path.GetFileName(f), Supervertaler.Core.DocxImageExtractor.Extract(f))); }
+                catch { }
+            }
+            int wrote, refused = 0;
+            string markdown;
+            const string hint = "Batch Operations \u2192 FigureLens \u2192 Describe from the text only";
+            if (documents.Any(d => d.Value != null && d.Value.Images.Count > 0))
+            {
+                markdown = Supervertaler.Core.FiguresFile.RenderFromText(documents, hint, out wrote, out refused);
+            }
+            else
+            {
+                // No images in the documents (the drawings came as separate files,
+                // or there are none): one row per figure the TEXT describes, with
+                // the file from the chosen folder whose name gives that figure.
+                // Needs no image files at all.
+                var textFigures = Supervertaler.Core.FolderFigures.MergeDescriptions(documents.Select(d => d.Value));
+                List<Supervertaler.Core.ReferenceImage> files = null;
+                try
+                {
+                    var projectPath = TermLensEditorViewPart.GetCurrentProjectPath();
+                    var folder = string.IsNullOrEmpty(projectPath) ? "" : (Settings.ProjectSettings.Load(projectPath)?.ReferenceImagesFolder ?? "");
+                    if (!string.IsNullOrEmpty(folder)) files = Supervertaler.Core.ReferenceImages.Scan(folder).Images;
+                }
+                catch { }
+                markdown = Supervertaler.Core.FiguresFile.RenderFromTextFigures(textFigures, files, hint, out wrote);
+            }
+            if (markdown == null)
+            {
+                FigureOutcome("Nothing written: the documents hold no images and their text describes no figures "
+                    + "(no sentence opens with \u201cFigure 1 \u2026\u201d or \u201cFiguur 1 \u2026\u201d).", true);
+                return;
+            }
+
             // The AI pass writes the same file, with a column this pass cannot
             // fill. Read top to bottom, this button comes after Analyse - and
             // silently replacing paid-for descriptions with the text-only
@@ -12318,34 +12459,20 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     MessageBoxDefaultButton.Button2);
                 if (answer != DialogResult.Yes)
                 {
-                    batchControl.AppendLog("figures.md left alone.");
+                    FigureOutcome("figures.md left alone.", false);
                     return;
                 }
-            }
-
-            var documents = new List<KeyValuePair<string, Supervertaler.Core.DocxImageSet>>();
-            foreach (var f in docxFiles)
-            {
-                try { documents.Add(new KeyValuePair<string, Supervertaler.Core.DocxImageSet>(Path.GetFileName(f), Supervertaler.Core.DocxImageExtractor.Extract(f))); }
-                catch { }
-            }
-            int wrote, refused;
-            var markdown = Supervertaler.Core.FiguresFile.RenderFromText(documents,
-                "Batch Operations \u2192 FigureLens \u2192 Describe from the text only", out wrote, out refused);
-            if (markdown == null)
-            {
-                batchControl.AppendLog("No images found in this project's documents - nothing written.", true);
-                return;
             }
 
             var outPath = Path.Combine(bankDir, "figures.md");
             try { Supervertaler.Core.FiguresFile.Save(outPath, markdown); }
             catch (Exception ex)
             {
-                batchControl.AppendLog("Could not write figures.md: " + ex.Message, true);
+                FigureOutcome("Could not write figures.md: " + ex.Message, true);
                 return;
             }
 
+            _figureLastOutcome = null;
             batchControl.AppendLog("figures.md written to memory bank " + bankName
                 + " (" + wrote + " figure(s)"
                 + (refused > 0 ? ", " + refused + " document(s) unlabelled" : "")
@@ -12399,7 +12526,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             // Windows 2000-era tree with nowhere to paste a path.
             var chosen = Controls.FolderPicker.Show(
                 _control.Value.FindForm(),
-                "Pick a folder where this project's images will be put",
+                "Choose the folder for this project's images: where they are, or where to put them",
                 start);
             if (string.IsNullOrEmpty(chosen)) return;
 
