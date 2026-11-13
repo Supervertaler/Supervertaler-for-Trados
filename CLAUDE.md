@@ -284,6 +284,14 @@ Source-available license (not MIT). Source code viewable/forkable for personal u
 - Annual plans include 2 months free (equivalent discount)
 - Legacy: old TermLens (€10) and Assistant (€15) variant names from Lemon Squeezy are still accepted and grant full access
 
+### Institutions that cannot buy a subscription (universities)
+
+- **There is no perpetual licence.** The plugin has to follow Trados Studio and the model providers, so a one-off price would commit to unpaid updates for good.
+- **The arrangement instead is a fixed-term licence paid once by invoice.** Michael invoices the institution directly, it pays by bank transfer, and he issues a licence key set to expire on a fixed date. Nothing renews by itself; the institution orders again if it wants another term. One German university customer is already on this (the name is not written here: this repo is public, see *Confidentiality*). A second German university asked for three licences on 13 Nov 2026 and was offered the same, at the list price of €200 per licence per year.
+- **Such a key needs no plugin change.** Core accepts any key the licence server says was issued by the Supervertaler store, whatever product or variant it belongs to, and treats an expired one like a lapsed subscription (`core/src/SupervertalerLicence.cs`, read at core 4f36377).
+- **An activation is one computer and Windows account**, so set the key's activation limit to the number of users, or issue one key per user.
+- **Say in the quotation that AI usage is not included**: the institution needs its own API key or a local or institutionally hosted model.
+
 ---
 
 ## Planned features
