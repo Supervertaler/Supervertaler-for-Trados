@@ -9,6 +9,17 @@
 > (`17.20.199`), with the same tail; headings name only the 2024 and 2026
 > numbers, and the website's changelog page adds the 2022 one.
 
+## [18.20.207 / 19.20.207] – Unreleased
+
+### Added
+- **FigureLens now describes drawings that came as separate files.** The drawings of a patent are usually sent as image files beside the text, not as pictures in the Word document. FigureLens counted the files in the folder you chose and then said "No images to describe", because step 2 only ever looked at pictures inside the documents. Now, when the project's documents hold no images, **Describe images with AI** uses the image files in the folder: choose it with **Already have the images in a folder? Choose it…**. Each file is matched to a figure by its name (`Figure 3.png`, `fig3.jpg`, `Figuur 2.png`, `PROJ-001 Fig. 3A (amended).png`; `Fig 1-2.png` for one sheet with two figures) and sent together with what the text says about that figure. A file whose name gives no figure number is described all the same, without one. PNG, JPG, GIF and WebP are sent as they are; BMP, TIFF, EMF and WMF are converted first; PDF files are not read. The window says before you start how many requests it will make and how many files it matched. **Describe from the text only** now also works without any images: it writes one row for each figure the text describes. When the documents do hold images, nothing changes.
+
+### Fixed
+- **A description run that failed could wipe out your figures.md.** If every request failed – a wrong API key, no network – *Describe images with AI* still replaced figures.md, with a table saying "not analysed" in every row; any corrections you had made to the file were gone. A run in which no image could be described now leaves the file exactly as it was and tells you why, in the FigureLens window itself. The messages used to go only to the Batch Operations log, which is behind the window.
+- **A description run can be stopped.** While it runs, the button reads **Stop**. A stopped run saves nothing and leaves an existing figures.md as it was.
+- **An image too large for the AI provider is scaled down before it is sent**, instead of being sent whole and refused. Your file is not changed. A file over 50 MB, an empty file, and a file that is not really an image (whatever its name says) are skipped with the reason in their row, before any request is paid for.
+- **A wrongly chosen folder no longer slows the FigureLens window.** It used to list every file in the folder each time it refreshed. It now stops counting at 200 image files.
+
 ## [18.20.206 / 19.20.206] – 2026-11-13
 
 ### Added
