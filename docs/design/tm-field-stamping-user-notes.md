@@ -19,14 +19,28 @@ User-facing notes, kept while building, for the Help (settings page, and the Eve
   lists the project's TMs with Yes/No for a Project and a Client field, and can add a missing field to one of your own
   file TMs:
   - one TM at a time, after a warning: it changes the TM;
+  - it gets the same name and type as the project's other TMs already use for that field ("client", one value, if
+    your main TM has it like that), so Studio sees one field; with no other TM having it, "Project" / "Client" as
+    text with several values. If the other TMs already define it in more than one way, or as a list of fixed values,
+    nothing is added and the window says why (13 Nov: adding it differently made Studio drop the field);
   - never for a GroupShare TM, a read-only TM file, or a project that came in a package (or from GroupShare);
   - units already in the TM are not changed; only units added from then on carry the field.
   - *(to check in Studio)* whether a TM that is open in a document picks up the new field before the project is
     reopened.
-- **Never changed**: a value you typed in the Field values list yourself.
+- **Never changed**: a value you typed in the Field values list yourself, or one that was there already.
+- **A value that isn't this project's** – a project template that carried an older project's name, say – is kept,
+  and **This project's TMs...** says so: 'Project is "PROJ-000"; this project's name is "PROJ-001". It was there
+  already, so it is kept.' **Use this project's values...** replaces it, after showing exactly what changes (also in a
+  language pair's own list). Units already in your TMs are not changed. Nothing is replaced without that button.
 - **Not filled**:
   - a picklist field (a picklist value can't be made up);
-  - a field that two of the project's TMs define with different types (Studio leaves it out of its own list too).
+  - a field that two of the project's TMs define with different types (Studio leaves it out of its own Field values
+    list too). **This project's TMs...** shows "clash: see below" for it and says which TMs define it how (for
+    example: TM-A as text with one value, TM-B as text with several values); make them the same in Studio's TM
+    settings (Fields). A value that was already there still applies, though Studio no longer lists it: the window
+    still shows it.
+- **"client" and "Client"** in two TMs show as two rows on Studio's Field values page, one of them empty. That's only
+  how Studio lists them: both TMs store the one value (Studio matches field names ignoring capitals).
 - **Projects from a package or GroupShare** are left alone, unless you tick "stamp its name and client into its TMs
   anyway" in **This project's TMs...**. That switch is kept in the project. Reason: such TMs are usually the agency's.
 - **Per language pair**: a language pair with its own TM list gets the values in its own settings too.

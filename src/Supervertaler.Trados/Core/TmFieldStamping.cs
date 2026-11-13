@@ -21,12 +21,15 @@ namespace Supervertaler.Trados.Core
     /// hands them to every TM, and each TM keeps only the fields it defines (<c>NewFields = Ignore</c>). So a value is
     /// filled only for a field one of the project's TMs defines, as Studio's own Field Values page lists them:
     ///  - the TMs with Update ticked and enabled, of every language pair (and a pair's own list where it has one);
-    ///  - a field two TMs define with different types is left out, as Studio does;
+    ///  - a field two TMs define with different types is left out, as Studio does, and said so (naming the TMs);
+    ///  - two names for the same field: "Kunde" and "Client" are two fields, both filled; "client" and "Client" are two
+    ///    rows on Studio's Field Values page but one value (field values and TMs ignore case), filled once;
     ///  - text fields only (a picklist value can't be made up), matched by name with EverTM's spellings
     ///    ("Project", "Projekt", "Job"; "Client", "Customer", "Kunde").
     ///
     /// Never:
-    ///  - over a value already there (the user's own, or one filled before);
+    ///  - over a value already there (the user's own, or one filled before); one that isn't this project's is shown
+    ///    in "This project's TMs", with a button to replace it (<see cref="ReplaceStale"/>);
     ///  - in a project created from a package, or a GroupShare project, unless switched on for that project;
     ///  - a change to a TM (adding a missing field is a separate, explicit action: <see cref="AddField"/>).
     ///
@@ -53,9 +56,17 @@ namespace Supervertaler.Trados.Core
             public readonly List<string> Filled = new List<string>();      // "Project = PROJ-001"
             public readonly List<string> Kept = new List<string>();        // a value already there
             public readonly List<string> NoField = new List<string>();     // switched on, but no TM defines it
+            /// <summary>Left out because two TMs define it differently ("Project: TM-A one text value, TM-B several").</summary>
+            public readonly List<string> Clashes = new List<string>();
             public string Skipped;                                         // why nothing was done at all
-            public override string ToString() =>
-                Skipped ?? ("filled: " + Join(Filled) + "; already there: " + Join(Kept) + "; no TM field: " + Join(NoField));
+            public override string ToString()
+            {
+                if (Skipped != null) return Skipped;
+                var s = "filled: " + Join(Filled) + "; already there: " + Join(Kept);
+                if (Clashes.Count > 0) s += "; left out, the TMs define it differently: " + Join(Clashes);
+                if (NoField.Count > 0) s += "; no TM has the field: " + Join(NoField);
+                return s;
+            }
             static string Join(List<string> l) => l.Count == 0 ? "-" : string.Join(", ", l);
         }
 
@@ -76,9 +87,85 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>The text field for <paramref name="canonical"/> (VaultFields.Project, Client) among <paramref name="fields"/>, or null.</summary>
-        public static FieldDefinition Find(IEnumerable<FieldDefinition> fields, string canonical) =>
-            fields.FirstOrDefault(f => VaultFields.Canonical(f.Name) == canonical
-                                       && (f.ValueType == FieldValueType.SingleString || f.ValueType == FieldValueType.MultipleString));
+        public static FieldDefinition Find(IEnumerable<FieldDefinition> fields, string canonical) => FindAll(fields, canonical).FirstOrDefault();
+
+        /// <summary>
+        /// Every text field for <paramref name="canonical"/>: two TMs may call it differently ("Kunde" and "Client"), and
+        /// each is filled. ("client" and "Client" share one value: field values ignore case.)
+        /// </summary>
+        public static List<FieldDefinition> FindAll(IEnumerable<FieldDefinition> fields, string canonical) =>
+            fields.Where(f => VaultFields.Canonical(f.Name) == canonical && IsText(f.ValueType)).ToList();
+
+        static bool IsText(FieldValueType t) => t == FieldValueType.SingleString || t == FieldValueType.MultipleString;
+
+        /// <summary>How a field type reads to a user.</summary>
+        public static string Describe(FieldValueType t)
+        {
+            switch (t)
+            {
+                case FieldValueType.SingleString: return "text, one value";
+                case FieldValueType.MultipleString: return "text, several values";
+                case FieldValueType.SinglePicklist: return "a list of fixed values, one";
+                case FieldValueType.MultiplePicklist: return "a list of fixed values, several";
+                case FieldValueType.DateTime: return "a date";
+                case FieldValueType.Integer: return "a number";
+                default: return t.ToString();
+            }
+        }
+
+        /// <summary>One TM's definition of a field: which TM, the field's exact name, its type.</summary>
+        public sealed class FieldUse
+        {
+            public string Tm; public string Name; public FieldValueType Type;
+            public override string ToString() => Tm + ": \"" + Name + "\" (" + Describe(Type) + ")";
+        }
+
+        /// <summary>Every definition of <paramref name="canonical"/> among these TMs (name = the TM's name for messages).</summary>
+        public static List<FieldUse> Uses(IEnumerable<(string tm, IEnumerable<FieldDefinition> fields)> tms, string canonical)
+        {
+            var list = new List<FieldUse>();
+            foreach (var (tm, fields) in tms)
+                foreach (var f in fields ?? Enumerable.Empty<FieldDefinition>())
+                    if (f != null && VaultFields.Canonical(f.Name) == canonical && !list.Any(u => u.Tm == tm && u.Name == f.Name))
+                        list.Add(new FieldUse { Tm = tm, Name = f.Name, Type = f.ValueType });
+            return list;
+        }
+
+        /// <summary>
+        /// The definitions Studio drops: a name (exactly as spelled) that two TMs define with different types. Studio
+        /// then leaves the field off its Field Values page and stamps nothing new into it. Empty when there's no clash.
+        /// </summary>
+        public static List<FieldUse> Clashing(List<FieldUse> uses) =>
+            uses.Where(u => uses.Any(o => o.Name == u.Name && o.Type != u.Type)).ToList();
+
+        /// <summary>A clash said plainly: "Project": TM-A defines it as text, one value; TM-B as text, several values.</summary>
+        public static string DescribeClash(List<FieldUse> clashing) =>
+            string.Join("; ", clashing.GroupBy(u => u.Name).Select(g => "\"" + g.Key + "\": " +
+                string.Join(", ", g.Select(u => u.Tm + " defines it as " + Describe(u.Type)))));
+
+        /// <summary>
+        /// The field to add to a TM so that it matches the project's other TMs, or why none may be added. When another
+        /// TM already defines the field (under any of its names), the new one gets exactly that TM's name and type, so
+        /// Studio sees one field, not a clash; with no such TM, <paramref name="defaultName"/> as text with several
+        /// values. Refused when this TM already has the field, when the others define it as something Supervertaler
+        /// can't fill (a list of fixed values), or when they already define it in more than one way.
+        /// </summary>
+        public static (FieldDefinition field, string refused) FieldToAdd(IEnumerable<FieldDefinition> own,
+            IEnumerable<(string tm, IEnumerable<FieldDefinition> fields)> others, string canonical, string defaultName)
+        {
+            var mine = (own ?? Enumerable.Empty<FieldDefinition>()).FirstOrDefault(f => VaultFields.Canonical(f.Name) == canonical);
+            if (mine != null) return (null, "it already has the field (\"" + mine.Name + "\")");
+            var uses = Uses(others, canonical);
+            if (uses.Count == 0) return (new FieldDefinition(defaultName, FieldValueType.MultipleString), null);
+            var kinds = uses.GroupBy(u => (u.Name, u.Type)).ToList();
+            if (kinds.Count > 1)
+                return (null, "the project's other TMs already define it in more than one way (" + string.Join("; ", uses) +
+                              "), so a new field would match only some of them. Make them the same in Studio's TM settings first");
+            var one = uses[0];
+            if (!IsText(one.Type))
+                return (null, one + ": a field of that name that isn't text would clash with it, and Supervertaler can't fill " + Describe(one.Type));
+            return (new FieldDefinition(one.Name, one.Type), null);
+        }
 
         /// <summary>
         /// Sets <paramref name="field"/> to <paramref name="value"/> in <paramref name="values"/>, unless it already has a
@@ -215,27 +302,135 @@ namespace Supervertaler.Trados.Core
         public static bool FillBundle(Outcome outcome, Sdl.Core.Settings.ISettingsBundle bundle,
                                       IEnumerable<ProjectTm> tms, Dictionary<string, string> wanted, Func<string, List<FieldDefinition>> fieldsOf)
         {
-            var fields = Union(tms.Select(t => (IEnumerable<FieldDefinition>)fieldsOf(t.Path) ?? Enumerable.Empty<FieldDefinition>()));
+            var perTm = tms.Select(t => (tm: TmName(t), fields: (IEnumerable<FieldDefinition>)fieldsOf(t.Path) ?? Enumerable.Empty<FieldDefinition>())).ToList();
+            var fields = Union(perTm.Select(x => x.fields));
             var group = bundle.GetSettingsGroup<Sdl.ProjectAutomation.Settings.TranslationMemorySettings>();
             var values = new FieldValues(group.ProjectSettings.Value ?? new FieldValues());
             bool changed = false;
             foreach (var kv in wanted)
             {
-                var field = Find(fields, kv.Key);
-                if (field == null) { if (!outcome.NoField.Contains(kv.Key)) outcome.NoField.Add(kv.Key); continue; }
-                if (Fill(values, field, kv.Value)) { changed = true; outcome.Filled.Add(field.Name + " = " + kv.Value); }
-                else outcome.Kept.Add(field.Name);
+                // A spelling Studio drops (two TMs define it differently) is said as such, whether or not another
+                // spelling can still be filled.
+                var clashing = Clashing(Uses(perTm, kv.Key));
+                if (clashing.Count > 0)
+                {
+                    var what = DescribeClash(clashing);
+                    if (!outcome.Clashes.Contains(what)) outcome.Clashes.Add(what);
+                }
+                var found = FindAll(fields, kv.Key);
+                if (found.Count == 0)
+                {
+                    if (clashing.Count == 0 && !outcome.NoField.Contains(kv.Key)) outcome.NoField.Add(kv.Key);
+                    continue;
+                }
+                // Field values are looked up ignoring case, and so are a TM's fields: "client" and "Client" share one value.
+                foreach (var field in found.GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(g => g.First()))
+                {
+                    if (Fill(values, field, kv.Value)) { changed = true; outcome.Filled.Add(field.Name + " = " + kv.Value); }
+                    else
+                    {
+                        var there = ValueOf(values, field.Name);
+                        outcome.Kept.Add(there != null && there != kv.Value.Trim() ? field.Name + " (\"" + there + "\", not this project's \"" + kv.Value.Trim() + "\")" : field.Name);
+                    }
+                }
             }
             if (!changed) return false;
             group.ProjectSettings.Value = values;
             return true;
         }
 
+        /// <summary>A TM's name for messages: its file name, or the server TM's name.</summary>
+        public static string TmName(ProjectTm tm) => tm.IsFile ? System.IO.Path.GetFileNameWithoutExtension(tm.Path) : tm.Uri?.ToString();
+
+        /// <summary>The text of a value in the field values, its values joined by " | "; null when it has none.</summary>
+        public static string ValueOf(FieldValues values, string fieldName)
+        {
+            var fv = values?.Lookup(fieldName);
+            if (fv == null) return null;
+            var all = SuperVault.SuperVaultImport.Values(fv).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList();
+            return all.Count == 0 ? null : string.Join(" | ", all);
+        }
+
+        // ---- a value already there that isn't this project's: shown, replaced only on the user's word ----
+
+        /// <summary>A value in a settings bundle's field values that differs from what this project would stamp.</summary>
+        public sealed class Stale
+        {
+            public string Canonical;    // VaultFields.Project or Client
+            public string Field;        // the field's name as stored
+            public string Value;        // what is there
+            public string Wanted;       // this project's name or customer
+            public string Where;        // null: all language pairs; else a target language with its own TM list
+        }
+
+        /// <summary>
+        /// The values in <paramref name="values"/> for the switched-on fields that are not this project's (a template
+        /// that carried an older project's name, say). Read from the values themselves, whatever the TMs define, so one
+        /// Studio no longer lists (two TMs defining it differently) still shows: Studio still applies it.
+        /// </summary>
+        public static List<Stale> StaleValues(FieldValues values, Dictionary<string, string> wanted, string where)
+        {
+            var list = new List<Stale>();
+            if (values == null) return list;
+            foreach (var fv in values)
+            {
+                var canonical = VaultFields.Canonical(fv.Name);
+                if (canonical == null || !wanted.TryGetValue(canonical, out var want)) continue;
+                var there = ValueOf(values, fv.Name);
+                if (there != null && !string.Equals(there, want.Trim(), StringComparison.Ordinal))
+                    list.Add(new Stale { Canonical = canonical, Field = fv.Name, Value = there, Wanted = want.Trim(), Where = where });
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Puts <paramref name="value"/> in place of what <paramref name="fieldName"/> holds, keeping the value's kind
+        /// (one text value or several). Only for a text value, and only when the user asked for it (the window's
+        /// button): stamping itself never replaces a value. True when it changed something.
+        /// </summary>
+        public static bool Replace(FieldValues values, string fieldName, string value)
+        {
+            var existing = values?.Lookup(fieldName);
+            if (existing == null || string.IsNullOrWhiteSpace(value)) return false;
+            FieldValue replacement;
+            if (existing is MultipleStringFieldValue) replacement = new MultipleStringFieldValue(fieldName, new List<string> { value.Trim() });
+            else if (existing is SingleStringFieldValue) replacement = new SingleStringFieldValue(fieldName, value.Trim());
+            else return false;   // a list of fixed values: not Supervertaler's to make up
+            values.Remove(existing);
+            values.Add(replacement);
+            return true;
+        }
+
+        /// <summary>
+        /// Replaces the stale values in the project's settings (and a language pair's own) with this project's. UI
+        /// thread; only on the user's word. Returns how many values were replaced.
+        /// </summary>
+        public static int ReplaceStale(FileBasedProject project, List<Stale> stale)
+        {
+            int n = 0;
+            foreach (var group in stale.GroupBy(x => x.Where))
+            {
+                var lang = group.Key == null ? null : project.GetProjectInfo().TargetLanguages.FirstOrDefault(l => l.IsoAbbreviation == group.Key);
+                if (group.Key != null && lang == null) continue;
+                var bundle = lang == null ? project.GetSettings() : project.GetSettings(lang);
+                var tmSettings = bundle.GetSettingsGroup<Sdl.ProjectAutomation.Settings.TranslationMemorySettings>();
+                var values = new FieldValues(tmSettings.ProjectSettings.Value ?? new FieldValues());
+                int here = group.Count(x => Replace(values, x.Field, x.Wanted));
+                if (here == 0) continue;
+                tmSettings.ProjectSettings.Value = values;
+                if (lang == null) project.UpdateSettings(bundle); else project.UpdateSettings(lang, bundle);
+                n += here;
+                DiagnosticLog.WriteAlways(LogCategory, "Replaced " + here + " field value(s) " + (lang == null ? "for all language pairs" : "for " + group.Key) + " with this project's, with the user's OK.");
+            }
+            return n;
+        }
+
         // ---- adding a missing field to a file TM: only on the user's explicit OK, TM by TM ----
 
         /// <summary>
         /// Why this TM can't get a field added, or null when it can: only a file TM, writable, in a project of the user's
-        /// own (not from a package or GroupShare), and only when it doesn't have a field of that name already.
+        /// own (not from a package or GroupShare). What field it would get, and whether that clashes, is
+        /// <see cref="FieldToAdd"/>'s.
         /// </summary>
         public static string CannotAddField(ProjectTm tm, bool projectFromElsewhere, string fieldName)
         {
@@ -250,22 +445,38 @@ namespace Supervertaler.Trados.Core
             catch (Exception ex) { return "the TM file can't be checked: " + ex.Message; }
             var fields = FieldsOf(tm.Path);
             if (fields == null) return "the TM can't be opened";
-            if (fields.Any(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))) return "it already has a field of that name";
+            var mine = fields.FirstOrDefault(f => VaultFields.Canonical(f.Name) == VaultFields.Canonical(fieldName));
+            if (mine != null) return "it already has the field (\"" + mine.Name + "\")";
             return null;
         }
 
         /// <summary>
-        /// Adds a text field (multiple values, as a TM's own "Project" fields usually are) to a file TM and saves it.
-        /// Changes the user's TM: call only after the user said yes to this TM. Throws on failure, with nothing changed.
+        /// The field to add to <paramref name="tm"/> for <paramref name="canonical"/>, matching the project's other file
+        /// TMs (every language pair's), or why not. See <see cref="FieldToAdd"/>.
         /// </summary>
-        public static void AddField(string tmPath, string fieldName)
+        public static (FieldDefinition field, string refused) FieldToAdd(ProjectTm tm, IEnumerable<ProjectTm> projectTms, bool projectFromElsewhere, string canonical)
+        {
+            var why = CannotAddField(tm, projectFromElsewhere, canonical);
+            if (why != null) return (null, why);
+            var others = projectTms.Where(t => t.IsFile && !string.Equals(t.Path, tm.Path, StringComparison.OrdinalIgnoreCase))
+                                   .GroupBy(t => t.Path, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+                                   .Select(t => (TmName(t), (IEnumerable<FieldDefinition>)FieldsOf(t.Path) ?? Enumerable.Empty<FieldDefinition>()));
+            return FieldToAdd(FieldsOf(tm.Path), others, canonical, canonical);
+        }
+
+        /// <summary>
+        /// Adds <paramref name="field"/> (its name and type: <see cref="FieldToAdd"/>'s) to a file TM and saves it.
+        /// Changes the user's TM: call only after the user said yes to this TM. Throws on failure, with nothing changed.
+        /// Nothing happens if the TM has a field of that name already (another Studio, a second click).
+        /// </summary>
+        public static void AddField(string tmPath, FieldDefinition field)
         {
             var tm = new FileBasedTranslationMemory(tmPath);
-            if (tm.FieldDefinitions.Any(f => string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))) return;
-            tm.FieldDefinitions.Add(new FieldDefinition(fieldName, FieldValueType.MultipleString));
+            if (tm.FieldDefinitions.Any(f => string.Equals(f.Name, field.Name, StringComparison.OrdinalIgnoreCase))) return;
+            tm.FieldDefinitions.Add(new FieldDefinition(field.Name, field.ValueType));
             tm.Save();
             ForgetCached(tmPath);
-            DiagnosticLog.WriteAlways(LogCategory, "Added the field \"" + fieldName + "\" to " + System.IO.Path.GetFileName(tmPath) + ", with the user's OK.");
+            DiagnosticLog.WriteAlways(LogCategory, "Added the field \"" + field.Name + "\" (" + Describe(field.ValueType) + ") to " + System.IO.Path.GetFileName(tmPath) + ", with the user's OK.");
         }
     }
 }
