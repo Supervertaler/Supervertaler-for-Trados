@@ -9,7 +9,7 @@
 > (`17.20.199`), with the same tail; headings name only the 2024 and 2026
 > numbers, and the website's changelog page adds the 2022 one.
 
-## [18.20.206 / 19.20.206] – Unreleased
+## [18.20.206 / 19.20.206] – 2026-11-13
 
 ### Added
 - ★ **Supervertaler EverTM: one memory for every language variant, in both directions, built into Supervertaler for Trados.** Add it to a project like any TM (**Project Settings → Translation Memory and Automated Translation → Use → EverTM...**) and it serves every project in a language pair it holds. A Dutch–English unit serves nl-BE > en-US, nl-NL > en-GB and en-GB > nl-BE alike, with no reversed copies and nothing to add per variant. Its matches appear in Translation Results with a match % and the differences highlighted, and Analyze and Pre-translate count and use them like any TM's. Concordance search works on source and target. A match brings the document's own tags along where the stored unit has the same formatting; when the tags can't be placed with confidence, the match comes as text with your project's formatting penalty, as from a Studio TM.

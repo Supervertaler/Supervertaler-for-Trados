@@ -14,7 +14,7 @@ marked *(planned)*.
   - a word that has moved counts as one change, not two;
   - the differences are weighed against both sentences together.
 - It can't be exactly Studio's percentage: Studio uses its own word lists and its own way of reading measurements,
-  web addresses and dates, which aren't public. Typically the two are the same; about one match in eight is a few
+  web addresses and dates, which aren't public. Typically the two are the same; about one match in ten is a few
   points higher in EverTM, mostly between 50% and 80%; some lines that are mostly numbers or codes are lower.
 - Word forms and common words ("the", "of") are recognised for Danish, Dutch, English, Finnish, French, German,
   Hungarian, Italian, Norwegian, Portuguese, Russian, Spanish and Swedish. In other languages a different word form
