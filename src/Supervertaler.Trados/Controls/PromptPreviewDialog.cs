@@ -21,6 +21,21 @@ namespace Supervertaler.Trados.Controls
     public class PromptPreviewDialog : Form
     {
         private TextBox _txt;
+
+        /// <summary>
+        /// The text as a Windows text box needs it: every line break as CR+LF.
+        /// A text box shows a lone LF as nothing at all, so a memory-bank file
+        /// saved with Unix line endings ran together into one paragraph
+        /// ("house defaultsWhere each rule..."), headings and lists included.
+        /// Display only: what is sent to the AI is not changed.
+        /// </summary>
+        internal static string ForDisplay(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            var lf = ((char)10).ToString();
+            var cr = ((char)13).ToString();
+            return text.Replace(cr + lf, lf).Replace(cr, lf).Replace(lf, cr + lf);
+        }
         private Button _btnCopy;
         private Button _btnClose;
         private Label _lblHeader;
@@ -80,7 +95,7 @@ namespace Supervertaler.Trados.Controls
                 Font = new Font("Consolas", 9.5f),
                 BackColor = Color.White,
                 Margin = new Padding(8),
-                Text = content ?? "(no prompt to preview)"
+                Text = ForDisplay(content ?? "(no prompt to preview)")
             };
 
             var pnlButtons = new Panel
