@@ -56,6 +56,17 @@ static class Program
                 try { Directory.Delete(scratch, true); } catch { Console.WriteLine("(scratch left at " + scratch + ")"); }
             }
         }
+        if (args.Length > 0 && args[0] == "tm-numbers")
+        {
+            // TM matches for a sentence with other numbers, on their own (they also run with everything else).
+            var scratch = Path.Combine(Path.GetTempPath(), "sv-tmnumbers-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+            try { return Checks.RunOne(c => TmMatchChecks.Numbers(scratch, c)); }
+            finally
+            {
+                SqliteConnection.ClearAllPools();
+                try { Directory.Delete(scratch, true); } catch { Console.WriteLine("(scratch left at " + scratch + ")"); }
+            }
+        }
         if (args.Length > 1 && args[0] == "score-rescore")
             return ScoreCompare.RunRescore(args);
         if (args.Length > 2 && args[0] == "score-compare-xliff")

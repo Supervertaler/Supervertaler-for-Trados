@@ -85,6 +85,12 @@ namespace Supervertaler.Trados.Core
         public string TmTargetText { get; set; }
 
         /// <summary>
+        /// Set with the searched match when its source is this segment's sentence
+        /// with other numbers. The prompt then says so instead of giving a percentage.
+        /// </summary>
+        public FuzzyNumberDifference TmNumbers { get; set; }
+
+        /// <summary>
         /// Whether the source segment contains inline tags (formatting, field codes, etc.).
         /// When true, SourceText contains numbered tag placeholders and TagMap is populated.
         /// </summary>
@@ -1203,6 +1209,7 @@ namespace Supervertaler.Trados.Core
                 input.FuzzySourceText = segment.TmSourceText;
                 input.FuzzyTargetText = segment.TmTargetText;
                 input.FuzzyMatchPercent = segment.TmMatchPercent;
+                input.FuzzyNumbers = segment.TmNumbers;
             }
             else if (segment.TmMatchPercent >= ExactMatch
                      && !string.IsNullOrWhiteSpace(segment.ExistingTarget))

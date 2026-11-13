@@ -6,8 +6,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Sdl.LanguagePlatform.Core;
+using Sdl.LanguagePlatform.Core.EditDistance;
 using Sdl.LanguagePlatform.TranslationMemory;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
+using Supervertaler.Core;
 
 namespace Supervertaler.Trados.Core
 {
@@ -52,9 +54,53 @@ namespace Supervertaler.Trados.Core
         {
             public string SourceText;
             public string TargetText;
+            /// <summary>
+            /// How close it was. 100 ONLY when <see cref="SourceText"/> is the searched
+            /// text itself: a memory gives 100 to a sentence with other numbers too
+            /// (it replaces them), and such a match is 99 here at most.
+            /// </summary>
             public int Score;
             /// <summary>Which memory it came from - for the log, not the prompt.</summary>
             public string TmName;
+            /// <summary>Set when the source differs from the searched text only in its numbers; says whether
+            /// the memory already put the searched text's numbers into <see cref="TargetText"/>.</summary>
+            public FuzzyNumberDifference Numbers;
+            /// <summary>The memory itself scored this 100 although the source is not the searched text.</summary>
+            public bool ScoredExact;
+        }
+
+        /// <summary>
+        /// One hit as a match, judged against the text that was searched for. The
+        /// memory's score is not taken at its word: Studio scores a sentence that
+        /// differs only in its numbers as 100%, and sent on as "100% match" with the
+        /// stored texts it told the model the source was the same while showing it
+        /// another claim number (13 Nov 2026). So the two sources are compared here,
+        /// once, and everything downstream can rely on 100 meaning identical.
+        /// Null when the hit lacks a side, or falls below <paramref name="minScore"/>
+        /// once it is no longer called exact. Nothing in the translation is changed.
+        /// </summary>
+        /// <param name="numbersReplaced">The memory has already replaced the numbers in
+        /// <paramref name="target"/> with the searched text's (EverTM does, where it is safe).</param>
+        public static Match Describe(string searched, string source, string target, int score,
+            bool numbersReplaced, int minScore, string tmName)
+        {
+            if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target)) return null;
+
+            var difference = TmSourceCompare.Compare(searched, source);
+            bool scoredExact = difference != TmSourceDifference.Same && score >= 100;
+            if (scoredExact) score = 99;
+            if (score < minScore) return null;
+
+            return new Match
+            {
+                SourceText = source,
+                TargetText = target,
+                Score = score,
+                TmName = tmName,
+                ScoredExact = scoredExact,
+                Numbers = difference != TmSourceDifference.NumbersOnly ? FuzzyNumberDifference.None
+                    : numbersReplaced ? FuzzyNumberDifference.Replaced : FuzzyNumberDifference.Stored
+            };
         }
 
         /// <summary>
@@ -261,7 +307,7 @@ namespace Supervertaler.Trados.Core
 
                 for (int i = 0; i < count && i < batch.Length; i++)
                 {
-                    var found = TakeBest(batch[i], tmName);
+                    var found = TakeBest(batch[i], tmName, keys[start + i], minScore, false);
                     if (found == null) continue;
                     var slot = start + i;
                     if (best[slot] == null || found.Score > best[slot].Score)
@@ -324,8 +370,8 @@ namespace Supervertaler.Trados.Core
                     var settings = new SearchSettings { Mode = SearchMode.NormalSearch, MinScore = minScore, MaxResults = 3 };
                     var seg = new Segment(sourceCulture);
                     seg.Add(keys[k]);
-                    var hit = TakeBest(ld.SearchSegment(settings, seg), "EverTM");
-                    if (hit != null && hit.Score >= minScore) found[k] = hit;
+                    var hit = TakeBest(ld.SearchSegment(settings, seg), "EverTM", keys[k], minScore, true);
+                    if (hit != null) found[k] = hit;
                 }
                 catch (Exception ex)
                 {
@@ -356,7 +402,11 @@ namespace Supervertaler.Trados.Core
         /// readable source or no target is discarded rather than sent half-blind -
         /// that is the failure this whole feature exists to prevent.
         /// </summary>
-        private static Match TakeBest(SearchResults sr, string tmName)
+        /// <param name="searched">The text these results were found for.</param>
+        /// <param name="replacesNumbers">This memory hands back the translation with the numbers already
+        /// replaced, and marks them in the score's alignment (EverTM). Studio's own memories keep the stored
+        /// translation in <c>MemoryTranslationUnit</c>, which is what is read here.</param>
+        private static Match TakeBest(SearchResults sr, string tmName, string searched, int minScore, bool replacesNumbers)
         {
             if (sr == null || sr.Results == null) return null;
 
@@ -374,20 +424,27 @@ namespace Supervertaler.Trados.Core
                 }
                 catch { continue; }
 
-                if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target))
-                    continue;
-
                 var score = r.ScoringResult == null ? 0 : r.ScoringResult.Match;
-                if (best == null || score > best.Score)
-                    best = new Match
-                    {
-                        SourceText = source,
-                        TargetText = target,
-                        Score = score,
-                        TmName = tmName
-                    };
+                var match = Describe(searched, source, target, score,
+                    replacesNumbers && HasReplacedNumber(r.ScoringResult), minScore, tmName);
+                if (match != null && (best == null || match.Score > best.Score))
+                    best = match;
             }
             return best;
+        }
+
+        /// <summary>Whether the alignment marks a number the memory replaced (EverTM: SuperVaultResults.ToEditDistance).</summary>
+        private static bool HasReplacedNumber(ScoringResult scoring)
+        {
+            try
+            {
+                var items = scoring == null || scoring.EditDistance == null ? null : scoring.EditDistance.Items;
+                if (items == null) return false;
+                foreach (var item in items)
+                    if (item.Resolution == EditDistanceResolution.Substitution) return true;
+            }
+            catch { }
+            return false;
         }
     }
 }

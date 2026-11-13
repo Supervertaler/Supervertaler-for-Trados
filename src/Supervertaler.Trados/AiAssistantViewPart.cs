@@ -8035,7 +8035,10 @@ namespace Supervertaler.Trados
         /// <para>A searched match replaces what Studio left on the segment, because
         /// it carries the source and that origin does not - except where the origin
         /// already says 100% with a target: nothing found by searching can improve
-        /// on an exact match, and taking a lower-scoring one would be a downgrade.</para>
+        /// on an exact match, and taking a lower-scoring one would be a downgrade.
+        /// A match the memory itself scored 100 for a sentence that is not this
+        /// segment's (other numbers) IS that origin's match, now with both texts to
+        /// compare, so it does replace it.</para>
         /// </summary>
         private static int ApplyTmMatches(
             TmLookupPlan plan, List<BatchSegment> segments, CancellationToken ct,
@@ -8058,12 +8061,14 @@ namespace Supervertaler.Trados
                 var seg = segments[i];
                 if (seg.TmMatchPercent >= BatchTranslator.ExactMatch
                     && !string.IsNullOrWhiteSpace(seg.ExistingTarget)
-                    && m.Score < BatchTranslator.ExactMatch)
+                    && m.Score < BatchTranslator.ExactMatch
+                    && !m.ScoredExact)
                     continue;
 
                 seg.TmSourceText = m.SourceText;
                 seg.TmTargetText = m.TargetText;
                 seg.TmMatchPercent = m.Score;
+                seg.TmNumbers = m.Numbers;
                 applied++;
             }
             return applied;
