@@ -10095,7 +10095,10 @@ namespace Supervertaler.Trados
                     var others = Directory.GetFiles(bankDir, "*.md", SearchOption.TopDirectoryOnly)
                         .Select(Path.GetFileName)
                         .Where(n => !MemoryBankReader.BankFiles.Contains(n, StringComparer.OrdinalIgnoreCase)
-                                    && !n.StartsWith(".", StringComparison.Ordinal))
+                                    && !n.StartsWith(".", StringComparison.Ordinal)
+                                    // Files for one language have their own paragraph below,
+                                    // which says which of them go with this document.
+                                    && BankLanguageFiles.TagOf(n) == null)
                         .ToList();
                     if (others.Count > 0)
                     {
@@ -10158,24 +10161,40 @@ namespace Supervertaler.Trados
                             .ToList();
                         if (sent.Count > 0 || ctx.LanguageSkippedPaths.Count > 0)
                         {
-                            sb.AppendLine();
+                            // Written for someone who has not met language files before:
+                            // first what they are, then what happens to each one here.
+                            Func<IEnumerable<string>, bool, string> list = (paths, withLanguage) =>
+                            {
+                                var items = paths.Select(p =>
+                                {
+                                    var item = "`" + p + "`";
+                                    var tag = withLanguage ? BankLanguageFiles.TagOf(Path.GetFileName(p ?? "")) : null;
+                                    return tag == null ? item : item + " (" + LanguageCodes.EnglishName(tag) + ", " + tag + ")";
+                                }).ToList();
+                                return items.Count <= 1 ? string.Join("", items)
+                                    : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[items.Count - 1];
+                            };
+                            var skipped = ctx.LanguageSkippedPaths;
+                            var text = "**Files for one language.** A file with a language code in its name " +
+                                       "is used only for translations into that language.";
                             if (ctx.TargetLanguage == null)
                             {
-                                sb.AppendLine("No document open, so every language file is sent: " +
-                                    string.Join(", ", sent.Select(p => "`" + p + "`")) +
-                                    ". With a document open, only the ones for its target language are.");
+                                text += " No document is open, so all of them are included: " + list(sent, false) + ".";
                             }
                             else
                             {
                                 var lang = LanguageCodes.EnglishName(ctx.TargetLanguage) + " (" + ctx.TargetLanguage + ")";
-                                sb.AppendLine(sent.Count > 0
-                                    ? "Sent for this document's target language, " + lang + ": " +
-                                      string.Join(", ", sent.Select(p => "`" + p + "`")) + "."
-                                    : "No language file for this document's target language, " + lang + ".");
-                                if (ctx.LanguageSkippedPaths.Count > 0)
-                                    sb.AppendLine("Not sent, written for another language: " +
-                                        string.Join(", ", ctx.LanguageSkippedPaths.Select(p => "`" + p + "`")) + ".");
+                                text += sent.Count > 0
+                                    ? " This document is translated into " + lang + ", so " + list(sent, false) +
+                                      (sent.Count == 1 ? " is included." : " are included.")
+                                    : " This document is translated into " + lang +
+                                      ", and there is no file for that language.";
+                                if (skipped.Count > 0)
+                                    text += " " + list(skipped, true) +
+                                            (skipped.Count == 1 ? " is left out." : " are left out.");
                             }
+                            sb.AppendLine();
+                            sb.AppendLine(text);
                         }
                     }
 
