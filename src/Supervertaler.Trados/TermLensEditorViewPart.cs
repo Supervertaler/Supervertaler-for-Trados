@@ -312,6 +312,9 @@ namespace Supervertaler.Trados
                 // in the background; the warning shows in this panel.
                 UnsegmentedTextMonitor.Attach(_editorController);
 
+                // Fills the project's TM field values (Project, Client) when switched on, so Studio stamps them.
+                TmFieldStampMonitor.Attach(_editorController);
+
                 StartEditCapture();
 
                 // If a document is already open, wire up to it immediately

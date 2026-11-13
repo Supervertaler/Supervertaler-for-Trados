@@ -248,6 +248,9 @@ namespace Supervertaler.Trados.SuperVault
             {
                 var batch = new List<VaultLearnUnit>(results.Length);
                 var subject = Subject(settings);
+                // The fields the user switched off for EverTM (all on by default); applied when the unit is stored.
+                string omit = null;
+                try { omit = VaultLearnUnit.OmitOf(Supervertaler.Trados.Settings.SettingsService.Current?.EverTmStampOff); } catch { }
                 for (int i = 0; i < results.Length; i++)
                 {
                     if (mask != null && (i >= mask.Length || !mask[i])) continue;
@@ -260,6 +263,7 @@ namespace Supervertaler.Trados.SuperVault
                         TargetCulture = tu.TargetSegment.Culture?.Name ?? TargetLanguage?.Name,
                         Target = SuperVaultImport.Codes(tu.TargetSegment),
                         Origin = "studio",
+                        Omit = omit,
                         // Who and where (only in-memory reads here, on Studio's UI thread; the project's name and
                         // customer are read from its .sdlproj on EverTM's learning thread, from DocumentPath).
                         User = User(tu),

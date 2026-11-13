@@ -111,6 +111,10 @@
       <HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.Async.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Sdl.ProjectAutomation.Settings">
+      <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.Settings.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Sdl.ProjectAutomation.FileBased">
       <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.FileBased.dll</HintPath>
       <Private>false</Private>

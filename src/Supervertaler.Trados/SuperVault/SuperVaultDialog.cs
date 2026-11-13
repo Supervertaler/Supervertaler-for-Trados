@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
@@ -59,6 +61,8 @@ namespace Supervertaler.Trados.SuperVault
         readonly Label _status = new Label { AutoSize = false, Dock = DockStyle.Fill };
         readonly Label _intro = new Label { Dock = DockStyle.Top };
         readonly Panel _body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
+        // What EverTM stamps on segments you confirm (Michael, 11 Nov: all on by default, a switch per field).
+        readonly FlowLayoutPanel _stamp = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 30, Padding = new Padding(0, 4, 0, 0), WrapContents = true };
         readonly FlowLayoutPanel _imports = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, Padding = new Padding(0, 4, 0, 0) };
         readonly FlowLayoutPanel _buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40, Padding = new Padding(0, 6, 0, 0) };
         readonly Button _importTmx = new Button { Text = "Import TMX...", AutoSize = true };
@@ -99,10 +103,13 @@ namespace Supervertaler.Trados.SuperVault
             _buttons.Controls.Add(ok);
             if (adding) _buttons.Controls.Add(new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true });
             AcceptButton = ok;
+            Shown += (s, e) => { try { ok.Focus(); } catch { } };   // the focus on Close, not on the first stamp switch
 
             _body.Controls.Add(_status);
             _body.Controls.Add(_intro);
+            BuildStampSwitches();
             Controls.Add(_body);
+            Controls.Add(_stamp);
             Controls.Add(_imports);
             Controls.Add(_buttons);
 
@@ -116,6 +123,35 @@ namespace Supervertaler.Trados.SuperVault
             Shown += (s, e) => { Refresh2(); _timer.Start(); };
             FormClosed += (s, e) => _timer.Dispose();
         }
+
+        /// <summary>
+        /// "Stamped on segments you confirm: [x] Project [x] Client ...": saved at once. The confirm time has no switch:
+        /// which translation is newest is decided by it.
+        /// </summary>
+        void BuildStampSwitches()
+        {
+            var tip = new ToolTip();
+            var label = new Label { Text = "Stamped on segments you confirm:", AutoSize = true, Margin = new Padding(0, 4, 6, 0) };
+            tip.SetToolTip(label, "What EverTM stores with each segment you confirm. The time you confirmed it is always stored: it decides which translation is the newest.");
+            _stamp.Controls.Add(label);
+            var off = new HashSet<string>(Supervertaler.Trados.Settings.SettingsService.Current?.EverTmStampOff ?? new List<string>(), StringComparer.Ordinal);
+            foreach (var field in VaultLearnUnit.Switchable)
+            {
+                var box = new CheckBox { Text = field, AutoSize = true, Checked = !off.Contains(field), Tag = field, Margin = new Padding(0, 2, 8, 0) };
+                box.CheckedChanged += (s, e) => SaveStampSwitches();
+                _stamp.Controls.Add(box);
+            }
+        }
+
+        void SaveStampSwitches()
+        {
+            var off = _stamp.Controls.OfType<CheckBox>().Where(b => !b.Checked).Select(b => (string)b.Tag).ToList();
+            try { Supervertaler.Trados.Settings.SettingsService.Update(s => s.EverTmStampOff = off); }
+            catch (Exception ex) { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "Could not save the stamp switches: " + ex.Message); }
+        }
+
+        /// <summary>Tests: the switch for a field.</summary>
+        internal CheckBox StampSwitch(string field) => _stamp.Controls.OfType<CheckBox>().FirstOrDefault(b => (string)b.Tag == field);
 
         void PickAndImport(string filter, Func<string, string, Action<string>, System.Threading.CancellationToken, VaultImportResult> importer)
         {
@@ -237,8 +273,9 @@ namespace Supervertaler.Trados.SuperVault
             int status = TextRenderer.MeasureText(_status.Text ?? "", Font, new Size(width, int.MaxValue), flags).Height;
             // The import buttons wrap to a second row when the font is large: make room for every row.
             _imports.Height = Math.Max(_imports.Height, _imports.GetPreferredSize(new Size(ClientSize.Width, 0)).Height);
+            _stamp.Height = Math.Max(_stamp.Height, _stamp.GetPreferredSize(new Size(ClientSize.Width, 0)).Height);
             // A line to spare: a long folder path breaks inside the word, where measuring and drawing can differ by a line.
-            int needed = _body.Padding.Vertical + _intro.Height + status + line + _imports.Height + _buttons.Height;
+            int needed = _body.Padding.Vertical + _intro.Height + status + line + _stamp.Height + _imports.Height + _buttons.Height;
             if (ClientSize.Height < needed) ClientSize = new Size(ClientSize.Width, needed);
         }
 

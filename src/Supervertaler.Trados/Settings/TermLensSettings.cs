@@ -443,6 +443,27 @@ namespace Supervertaler.Trados.Settings
                 .ToString("o", System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        // ─── Stamping project metadata on translation units (11 Nov 2026) ───
+        /// <summary>
+        /// The fields EverTM does NOT stamp on segments you confirm (Michael, 11 Nov: every field on by default, a
+        /// switch per field): names from <c>VaultLearnUnit.Switchable</c> (Project, Client, End client, Subject,
+        /// Document, User). Empty or missing: all stamped. The confirm time is always stamped.
+        /// </summary>
+        [DataMember(Name = "everTmStampOff")]
+        public List<string> EverTmStampOff { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Fill the open Studio project's "field values on update" with its name, for a "Project" field its Studio
+        /// TMs define, so Studio stamps it on every unit it adds. Off by default (Michael, 11 Nov). Never over a
+        /// value already there; in a project created from a package only when switched on for that project.
+        /// </summary>
+        [DataMember(Name = "stampStudioTmProject")]
+        public bool StampStudioTmProject { get; set; } = false;
+
+        /// <summary>The same for the project's customer, in a "Client" field.</summary>
+        [DataMember(Name = "stampStudioTmClient")]
+        public bool StampStudioTmClient { get; set; } = false;
+
         // ─── Usage statistics ──────────────────────────────────────
         /// <summary>
         /// Whether the user has opted in to anonymous usage statistics.

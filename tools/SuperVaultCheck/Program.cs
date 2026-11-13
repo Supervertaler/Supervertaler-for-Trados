@@ -163,6 +163,7 @@ static class Checks
             ExportChoice(root);
             MetadataChecks.Run(_scratch, Check);
             TmMatchChecks.Run(_scratch, Check);
+            StampChecks.Run(_scratch, Check);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }
@@ -416,6 +417,9 @@ static class Checks
     static void Learning(SuperVaultProvider vault)
     {
         Console.WriteLine("Learning as you work");
+        // Studio loads Supervertaler's settings when the plugin starts; a confirm reads them (EverTM's stamp switches)
+        // from memory. Do the same here, so the first confirm isn't charged with reading the settings file.
+        var loaded = Supervertaler.Trados.Settings.SettingsService.Current;
         Check(vault.SupportsUpdate && !vault.IsReadOnly, "SupportsUpdate, not read-only: Studio offers the Update box");
         var sv = vault.GetLanguageDirection(new LanguagePair(NlBe, EnUs));
         Segment SwitchDoc() => Doc("Zet de ", Open("pt9", 1), "schakelaar", Close("pt9", 1), " op uit.");

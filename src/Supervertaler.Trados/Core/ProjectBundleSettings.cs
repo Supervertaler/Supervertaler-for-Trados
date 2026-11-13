@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Sdl.Core.Settings;
@@ -35,6 +35,13 @@ namespace Supervertaler.Trados.Core
         /// up to 4.20.65 wrote here (the setting key is unchanged for that reason).
         /// </summary>
         public Setting<string> AiEnabledMultiTermIds => GetSetting<string>("AiEnabledMultiTermIds");
+
+        /// <summary>
+        /// For a project created from a package (or a GroupShare project): stamp its name and client into its Studio
+        /// TMs anyway. Off unless switched on for this project (Michael, 11 Nov): such TMs are usually the agency's, and
+        /// a private project name must not reach them unasked. Kept in the project, so it goes with it.
+        /// </summary>
+        public Setting<bool> StampStudioTmsInImportedProject => GetSetting<bool>("StampStudioTmsInImportedProject");
     }
 
     /// <summary>

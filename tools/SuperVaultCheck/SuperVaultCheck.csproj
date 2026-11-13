@@ -39,6 +39,7 @@
     <Compile Include="RowChecks.cs" />
     <Compile Include="ScoreCompare.cs" />
     <Compile Include="StudioLikeScore.cs" />
+    <Compile Include="StampChecks.cs" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <ProjectReference Include="..\..\src\Supervertaler.Trados\Supervertaler.Trados.csproj" AdditionalProperties="TradosStudioVersion=$(TradosStudioVersion)" />
@@ -48,6 +49,10 @@
     <Reference Include="Sdl.LanguagePlatform.TranslationMemory"><HintPath>$(TradosStudioPath)\Sdl.LanguagePlatform.TranslationMemory.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.Core.TM.ImportExport"><HintPath>$(TradosStudioPath)\Sdl.Core.TM.ImportExport.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.LanguagePlatform.TranslationMemoryApi"><HintPath>$(TradosStudioPath)\Sdl.LanguagePlatform.TranslationMemoryApi.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.ProjectAutomation.Core"><HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.ProjectAutomation.FileBased"><HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.FileBased.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.ProjectAutomation.Settings"><HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.Settings.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sdl.Core.Settings"><HintPath>$(TradosStudioPath)\Sdl.Core.Settings.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.FileTypeSupport.Framework.Core"><HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Framework.Core.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.FileTypeSupport.Bilingual.SdlXliff"><HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Bilingual.SdlXliff.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.FileTypeSupport.Framework.Implementation"><HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Framework.Implementation.dll</HintPath><Private>false</Private></Reference>
