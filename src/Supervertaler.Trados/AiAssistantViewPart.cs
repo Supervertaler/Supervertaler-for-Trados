@@ -11630,10 +11630,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// message that goes only to the log is one the user never sees.
         /// </summary>
         private volatile string _figureLastOutcome;
+        private volatile bool _figureLastOutcomeIsError;
 
         /// <summary>Says it in the log and keeps it for the FigureLens window.</summary>
         private void FigureOutcome(string message, bool isError)
         {
+            _figureLastOutcomeIsError = isError;
             _figureLastOutcome = message;
             SafeInvoke(() => _control.Value.BatchTranslateControl.AppendLog(message, isError));
         }
@@ -11907,7 +11909,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var count = result.Visions.Count;
                     var drawingsOnly = result.SignsNotInText ?? new List<string>();
                     FigureOutcome("Described " + count + " image(s)" + (failed > 0 ? ", " + failed + " failed (their rows say why)" : "")
-                        + ". Written to " + path, false);
+                        + ". Written to " + path, failed > 0);
                     SafeInvoke(() =>
                     {
                         ShowSuperMemoryMessage(
@@ -12171,6 +12173,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     st.FiguresWithoutFile = plan.FiguresWithoutFile.Count;
                 }
                 st.LastOutcome = _figureLastOutcome;
+                st.LastOutcomeIsError = _figureLastOutcomeIsError;
 
                 st.BankName = ActiveMemoryBankName;
                 // The shared bank is read by every project; a file saying what THIS

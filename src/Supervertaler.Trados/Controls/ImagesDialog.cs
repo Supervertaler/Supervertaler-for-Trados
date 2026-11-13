@@ -38,6 +38,8 @@ namespace Supervertaler.Trados.Controls
         public int FiguresWithoutFile;
         /// <summary>How the last run ended, when there is something to say: stopped, nothing could be described, an error. Null otherwise.</summary>
         public string LastOutcome;
+        /// <summary>Whether <see cref="LastOutcome"/> reports a failure (shown in red) or just how the run ended.</summary>
+        public bool LastOutcomeIsError;
         /// <summary>One row per Word document in the project that has images.</summary>
         public List<DocumentRow> Documents = new List<DocumentRow>();
         /// <summary>Every Word document in the project, images or not.</summary>
@@ -145,6 +147,7 @@ namespace Supervertaler.Trados.Controls
             FiguresRows = 14, FiguresWithoutVision = true,
             ProviderName = "Claude (Anthropic)",
             FolderMatched = 12, FolderOtherFiles = 3, TextFigures = 14, FiguresWithoutFile = 2,
+            LastOutcomeIsError = true,
             LastOutcome = "None of the 14 image(s) could be described. figures.md was not changed. Reason given for the first: 401: the API key is not valid for this provider",
         }) { }
 
@@ -233,10 +236,10 @@ namespace Supervertaler.Trados.Controls
             var alt = Pair(_btnWrite, _lblWriteNote); alt.Margin = new Padding(0, 0, 0, UiScale.Pixels(8));
             root.Controls.Add(alt, 1, row); row++;
 
-            // How the last run ended, when it did not simply succeed. The log it
-            // is also written to is behind this window.
+            // How the last run ended. The log it is also written to is behind
+            // this window. Red only for a failure: a red "Described 4 image(s)"
+            // read as an error (13 Nov 2026).
             _lblOutcome = Wrap("");
-            _lblOutcome.ForeColor = Color.Firebrick;
             _lblOutcome.Visible = false;
             root.Controls.Add(_lblOutcome, 1, row); row++;
 
@@ -382,6 +385,7 @@ namespace Supervertaler.Trados.Controls
                 : "Nothing to write without the AI: the text describes no figures (no sentence opens with \u201cFigure 1 \u2026\u201d or \u201cFiguur 1 \u2026\u201d).";
 
             _lblOutcome.Text = st.LastOutcome ?? "";
+            _lblOutcome.ForeColor = st.LastOutcomeIsError ? Color.Firebrick : SystemColors.ControlText;
             _lblOutcome.Visible = !st.AnalysisRunning && !string.IsNullOrEmpty(st.LastOutcome);
 
             // Result

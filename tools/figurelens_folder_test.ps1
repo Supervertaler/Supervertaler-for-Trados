@@ -191,10 +191,16 @@ Close-Window $w
 
 Write-Host "11 A run that was stopped, or in which nothing could be described, says so in the window"
 $outcome = 'None of the 4 image(s) could be described. figures.md was not changed. Reason given for the first: 401: invalid API key'
-$w = Open-Window (New-State @{ Folder = $folder; FolderImages = 4; FolderMatched = 4; TextFigures = 4; LastOutcome = $outcome }) $null
+$w = Open-Window (New-State @{ Folder = $folder; FolderImages = 4; FolderMatched = 4; TextFigures = 4; LastOutcome = $outcome; LastOutcomeIsError = $true }) $null
 Check $w._lblOutcome.Visible "the outcome line is shown"
+Check ($w._lblOutcome.ForeColor.ToArgb() -eq [System.Drawing.Color]::Firebrick.ToArgb()) "in red, because it is a failure"
 Check ($w._lblOutcome.Text -eq $outcome) "with the whole message, including that figures.md was not changed"
 Check $w._btnAnalyse.Enabled "and the run can be tried again"
+Close-Window $w
+$done = 'Described 4 image(s). Written to D:ankscme-proj-001igures.md'
+$w = Open-Window (New-State @{ Folder = $folder; FolderImages = 4; FolderMatched = 4; TextFigures = 4; LastOutcome = $done }) $null
+Check ($w._lblOutcome.Visible -and $w._lblOutcome.Text -eq $done) "a run that succeeded says so too"
+Check ($w._lblOutcome.ForeColor.ToArgb() -ne [System.Drawing.Color]::Firebrick.ToArgb()) "and not in red: it is not an error"
 Close-Window $w
 
 Write-Host "12 The text describes figures but no folder is chosen: the text-only button alone is available"
