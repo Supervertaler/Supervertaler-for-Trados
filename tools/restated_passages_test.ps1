@@ -7,7 +7,7 @@
 # numbered segment with the translation the test gave for that source. No API key, no
 # cost. The document is invented (Acme): a sentence, and a later one that
 # repeats its wording inside a longer sentence. Other kinds of document and other
-# languages: core	estsRestatedDocumentTypesTests.cs.
+# languages: core\tests\RestatedDocumentTypesTests.cs.
 #
 #   A  the passage again in a later batch, worded differently -> the count and one line,
 #      naming both segments as Studio numbers them
