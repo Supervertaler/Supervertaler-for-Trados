@@ -1,11 +1,11 @@
 # Restated passages: finding them, and saying where their translations differ
 
-**Status:** built, step 1 of the cross-batch consistency design (14 Nov 2026). Offline tests pass. Not yet measured
-on a real job (see "Measured" at the end), not yet in a release.
+**Status:** built, step 1 of the cross-batch consistency design (14 Nov 2026). Offline tests pass. Measured on one
+real job, a patent (see "Measured on a real job" at the end); no other kind of document yet. Not yet in a release.
 **Code:** `core/src/RestatedPassages.cs` (the finder and the comparison, shared with memoQ),
 `src/Supervertaler.Trados/Core/RestatedCheck.cs` (what a Batch Translate run collects), and the hooks in
 `src/Supervertaler.Trados/Core/BatchTranslator.cs` and `AiAssistantViewPart.cs`.
-**Tests:** `core/tests/RestatedPassagesTests.cs` (24), `core/tests/RestatedDocumentTypesTests.cs` (14),
+**Tests:** `core/tests/RestatedPassagesTests.cs` (24), `core/tests/RestatedDocumentTypesTests.cs` (19),
 `tools/restated_passages_test.ps1` (32 checks).
 **User-facing notes:** `docs/design/restated-passages-user-notes.md`.
 
@@ -61,6 +61,13 @@ of at least **8** identical words, with where each shared run sits in both (word
   opens every clause would pair each with every other. A pair must also have at least **4** words of its own in its
   long run, outside such phrases: without that, two segments that open with the formula and happen to continue with
   the same word are a pair. (Found by the 10,000-segment test, which returned 554 pairs where 300 were planted.)
+- **Numbers are not words of their own.** The long run must have at least **6** different words, numbers not
+  counted. "10 mm 12 mm 14 mm 16 mm" is eight words in a row and one word.
+- **A segment that mostly repeats itself is compared with its near-twins only.** A list of values ("at least
+  0.7 mm, preferably at least 0.8 mm, preferably at least 0.9 mm, ...") shares long runs with every other such list by
+  the accident of its formula, and the two translations cannot be lined up. A segment counts as repeating itself when
+  fewer than 70% of its three-word sequences are different from one another, every number counting as the same word.
+  Both rules came from the real measurement below, where half the first lines were of this kind.
 - **One passage with a word changed** is still one passage. After the long run, shorter shared runs (2 words or more
   in the source) within 6 words of it are joined to it.
 - **Near-twins**: the shared words are at least 80% of the longer segment.
@@ -86,6 +93,11 @@ translations differ in more places than the sources do.
    wording again. A break the sources do not have is a wording difference, and the pair is reported. Breaks in the
    middle of a passage and breaks within 5 shared words of its start or end are counted apart, so a difference the
    sources have at the edge cannot excuse one the translations have in the middle.
+
+5. Last, the passage's first and last words. If the four words just outside the shared wording are, in both
+   translations, the same words but for one ("in a perpendicular direction [to the base ...]" against "in a
+   direction perpendicular [to the base ...]"), and the sources have no such thing there, the passage starts or ends
+   differently and the pair is reported. Added after the real measurement: a known case was missed without it.
 
 A pair is skipped, and never reported, when either translation is empty: a segment the AI left out, one Studio
 declined to write, one the run did not reach.
@@ -115,8 +127,12 @@ Misses (different, not reported):
 - **Short segments.** Under 8 words in a row there is no pair. 400 software strings of two to six words that share
   most of their words give no pairs and no lines (tested): no noise, and no help either. Identical short strings
   are, again, consistent repetitions' business.
-- **A difference in the last or first two words of a passage** (outside near-twins). There is no shared wording
-  beyond it to show that the passage went on.
+- **A different word in the first or last two words of a passage** (outside near-twins). The same words in another
+  order are caught by rule 5; another word altogether ("at right angles" / "perpendicular") is not, because nothing
+  shows that the passage went on.
+- **A list of values against a different list of values** is not compared at all (see the finder), so "range" in
+  one and "interval" in the other for the same source word goes unreported there. One such true difference was lost
+  on the real document when the rule went in, against 14 lines of noise.
 - **Punctuation and capitals.** Never compared.
 - **A difference the sources seem to explain.** If the sources differ in one place and the translations differ in
   one place, they are taken to be the same place.
@@ -180,6 +196,7 @@ Tested at 10,000 segments, designed for 10,000.
 
 | | Measured (this PC, Debug build) |
 |---|---|
+| The real job: 460 segments, up to 380 words each | about 0.4 s |
 | Finder, 10,000 segments of 30 words, 300 planted passages | about 0.4 s |
 | A 5,000-segment document followed by a copy of itself (every segment a twin): find and compare | about 1 s |
 | Through the Trados collector, 10,000 segments, 200 passages | about 0.5 s |
@@ -193,9 +210,45 @@ at most 20 cases of each kind and says how many more there are.
 
 ## Measured on a real job
 
-Not yet. To be filled in with counts and segment numbers only: how many known cases are found, and how many other
-lines are reported. The values 8 (run), 6 (boilerplate) and 4 (own words) are first choices from invented documents
-and are to be confirmed or changed by that measurement, preferably on more than one kind of document.
+14 Nov 2026, with Michael's permission, read-only: the saved output of the Batch Translate run on the Acme /
+PROJ-001 patent (the run's backup TMX, as the AI wrote it, before any correction). 460 translated segments. Only
+counts and positions are recorded here; positions are positions in the saved file (1-460), not Studio's numbers,
+because the bilingual file was not read. Every line was read and judged by the session that built this.
+
+| | Pairs found | Lines reported | Time |
+|---|---|---|---|
+| As first built (8 words, cap 6, 4 own words) | 245 | 42 | 0.44 s |
+| + at least 6 different non-number words | 187 | 33 | 0.40 s |
+| + self-repeating segments compared with near-twins only | 132 | 18 | 0.36 s |
+| + same words in another order at a passage's edge | 132 | 22 | 0.39 s |
+
+The 22 lines as it now stands:
+
+| Judgement | Lines | Positions in the saved file |
+|---|---|---|
+| A known restated case, found | 5 (3 cases) | 56+411, 60+411; 146+411, 146+420; 259+436 |
+| Another real wording difference for the same source | 9 | 28+154, 39+374, 69+217, 70+218, 93+244, 147+295, 178+314, 198+324, 301+351 |
+| Real but trivial (an article) | 3 | 339+346, 339+441, 346+441 |
+| Could not tell from the differences alone | 2 | 282+293, 282+411 |
+| False alarm | 3 | 138+246, 293+348, 417+439 |
+
+- **Known restated cases.** The inventory describes four of the six. Three are found. Two of them were found as
+  first built; the third (same words in another order at the very start of the passage) only after rule 5. The fourth
+  is a matter of meaning (two different things given one term), which a comparison of wording cannot see. The other
+  two of the six are not described anywhere this session could read, so they could not be checked.
+- **The twin with a note on only one.** Not measurable from this file: the run wrote its notes as Trados comments,
+  so the saved translations carry none. What can be said: 19 near-twin pairs are found, and the only two that lie
+  close enough together to be the known pair (108 apart in the saved file, 118 in Studio) are both among them. In a
+  live run the notes are known and the line would be written; that is covered by the offline tests only.
+- **False alarms.** One is a 380-word near-twin whose sources differ in 45 places and whose translations differ in
+  46 (an "a"/"an" that follows a changed noun). One is a number range that the source writes as one word and the
+  translation as two. One is two unrelated sentences sharing 8 words. So 3 of 22, or 5 of 22 counting the unclear
+  ones.
+- **What the first version got wrong.** 14 of its lines compared one list of values with a different one, and 6 more
+  paired on runs that were numbers and a unit. None was worth reading. One true difference was lost with them.
+
+One document, one kind. The values 8, 6 and 4 held; the three rules above were added. A contract, a manual and
+software strings have only been tested on invented text.
 
 ## Not tested
 

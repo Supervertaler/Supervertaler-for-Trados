@@ -47,6 +47,8 @@ Examples for the Help page (use more than one):
 - **Short segments** (menu items, buttons, headings under eight words) are not compared. Identical ones are already
   kept the same by "Keep repetitions consistent".
 - A phrase that occurs in more than six segments is treated as boilerplate and not compared.
+- A segment that is one long list of values ("at least 0.7 mm, preferably at least 0.8 mm, ...") is only compared
+  with a segment that is the same list but for a few words.
 - It does not compare punctuation or capital letters.
 - It only knows the segments the run looked at. With a "Filtered" scope those are the filtered segments.
 - Segments the run did not translate (already translated, or locked) are compared by the translation they have, so
@@ -74,10 +76,13 @@ reported.
 - One changed source word that changes two things in the translation (a noun and, further on, a word that agrees
   with it) is reported.
 
-Known misses: a difference in the very first or last word or two of a passage; passages shorter than eight words;
-passages in more than six segments.
+Known misses: a different word (not just another word order) in the very first or last word or two of a passage;
+passages shorter than eight words; passages in more than six segments; a difference of meaning that is worded
+consistently.
 
-False-alarm rate on a real job: not yet measured.
+Measured on one real job (a 460-segment patent, 14 Nov 2026): 22 lines, in under half a second. 14 were real wording
+differences, 3 real but trivial (an article), 2 unclear, 3 false alarms. Not yet measured on any other kind of
+document.
 
 ## Changelog line for the next release (after 20.207)
 
