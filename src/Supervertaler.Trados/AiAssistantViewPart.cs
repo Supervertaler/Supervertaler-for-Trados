@@ -324,6 +324,17 @@ namespace Supervertaler.Trados
                 _settings.AiSettings.SendTmMatchesInBatch = batchControl.SendTmMatches;
                 _settings.Save();
             };
+            // The Batch size box shows the stored setting and writes a change back,
+            // the same way. UpdateBatchProviderDisplay keeps it in step when the
+            // setting is changed in the Settings window.
+            if (_settings?.AiSettings != null)
+                batchControl.BatchSize = _settings.AiSettings.BatchSize;
+            batchControl.BatchSizeChanged += (s, ev) =>
+            {
+                if (_settings?.AiSettings == null) return;
+                _settings.AiSettings.BatchSize = batchControl.BatchSize;
+                _settings.Save();
+            };
             batchControl.ModelChangeRequested += OnModelChangeRequested;
             batchControl.CustomProfilesSource = GetCustomProfileMenuItems;
 
@@ -15033,6 +15044,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     _control.Value.BatchTranslateControl.UpdateProviderDisplay("Not configured", "");
                     return;
                 }
+
+                _control.Value.BatchTranslateControl.BatchSize = ai.BatchSize;
 
                 var provider = ai.SelectedProvider ?? "Not configured";
                 var model = ai.GetSelectedModel() ?? "";

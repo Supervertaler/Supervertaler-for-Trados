@@ -747,7 +747,8 @@ namespace Supervertaler.Trados.Controls
             batchTip.SetToolTip(_nudBatchSize,
                 "Number of segments sent to the AI provider per API call during\r\n" +
                 "Batch Translate and Batch Proofread. Lower values are safer;\r\n" +
-                "higher values reduce cost and improve cross-segment consistency.");
+                "higher values reduce cost and improve cross-segment consistency." + "\r\n" +
+                "Also on the Batch Operations tab, beside Limit.");
             Pair(root, ref row, _lblBatchSize, _nudBatchSize);
 
             _chkKeepRepetitions = Check("Keep repetitions consistent in Batch Translate");

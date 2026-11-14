@@ -44,6 +44,9 @@ namespace Supervertaler.Trados.Controls
         private Label _lblScopeLabel;
         private Label _lblMaxSegLabel;
         private NumericUpDown _nudMaxSegments;
+        private Label _lblBatchSizeLabel;
+        private NumericUpDown _nudBatchSize;
+        private bool _settingBatchSize;   // true while BatchSize is set from the stored setting
         private ComboBox _cmbPrompt;
         private Label _lblPromptLabel;
         private LinkLabel _lblProvider;
@@ -162,6 +165,32 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Raised when the translator toggles the TM-match checkbox, so the setting persists.</summary>
         public event EventHandler SendTmMatchesChanged;
+
+        /// <summary>The largest batch size this Studio takes: a 32-bit Studio is held to 10 (MemoryGuard.ClampBatchSize).</summary>
+        internal static int MaxBatchSize => Supervertaler.Trados.Core.MemoryGuard.Is32Bit ? 10 : 100;
+
+        /// <summary>
+        /// Segments per request, as the Batch size box shows it. Setting it shows the
+        /// stored value, held to what this Studio takes, and never raises
+        /// <see cref="BatchSizeChanged"/>: a 32-bit Studio showing 10 for a stored 50
+        /// must not write 10 back for the 64-bit one.
+        /// </summary>
+        public int BatchSize
+        {
+            get { return _nudBatchSize != null ? (int)_nudBatchSize.Value : 20; }
+            set
+            {
+                if (_nudBatchSize == null) return;
+                var v = value > 0 ? value : 20;
+                v = Math.Max((int)_nudBatchSize.Minimum, Math.Min((int)_nudBatchSize.Maximum, v));
+                _settingBatchSize = true;
+                try { _nudBatchSize.Value = v; }
+                finally { _settingBatchSize = false; }
+            }
+        }
+
+        /// <summary>Raised when the translator changes the batch size on the tab, so the setting persists.</summary>
+        public event EventHandler BatchSizeChanged;
 
         /// <summary>Whether "Retry segments left empty" is ticked (Translate + offload).</summary>
         public bool IsRetryEnabled => _chkRetry?.Checked ?? false;
@@ -419,6 +448,41 @@ namespace Supervertaler.Trados.Controls
                 "Useful for testing prompts on a small subset.");
             Controls.Add(_lblMaxSegLabel);
             Controls.Add(_nudMaxSegments);
+
+            // Batch size, beside Limit: it is chosen per run as often as Scope is,
+            // and used to be reachable only through Settings (14 Nov 2026).
+            _lblBatchSizeLabel = new Label
+            {
+                Text = "Batch size:",
+                Location = new Point(_nudMaxSegments.Right + Px(12), y + Px(3)),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor
+            };
+            _nudBatchSize = new NumericUpDown
+            {
+                Location = new Point(_lblBatchSizeLabel.Left + _lblBatchSizeLabel.PreferredWidth + Px(4), y),
+                Width = Px(50),
+                Minimum = 5,
+                Maximum = MaxBatchSize,
+                Value = Math.Min(20, MaxBatchSize),
+                Font = bodyFont
+            };
+            _nudBatchSize.ValueChanged += (s, e) =>
+            {
+                if (!_settingBatchSize) BatchSizeChanged?.Invoke(this, EventArgs.Empty);
+            };
+            var batchSizeText =
+                "Segments sent to the AI per request, for Batch Translate and Batch Proofread." + "\r\n" +
+                "Smaller is safer when replies fail or come back incomplete; larger costs less." + "\r\n" +
+                (MaxBatchSize < 100
+                    ? "This Studio is a 32-bit program, so " + MaxBatchSize + " is the most it takes."
+                    : "5 to 100. The same setting as Batch size in Supervertaler Settings.");
+            var batchSizeTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
+            batchSizeTip.SetToolTip(_nudBatchSize, batchSizeText);
+            batchSizeTip.SetToolTip(_lblBatchSizeLabel, batchSizeText);
+            Controls.Add(_lblBatchSizeLabel);
+            Controls.Add(_nudBatchSize);
             y += Px(28);
 
             // ─── Prompt ──────────────────────────────────────────
@@ -1503,6 +1567,7 @@ namespace Supervertaler.Trados.Controls
             if (!running) { try { RunFinished?.Invoke(); } catch { } }
             UpdateActionButtonText();
             _cmbScope.Enabled = !running;
+            _nudBatchSize.Enabled = !running;   // a run uses the size it started with
             _cmbPrompt.Enabled = !running;
             _rbTranslate.Enabled = !running;
             _rbProofread.Enabled = !running;
