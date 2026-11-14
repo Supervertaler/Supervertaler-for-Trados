@@ -22,6 +22,17 @@ namespace Supervertaler.Trados.Controls
         private readonly List<MergeMatch> _matches;
         private readonly string _newSource;
         private readonly string _newTarget;
+        private Button _btnMerge, _btnEditReview, _btnKeepBoth;
+
+        /// <summary>
+        /// A button whose access key is underlined from the start. Windows hides
+        /// the underline until Alt is pressed, and a shortcut nobody can see is
+        /// one nobody uses.
+        /// </summary>
+        private sealed class CueButton : Button
+        {
+            protected override bool ShowKeyboardCues => true;
+        }
 
         /// <summary>
         /// The list of merge matches the user is responding to.
@@ -190,7 +201,7 @@ namespace Supervertaler.Trados.Controls
             int btnY = y;
             int rightEdge = margin + contentWidth;
 
-            var btnCancel = new Button
+            var btnCancel = new CueButton
             {
                 Text = "Cancel",
                 Size = new Size(80, btnH),
@@ -198,17 +209,17 @@ namespace Supervertaler.Trados.Controls
                 Location = new Point(rightEdge - 80, btnY)
             };
 
-            var btnKeepBoth = new Button
+            var btnKeepBoth = new CueButton
             {
-                Text = "Keep Both",
+                Text = "&Keep Both",
                 Size = new Size(90, btnH),
                 DialogResult = DialogResult.No,
                 Location = new Point(rightEdge - 80 - 8 - 90, btnY)
             };
 
-            var btnEditReview = new Button
+            var btnEditReview = new CueButton
             {
-                Text = "Add && Edit\u2026",
+                Text = "Add && &Edit\u2026",
                 Size = new Size(115, btnH),
                 Location = new Point(rightEdge - 80 - 8 - 90 - 8 - 115, btnY)
             };
@@ -218,19 +229,21 @@ namespace Supervertaler.Trados.Controls
                 Close();
             };
 
-            var btnMerge = new Button
+            var btnMerge = new CueButton
             {
-                Text = "Add as Synonym",
+                Text = "Add as &Synonym",
                 Size = new Size(140, btnH),
                 DialogResult = DialogResult.Yes,
                 Location = new Point(rightEdge - 80 - 8 - 90 - 8 - 115 - 8 - 140, btnY)
             };
 
             var tips = new ToolTip();
-            tips.SetToolTip(btnMerge, "Quickly add the term as a synonym to the existing entry");
-            tips.SetToolTip(btnEditReview, "Add as synonym and open the Term Entry Editor for review");
-            tips.SetToolTip(btnKeepBoth, "Create a separate termbase entry instead of merging");
-            tips.SetToolTip(btnCancel, "Cancel without adding the term");
+            tips.SetToolTip(btnMerge, "Quickly add the term as a synonym to the existing entry (S or Enter)");
+            tips.SetToolTip(btnEditReview, "Add as synonym and open the Term Entry Editor for review (E)");
+            tips.SetToolTip(btnKeepBoth, "Create a separate termbase entry instead of merging (K)");
+            tips.SetToolTip(btnCancel, "Cancel without adding the term (Esc)");
+
+            _btnMerge = btnMerge; _btnEditReview = btnEditReview; _btnKeepBoth = btnKeepBoth;
 
             Controls.Add(btnMerge);
             Controls.Add(btnEditReview);
@@ -254,7 +267,30 @@ namespace Supervertaler.Trados.Controls
                 Close();
                 return true;
             }
+            if (TryAccessKey(keyData)) return true;
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        /// <summary>
+        /// The buttons' access keys: S, E and K, alone or with Alt. Handled here
+        /// and not left to WinForms' mnemonics, which depend on the message loop
+        /// the dialog runs in; inside Studio that is not ours. The dialog has no
+        /// control one can type in, so a bare letter cannot be meant as text.
+        /// </summary>
+        internal bool TryAccessKey(Keys keyData)
+        {
+            if ((keyData & (Keys.Control | Keys.Shift)) != 0) return false;
+            Button button;
+            switch (keyData & Keys.KeyCode)
+            {
+                case Keys.S: button = _btnMerge; break;
+                case Keys.E: button = _btnEditReview; break;
+                case Keys.K: button = _btnKeepBoth; break;
+                default: return false;
+            }
+            if (button == null || !button.Enabled || !button.Visible) return false;
+            button.PerformClick();
+            return true;
         }
     }
 }
