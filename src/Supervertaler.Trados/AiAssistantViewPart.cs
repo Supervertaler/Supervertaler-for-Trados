@@ -11187,6 +11187,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     var pair = e.SegmentPairRef as ISegmentPair;
                     if (pair == null) { e.WriteSucceeded = false; return; }
 
+                    bool faultSaid = false;
                     void Write(string translation) => Core.SegmentWriteCheck.ProcessChecked(doc, pair, "Supervertaler",
                         (sp, cancel) =>
                         {
@@ -11224,6 +11225,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                 // EditLens: we wrote this, so we know the proposal.
                                 Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                             }
+                        },
+                        // Studio threw, but the translation is in the document: written,
+                        // counted and backed up as such, and said - once per segment.
+                        faultAfterWrite: ex =>
+                        {
+                            if (faultSaid) return;
+                            faultSaid = true;
+                            _control.Value.BatchTranslateControl.AppendLog(WrittenDespiteFault(e.SegmentName, ex), true);
                         });
 
                     Write(e.Translation);
@@ -11265,11 +11274,29 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
             catch (Exception ex)
             {
+                // Studio can throw after it has added the comment (seen 13-14 Nov
+                // 2026, "protected memory", on long segments). Writing it inline as
+                // well would give the segment the same note twice, so look first.
+                if (Core.SegmentWriteCheck.HasComment(Core.SegmentWriteCheck.ReadLivePair(doc, pair)?.Target, comment))
+                {
+                    Core.DiagnosticLog.Log("ReplyCheck", "Studio threw from AddCommentOnSegment, but the [[TC]] comment "
+                        + "IS on the segment, so it is not also written inline." + Environment.NewLine + ex);
+                    return true;
+                }
                 Core.DiagnosticLog.Log("ReplyCheck", "The [[TC]] comment could not be added as a Trados comment ("
-                    + ex.Message + "); written at the end of the target instead");
+                    + ex.Message + "); written at the end of the target instead" + Environment.NewLine + ex);
                 return false;
             }
         }
+
+        /// <summary>
+        /// The log line for a segment Studio took and then threw on
+        /// (<see cref="Core.SegmentWriteCheck.ProcessChecked"/>): written, not
+        /// failed, and not passed over in silence either.
+        /// </summary>
+        private static string WrittenDespiteFault(string segmentName, Exception ex) =>
+            $"⚠ Trados Studio reported an internal error straight after taking {segmentName} ({ex.Message}) "
+            + "The translation IS in the document, and counts as written. Details are in the diagnostic log.";
 
         private void OnBatchCompleted(object sender, BatchCompletedEventArgs e)
         {
@@ -13317,7 +13344,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                                 Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
                                             }
                                         }
-                                    });
+                                    },
+                                    // Studio threw, but the translation is in the document.
+                                    faultAfterWrite: ex => batchControl.AppendLog(WrittenDespiteFault(seg.Label(), ex), true));
                                 success++;
                             }
                             catch (Exception ex)

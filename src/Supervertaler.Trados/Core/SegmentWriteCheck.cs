@@ -1,6 +1,9 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text;
+using System.Threading;
 using Sdl.Core.Globalization;
 using Sdl.FileTypeSupport.Framework.BilingualApi;
 using Sdl.TranslationStudioAutomation.IntegrationApi;
@@ -43,12 +46,32 @@ namespace Supervertaler.Trados.Core
         /// (<see cref="TrackedWrite.Rewrite"/>, as update_segments does) rather
         /// than as the whole-segment change Studio records for any edit made
         /// here. Track Changes off: no difference.</param>
+        /// <param name="faultAfterWrite">Told when Studio threw out of
+        /// <c>ProcessSegmentPair</c> although the edit is in the document (see
+        /// below), so the caller can say so to the user. The write then counts
+        /// as made and nothing is thrown.</param>
         /// <returns>With <paramref name="wordLevel"/> and Track Changes on, how
         /// the edit was recorded; otherwise null.</returns>
+        /// <remarks>
+        /// Studio can throw AFTER it has taken an edit: seen 14 Nov 2026 as
+        /// "Attempted to read or write protected memory" on long segments in
+        /// Batch Translate, in Studio 2024 and 2026, with the target complete in
+        /// the document each time. (Studio runs with
+        /// legacyCorruptedStateExceptionsPolicy, so an access violation in its
+        /// native code reaches a plugin as an ordinary exception.) Such a write
+        /// is not reported as failed: when the edit ran to its end, changed the
+        /// text, and the document reads back as the edit built it, the fault is
+        /// logged with its stack trace and the write stands. When the document
+        /// does not read back that way, or cannot be read, the exception goes on
+        /// to the caller as before.
+        /// </remarks>
         public static TrackedWrite ProcessChecked(IStudioDocument doc, ISegmentPair pair, string undoName,
-            Action<ISegmentPair, CancelEventArgs> edit, bool comments = false, bool wordLevel = false)
+            Action<ISegmentPair, CancelEventArgs> edit, bool comments = false, bool wordLevel = false,
+            Action<Exception> faultAfterWrite = null)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
+            long sincePrevious = MsSincePreviousWrite();
+            ExceptionDispatchInfo fault = null;
             Func<IAbstractMarkupDataContainer, string> view = comments
                 ? (Func<IAbstractMarkupDataContainer, string>)AcceptedWithComments
                 : c => TrackedTargetMerge.Project(c, accept: true);
@@ -88,6 +111,13 @@ namespace Supervertaler.Trados.Core
                     shapeAfter = TrackedTargetMerge.Shape(sp.Target);
                 });
             }
+            // Only once the edit has run to its end and changed the text: an
+            // exception from the edit itself leaves 'after' unset and is not
+            // caught here, and with no change there is nothing to read back.
+            catch (Exception ex) when (after != null && after != before)
+            {
+                fault = ExceptionDispatchInfo.Capture(ex);
+            }
             finally
             {
                 // Studio has applied the write, or the edit threw: Track Changes
@@ -98,12 +128,82 @@ namespace Supervertaler.Trados.Core
 
             if (after == null || after == before) return record;
             var live = ReadLivePair(doc, pair)?.Target;
-            if (live != null && view(live) != after)
+            if (fault != null)
+            {
+                // Unlike the check below, a segment that cannot be read back is
+                // NOT given the benefit of the doubt: Studio said the write failed.
+                bool landed = live != null && view(live) == after;
+                LogFault(doc, pair, fault.SourceException, landed, after.Length, sincePrevious);
+                if (!landed) fault.Throw();
+                faultAfterWrite?.Invoke(fault.SourceException);
+            }
+            else if (live != null && view(live) != after)
                 throw new SegmentWriteDeclinedException(Reason(doc, live, shapeBefore, shapeAfter, tracked));
             // Landed, or cannot be read back (which is not held against it). A
             // comment edit leaves the text as it was, and the label with it.
             if (textAfter != textBefore) SegmentOrigin.MarkEdited(doc, pair, levelBefore);
             return record;
+        }
+
+        /// <summary>When the previous <see cref="ProcessChecked"/> began
+        /// (Stopwatch ticks; 0 = none yet). For the fault line only: whether
+        /// faults follow writes made in quick succession. UI thread, like every
+        /// write, so no lock.</summary>
+        private static long _previousWriteAt;
+
+        private static long MsSincePreviousWrite()
+        {
+            long now = Stopwatch.GetTimestamp(), previous = _previousWriteAt;
+            _previousWriteAt = now;
+            return previous == 0 ? -1 : (now - previous) * 1000 / Stopwatch.Frequency;
+        }
+
+        /// <summary>
+        /// One log entry for an exception Studio threw out of a write: what is
+        /// needed to find where in Studio it comes from. Lengths, ids and the
+        /// stack trace; never the text.
+        /// </summary>
+        private static void LogFault(IStudioDocument doc, ISegmentPair pair, Exception ex, bool landed,
+            int builtLength, long sincePrevious)
+        {
+            string active;
+            try
+            {
+                var a = doc.ActiveSegmentPair;
+                active = a?.Properties == null ? "none"
+                    : a.Properties.Id.Id == pair?.Properties?.Id.Id
+                      && Equals(doc.GetParentParagraphUnit(a)?.Properties?.ParagraphUnitId,
+                                doc.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId) ? "yes" : "no";
+            }
+            catch (Exception readEx) { active = "unknown (" + readEx.GetType().Name + ")"; }
+
+            DiagnosticLog.Log("Write", "Studio threw " + ex.GetType().FullName + " from ProcessSegmentPair; the edit "
+                + (landed ? "IS in the document, so the write stands" : "is NOT in the document (or cannot be read back), so it is reported as failed")
+                + ". Built target: " + builtLength + " chars; segment id " + (pair?.Properties?.Id.Id ?? "?")
+                + "; is the editor's active segment: " + active
+                + "; ms since the previous write began: " + (sincePrevious < 0 ? "first write" : sincePrevious.ToString())
+                + "; thread " + Thread.CurrentThread.ManagedThreadId
+                + (Environment.Is64BitProcess ? "; 64-bit" : "; 32-bit")
+                + Environment.NewLine + ex);
+        }
+
+        /// <summary>Whether <paramref name="container"/> holds a comment with this
+        /// text: for a comment add that threw, to see whether Studio added it all
+        /// the same.</summary>
+        internal static bool HasComment(IAbstractMarkupDataContainer container, string text)
+        {
+            if (container == null) return false;
+            foreach (var item in container)
+            {
+                if (item is ICommentMarker m)
+                {
+                    var cs = m.Comments;
+                    for (int i = 0; cs != null && i < cs.Count; i++)
+                        if (cs.GetItem(i)?.Text == text) return true;
+                }
+                if (item is IAbstractMarkupDataContainer inner && HasComment(inner, text)) return true;
+            }
+            return false;
         }
 
         /// <summary>
