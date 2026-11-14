@@ -376,9 +376,9 @@
   {
    "n": 54,
    "id": "m-list-under-a",
-   "words": 160,
-   "tokens": 349,
-   "text": "Vervang de afdichting van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur 490 bedrijfsuren, bij verdere voorkeur 480 bedrijfsuren, bij verdere voorkeur 470 bedrijfsuren, bij verdere voorkeur 460 bedrijfsuren, bij verdere voorkeur 450 bedrijfsuren, bij verdere voorkeur 440 bedrijfsuren, bij verdere voorkeur 430 bedrijfsuren, bij verdere voorkeur 420 bedrijfsuren, bij verdere voorkeur 410 bedrijfsuren, bij verdere voorkeur 400 bedrijfsuren, bij verdere voorkeur 390 bedrijfsuren, bij verdere voorkeur 380 bedrijfsuren, bij verdere voorkeur 370 bedrijfsuren, bij verdere voorkeur 360 bedrijfsuren, bij verdere voorkeur 350 bedrijfsuren, bij verdere voorkeur 340 bedrijfsuren, bij verdere voorkeur 330 bedrijfsuren, bij verdere voorkeur 320 bedrijfsuren, bij verdere voorkeur 310 bedrijfsuren, bij verdere voorkeur 300 bedrijfsuren, bij verdere voorkeur 290 bedrijfsuren, bij verdere voorkeur 280 bedrijfsuren, bij verdere voorkeur 270 bedrijfsuren, bij verdere voorkeur 260 bedrijfsuren, bij verdere voorkeur 250 bedrijfsuren, bij verdere voorkeur 240 bedrijfsuren, bij verdere voorkeur 230 bedrijfsuren, bij verdere voorkeur 220 bedrijfsuren, bij verdere voorkeur 210 bedrijfsuren en bij hoogste voorkeur 200 bedrijfsuren."
+   "words": 167,
+   "tokens": 359,
+   "text": "Vervang de afdichting van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur na 490 bedrijfsuren, met meer voorkeur na 480 bedrijfsuren, met meer voorkeur na 470 bedrijfsuren, met meer voorkeur na 460 bedrijfsuren, met meer voorkeur na 450 bedrijfsuren, met meer voorkeur na 440 bedrijfsuren, met meer voorkeur na 430 bedrijfsuren, met meer voorkeur na 420 bedrijfsuren, met meer voorkeur na 410 bedrijfsuren, met meer voorkeur na 400 bedrijfsuren, met meer voorkeur na 390 bedrijfsuren, met meer voorkeur na 380 bedrijfsuren, met meer voorkeur na 370 bedrijfsuren, met meer voorkeur na 360 bedrijfsuren, met meer voorkeur na 350 bedrijfsuren, met meer voorkeur na 340 bedrijfsuren, met meer voorkeur na 330 bedrijfsuren, met meer voorkeur na 320 bedrijfsuren, met meer voorkeur na 310 bedrijfsuren, met meer voorkeur na 300 bedrijfsuren, met meer voorkeur na 290 bedrijfsuren, met meer voorkeur na 280 bedrijfsuren, met meer voorkeur na 270 bedrijfsuren, met meer voorkeur na 260 bedrijfsuren, met meer voorkeur na 250 bedrijfsuren en met de meeste voorkeur na 240 bedrijfsuren."
   },
   {
    "n": 55,
@@ -432,9 +432,9 @@
   {
    "n": 62,
    "id": "m-list-under-b",
-   "words": 160,
-   "tokens": 349,
-   "text": "Vervang de pakking van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur 490 bedrijfsuren, bij verdere voorkeur 480 bedrijfsuren, bij verdere voorkeur 470 bedrijfsuren, bij verdere voorkeur 460 bedrijfsuren, bij verdere voorkeur 450 bedrijfsuren, bij verdere voorkeur 440 bedrijfsuren, bij verdere voorkeur 430 bedrijfsuren, bij verdere voorkeur 420 bedrijfsuren, bij verdere voorkeur 410 bedrijfsuren, bij verdere voorkeur 400 bedrijfsuren, bij verdere voorkeur 390 bedrijfsuren, bij verdere voorkeur 380 bedrijfsuren, bij verdere voorkeur 370 bedrijfsuren, bij verdere voorkeur 360 bedrijfsuren, bij verdere voorkeur 350 bedrijfsuren, bij verdere voorkeur 340 bedrijfsuren, bij verdere voorkeur 330 bedrijfsuren, bij verdere voorkeur 320 bedrijfsuren, bij verdere voorkeur 310 bedrijfsuren, bij verdere voorkeur 300 bedrijfsuren, bij verdere voorkeur 290 bedrijfsuren, bij verdere voorkeur 280 bedrijfsuren, bij verdere voorkeur 270 bedrijfsuren, bij verdere voorkeur 260 bedrijfsuren, bij verdere voorkeur 250 bedrijfsuren, bij verdere voorkeur 240 bedrijfsuren, bij verdere voorkeur 230 bedrijfsuren, bij verdere voorkeur 220 bedrijfsuren, bij verdere voorkeur 210 bedrijfsuren en bij hoogste voorkeur 200 bedrijfsuren."
+   "words": 167,
+   "tokens": 359,
+   "text": "Vervang de pakking van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur na 490 bedrijfsuren, met meer voorkeur na 480 bedrijfsuren, met meer voorkeur na 470 bedrijfsuren, met meer voorkeur na 460 bedrijfsuren, met meer voorkeur na 450 bedrijfsuren, met meer voorkeur na 440 bedrijfsuren, met meer voorkeur na 430 bedrijfsuren, met meer voorkeur na 420 bedrijfsuren, met meer voorkeur na 410 bedrijfsuren, met meer voorkeur na 400 bedrijfsuren, met meer voorkeur na 390 bedrijfsuren, met meer voorkeur na 380 bedrijfsuren, met meer voorkeur na 370 bedrijfsuren, met meer voorkeur na 360 bedrijfsuren, met meer voorkeur na 350 bedrijfsuren, met meer voorkeur na 340 bedrijfsuren, met meer voorkeur na 330 bedrijfsuren, met meer voorkeur na 320 bedrijfsuren, met meer voorkeur na 310 bedrijfsuren, met meer voorkeur na 300 bedrijfsuren, met meer voorkeur na 290 bedrijfsuren, met meer voorkeur na 280 bedrijfsuren, met meer voorkeur na 270 bedrijfsuren, met meer voorkeur na 260 bedrijfsuren, met meer voorkeur na 250 bedrijfsuren en met de meeste voorkeur na 240 bedrijfsuren."
   },
   {
    "n": 63,
@@ -494,209 +494,244 @@
   },
   {
    "n": 71,
+   "id": "p-summary",
+   "words": 100,
+   "tokens": 205,
+   "text": "Volgens een eerste aspect verschaft de uitvinding een lamphouder voor het bevestigen van een lamp aan het stuur van een fiets, omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, waarbij de klembeugel uit twee scharnierend verbonden helften bestaat, waarbij de lampvoet aan zijn onderzijde een geleiding heeft waarin een schuif past, waarbij de schuif in gesloten stand over de borgnok valt, en waarbij de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt."
+  },
+  {
+   "n": 72,
    "id": "p-desc-1",
    "words": 45,
    "tokens": 91,
    "text": "Volgens de uitvinding wordt dit doel bereikt doordat de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt, zodat de lamp ook bij sterke trillingen op haar plaats blijft."
   },
   {
-   "n": 72,
+   "n": 73,
    "id": "p-fig1",
    "words": 8,
    "tokens": 16,
    "text": "Figuur 1 toont een zijaanzicht van de lamphouder."
   },
   {
-   "n": 73,
+   "n": 74,
    "id": "p-fig2",
    "words": 8,
    "tokens": 16,
    "text": "Figuur 2 toont een doorsnede van de klembeugel."
   },
   {
-   "n": 74,
+   "n": 75,
    "id": "p-desc-2",
    "words": 28,
    "tokens": 57,
    "text": "In een voorkeursuitvoering geldt dat de lampvoet afneembaar aan de klembeugel is bevestigd door middel van een schuifverbinding met een borgnok, wat het opladen van de lamp vergemakkelijkt."
   },
   {
-   "n": 75,
+   "n": 76,
    "id": "p-material",
    "words": 9,
    "tokens": 18,
    "text": "De klembeugel 2 is vervaardigd uit een stevige kunststof."
   },
   {
-   "n": 76,
+   "n": 77,
    "id": "p-top",
    "words": 11,
    "tokens": 22,
    "text": "De lampvoet 3 heeft een vlakke bovenzijde waarop de lamp rust."
   },
   {
-   "n": 77,
+   "n": 78,
    "id": "p-twin-a",
    "words": 19,
    "tokens": 38,
    "text": "De borgnok 12 valt in de opening 14 van de geleiding 16 en wordt daarna vergrendeld met de schuif."
   },
   {
-   "n": 78,
+   "n": 79,
    "id": "p-list-over-a",
-   "words": 212,
-   "tokens": 456,
-   "text": "In een alternatieve uitvoeringsvorm bedraagt de breedte van de klembeugel minimaal 10,0 mm, bij voorkeur 10,5 mm, bij verdere voorkeur 11,0 mm, bij verdere voorkeur 11,5 mm, bij verdere voorkeur 12,0 mm, bij verdere voorkeur 12,5 mm, bij verdere voorkeur 13,0 mm, bij verdere voorkeur 13,5 mm, bij verdere voorkeur 14,0 mm, bij verdere voorkeur 14,5 mm, bij verdere voorkeur 15,0 mm, bij verdere voorkeur 15,5 mm, bij verdere voorkeur 16,0 mm, bij verdere voorkeur 16,5 mm, bij verdere voorkeur 17,0 mm, bij verdere voorkeur 17,5 mm, bij verdere voorkeur 18,0 mm, bij verdere voorkeur 18,5 mm, bij verdere voorkeur 19,0 mm, bij verdere voorkeur 19,5 mm, bij verdere voorkeur 20,0 mm, bij verdere voorkeur 20,5 mm, bij verdere voorkeur 21,0 mm, bij verdere voorkeur 21,5 mm, bij verdere voorkeur 22,0 mm, bij verdere voorkeur 22,5 mm, bij verdere voorkeur 23,0 mm, bij verdere voorkeur 23,5 mm, bij verdere voorkeur 24,0 mm, bij verdere voorkeur 24,5 mm, bij verdere voorkeur 25,0 mm, bij verdere voorkeur 25,5 mm, bij verdere voorkeur 26,0 mm en bij hoogste voorkeur 26,5 mm."
+   "words": 218,
+   "tokens": 464,
+   "text": "In een alternatieve uitvoeringsvorm bedraagt de breedte van de klembeugel minimaal 10,0 mm, bij voorkeur minimaal 10,5 mm, met meer voorkeur minimaal 11,0 mm, met meer voorkeur minimaal 11,5 mm, met meer voorkeur minimaal 12,0 mm, met meer voorkeur minimaal 12,5 mm, met meer voorkeur minimaal 13,0 mm, met meer voorkeur minimaal 13,5 mm, met meer voorkeur minimaal 14,0 mm, met meer voorkeur minimaal 14,5 mm, met meer voorkeur minimaal 15,0 mm, met meer voorkeur minimaal 15,5 mm, met meer voorkeur minimaal 16,0 mm, met meer voorkeur minimaal 16,5 mm, met meer voorkeur minimaal 17,0 mm, met meer voorkeur minimaal 17,5 mm, met meer voorkeur minimaal 18,0 mm, met meer voorkeur minimaal 18,5 mm, met meer voorkeur minimaal 19,0 mm, met meer voorkeur minimaal 19,5 mm, met meer voorkeur minimaal 20,0 mm, met meer voorkeur minimaal 20,5 mm, met meer voorkeur minimaal 21,0 mm, met meer voorkeur minimaal 21,5 mm, met meer voorkeur minimaal 22,0 mm, met meer voorkeur minimaal 22,5 mm, met meer voorkeur minimaal 23,0 mm, met meer voorkeur minimaal 23,5 mm, met meer voorkeur minimaal 24,0 mm en met de meeste voorkeur minimaal 24,5 mm."
   },
   {
-   "n": 79,
+   "n": 80,
+   "id": "p-max-over-a",
+   "words": 216,
+   "tokens": 460,
+   "text": "Het gewicht van de lamphouder zonder lamp bedraagt maximaal 120,0 gram, bij voorkeur maximaal 117,5 gram, met meer voorkeur maximaal 115,0 gram, met meer voorkeur maximaal 112,5 gram, met meer voorkeur maximaal 110,0 gram, met meer voorkeur maximaal 107,5 gram, met meer voorkeur maximaal 105,0 gram, met meer voorkeur maximaal 102,5 gram, met meer voorkeur maximaal 100,0 gram, met meer voorkeur maximaal 97,5 gram, met meer voorkeur maximaal 95,0 gram, met meer voorkeur maximaal 92,5 gram, met meer voorkeur maximaal 90,0 gram, met meer voorkeur maximaal 87,5 gram, met meer voorkeur maximaal 85,0 gram, met meer voorkeur maximaal 82,5 gram, met meer voorkeur maximaal 80,0 gram, met meer voorkeur maximaal 77,5 gram, met meer voorkeur maximaal 75,0 gram, met meer voorkeur maximaal 72,5 gram, met meer voorkeur maximaal 70,0 gram, met meer voorkeur maximaal 67,5 gram, met meer voorkeur maximaal 65,0 gram, met meer voorkeur maximaal 62,5 gram, met meer voorkeur maximaal 60,0 gram, met meer voorkeur maximaal 57,5 gram, met meer voorkeur maximaal 55,0 gram, met meer voorkeur maximaal 52,5 gram, met meer voorkeur maximaal 50,0 gram en met de meeste voorkeur maximaal 47,5 gram."
+  },
+  {
+   "n": 81,
    "id": "p-thin",
    "words": 13,
    "tokens": 26,
    "text": "De verende lip 4 is aanzienlijk dunner dan de rest van de klembeugel."
   },
   {
-   "n": 80,
+   "n": 82,
    "id": "p-desc-3",
    "words": 33,
    "tokens": 67,
    "text": "Bij voorkeur geldt dat de verende lip aan zijn vrije uiteinde is omgebogen voor het vormen van een haak die achter de rand van de uitsparing grijpt, waardoor de lamp niet kan loskomen."
   },
   {
-   "n": 81,
+   "n": 83,
+   "id": "p-range-under-a",
+   "words": 159,
+   "tokens": 327,
+   "text": "De dikte van de verende lip ligt in het bereik van 0,5 mm tot 5,0 mm, bij voorkeur in het bereik van 0,6 mm tot 4,8 mm, met meer voorkeur in het bereik van 0,7 mm tot 4,6 mm, met meer voorkeur in het bereik van 0,8 mm tot 4,4 mm, met meer voorkeur in het bereik van 0,9 mm tot 4,2 mm, met meer voorkeur in het bereik van 1,0 mm tot 4,0 mm, met meer voorkeur in het bereik van 1,1 mm tot 3,8 mm, met meer voorkeur in het bereik van 1,2 mm tot 3,6 mm, met meer voorkeur in het bereik van 1,3 mm tot 3,4 mm, met meer voorkeur in het bereik van 1,4 mm tot 3,2 mm en met de meeste voorkeur in het bereik van 1,5 mm tot 3,0 mm."
+  },
+  {
+   "n": 84,
    "id": "p-long-use",
    "words": 77,
    "tokens": 158,
    "text": "Bij het monteren van de lamphouder legt de gebruiker de klembeugel om het stuur, drukt hij de twee helften naar elkaar toe totdat de sluiting vastklikt, schuift hij de lampvoet van voren in de geleiding totdat de borgnok in de opening valt, en controleert hij ten slotte door licht aan de lamp te trekken of alles goed vastzit, waarna de lamp met de draaiknop in de gewenste stand kan worden gezet zonder dat de lamphouder daarbij verschuift."
   },
   {
-   "n": 82,
+   "n": 85,
    "id": "p-twin-b",
    "words": 19,
    "tokens": 38,
    "text": "De borgnok 22 valt in de opening 14 van de geleiding 16 en wordt daarna vergrendeld met de schuif."
   },
   {
-   "n": 83,
+   "n": 86,
    "id": "p-wear",
    "words": 10,
    "tokens": 21,
    "text": "Het onderdeel dat het meest slijt, is de verende lip."
   },
   {
-   "n": 84,
+   "n": 87,
    "id": "p-trial",
    "words": 13,
    "tokens": 26,
    "text": "Een proef heeft uitgewezen dat de klemkracht na duizend ritten niet aanzienlijk afneemt."
   },
   {
-   "n": 85,
+   "n": 88,
    "id": "p-slide",
    "words": 11,
    "tokens": 22,
    "text": "De schuif is afneembaar zodat zij bij slijtage kan worden vervangen."
   },
   {
-   "n": 86,
+   "n": 89,
    "id": "p-list-over-b",
-   "words": 212,
-   "tokens": 456,
-   "text": "In een alternatieve uitvoeringsvorm bedraagt de breedte van de lampvoet minimaal 10,0 mm, bij voorkeur 10,5 mm, bij verdere voorkeur 11,0 mm, bij verdere voorkeur 11,5 mm, bij verdere voorkeur 12,0 mm, bij verdere voorkeur 12,5 mm, bij verdere voorkeur 13,0 mm, bij verdere voorkeur 13,5 mm, bij verdere voorkeur 14,0 mm, bij verdere voorkeur 14,5 mm, bij verdere voorkeur 15,0 mm, bij verdere voorkeur 15,5 mm, bij verdere voorkeur 16,0 mm, bij verdere voorkeur 16,5 mm, bij verdere voorkeur 17,0 mm, bij verdere voorkeur 17,5 mm, bij verdere voorkeur 18,0 mm, bij verdere voorkeur 18,5 mm, bij verdere voorkeur 19,0 mm, bij verdere voorkeur 19,5 mm, bij verdere voorkeur 20,0 mm, bij verdere voorkeur 20,5 mm, bij verdere voorkeur 21,0 mm, bij verdere voorkeur 21,5 mm, bij verdere voorkeur 22,0 mm, bij verdere voorkeur 22,5 mm, bij verdere voorkeur 23,0 mm, bij verdere voorkeur 23,5 mm, bij verdere voorkeur 24,0 mm, bij verdere voorkeur 24,5 mm, bij verdere voorkeur 25,0 mm, bij verdere voorkeur 25,5 mm, bij verdere voorkeur 26,0 mm en bij hoogste voorkeur 26,5 mm."
+   "words": 218,
+   "tokens": 464,
+   "text": "In een alternatieve uitvoeringsvorm bedraagt de breedte van de lampvoet minimaal 10,0 mm, bij voorkeur minimaal 10,5 mm, met meer voorkeur minimaal 11,0 mm, met meer voorkeur minimaal 11,5 mm, met meer voorkeur minimaal 12,0 mm, met meer voorkeur minimaal 12,5 mm, met meer voorkeur minimaal 13,0 mm, met meer voorkeur minimaal 13,5 mm, met meer voorkeur minimaal 14,0 mm, met meer voorkeur minimaal 14,5 mm, met meer voorkeur minimaal 15,0 mm, met meer voorkeur minimaal 15,5 mm, met meer voorkeur minimaal 16,0 mm, met meer voorkeur minimaal 16,5 mm, met meer voorkeur minimaal 17,0 mm, met meer voorkeur minimaal 17,5 mm, met meer voorkeur minimaal 18,0 mm, met meer voorkeur minimaal 18,5 mm, met meer voorkeur minimaal 19,0 mm, met meer voorkeur minimaal 19,5 mm, met meer voorkeur minimaal 20,0 mm, met meer voorkeur minimaal 20,5 mm, met meer voorkeur minimaal 21,0 mm, met meer voorkeur minimaal 21,5 mm, met meer voorkeur minimaal 22,0 mm, met meer voorkeur minimaal 22,5 mm, met meer voorkeur minimaal 23,0 mm, met meer voorkeur minimaal 23,5 mm, met meer voorkeur minimaal 24,0 mm en met de meeste voorkeur minimaal 24,5 mm."
   },
   {
-   "n": 87,
+   "n": 90,
+   "id": "p-max-over-b",
+   "words": 216,
+   "tokens": 460,
+   "text": "Het gewicht van de lamphouder met schuif bedraagt maximaal 120,0 gram, bij voorkeur maximaal 117,5 gram, met meer voorkeur maximaal 115,0 gram, met meer voorkeur maximaal 112,5 gram, met meer voorkeur maximaal 110,0 gram, met meer voorkeur maximaal 107,5 gram, met meer voorkeur maximaal 105,0 gram, met meer voorkeur maximaal 102,5 gram, met meer voorkeur maximaal 100,0 gram, met meer voorkeur maximaal 97,5 gram, met meer voorkeur maximaal 95,0 gram, met meer voorkeur maximaal 92,5 gram, met meer voorkeur maximaal 90,0 gram, met meer voorkeur maximaal 87,5 gram, met meer voorkeur maximaal 85,0 gram, met meer voorkeur maximaal 82,5 gram, met meer voorkeur maximaal 80,0 gram, met meer voorkeur maximaal 77,5 gram, met meer voorkeur maximaal 75,0 gram, met meer voorkeur maximaal 72,5 gram, met meer voorkeur maximaal 70,0 gram, met meer voorkeur maximaal 67,5 gram, met meer voorkeur maximaal 65,0 gram, met meer voorkeur maximaal 62,5 gram, met meer voorkeur maximaal 60,0 gram, met meer voorkeur maximaal 57,5 gram, met meer voorkeur maximaal 55,0 gram, met meer voorkeur maximaal 52,5 gram, met meer voorkeur maximaal 50,0 gram en met de meeste voorkeur maximaal 47,5 gram."
+  },
+  {
+   "n": 91,
    "id": "p-notool",
    "words": 10,
    "tokens": 20,
    "text": "De lamphouder kan zonder gereedschap aan het stuur worden bevestigd."
   },
   {
-   "n": 88,
+   "n": 92,
    "id": "p-click",
    "words": 13,
    "tokens": 26,
    "text": "Vervolgens wordt de lamp in de lampvoet geschoven tot de borgnok hoorbaar vastklikt."
   },
   {
-   "n": 89,
+   "n": 93,
+   "id": "p-range-under-b",
+   "words": 158,
+   "tokens": 325,
+   "text": "De dikte van de borgnok ligt in het bereik van 0,5 mm tot 5,0 mm, bij voorkeur in het bereik van 0,6 mm tot 4,8 mm, met meer voorkeur in het bereik van 0,7 mm tot 4,6 mm, met meer voorkeur in het bereik van 0,8 mm tot 4,4 mm, met meer voorkeur in het bereik van 0,9 mm tot 4,2 mm, met meer voorkeur in het bereik van 1,0 mm tot 4,0 mm, met meer voorkeur in het bereik van 1,1 mm tot 3,8 mm, met meer voorkeur in het bereik van 1,2 mm tot 3,6 mm, met meer voorkeur in het bereik van 1,3 mm tot 3,4 mm, met meer voorkeur in het bereik van 1,4 mm tot 3,2 mm en met de meeste voorkeur in het bereik van 1,5 mm tot 3,0 mm."
+  },
+  {
+   "n": 94,
    "id": "p-long-adv",
    "words": 62,
    "tokens": 126,
    "text": "Een belangrijk voordeel van deze constructie is dat de krachten die tijdens het rijden op de lamp werken niet door de schuifverbinding maar door de verende lip worden opgenomen, waardoor de schuifverbinding licht kan worden uitgevoerd en de lamp toch met één hand en zonder gereedschap kan worden verwijderd wanneer de fiets onbeheerd wordt achtergelaten, ook wanneer de gebruiker dikke handschoenen draagt."
   },
   {
-   "n": 90,
+   "n": 95,
    "id": "p-claims",
    "words": 1,
    "tokens": 1,
    "text": "Conclusies"
   },
   {
-   "n": 91,
+   "n": 96,
    "id": "p-claim-1",
-   "words": 62,
-   "tokens": 126,
-   "text": "Lamphouder voor het bevestigen van een lamp aan het stuur van een fiets, omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, met het kenmerk dat de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt."
+   "words": 94,
+   "tokens": 193,
+   "text": "Lamphouder voor het bevestigen van een lamp aan het stuur van een fiets, omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, waarbij de klembeugel uit twee scharnierend verbonden helften bestaat, waarbij de lampvoet aan zijn onderzijde een geleiding heeft waarin een schuif past, waarbij de schuif in gesloten stand over de borgnok valt, met het kenmerk dat de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt."
   },
   {
-   "n": 92,
+   "n": 97,
    "id": "p-claim-2",
    "words": 27,
    "tokens": 55,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de lampvoet afneembaar aan de klembeugel is bevestigd door middel van een schuifverbinding met een borgnok."
   },
   {
-   "n": 93,
+   "n": 98,
    "id": "p-claim-3",
    "words": 34,
    "tokens": 69,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de verende lip aan zijn vrije uiteinde is omgebogen voor het vormen van een haak die achter de rand van de uitsparing grijpt."
   },
   {
-   "n": 94,
+   "n": 99,
    "id": "p-claim-4",
    "words": 17,
    "tokens": 35,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de klembeugel uit glasvezelversterkte kunststof bestaat."
   },
   {
-   "n": 95,
+   "n": 100,
    "id": "p-claim-5",
    "words": 16,
    "tokens": 33,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de lampvoet een oplaadpoort omvat."
   },
   {
-   "n": 96,
+   "n": 101,
    "id": "p-claim-6",
    "words": 16,
    "tokens": 33,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de schuifverbinding een zwaluwstaartprofiel heeft."
   },
   {
-   "n": 97,
+   "n": 102,
    "id": "p-claim-7",
    "words": 19,
    "tokens": 39,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de borgnok met een drukknop kan worden ontgrendeld."
   },
   {
-   "n": 98,
+   "n": 103,
    "id": "p-claim-8",
    "words": 17,
    "tokens": 35,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de uitsparing een afgeronde bodem heeft."
   },
   {
-   "n": 99,
+   "n": 104,
    "id": "p-claim-9",
    "words": 23,
    "tokens": 47,
    "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de haak een hoek van 45 graden met de verende lip insluit."
   },
   {
-   "n": 100,
+   "n": 105,
    "id": "p-claim-10",
    "words": 11,
    "tokens": 22,
@@ -770,7 +805,7 @@
   {
    "kind": "verbatim",
    "a": 68,
-   "b": 91,
+   "b": 96,
    "a_id": "p-field",
    "b_id": "p-claim-1",
    "correct": "must agree",
@@ -778,8 +813,8 @@
   },
   {
    "kind": "verbatim",
-   "a": 71,
-   "b": 91,
+   "a": 72,
+   "b": 96,
    "a_id": "p-desc-1",
    "b_id": "p-claim-1",
    "correct": "must agree",
@@ -787,8 +822,35 @@
   },
   {
    "kind": "verbatim",
-   "a": 74,
-   "b": 92,
+   "a": 68,
+   "b": 71,
+   "a_id": "p-field",
+   "b_id": "p-summary",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 71,
+   "b": 72,
+   "a_id": "p-summary",
+   "b_id": "p-desc-1",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "twin-claim",
+   "a": 71,
+   "b": 96,
+   "a_id": "p-summary",
+   "b_id": "p-claim-1",
+   "correct": "must agree but for the opening and the last link",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 75,
+   "b": 97,
    "a_id": "p-desc-2",
    "b_id": "p-claim-2",
    "correct": "must agree",
@@ -796,8 +858,8 @@
   },
   {
    "kind": "verbatim",
-   "a": 80,
-   "b": 93,
+   "a": 82,
+   "b": 98,
    "a_id": "p-desc-3",
    "b_id": "p-claim-3",
    "correct": "must agree",
@@ -832,8 +894,8 @@
   },
   {
    "kind": "twin-number",
-   "a": 77,
-   "b": 82,
+   "a": 78,
+   "b": 85,
    "a_id": "p-twin-a",
    "b_id": "p-twin-b",
    "correct": "must agree but for the number",
@@ -868,24 +930,42 @@
   },
   {
    "kind": "list-over-limit",
-   "a": 78,
-   "b": 86,
+   "a": 79,
+   "b": 89,
    "a_id": "p-list-over-a",
    "b_id": "p-list-over-b",
    "correct": "must agree but for the changed word",
    "finder": "reports a difference, but step 2 cannot show the earlier one"
+  },
+  {
+   "kind": "list-over-limit",
+   "a": 80,
+   "b": 90,
+   "a_id": "p-max-over-a",
+   "b_id": "p-max-over-b",
+   "correct": "must agree but for the changed words",
+   "finder": "reports a difference, but step 2 cannot show the earlier one"
+  },
+  {
+   "kind": "list-under-limit",
+   "a": 83,
+   "b": 93,
+   "a_id": "p-range-under-a",
+   "b_id": "p-range-under-b",
+   "correct": "must agree but for the changed words",
+   "finder": "reports a difference"
   }
  ],
  "boilerplate": {
   "segments": [
-   92,
-   93,
-   94,
-   95,
-   96,
    97,
    98,
-   99
+   99,
+   100,
+   101,
+   102,
+   103,
+   104
   ],
   "phrase": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat",
   "correct": "no pair among these segments on the strength of the formula alone"
@@ -904,9 +984,9 @@
     9,
     40,
     49,
-    74,
-    85,
-    92
+    75,
+    88,
+    97
    ]
   },
   {
@@ -929,8 +1009,8 @@
     15,
     46,
     65,
-    79,
-    84
+    81,
+    87
    ]
   },
   {
@@ -950,10 +1030,11 @@
     13,
     40,
     68,
-    74,
-    87,
+    71,
+    75,
     91,
-    92
+    96,
+    97
    ]
   },
   {
@@ -976,7 +1057,7 @@
     38,
     41,
     42,
-    75
+    76
    ]
   },
   {
@@ -992,7 +1073,7 @@
     16,
     32,
     45,
-    83
+    86
    ]
   },
   {
@@ -1015,7 +1096,7 @@
     41,
     52,
     61,
-    81
+    84
    ]
   },
   {
@@ -1035,7 +1116,7 @@
     40,
     52,
     53,
-    88
+    92
    ]
   }
  ],

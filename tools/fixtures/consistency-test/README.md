@@ -7,7 +7,7 @@ cents, how Batch Translate handles passages a document repeats: step 1 (the repo
 
 | File | What |
 |---|---|
-| `consistency-test-nl.txt` | The source. 100 lines, one sentence each: 100 segments in Trados Studio. |
+| `consistency-test-nl.txt` | The source. 105 lines, one sentence each: 105 segments in Trados Studio. |
 | `consistency-test-key.md` | The answer key to read: every planted pair, by segment number. |
 | `consistency-test-key.json` | The same for the counter. |
 | `build_consistency_test.py` | Writes the three files above. Change the document here, never by hand. |
@@ -17,19 +17,22 @@ cents, how Batch Translate handles passages a document repeats: step 1 (the repo
 ## What is in the document
 
 Three parts in one file: a supply contract (segments 1-32), a pump manual (33-66) and a patent-style text with its
-claims at the end (67-100). Planted in it, each with a known answer:
+claims at the end (67-105). Planted in it, each with a known answer:
 
-- 11 pairs where a passage stands word for word inside two different sentences, 4 to 26 segments apart: definitions
+- 13 pairs where a passage stands word for word inside two different sentences, 1 to 26 segments apart: definitions
   restated in later clauses, a warning and a step repeated across chapters, claims restated in the description
   that comes before them;
+- 1 long claim with several "waarbij" clauses and the summary, earlier in the description, that repeats it;
 - 2 pairs that say the same with small rewording (the finder cannot see these);
 - 2 pairs of near-identical sentences that differ in one number;
 - 1 pair that differs in a comma only;
 - 1 pair of near-identical sentences that both contain the same defect ("at least 10 minutes and at most 5
   minutes"), to see whether the AI flags both;
-- 2 long lists of values under the 400-token limit and 2 over it, each pair differing in one word;
+- 8 long cascades of preferred values, the shape that gave replies with no text and failed writes on a real
+  job: minimum values, maximum values and ranges, each with a near-twin further on. Two pairs are under the
+  400-token limit and two over it;
 - a formula that opens 8 segments (the dependent claims), which must pair nothing;
-- 9 one-sentence paragraphs of 60 to 210 words;
+- 15 one-sentence paragraphs of 60 to 220 words in all;
 - 7 ordinary words ("afneembaar", "aanzienlijk", "bevestigen", "stevig", "onderdeel", "controleren",
   "vervolgens") that invite a different English word each time, in unrelated sentences.
 
@@ -39,7 +42,7 @@ claims at the end (67-100). Planted in it, each with a known answer:
    (United Kingdom). Studio opens it with its plain text file type.
 2. **No translation memory, no EverTM, no termbase.** If your project template adds any, remove them in the
    wizard. Do not pre-translate.
-3. Open the file. It must show **100 segments**, all empty. If the count differs, stop: the key's numbers will not
+3. Open the file. It must show **105 segments**, all empty. If the count differs, stop: the key's numbers will not
    fit.
 4. In Supervertaler's Batch Operations tab:
    - **"Send TM matches to the AI" unticked.** This tick box is the only thing that stops TM matches being sent;

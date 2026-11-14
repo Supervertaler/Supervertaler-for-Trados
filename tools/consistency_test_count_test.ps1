@@ -2,7 +2,7 @@
 # made-up runs: so that it is known to count right before anyone pays for a real one.
 #
 #   A  the key and the document agree with the real finder (-Check)
-#   B  a run in which every repeated passage is translated the same way: all 17 agree
+#   B  a run in which every repeated passage is translated the same way: every pair agrees
 #   C  a run in which four known pairs are worded differently, one segment is missing and only
 #      one of the two defect sentences got a note: exactly those are reported
 #   D  the prompt log: which pairs were shown an earlier translation, which sat in one request,
@@ -31,6 +31,8 @@ $key = $ser.DeserializeObject([IO.File]::ReadAllText($keyPath, [Text.Encoding]::
 $src = @{}
 foreach ($s in $key['segments']) { $src[[int]$s['n']] = [string]$s['text'] }
 $count = $src.Count
+# The pairs the finder sees, which are the ones that must agree.
+$must = @($key['pairs'] | Where-Object { -not ([string]$_['finder']).StartsWith('cannot see') }).Count
 
 # A made-up "translation": every word with an x in front. The same source words give the same
 # target words, so every repeated passage agrees unless the test changes it.
@@ -70,7 +72,7 @@ try {
     Write-Host "A  the key against the real finder"
     $check = & powershell -NoProfile -ExecutionPolicy Bypass -File $counter -Check 2>&1 | Out-String
     Check ($LASTEXITCODE -eq 0 -and $check -match 'exactly as the key says') "the finder pairs the document as the key says ($count segments)"
-    Check ($count -eq 100) "the document has 100 segments"
+    Check ($count -eq 105 -and $must -eq 22) "the document has 105 segments and 22 pairs that must agree ($count, $must)"
 
     $defectA = N 'm-defect-a'; $defectB = N 'm-defect-b'
 
@@ -82,8 +84,8 @@ try {
     $tmxSame = Join-Path $temp 'same.tmx'
     WriteTmx $tmxSame $same
     $b = Run @('-Tmx', $tmxSame)
-    Check ($b.Exit -eq 0 -and $b.R['translated'] -eq 100 -and @($b.R['missing']).Count -eq 0) "100 of 100 translated"
-    Check ($b.R['agree'] -eq 17 -and $b.R['differ'] -eq 0 -and $b.R['unmeasured'] -eq 0) "17 agree, none differ ($($b.R['agree']) / $($b.R['differ']) / $($b.R['unmeasured']))"
+    Check ($b.Exit -eq 0 -and $b.R['translated'] -eq $count -and @($b.R['missing']).Count -eq 0) "all $count translated"
+    Check ($b.R['agree'] -eq $must -and $b.R['differ'] -eq 0 -and $b.R['unmeasured'] -eq 0) "all $must agree, none differ ($($b.R['agree']) / $($b.R['differ']) / $($b.R['unmeasured']))"
     Check (@($b.R['pairs'] | Where-Object { $_['result'] -eq 'not judged' -and $_['kind'] -eq 'reworded' }).Count -eq 2) "the two reworded pairs are listed as not judged"
     $twin = Pair $b $defectA $defectB
     Check ($twin['noteA'] -eq 'yes' -and $twin['noteB'] -eq 'yes') "a note on both defect sentences"
@@ -99,7 +101,7 @@ try {
     $tmxDiff = Join-Path $temp 'diff.tmx'
     WriteTmx $tmxDiff $diff
     $c = Run @('-Tmx', $tmxDiff)
-    Check ($c.R['differ'] -eq 4 -and $c.R['agree'] -eq 12 -and $c.R['unmeasured'] -eq 1) "4 differ, 12 agree, 1 not measured ($($c.R['differ']) / $($c.R['agree']) / $($c.R['unmeasured']))"
+    Check ($c.R['differ'] -eq 4 -and $c.R['agree'] -eq ($must - 5) -and $c.R['unmeasured'] -eq 1) "4 differ, $($must - 5) agree, 1 not measured ($($c.R['differ']) / $($c.R['agree']) / $($c.R['unmeasured']))"
     $expectDiffer = @(@((N 'c-def-defect'), (N 'c-repair')), @((N 'c-penalty-a'), (N 'c-penalty-b')), @((N 'c-punct-a'), (N 'c-punct-b')), @((N 'p-list-over-a'), (N 'p-list-over-b')))
     $all = $true
     foreach ($e in $expectDiffer) { if ((Pair $c $e[0] $e[1])['result'] -ne 'DIFFER') { $all = $false } }
@@ -137,7 +139,7 @@ try {
     }
     [IO.File]::WriteAllLines($log, $lines, (New-Object Text.UTF8Encoding($false)))
     $d = Run @('-Tmx', $tmxPlain, '-PromptLog', $log, '-Since', '2026-01-02')
-    Check ($d.R['requests'] -eq 10 -and $d.R['tmRequests'] -eq 0) "10 requests for this document, none with TM matches; the other document's request is left out ($($d.R['requests']))"
+    Check ($d.R['requests'] -eq [int][Math]::Ceiling($count / 10) -and $d.R['tmRequests'] -eq 0) "every request for this document counted, none with TM matches; the other document's request is left out ($($d.R['requests']))"
     Check ($d.R['blockRequests'] -eq 1 -and $d.R['earlierShown'] -eq 1) "one request carried an earlier translation"
     Check ((Pair $d (N 'c-def-defect') $shownSeg)['shown'] -eq 'shown') "the pair whose later segment was shown one is 'shown'"
     Check ((Pair $d (N 'c-def-date') (N 'c-late'))['shown'] -eq 'same request') "a pair inside one request is 'same request'"
@@ -160,13 +162,13 @@ try {
     $one = Run @('-Tmx', $tmx1)
     $two = Run @('-Tmx', $tmx1, '-Tmx2', $tmx2)
     Check ($one.R['translated'] -eq 90 -and $one.R['unmeasured'] -gt 0) "the first alone: 90 translated, some pairs not measured ($($one.R['unmeasured']))"
-    Check ($two.R['translated'] -eq 100 -and $two.R['agree'] -eq 17) "both together: 100 translated, all 17 agree"
+    Check ($two.R['translated'] -eq $count -and $two.R['agree'] -eq $must) "both together: all $count translated, all $must agree"
 
     Write-Host "F  failure: a backup of another document"
     $other = Join-Path $temp 'other.tmx'
     [IO.File]::WriteAllText($other, '<?xml version="1.0" encoding="utf-8"?><tmx version="1.4"><header srclang="nl-NL" datatype="plaintext" segtype="sentence" adminlang="en" o-tmf="x" creationtool="t" creationtoolversion="1"/><body><tu><tuv xml:lang="nl-NL"><seg>Iets heel anders.</seg></tuv><tuv xml:lang="en-GB"><seg>Something else.</seg></tuv></tu></body></tmx>', (New-Object Text.UTF8Encoding($false)))
     $f = Run @('-Tmx', $other)
-    Check ($f.R['translated'] -eq 0 -and $f.R['agree'] -eq 0 -and $f.R['differ'] -eq 0 -and $f.R['unmeasured'] -eq 17) "nothing translated, nothing called a difference, 17 not measured"
+    Check ($f.R['translated'] -eq 0 -and $f.R['agree'] -eq 0 -and $f.R['differ'] -eq 0 -and $f.R['unmeasured'] -eq $must) "nothing translated, nothing called a difference, all $must not measured"
     Check ($f.Text -match 'not from this document') "and it says the backup is not from this document"
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

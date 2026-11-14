@@ -34,20 +34,40 @@ Q2 = "de lampvoet afneembaar aan de klembeugel is bevestigd door middel van een 
 Q3 = "de verende lip aan zijn vrije uiteinde is omgebogen voor het vormen van een haak die achter de rand van de uitsparing grijpt"
 
 
-def value_list(opening, first, step, count, unit, decimals=False):
-    """One long sentence listing values: 'X, bij voorkeur Y, bij verdere voorkeur Z, ... en bij hoogste voorkeur Q.'"""
-    def fmt(v):
-        return (("%.1f" % v).replace(".", ",") if decimals else "%d" % v) + " " + unit
-    parts = [opening + " " + fmt(first), "bij voorkeur " + fmt(first + step)]
-    for i in range(2, count - 1):
-        parts.append("bij verdere voorkeur " + fmt(first + i * step))
-    return ", ".join(parts) + " en bij hoogste voorkeur " + fmt(first + (count - 1) * step) + "."
+def cascade(opening, values):
+    """One long sentence that narrows a value step by step, the way a patent lists its preferred
+    values: 'X, bij voorkeur Y, met meer voorkeur Z, ... en met de meeste voorkeur Q.'"""
+    parts = [opening + " " + values[0], "bij voorkeur " + values[1]]
+    for v in values[2:-1]:
+        parts.append("met meer voorkeur " + v)
+    return ", ".join(parts) + " en met de meeste voorkeur " + values[-1] + "."
 
 
-LIST_UNDER_A = value_list("Vervang de afdichting van de pomp uiterlijk na", 500, -10, 31, "bedrijfsuren")
-LIST_UNDER_B = value_list("Vervang de pakking van de pomp uiterlijk na", 500, -10, 31, "bedrijfsuren")
-LIST_OVER_A = value_list("In een alternatieve uitvoeringsvorm bedraagt de breedte van de klembeugel minimaal", 10.0, 0.5, 34, "mm", True)
-LIST_OVER_B = value_list("In een alternatieve uitvoeringsvorm bedraagt de breedte van de lampvoet minimaal", 10.0, 0.5, 34, "mm", True)
+def dec(v):
+    return ("%.1f" % v).replace(".", ",")
+
+
+# The shapes that gave trouble on a real job (replies with no text, failed writes), with invented
+# subject matter and numbers: a cascade of minimum values, one of maximum values, one of ranges,
+# and a near-twin of each further on. Two pairs are over the 400-token limit, two under it.
+HOURS = ["na %d bedrijfsuren" % (500 - 10 * i) for i in range(27)]
+LIST_UNDER_A = cascade("Vervang de afdichting van de pomp uiterlijk", HOURS)
+LIST_UNDER_B = cascade("Vervang de pakking van de pomp uiterlijk", HOURS)
+MINIMA = ["minimaal %s mm" % dec(10.0 + 0.5 * i) for i in range(30)]
+LIST_OVER_A = cascade("In een alternatieve uitvoeringsvorm bedraagt de breedte van de klembeugel", MINIMA)
+LIST_OVER_B = cascade("In een alternatieve uitvoeringsvorm bedraagt de breedte van de lampvoet", MINIMA)
+MAXIMA = ["maximaal %s gram" % dec(120.0 - 2.5 * i) for i in range(30)]
+MAX_OVER_A = cascade("Het gewicht van de lamphouder zonder lamp bedraagt", MAXIMA)
+MAX_OVER_B = cascade("Het gewicht van de lamphouder met schuif bedraagt", MAXIMA)
+RANGES = ["in het bereik van %s mm tot %s mm" % (dec(0.5 + 0.1 * i), dec(5.0 - 0.2 * i)) for i in range(11)]
+RANGE_UNDER_A = cascade("De dikte van de verende lip ligt", RANGES)
+RANGE_UNDER_B = cascade("De dikte van de borgnok ligt", RANGES)
+
+# A claim-style sentence with several "waarbij" clauses, and the summary that repeats it.
+CLAIM_BODY = ("omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, "
+              "waarbij de klembeugel uit twee scharnierend verbonden helften bestaat, "
+              "waarbij de lampvoet aan zijn onderzijde een geleiding heeft waarin een schuif past, "
+              "waarbij de schuif in gesloten stand over de borgnok valt")
 
 # (id, text). The id is how the pairs below name a segment; the number is its line.
 LINES = [
@@ -124,6 +144,7 @@ LINES = [
     ("p-field", "De uitvinding heeft betrekking op een lamphouder " + Q0 + "."),
     ("p-prior", "Bekende lamphouders hebben het nadeel dat de lamp bij trillingen losraakt."),
     ("p-aim", "Het doel van de uitvinding is een lamphouder te verschaffen die dit nadeel niet heeft."),
+    ("p-summary", "Volgens een eerste aspect verschaft de uitvinding een lamphouder " + Q0 + ", " + CLAIM_BODY + ", en waarbij " + Q1 + "."),
     ("p-desc-1", "Volgens de uitvinding wordt dit doel bereikt doordat " + Q1 + ", zodat de lamp ook bij sterke trillingen op haar plaats blijft."),
     ("p-fig1", "Figuur 1 toont een zijaanzicht van de lamphouder."),
     ("p-fig2", "Figuur 2 toont een doorsnede van de klembeugel."),
@@ -132,19 +153,23 @@ LINES = [
     ("p-top", "De lampvoet 3 heeft een vlakke bovenzijde waarop de lamp rust."),
     ("p-twin-a", "De borgnok 12 valt in de opening 14 van de geleiding 16 en wordt daarna vergrendeld met de schuif."),
     ("p-list-over-a", LIST_OVER_A),
+    ("p-max-over-a", MAX_OVER_A),
     ("p-thin", "De verende lip 4 is aanzienlijk dunner dan de rest van de klembeugel."),
     ("p-desc-3", "Bij voorkeur geldt dat " + Q3 + ", waardoor de lamp niet kan loskomen."),
+    ("p-range-under-a", RANGE_UNDER_A),
     ("p-long-use", "Bij het monteren van de lamphouder legt de gebruiker de klembeugel om het stuur, drukt hij de twee helften naar elkaar toe totdat de sluiting vastklikt, schuift hij de lampvoet van voren in de geleiding totdat de borgnok in de opening valt, en controleert hij ten slotte door licht aan de lamp te trekken of alles goed vastzit, waarna de lamp met de draaiknop in de gewenste stand kan worden gezet zonder dat de lamphouder daarbij verschuift."),
     ("p-twin-b", "De borgnok 22 valt in de opening 14 van de geleiding 16 en wordt daarna vergrendeld met de schuif."),
     ("p-wear", "Het onderdeel dat het meest slijt, is de verende lip."),
     ("p-trial", "Een proef heeft uitgewezen dat de klemkracht na duizend ritten niet aanzienlijk afneemt."),
     ("p-slide", "De schuif is afneembaar zodat zij bij slijtage kan worden vervangen."),
     ("p-list-over-b", LIST_OVER_B),
+    ("p-max-over-b", MAX_OVER_B),
     ("p-notool", "De lamphouder kan zonder gereedschap aan het stuur worden bevestigd."),
     ("p-click", "Vervolgens wordt de lamp in de lampvoet geschoven tot de borgnok hoorbaar vastklikt."),
+    ("p-range-under-b", RANGE_UNDER_B),
     ("p-long-adv", "Een belangrijk voordeel van deze constructie is dat de krachten die tijdens het rijden op de lamp werken niet door de schuifverbinding maar door de verende lip worden opgenomen, waardoor de schuifverbinding licht kan worden uitgevoerd en de lamp toch met één hand en zonder gereedschap kan worden verwijderd wanneer de fiets onbeheerd wordt achtergelaten, ook wanneer de gebruiker dikke handschoenen draagt."),
     ("p-claims", "Conclusies"),
-    ("p-claim-1", "Lamphouder " + Q0 + ", omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, met het kenmerk dat " + Q1 + "."),
+    ("p-claim-1", "Lamphouder " + Q0 + ", " + CLAIM_BODY + ", met het kenmerk dat " + Q1 + "."),
     ("p-claim-2", BOILER + Q2 + "."),
     ("p-claim-3", BOILER + Q3 + "."),
     ("p-claim-4", BOILER + "de klembeugel uit glasvezelversterkte kunststof bestaat."),
@@ -167,6 +192,9 @@ PAIRS = [
     ("verbatim", "m-bolts", "m-bolts-again", "must agree", "reports a difference"),
     ("verbatim", "p-field", "p-claim-1", "must agree", "reports a difference"),
     ("verbatim", "p-desc-1", "p-claim-1", "must agree", "reports a difference"),
+    ("verbatim", "p-field", "p-summary", "must agree", "reports a difference"),
+    ("verbatim", "p-summary", "p-desc-1", "must agree", "reports a difference"),
+    ("twin-claim", "p-summary", "p-claim-1", "must agree but for the opening and the last link", "reports a difference"),
     ("verbatim", "p-desc-2", "p-claim-2", "must agree", "reports a difference"),
     ("verbatim", "p-desc-3", "p-claim-3", "must agree", "reports a difference"),
     ("reworded", "c-def-info", "c-reworded", "should agree where the wording is the same", "cannot see it"),
@@ -177,6 +205,8 @@ PAIRS = [
     ("defect-twin", "m-defect-a", "m-defect-b", "must agree but for the colour, and a note on both or on neither", "reports a difference, and a note on only one"),
     ("list-under-limit", "m-list-under-a", "m-list-under-b", "must agree but for the changed word", "reports a difference"),
     ("list-over-limit", "p-list-over-a", "p-list-over-b", "must agree but for the changed word", "reports a difference, but step 2 cannot show the earlier one"),
+    ("list-over-limit", "p-max-over-a", "p-max-over-b", "must agree but for the changed words", "reports a difference, but step 2 cannot show the earlier one"),
+    ("list-under-limit", "p-range-under-a", "p-range-under-b", "must agree but for the changed words", "reports a difference"),
 ]
 
 # Ordinary words that invite another English word each time. Not checked by steps 1 or 2:
@@ -215,9 +245,9 @@ def main():
     number = {i: n + 1 for n, (i, _) in enumerate(LINES)}
 
     limit = 400
-    for i in ("m-list-under-a", "m-list-under-b"):
+    for i in ("m-list-under-a", "m-list-under-b", "p-range-under-a", "p-range-under-b"):
         assert 300 < tokens(dict(LINES)[i]) < limit, (i, tokens(dict(LINES)[i]))
-    for i in ("p-list-over-a", "p-list-over-b"):
+    for i in ("p-list-over-a", "p-list-over-b", "p-max-over-a", "p-max-over-b"):
         assert tokens(dict(LINES)[i]) > limit + 40, (i, tokens(dict(LINES)[i]))
 
     key = {
@@ -260,9 +290,10 @@ def main():
     md.append("- **verbatim**: the same passage, word for word, inside two different sentences.")
     md.append("- **reworded**: the same thing said with small changes; at most six identical words in a row, so the finder does not pair them.")
     md.append("- **twin-number**: the same sentence but for one number.")
+    md.append("- **twin-claim**: a long claim with several \"waarbij\" clauses, and the summary earlier in the description that repeats it.")
     md.append("- **punctuation**: the same words; one has a comma the other lacks.")
     md.append("- **defect-twin**: the same sentence but for one word, and both say \"minimaal 10 minuten en maximaal 5 minuten\", which cannot be right. A model that flags one should flag both.")
-    md.append("- **list-under-limit / list-over-limit**: two long lists of values that differ in one word. Under %d tokens the earlier one can be shown to the AI (step 2), provided its translation stays under the limit too; over it, it cannot." % limit)
+    md.append("- **list-under-limit / list-over-limit**: two long cascades of preferred values (minimum values, maximum values, ranges) that differ in a word or two. Under %d tokens the earlier one can be shown to the AI (step 2), provided its translation stays under the limit too; over it, it cannot." % limit)
     md.append("")
     md.append("## Boilerplate")
     md.append("")
@@ -289,7 +320,7 @@ def main():
     with io.open(os.path.join(HERE, "consistency-test-key.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(md))
     print("%d segments written" % len(LINES))
-    for i in ("m-list-under-a", "p-list-over-a", "c-long", "m-long", "p-long-use", "p-long-adv", "p-claim-1"):
+    for i in ("m-list-under-a", "p-range-under-a", "p-list-over-a", "p-max-over-a", "p-summary", "p-claim-1", "c-long", "c-long-force", "m-long", "p-long-use", "p-long-adv"):
         print("  %-16s segment %3d: %3d words, %3d tokens" % (i, number[i], words(dict(LINES)[i]), tokens(dict(LINES)[i])))
 
 
