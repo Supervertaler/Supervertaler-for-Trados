@@ -11287,13 +11287,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         _control.Value.BatchTranslateControl.AppendLog("Repetitions: " + line);
                 }
 
-                // Restated passages: the same source wording inside two segments,
+                // Repeated passages: the same source wording inside two segments,
                 // translated two ways, and near-identical segments with a note on
                 // one only (listed, never changed). Nothing when there are none.
+                // In any kind of document; "Repeated" rather than the code's
+                // "restated" because that is the plainer word for a log.
                 if (!string.IsNullOrEmpty(e.RestatedSummary))
                 {
                     foreach (var line in e.RestatedSummary.Split(new[] { Environment.NewLine }, StringSplitOptions.None))
-                        _control.Value.BatchTranslateControl.AppendLog("Restated passages: " + line);
+                        _control.Value.BatchTranslateControl.AppendLog("Repeated passages: " + line);
                 }
 
                 if (backup != null && backup.Count > 0)

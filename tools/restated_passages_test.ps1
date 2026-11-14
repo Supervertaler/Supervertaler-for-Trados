@@ -5,10 +5,11 @@
 # Runs the real batch loop (BatchTranslator.TranslateAsync) of the built plugin DLL,
 # outside Studio, against a stand-in AI server inside this script: it answers each
 # numbered segment with the translation the test gave for that source. No API key, no
-# cost. The document is invented (Acme): a claim, and a description sentence that
-# repeats the claim's wording inside a longer sentence.
+# cost. The document is invented (Acme): a sentence, and a later one that
+# repeats its wording inside a longer sentence. Other kinds of document and other
+# languages: core	estsRestatedDocumentTypesTests.cs.
 #
-#   A  the description in a later batch, worded differently  -> the count and one line,
+#   A  the passage again in a later batch, worded differently -> the count and one line,
 #      naming both segments as Studio numbers them
 #   B  worded the same                                        -> no line at all
 #   C  nothing sent changes: the requests are the same with the check on and off
