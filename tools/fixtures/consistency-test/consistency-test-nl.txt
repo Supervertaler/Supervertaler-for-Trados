@@ -7,10 +7,10 @@ Onder de leverdatum wordt verstaan de dag waarop de producten volgens de plannin
 Artikel 2 Levering
 De leverancier levert de producten in de verpakking die in bijlage 1 is beschreven.
 Elk product draagt een afneembaar typeplaatje met het serienummer.
-Indien de leverancier voorziet dat de dag waarop de producten volgens de planning op het magazijn van de afnemer worden afgeleverd niet wordt gehaald, meldt hij dit onmiddellijk.
 De afnemer controleert de producten binnen vijf werkdagen na ontvangst.
 De afnemer mag de fabriek van de leverancier eenmaal per jaar bezoeken om de productie te controleren.
 De leverancier bevestigt op elke doos een etiket met het ordernummer.
+Indien de leverancier voorziet dat de dag waarop de producten volgens de planning op het magazijn van de afnemer worden afgeleverd niet wordt gehaald, meldt hij dit onmiddellijk.
 Artikel 3 Garantie
 De leverancier herstelt kosteloos elke afwijking van de overeengekomen specificaties die het normale gebruik van het product aanzienlijk beperkt of onmogelijk maakt, mits de afnemer dit binnen dertig dagen meldt.
 De garantie geldt niet voor een onderdeel dat de afnemer zelf heeft vervangen.
@@ -56,9 +56,9 @@ Hoofdstuk 5 Storingen
 Als het rode lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt.
 Neem contact op met Acme wanneer de storing aanhoudt.
 Trek altijd eerst de stekker uit het stopcontact wanneer de pomp een vreemd geluid maakt.
-Als het gele lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt.
 Hoofdstuk 6 Elektrische delen
 Schakel de pomp uit en trek de stekker uit het stopcontact voordat u het deksel van de behuizing verwijdert en de zekering controleert.
+Als het gele lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt.
 Vervang de pakking van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur na 490 bedrijfsuren, met meer voorkeur na 480 bedrijfsuren, met meer voorkeur na 470 bedrijfsuren, met meer voorkeur na 460 bedrijfsuren, met meer voorkeur na 450 bedrijfsuren, met meer voorkeur na 440 bedrijfsuren, met meer voorkeur na 430 bedrijfsuren, met meer voorkeur na 420 bedrijfsuren, met meer voorkeur na 410 bedrijfsuren, met meer voorkeur na 400 bedrijfsuren, met meer voorkeur na 390 bedrijfsuren, met meer voorkeur na 380 bedrijfsuren, met meer voorkeur na 370 bedrijfsuren, met meer voorkeur na 360 bedrijfsuren, met meer voorkeur na 350 bedrijfsuren, met meer voorkeur na 340 bedrijfsuren, met meer voorkeur na 330 bedrijfsuren, met meer voorkeur na 320 bedrijfsuren, met meer voorkeur na 310 bedrijfsuren, met meer voorkeur na 300 bedrijfsuren, met meer voorkeur na 290 bedrijfsuren, met meer voorkeur na 280 bedrijfsuren, met meer voorkeur na 270 bedrijfsuren, met meer voorkeur na 260 bedrijfsuren, met meer voorkeur na 250 bedrijfsuren en met de meeste voorkeur na 240 bedrijfsuren.
 Hoofdstuk 7 Opslag
 Laat de pomp volledig leeglopen voordat u haar opbergt.

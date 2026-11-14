@@ -67,31 +67,31 @@
   },
   {
    "n": 10,
-   "id": "c-late",
-   "words": 28,
-   "tokens": 57,
-   "text": "Indien de leverancier voorziet dat de dag waarop de producten volgens de planning op het magazijn van de afnemer worden afgeleverd niet wordt gehaald, meldt hij dit onmiddellijk."
-  },
-  {
-   "n": 11,
    "id": "c-inspect",
    "words": 10,
    "tokens": 20,
    "text": "De afnemer controleert de producten binnen vijf werkdagen na ontvangst."
   },
   {
-   "n": 12,
+   "n": 11,
    "id": "c-audit",
    "words": 17,
    "tokens": 34,
    "text": "De afnemer mag de fabriek van de leverancier eenmaal per jaar bezoeken om de productie te controleren."
   },
   {
-   "n": 13,
+   "n": 12,
    "id": "c-label",
    "words": 11,
    "tokens": 22,
    "text": "De leverancier bevestigt op elke doos een etiket met het ordernummer."
+  },
+  {
+   "n": 13,
+   "id": "c-late",
+   "words": 28,
+   "tokens": 57,
+   "text": "Indien de leverancier voorziet dat de dag waarop de producten volgens de planning op het magazijn van de afnemer worden afgeleverd niet wordt gehaald, meldt hij dit onmiddellijk."
   },
   {
    "n": 14,
@@ -410,24 +410,24 @@
   },
   {
    "n": 59,
-   "id": "m-defect-b",
-   "words": 20,
-   "tokens": 41,
-   "text": "Als het gele lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt."
-  },
-  {
-   "n": 60,
    "id": "m-h6",
    "words": 4,
    "tokens": 7,
    "text": "Hoofdstuk 6 Elektrische delen"
   },
   {
-   "n": 61,
+   "n": 60,
    "id": "m-warn-fuse",
    "words": 23,
    "tokens": 46,
    "text": "Schakel de pomp uit en trek de stekker uit het stopcontact voordat u het deksel van de behuizing verwijdert en de zekering controleert."
+  },
+  {
+   "n": 61,
+   "id": "m-defect-b",
+   "words": 20,
+   "tokens": 41,
+   "text": "Als het gele lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt."
   },
   {
    "n": 62,
@@ -742,7 +742,7 @@
   {
    "kind": "verbatim",
    "a": 6,
-   "b": 10,
+   "b": 13,
    "a_id": "c-def-date",
    "b_id": "c-late",
    "correct": "must agree",
@@ -778,7 +778,7 @@
   {
    "kind": "verbatim",
    "a": 35,
-   "b": 61,
+   "b": 60,
    "a_id": "m-warn",
    "b_id": "m-warn-fuse",
    "correct": "must agree",
@@ -787,7 +787,7 @@
   {
    "kind": "verbatim",
    "a": 48,
-   "b": 61,
+   "b": 60,
    "a_id": "m-warn-filter",
    "b_id": "m-warn-fuse",
    "correct": "must agree",
@@ -913,7 +913,7 @@
   {
    "kind": "defect-twin",
    "a": 56,
-   "b": 59,
+   "b": 61,
    "a_id": "m-defect-a",
    "b_id": "m-defect-b",
    "correct": "must agree but for the colour, and a note on both or on neither",
@@ -1027,7 +1027,7 @@
     "fit"
    ],
    "segments": [
-    13,
+    12,
     40,
     68,
     71,
@@ -1091,11 +1091,11 @@
     "test"
    ],
    "segments": [
+    10,
     11,
-    12,
     41,
     52,
-    61,
+    60,
     84
    ]
   },

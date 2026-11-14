@@ -10,12 +10,12 @@ Written by `build_consistency_test.py`; do not edit by hand. The document is inv
 
 | Kind | Segments | Apart | A correct result | Step 1's finder |
 |---|---|---|---|---|
-| verbatim | 6 and 10 | 4 | must agree | reports a difference |
+| verbatim | 6 and 13 | 7 | must agree | reports a difference |
 | verbatim | 5 and 15 | 10 | must agree | reports a difference |
 | verbatim | 4 and 19 | 15 | must agree | reports a difference |
 | verbatim | 35 and 48 | 13 | must agree | reports a difference |
-| verbatim | 35 and 61 | 26 | must agree | reports a difference |
-| verbatim | 48 and 61 | 13 | must agree | reports a difference |
+| verbatim | 35 and 60 | 25 | must agree | reports a difference |
+| verbatim | 48 and 60 | 12 | must agree | reports a difference |
 | verbatim | 39 and 51 | 12 | must agree | reports a difference |
 | verbatim | 68 and 96 | 28 | must agree | reports a difference |
 | verbatim | 72 and 96 | 24 | must agree | reports a difference |
@@ -29,7 +29,7 @@ Written by `build_consistency_test.py`; do not edit by hand. The document is inv
 | twin-number | 17 and 31 | 14 | must agree but for the number | reports a difference |
 | twin-number | 78 and 85 | 7 | must agree but for the number | reports a difference |
 | punctuation | 27 and 30 | 3 | must agree word for word | reports a difference |
-| defect-twin | 56 and 59 | 3 | must agree but for the colour, and a note on both or on neither | reports a difference, and a note on only one |
+| defect-twin | 56 and 61 | 5 | must agree but for the colour, and a note on both or on neither | reports a difference, and a note on only one |
 | list-under-limit | 54 and 62 | 8 | must agree but for the changed word | reports a difference |
 | list-over-limit | 79 and 89 | 10 | must agree but for the changed word | reports a difference, but step 2 cannot show the earlier one |
 | list-over-limit | 80 and 90 | 10 | must agree but for the changed words | reports a difference, but step 2 cannot show the earlier one |
@@ -75,8 +75,8 @@ Not checked by steps 1 or 2; the counter only lists what it finds.
 |---|---|
 | afneembaar | 9, 40, 49, 75, 88, 97 |
 | aanzienlijk | 5, 15, 46, 65, 81, 87 |
-| bevestigen | 13, 40, 68, 71, 75, 91, 96, 97 |
+| bevestigen | 12, 40, 68, 71, 75, 91, 96, 97 |
 | stevig | 38, 41, 42, 76 |
 | onderdeel | 16, 32, 45, 86 |
-| controleren | 11, 12, 41, 52, 61, 84 |
+| controleren | 10, 11, 41, 52, 60, 84 |
 | vervolgens | 40, 52, 53, 92 |

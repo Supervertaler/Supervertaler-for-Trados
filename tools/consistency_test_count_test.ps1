@@ -89,7 +89,7 @@ try {
     Check (@($b.R['pairs'] | Where-Object { $_['result'] -eq 'not judged' -and $_['kind'] -eq 'reworded' }).Count -eq 2) "the two reworded pairs are listed as not judged"
     $twin = Pair $b $defectA $defectB
     Check ($twin['noteA'] -eq 'yes' -and $twin['noteB'] -eq 'yes') "a note on both defect sentences"
-    Check ((Pair $b (N 'c-def-date') (N 'c-late'))['shown'] -eq 'same request (by batch size)') "without a prompt log, a pair inside one batch of 10 is named as such"
+    Check ((Pair $b (N 'c-punct-a') (N 'c-punct-b'))['shown'] -eq 'same request (by batch size)') "without a prompt log, a pair inside one batch of 10 is named as such"
 
     Write-Host "C  four pairs worded differently, one segment missing, one note"
     $diff = @{}
@@ -142,7 +142,7 @@ try {
     Check ($d.R['requests'] -eq [int][Math]::Ceiling($count / 10) -and $d.R['tmRequests'] -eq 0) "every request for this document counted, none with TM matches; the other document's request is left out ($($d.R['requests']))"
     Check ($d.R['blockRequests'] -eq 1 -and $d.R['earlierShown'] -eq 1) "one request carried an earlier translation"
     Check ((Pair $d (N 'c-def-defect') $shownSeg)['shown'] -eq 'shown') "the pair whose later segment was shown one is 'shown'"
-    Check ((Pair $d (N 'c-def-date') (N 'c-late'))['shown'] -eq 'same request') "a pair inside one request is 'same request'"
+    Check ((Pair $d (N 'c-punct-a') (N 'c-punct-b'))['shown'] -eq 'same request') "a pair inside one request is 'same request'"
     Check ((Pair $d (N 'p-desc-1') (N 'p-claim-1'))['shown'] -eq 'NOT shown') "a pair across requests with nothing shown is 'NOT shown'"
     Check ($d.R['shown'] -eq 1 -and $d.R['shownAgree'] -eq 1) "totals: 1 shown, and it agrees"
     $twin = Pair $d $defectA $defectB
