@@ -630,7 +630,7 @@
    "id": "p-max-over-b",
    "words": 216,
    "tokens": 460,
-   "text": "Het gewicht van de lamphouder met schuif bedraagt maximaal 120,0 gram, bij voorkeur maximaal 117,5 gram, met meer voorkeur maximaal 115,0 gram, met meer voorkeur maximaal 112,5 gram, met meer voorkeur maximaal 110,0 gram, met meer voorkeur maximaal 107,5 gram, met meer voorkeur maximaal 105,0 gram, met meer voorkeur maximaal 102,5 gram, met meer voorkeur maximaal 100,0 gram, met meer voorkeur maximaal 97,5 gram, met meer voorkeur maximaal 95,0 gram, met meer voorkeur maximaal 92,5 gram, met meer voorkeur maximaal 90,0 gram, met meer voorkeur maximaal 87,5 gram, met meer voorkeur maximaal 85,0 gram, met meer voorkeur maximaal 82,5 gram, met meer voorkeur maximaal 80,0 gram, met meer voorkeur maximaal 77,5 gram, met meer voorkeur maximaal 75,0 gram, met meer voorkeur maximaal 72,5 gram, met meer voorkeur maximaal 70,0 gram, met meer voorkeur maximaal 67,5 gram, met meer voorkeur maximaal 65,0 gram, met meer voorkeur maximaal 62,5 gram, met meer voorkeur maximaal 60,0 gram, met meer voorkeur maximaal 57,5 gram, met meer voorkeur maximaal 55,0 gram, met meer voorkeur maximaal 52,5 gram, met meer voorkeur maximaal 50,0 gram en met de meeste voorkeur maximaal 47,5 gram."
+   "text": "Het gewicht van de lamphouder met schuif bedraagt maximaal 125,0 gram, bij voorkeur maximaal 119,0 gram, met meer voorkeur maximaal 115,0 gram, met meer voorkeur maximaal 112,5 gram, met meer voorkeur maximaal 110,0 gram, met meer voorkeur maximaal 107,5 gram, met meer voorkeur maximaal 105,0 gram, met meer voorkeur maximaal 102,5 gram, met meer voorkeur maximaal 100,0 gram, met meer voorkeur maximaal 97,5 gram, met meer voorkeur maximaal 95,0 gram, met meer voorkeur maximaal 92,5 gram, met meer voorkeur maximaal 90,0 gram, met meer voorkeur maximaal 87,5 gram, met meer voorkeur maximaal 85,0 gram, met meer voorkeur maximaal 82,5 gram, met meer voorkeur maximaal 80,0 gram, met meer voorkeur maximaal 77,5 gram, met meer voorkeur maximaal 75,0 gram, met meer voorkeur maximaal 72,5 gram, met meer voorkeur maximaal 70,0 gram, met meer voorkeur maximaal 67,5 gram, met meer voorkeur maximaal 65,0 gram, met meer voorkeur maximaal 62,5 gram, met meer voorkeur maximaal 60,0 gram, met meer voorkeur maximaal 57,5 gram, met meer voorkeur maximaal 55,0 gram, met meer voorkeur maximaal 52,5 gram, met meer voorkeur maximaal 50,0 gram en met de meeste voorkeur maximaal 45,0 gram."
   },
   {
    "n": 91,
@@ -935,7 +935,7 @@
    "a_id": "p-list-over-a",
    "b_id": "p-list-over-b",
    "correct": "must agree but for the changed word",
-   "finder": "reports a difference, but step 2 cannot show the earlier one"
+   "finder": "reports a difference"
   },
   {
    "kind": "list-over-limit",
@@ -943,8 +943,8 @@
    "b": 90,
    "a_id": "p-max-over-a",
    "b_id": "p-max-over-b",
-   "correct": "must agree but for the changed words",
-   "finder": "reports a difference, but step 2 cannot show the earlier one"
+   "correct": "must agree but for the changed words and three numbers, each translation with its own numbers",
+   "finder": "reports a difference"
   },
   {
    "kind": "list-under-limit",

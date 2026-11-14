@@ -31,8 +31,8 @@ Written by `build_consistency_test.py`; do not edit by hand. The document is inv
 | punctuation | 27 and 30 | 3 | must agree word for word | reports a difference |
 | defect-twin | 56 and 61 | 5 | must agree but for the colour, and a note on both or on neither | reports a difference, and a note on only one |
 | list-under-limit | 54 and 62 | 8 | must agree but for the changed word | reports a difference |
-| list-over-limit | 79 and 89 | 10 | must agree but for the changed word | reports a difference, but step 2 cannot show the earlier one |
-| list-over-limit | 80 and 90 | 10 | must agree but for the changed words | reports a difference, but step 2 cannot show the earlier one |
+| list-over-limit | 79 and 89 | 10 | must agree but for the changed word | reports a difference |
+| list-over-limit | 80 and 90 | 10 | must agree but for the changed words and three numbers, each translation with its own numbers | reports a difference |
 | list-under-limit | 83 and 93 | 10 | must agree but for the changed words | reports a difference |
 
 - **verbatim**: the same passage, word for word, inside two different sentences.
@@ -41,7 +41,8 @@ Written by `build_consistency_test.py`; do not edit by hand. The document is inv
 - **twin-claim**: a long claim with several "waarbij" clauses, and the summary earlier in the description that repeats it.
 - **punctuation**: the same words; one has a comma the other lacks.
 - **defect-twin**: the same sentence but for one word, and both say "minimaal 10 minuten en maximaal 5 minuten", which cannot be right. A model that flags one should flag both.
-- **list-under-limit / list-over-limit**: two long cascades of preferred values (minimum values, maximum values, ranges) that differ in a word or two. Under 400 tokens the earlier one can be shown to the AI (step 2), provided its translation stays under the limit too; over it, it cannot.
+- **list-under-limit / list-over-limit**: two long cascades of preferred values (minimum values, maximum values, ranges) that differ in a word or two; the maximum cascade's twin also has three other numbers. They are near-twins, so the earlier one is shown to the AI whatever its length; 400 tokens is the limit for a passage inside an otherwise different segment.
+- **Numbers**: for every twin pair the counter checks that each translation has the numbers of its own source and none that only the other source has.
 
 ## Boilerplate
 

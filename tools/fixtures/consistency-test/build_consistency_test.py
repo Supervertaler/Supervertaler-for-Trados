@@ -58,7 +58,13 @@ LIST_OVER_A = cascade("In een alternatieve uitvoeringsvorm bedraagt de breedte v
 LIST_OVER_B = cascade("In een alternatieve uitvoeringsvorm bedraagt de breedte van de lampvoet", MINIMA)
 MAXIMA = ["maximaal %s gram" % dec(120.0 - 2.5 * i) for i in range(30)]
 MAX_OVER_A = cascade("Het gewicht van de lamphouder zonder lamp bedraagt", MAXIMA)
-MAX_OVER_B = cascade("Het gewicht van de lamphouder met schuif bedraagt", MAXIMA)
+# The twin of the maximum cascade also has three other numbers: a model that copies the earlier
+# translation instead of following its own source gets them wrong, and the counter sees it.
+MAXIMA_B = list(MAXIMA)
+MAXIMA_B[0] = "maximaal 125,0 gram"
+MAXIMA_B[1] = "maximaal 119,0 gram"
+MAXIMA_B[-1] = "maximaal 45,0 gram"
+MAX_OVER_B = cascade("Het gewicht van de lamphouder met schuif bedraagt", MAXIMA_B)
 RANGES = ["in het bereik van %s mm tot %s mm" % (dec(0.5 + 0.1 * i), dec(5.0 - 0.2 * i)) for i in range(11)]
 RANGE_UNDER_A = cascade("De dikte van de verende lip ligt", RANGES)
 RANGE_UNDER_B = cascade("De dikte van de borgnok ligt", RANGES)
@@ -204,8 +210,8 @@ PAIRS = [
     ("punctuation", "c-punct-a", "c-punct-b", "must agree word for word", "reports a difference"),
     ("defect-twin", "m-defect-a", "m-defect-b", "must agree but for the colour, and a note on both or on neither", "reports a difference, and a note on only one"),
     ("list-under-limit", "m-list-under-a", "m-list-under-b", "must agree but for the changed word", "reports a difference"),
-    ("list-over-limit", "p-list-over-a", "p-list-over-b", "must agree but for the changed word", "reports a difference, but step 2 cannot show the earlier one"),
-    ("list-over-limit", "p-max-over-a", "p-max-over-b", "must agree but for the changed words", "reports a difference, but step 2 cannot show the earlier one"),
+    ("list-over-limit", "p-list-over-a", "p-list-over-b", "must agree but for the changed word", "reports a difference"),
+    ("list-over-limit", "p-max-over-a", "p-max-over-b", "must agree but for the changed words and three numbers, each translation with its own numbers", "reports a difference"),
     ("list-under-limit", "p-range-under-a", "p-range-under-b", "must agree but for the changed words", "reports a difference"),
 ]
 
@@ -293,7 +299,8 @@ def main():
     md.append("- **twin-claim**: a long claim with several \"waarbij\" clauses, and the summary earlier in the description that repeats it.")
     md.append("- **punctuation**: the same words; one has a comma the other lacks.")
     md.append("- **defect-twin**: the same sentence but for one word, and both say \"minimaal 10 minuten en maximaal 5 minuten\", which cannot be right. A model that flags one should flag both.")
-    md.append("- **list-under-limit / list-over-limit**: two long cascades of preferred values (minimum values, maximum values, ranges) that differ in a word or two. Under %d tokens the earlier one can be shown to the AI (step 2), provided its translation stays under the limit too; over it, it cannot." % limit)
+    md.append("- **list-under-limit / list-over-limit**: two long cascades of preferred values (minimum values, maximum values, ranges) that differ in a word or two; the maximum cascade's twin also has three other numbers. They are near-twins, so the earlier one is shown to the AI whatever its length; %d tokens is the limit for a passage inside an otherwise different segment." % limit)
+    md.append("- **Numbers**: for every twin pair the counter checks that each translation has the numbers of its own source and none that only the other source has.")
     md.append("")
     md.append("## Boilerplate")
     md.append("")

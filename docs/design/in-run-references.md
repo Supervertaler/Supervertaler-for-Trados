@@ -7,7 +7,8 @@ release. Stacked on step 1 (`docs/design/restated-passages.md`), which can ship 
 in `core/src/TranslationPrompt.cs` (the block), one sentence in `core/src/PromptGenerator.cs`;
 `src/Supervertaler.Trados/Core/RestatedCheck.cs` (what the run knows), `BatchTranslator.cs` (`InRunReferences`),
 `AiAssistantViewPart.cs` (switched on for Batch Translate; Preview prompt).
-**Tests:** `core/tests/EarlierTranslationsTests.cs` (14), `tools/in_run_references_test.ps1` (47 checks).
+**Tests:** `core/tests/EarlierTranslationsTests.cs` (21), `tools/in_run_references_test.ps1` (52 checks); the
+test document and its counter in `tools/fixtures/consistency-test/` and `tools/consistency_test_count.ps1`.
 **User-facing notes:** `docs/design/in-run-references-user-notes.md`.
 
 ## What it does
@@ -60,17 +61,62 @@ Nothing is written anywhere: no file, cache, memory-bank entry or TM. The knowle
 | "All segments" over old translations | the old ones are in no request; the new one is shown once written | yes |
 | The lookup itself throws | the segment goes out without references; logged | **no** (nothing can make it fail from outside) |
 
+## Short-term memory: a translation memory for the run itself
+
+Michael's framing, 14 Nov 2026, and the one the Help page leads with: the feature is "a translation memory for the
+run itself", "a kind of temporary translation memory used by the AI during a batch translation", "short-term
+memory". Like a translation memory it gives two kinds of match.
+
+| | A near-twin | A passage |
+|---|---|---|
+| What | the same sentence but for a few words or numbers | a run of words inside two otherwise different sentences |
+| In TM terms | a high fuzzy match | a fragment match |
+| Decided by | the finder: the shared words are at least 80% of the longer segment | the finder: 8 identical words in a row |
+| Shown | whole, whatever its length, with the differences named | only if the earlier source and translation are each under 400 tokens |
+
+**Near-twins were added after the first measurements** (Michael: "Yes, add the TM-style match for near-identical
+segments"). The passage rule's 400-token limit (about 200 words) kept every long near-identical pair from being
+shown: the long cascades of values on the real job, and pair 80+90 on the test document. A passage inside 400 words
+of something else is no example, so that limit stays for passages. A twin is the whole sentence, so it does not
+apply. `VaultDiff` is not changed and its alignment is not used: only its tokeniser, to count.
+
+**No new comparison of every segment with every other.** Whether two segments are twins is already known from the
+finder's pass (`RestatedPair.NearTwin`), which only looks at pairs that share an indexed run of 8 words. Naming a
+twin's differences aligns the two sources word by word, for a twin that is about to be shown and no other: words x
+words, at most 1,000 x 1,000 (the finder leaves longer segments out), about 5 ms for two 220-word segments.
+
 ## Which earlier segments, and how many
 
-`EarlierTranslations.For`: of the segments that share a passage with this one and have a known translation, the
-one sharing the most words first; at most **2** per segment; the same translation is not shown twice. At most **20**
-in one request, over all its segments. An earlier segment whose source or translation is over **400 tokens**
-(`VaultDiff.MaxAlignTokens`: words, punctuation and spaces, so about 200 words) is skipped whole, never cut short.
-A translation in a language written without spaces (Chinese, Japanese, Thai, ...) is not shown, as step 1 does not
-judge it.
+`EarlierTranslations.For`: of the segments that share something with this one and have a known translation, a twin
+first, then the one sharing the most words; at most **2** per segment; the same translation is not shown twice; each
+other segment appears once, as a twin if it is one. A translation in a language written without spaces (Chinese,
+Japanese, Thai, ...) is not shown, as step 1 does not judge it.
+
+Per request: at most **20** earlier translations and **24,000 characters** of them (about 6,000 tokens), taken in
+the order of the segments. One that does not fit is left out whole; none is ever cut short; a shorter one after it
+that still fits is shown. A long twin with its translation is about 3,000 characters, so eight fit. Two long twins
+in one request are simply both shown.
 
 The other segment may come later in the document. If part of a document was translated first (run 1 on a filter,
 run 2 on "Empty segments only"), run 2 is shown run 1's translations wherever they stand.
+
+## Numbers are the risk
+
+A twin's numbers differ from the segment's own (500 euro against 250; one cascade of values against the same
+cascade with three other values). A model that copies the earlier translation copies its numbers. A wrong number is
+worse than an inconsistent word. Three things are done about it:
+
+1. The block says, only when a twin is present: keep the wording and the sentence structure, change only what your
+   source changes, and "NEVER copy a number, unit, reference numeral or name from the earlier translation: take
+   every one of them from your own segment's source, in its own place."
+2. Each twin entry has a line `differs in:` that names the places where the two sources differ, as "yours X /
+   earlier Y" (at most 12, then "and N more"), so the numbers that must change are in front of the model.
+3. It is testable: the counter for the test document checks, for every planted twin, that each translation has the
+   numbers of its own source and none that only the other source has. The test document has a long cascade whose
+   twin differs in three numbers for exactly this.
+
+Whether a given model heeds it is not yet measured. The user notes tell the translator to check numbers in
+near-identical segments, as with any fuzzy match.
 
 ## The block
 
@@ -86,6 +132,11 @@ segments in the list below: the earlier segments are shown for reference and mus
 left out of the earlier texts; take the tags from your own segment.
 
 Segment 5 – repeats “any information disclosed by one party to the …” (15 words)
+  earlier source:      ...
+  earlier translation: ...
+
+Segment 31 – the same sentence as an earlier segment but for a few words or numbers
+  differs in:          yours “250” / earlier “500”
   earlier source:      ...
   earlier translation: ...
 ```
@@ -170,7 +221,12 @@ Memory is step 1's: two strings per segment for the run.
 - Whether a given model follows the block is unmeasured. The stand-in server proves the plumbing, not the effect.
 - Only passages step 1 pairs: 8 identical source words in a row. A passage the source rewords gets no reference.
 - Segments in the same request get none from each other.
-- A segment over 400 tokens is never shown as a reference; long list segments usually are.
+- A passage (not a twin) inside a segment over 400 tokens is not shown. A twin is shown at any length up to the
+  finder's 1,000 words.
+- Whether a model keeps its own numbers when shown a twin is unmeasured.
+- The "note on one only" line of step 1 also fires on notes that are about the pair itself ("duplicates segment
+  27", "numeral 22 differs from 12 used elsewhere"), which can only stand on the later segment. Seen with Opus 5.5
+  on the test document. The rule is unchanged; an open point for Michael.
 - A resumed run does not see notes that an earlier run wrote as Trados comments.
 - memoQ is not covered: memoQ calls the plugin in parallel and the plugin never sees existing targets there.
 

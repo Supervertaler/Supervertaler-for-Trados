@@ -158,12 +158,44 @@ if ($PromptLog) {
         foreach ($e in $inRequest.GetEnumerator()) {
             $n = $e.Value
             $request[$n] = $requests
-            $shown[$n] = [regex]::IsMatch($user, "(?m)^Segment $($e.Key) (\u2013|-) repeats")
+            $shown[$n] = [regex]::IsMatch($user, "(?m)^Segment $($e.Key) (\u2013|-) (repeats|the same sentence)")
             $rm = [regex]::Match($reply, "(?ms)^$($e.Key)\. (.*?)(?=^\d+\. |\z)")
             if ($rm.Success) { $replyNote[$n] = (HasNote $rm.Groups[1].Value) }
         }
     }
 }
+
+# The numbers of a text, each as a plain value: 10,5 and 10.5 and 10.50 are the same number, and
+# an English translation may write a small one out.
+$numberWords = @{ one = 1; two = 2; three = 3; four = 4; five = 5; six = 6; seven = 7; eight = 8; nine = 9; ten = 10; eleven = 11; twelve = 12 }
+function NumbersOf([string]$text, [bool]$english) {
+    $set = @{}
+    $t = Plain $text
+    $t = [regex]::Replace($t, '\[\[TC:.*?\]\]', '')
+    foreach ($m in [regex]::Matches($t, '\d+(?:[.,]\d+)?')) {
+        $v = [decimal]::Parse($m.Value.Replace(',', '.'), [Globalization.CultureInfo]::InvariantCulture)
+        $set[$v.ToString('G29', [Globalization.CultureInfo]::InvariantCulture)] = $true
+    }
+    if ($english) {
+        foreach ($m in [regex]::Matches($t.ToLowerInvariant(), '\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b')) { $set["$($numberWords[$m.Value])"] = $true }
+    }
+    $set
+}
+# A translation's numbers against its own source and its twin's: what is missing, and what it has
+# that only the twin's source has - a number copied from the earlier translation.
+function NumberCheck([int]$own, [int]$twin) {
+    if (-not $target.ContainsKey($own)) { return '' }
+    $mine = NumbersOf $sources[$own - 1] $false
+    $theirs = NumbersOf $sources[$twin - 1] $false
+    $got = NumbersOf $target[$own] $true
+    $missing = @($mine.Keys | Where-Object { -not $got.ContainsKey($_) } | Sort-Object)
+    $copied = @($got.Keys | Where-Object { $theirs.ContainsKey($_) -and -not $mine.ContainsKey($_) } | Sort-Object)
+    $said = @()
+    if ($copied.Count) { $said += "segment $own has the other segment's $($copied -join ', ')" }
+    if ($missing.Count) { $said += "segment $own lacks its own $($missing -join ', ')" }
+    $said -join '; '
+}
+$twinKinds = @('twin-number', 'defect-twin', 'list-under-limit', 'list-over-limit')
 
 function NoteOn([int]$n) {
     if ($target.ContainsKey($n) -and (HasNote $target[$n])) { return 'yes' }
@@ -208,6 +240,10 @@ foreach ($kp in $k['pairs']) {
     } elseif ([Math]::Floor(($a - 1) / $BatchSize) -eq [Math]::Floor(($b - 1) / $BatchSize)) { $how = 'same request (by batch size)' }
     $row = [ordered]@{ kind = [string]$kp['kind']; a = $a; b = $b; finder = $(if ($sees) { 'pairs them' } else { 'cannot see' }); shown = $how; result = $result; detail = $detail }
     if ($kp['kind'] -eq 'defect-twin') { $row['noteA'] = (NoteOn $a); $row['noteB'] = (NoteOn $b) }
+    if ($twinKinds -contains [string]$kp['kind']) {
+        $wrong = @((NumberCheck $a $b), (NumberCheck $b $a) | Where-Object { $_ })
+        $row['numbers'] = if (-not $have) { 'not checked' } elseif ($wrong.Count) { 'WRONG: ' + ($wrong -join '; ') } else { 'ok' }
+    }
     $rows += $row
 }
 
@@ -222,6 +258,7 @@ Write-Host ("{0,-18} {1,-9} {2,-11} {3,-28} {4}" -f 'Kind', 'Segments', 'Finder'
 foreach ($r in $rows) {
     $extra = $r['detail']
     if ($r.Contains('noteA')) { $extra = "note on $($r['a']): $($r['noteA']); on $($r['b']): $($r['noteB'])" }
+    if ($r.Contains('numbers')) { $extra = (@($extra, "numbers $($r['numbers'])") | Where-Object { $_ }) -join '; ' }
     Write-Host ("{0,-18} {1,-9} {2,-11} {3,-28} {4}{5}" -f $r['kind'], "$($r['a'])+$($r['b'])", $r['finder'], $r['shown'], $r['result'], $(if ($extra) { "  ($extra)" } else { '' }))
 }
 
@@ -235,6 +272,9 @@ $shownDiffer = @($rows | Where-Object { $_['shown'] -eq 'shown' -and $_['result'
 Write-Host ""
 Write-Host "Totals: of $($judged.Count) pairs that must agree, $agree agree, $differ differ, $unmeasured not measured."
 if ($haveLog) { Write-Host "        $shownCount pair(s) where one was shown the other's translation: $shownAgree agree, $shownDiffer differ." }
+$numberRows = @($rows | Where-Object { $_.Contains('numbers') -and $_['numbers'] -ne 'not checked' })
+$numbersWrong = @($numberRows | Where-Object { $_['numbers'] -ne 'ok' }).Count
+Write-Host "Numbers: $($numberRows.Count) twin pair(s) checked; in $numbersWrong a translation has a number that is not its own source's, or lacks one. A wrong number is worse than an inconsistent word."
 
 # ---- words that invite another English word each time -----------------------------------------
 Write-Host ""
@@ -260,6 +300,7 @@ if ($Json) {
     $out = [ordered]@{ segments = $count; translated = $translated; missing = @($missing); keyProblems = @($problems)
         requests = $requests; tmRequests = $tmSent; blockRequests = $blockRequests; earlierShown = $earlierShown; blockChars = $blockChars
         pairs = $rows; agree = $agree; differ = $differ; unmeasured = $unmeasured; shown = $shownCount; shownAgree = $shownAgree; shownDiffer = $shownDiffer
+        numbersChecked = $numberRows.Count; numbersWrong = $numbersWrong
         synonyms = $syn }
     [IO.File]::WriteAllText($Json, ($out | ConvertTo-Json -Depth 8 -Compress), (New-Object Text.UTF8Encoding($false)))
 }

@@ -29,8 +29,9 @@ claims at the end (67-105). Planted in it, each with a known answer:
 - 1 pair of near-identical sentences that both contain the same defect ("at least 10 minutes and at most 5
   minutes"), to see whether the AI flags both;
 - 8 long cascades of preferred values, the shape that gave replies with no text and failed writes on a real
-  job: minimum values, maximum values and ranges, each with a near-twin further on. Two pairs are under the
-  400-token limit and two over it;
+  job: minimum values, maximum values and ranges, each with a near-twin further on. Two pairs are under 400 tokens
+  and two over; near-twins are shown to the AI at any length. One twin (segment 90) also has three other numbers
+  than its earlier one, to catch a translation that copies numbers;
 - a formula that opens 8 segments (the dependent claims), which must pair nothing;
 - 15 one-sentence paragraphs of 60 to 220 words in all;
 - 7 ordinary words ("afneembaar", "aanzienlijk", "bevestigen", "stevig", "onderdeel", "controleren",
@@ -75,7 +76,8 @@ empty is added with `-Tmx2`.
 - "must agree" pairs that DIFFER are what steps 1 and 2 exist for. With step 2 working, the pairs marked "shown"
   should agree.
 - A pair in the "same request" was translated in one request: the AI saw both, and step 2 has nothing to add.
-- The long lists over the limit are never shown to the AI. They are there to measure that limit.
+- "numbers ok" on a twin pair means each translation has the numbers of its own source. "WRONG" names a number
+  taken from the other segment, or one that is missing: look at that segment first.
 - The reworded pairs are "not judged": the finder cannot see them. The counter only says how long a wording the
   two translations share.
 - The synonym table is not checked by steps 1 or 2. It is there for the third problem, later.

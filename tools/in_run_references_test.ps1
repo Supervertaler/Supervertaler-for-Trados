@@ -23,6 +23,8 @@
 #      Trados comment; an earlier near-twin that was missed is not revisited
 #   K  tags are left out of the earlier texts
 #   L  Preview prompt's lookup shows what is in the document and counts nothing as shown
+#   O  a near-identical segment over the size limit (a long list of values) is shown whole, as a
+#      twin, with the difference named and the warning about numbers; none after a failed batch
 #   M  how much longer the requests get (for the cost estimate)
 #   N  10,000 segments: the first lookup (finds the pairs once) and all the others, timed
 #
@@ -268,6 +270,15 @@ public static class InRunReferencesTest {
         return d;
     }
 
+    /// <summary>A long list of preferred values in one sentence, about 220 words.</summary>
+    static string Cascade(string opening, string qualifier, string unit) {
+        var parts = new List<string>();
+        for (int i = 0; i < 34; i++)
+            parts.Add((i == 0 ? opening + " " : i == 1 ? "bij voorkeur " : "met meer voorkeur ") + qualifier + " "
+                + (10.0 + 0.5 * i).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " " + unit);
+        return string.Join(", ", parts) + ".";
+    }
+
     static string Entry(string number, string source, string target) {
         return "Segment " + number + " \u2013 repeats \u201Cde klemarm in een richting loodrecht op de \u2026\u201D (15 words)\r\n"
             + "  earlier source:      " + source + "\r\n"
@@ -406,6 +417,26 @@ public static class InRunReferencesTest {
         Check(Summary(preview) == null, "and counts nothing as shown: no run has sent anything");
         Check(Count(preview, "ReferencesFor", previewSeg) == 1 && Summary(preview) == "1 segment was shown an earlier translation of a passage it repeats.",
             "the run's own lookup does count");
+
+        Console.WriteLine("O  a near-identical long segment");
+        var listA = Cascade("De breedte van de klembeugel bedraagt", "minimaal", "mm");
+        var listB = Cascade("De breedte van de lampvoet bedraagt", "minimaal", "mm");
+        var listAEn = Cascade("The width of the clamping bracket is", "at least", "mm").Replace(',', '.');
+        Answer(listA, listAEn);
+        Answer(listB, "[the later list]");
+        var o = Go(Document(listA, listB));
+        Check(listA.Split(' ').Length > 200, "the list is long: " + listA.Split(' ').Length + " words, over the limit for a passage");
+        Check(o.WithBlock.Count == 1 && o.WithBlock[0].User.Contains("Segment 5 \u2013 the same sentence as an earlier segment but for a few words or numbers\r\n"
+            + "  differs in:          yours \u201Clampvoet\u201D / earlier \u201Cklembeugel\u201D\r\n"
+            + "  earlier source:      " + listA + "\r\n"
+            + "  earlier translation: " + listAEn + "\r\n"),
+            "the later one is shown the earlier one whole, as a twin, with the difference named");
+        Check(o.WithBlock.Count == 1 && o.WithBlock[0].User.Contains("NEVER copy a number, unit, reference numeral or name from the earlier translation"),
+            "and the request warns against copying numbers");
+        Check(on.Requests[2].User.Contains(Block) && !on.Requests[2].User.Contains("NEVER copy"), "a request with a passage only carries no such warning");
+        Answer(listA, null);
+        var oFailed = Go(Document(listA, listB));
+        Check(oFailed.WithBlock.Count == 0, "failure: the earlier list was left out of the reply, so the later one is shown nothing");
 
         Console.WriteLine("M  how much longer the requests get");
         long onChars = on.Requests.Sum(r => (long)r.User.Length), offChars = off.Requests.Sum(r => (long)r.User.Length);

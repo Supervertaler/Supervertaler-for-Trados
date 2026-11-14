@@ -9,6 +9,8 @@
 #      a note that is only in the AI's reply (written as a Trados comment), and TM matches sent
 #   E  a second backup file (a run on the empty segments) adds to the first
 #   F  failure: a backup of another document counts nothing and says so
+#   G  numbers: a twin's translation copied from the earlier segment has the wrong numbers, and
+#      is reported; a small number written out in words is not
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\consistency_test_count_test.ps1
 #
@@ -34,17 +36,18 @@ $count = $src.Count
 # The pairs the finder sees, which are the ones that must agree.
 $must = @($key['pairs'] | Where-Object { -not ([string]$_['finder']).StartsWith('cannot see') }).Count
 
-# A made-up "translation": every word with an x in front. The same source words give the same
-# target words, so every repeated passage agrees unless the test changes it.
+# A made-up "translation": every word with an x in front, numbers and punctuation left as they
+# are. The same source words give the same target words, so every repeated passage agrees unless
+# the test changes it, and every number is the source's own.
 function Fake([string]$text) {
-    (@([regex]::Matches($text, "[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*") | ForEach-Object { 'x' + $_.Value.ToLowerInvariant() }) -join ' ') + '.'
+    [regex]::Replace($text, "\p{L}+(?:['’-]\p{L}+)*", { param($m) 'x' + $m.Value.ToLowerInvariant() })
 }
 # The same with four words in the middle turned round: a different wording of the passage.
 function Reworded([string]$text) {
-    $w = @([regex]::Matches($text, "[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*") | ForEach-Object { 'x' + $_.Value.ToLowerInvariant() })
+    $w = @((Fake $text) -split ' ')
     $m = [int]($w.Count / 2)
     $swap = $w[($m + 3)], $w[($m + 2)], $w[($m + 1)], $w[$m]
-    (@($w[0..($m - 1)]) + $swap + @($w[($m + 4)..($w.Count - 1)]) -join ' ') + '.'
+    (@($w[0..($m - 1)]) + $swap + @($w[($m + 4)..($w.Count - 1)])) -join ' '
 }
 function Esc([string]$t) { [Security.SecurityElement]::Escape($t) }
 function WriteTmx([string]$path, $targets) {
@@ -170,6 +173,26 @@ try {
     $f = Run @('-Tmx', $other)
     Check ($f.R['translated'] -eq 0 -and $f.R['agree'] -eq 0 -and $f.R['differ'] -eq 0 -and $f.R['unmeasured'] -eq $must) "nothing translated, nothing called a difference, all $must not measured"
     Check ($f.Text -match 'not from this document') "and it says the backup is not from this document"
+
+    Write-Host "G  numbers in the translations of twins"
+    $twinPairs = @($key['pairs'] | Where-Object { @('twin-number', 'defect-twin', 'list-under-limit', 'list-over-limit') -contains [string]$_['kind'] }).Count
+    Check ($b.R['numbersChecked'] -eq $twinPairs -and $b.R['numbersWrong'] -eq 0) "every twin pair checked, every number its own source's ($($b.R['numbersChecked']) checked, $($b.R['numbersWrong']) wrong)"
+    # The mistake step 2 could cause: the later twin's translation is the earlier one's, numbers and all.
+    $copied = @{}
+    foreach ($n in 1..$count) { $copied[$n] = Fake $src[$n] }
+    $copied[(N 'p-max-over-b')] = Fake $src[(N 'p-max-over-a')]
+    $copied[(N 'c-penalty-b')] = Fake $src[(N 'c-penalty-a')]
+    # And what is not a mistake: small numbers written out in English.
+    $copied[$defectB] = (Fake $src[$defectB]) -replace '\b10\b', 'ten' -replace '\b5\b', 'five'
+    $tmxCopied = Join-Path $temp 'copied.tmx'
+    WriteTmx $tmxCopied $copied
+    $g = Run @('-Tmx', $tmxCopied)
+    Check ($g.R['numbersWrong'] -eq 2) "two twins with a number that is not their own ($($g.R['numbersWrong']))"
+    $maxRow = Pair $g (N 'p-max-over-a') (N 'p-max-over-b')
+    Check ($maxRow['numbers'] -like "WRONG: segment $(N 'p-max-over-b') has the other segment's*" -and $maxRow['numbers'] -like '*lacks its own*') "the long cascade: the other segment's numbers found, and its own missed: $($maxRow['numbers'])"
+    Check ((Pair $g (N 'c-penalty-a') (N 'c-penalty-b'))['numbers'] -like 'WRONG*500*') "the penalty clause: 500 where 250 belongs"
+    Check ((Pair $g $defectA $defectB)['numbers'] -eq 'ok') "'ten' and 'five' for 10 and 5 are the right numbers"
+    Check ($g.Text -match 'A wrong number is worse than an inconsistent word') "and the totals say so"
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
