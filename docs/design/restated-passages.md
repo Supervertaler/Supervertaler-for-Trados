@@ -226,20 +226,30 @@ The 22 lines as it now stands:
 
 | Judgement | Lines | Positions in the saved file |
 |---|---|---|
-| A known restated case, found | 5 (3 cases) | 56+411, 60+411; 146+411, 146+420; 259+436 |
+| A known restated case, found | 6 (4 cases) | 56+411, 60+411; 146+411, 146+420; 259+436; 339+441 |
 | Another real wording difference for the same source | 9 | 28+154, 39+374, 69+217, 70+218, 93+244, 147+295, 178+314, 198+324, 301+351 |
-| Real but trivial (an article) | 3 | 339+346, 339+441, 346+441 |
+| Real but trivial (an article) | 2 | 339+346, 346+441 |
 | Could not tell from the differences alone | 2 | 282+293, 282+411 |
 | False alarm | 3 | 138+246, 293+348, 417+439 |
 
-- **Known restated cases.** The inventory describes four of the six. Three are found. Two of them were found as
-  first built; the third (same words in another order at the very start of the passage) only after rule 5. The fourth
-  is a matter of meaning (two different things given one term), which a comparison of wording cannot see. The other
-  two of the six are not described anywhere this session could read, so they could not be checked.
-- **The twin with a note on only one.** Not measurable from this file: the run wrote its notes as Trados comments,
-  so the saved translations carry none. What can be said: 19 near-twin pairs are found, and the only two that lie
-  close enough together to be the known pair (108 apart in the saved file, 118 in Studio) are both among them. In a
-  live run the notes are known and the line would be written; that is covered by the offline tests only.
+- **Known restated cases: 4 of 6 found.** The session that corrected the job gave the six pairs by segment number
+  afterwards, and each was looked up.
+  - Found (4): three as first built, and one (the same words in another order at the very start of the passage)
+    only after rule 5. One of the four is reported for what looks like an article only; the line is there all the
+    same.
+  - Missed, **too few identical words in a row** (1): the two sources are close but reworded, and share at most 5
+    words in a row. No sensible minimum finds it: at 5 words the report would drown. This is the ceiling of a method
+    that needs identical source words.
+  - Missed, **a difference the sources seem to explain** (1): the pair is found (14 words in a row), and the passage
+    itself is translated word for word the same. The difference is in the words just before it, where the sources
+    also differ by one word, so it is taken to be the sources' difference. Tuning could report it, at the price of
+    reporting every such pair.
+  - A seventh pair differs in punctuation only, which is not compared, by design.
+- **The twin with a note on only one.** The known pair is found as a near-twin (108 apart in the saved file, 118 in
+  Studio). Whether the note line would be written cannot be measured from this file: the run wrote its notes as
+  Trados comments, so the saved translations carry none. In a live run the notes are known; that is covered by the
+  offline tests only. The pair next to it, the same construction without the defect, is the 380-word false alarm
+  below.
 - **False alarms.** One is a 380-word near-twin whose sources differ in 45 places and whose translations differ in
   46 (an "a"/"an" that follows a changed noun). One is a number range that the source writes as one word and the
   translation as two. One is two unrelated sentences sharing 8 words. So 3 of 22, or 5 of 22 counting the unclear

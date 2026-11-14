@@ -80,8 +80,9 @@ Known misses: a different word (not just another word order) in the very first o
 passages shorter than eight words; passages in more than six segments; a difference of meaning that is worded
 consistently.
 
-Measured on one real job (a 460-segment patent, 14 Nov 2026): 22 lines, in under half a second. 14 were real wording
-differences, 3 real but trivial (an article), 2 unclear, 3 false alarms. Not yet measured on any other kind of
+Measured on one real job (a 460-segment patent, 14 Nov 2026): 22 lines, in under half a second. 15 were real wording
+differences, 2 real but trivial (an article), 2 unclear, 3 false alarms. Of six places already known to be
+inconsistent, it found four. Not yet measured on any other kind of
 document.
 
 ## Changelog line for the next release (after 20.207)
