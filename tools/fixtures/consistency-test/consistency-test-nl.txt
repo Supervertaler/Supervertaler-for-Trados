@@ -1,4 +1,4 @@
-Deel 1 Leveringsovereenkomst PROJ-001
+﻿Deel 1 Leveringsovereenkomst PROJ-001
 Deze overeenkomst wordt gesloten tussen Acme, hierna de afnemer, en de leverancier.
 Artikel 1 Definities
 Onder vertrouwelijke informatie wordt verstaan alle informatie die een partij in verband met deze overeenkomst aan de andere partij verstrekt, ongeacht of dit schriftelijk of mondeling gebeurt.

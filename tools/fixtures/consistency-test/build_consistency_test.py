@@ -234,7 +234,7 @@ def main():
                      for w, stems, eng in SYNONYMS],
         "token_limit": limit,
     }
-    with io.open(os.path.join(HERE, "consistency-test-nl.txt"), "w", encoding="utf-8", newline="\r\n") as f:
+    with io.open(os.path.join(HERE, "consistency-test-nl.txt"), "w", encoding="utf-8-sig", newline="\r\n") as f:
         f.write("\n".join(texts) + "\n")
     with io.open(os.path.join(HERE, "consistency-test-key.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump(key, f, ensure_ascii=False, indent=1)
