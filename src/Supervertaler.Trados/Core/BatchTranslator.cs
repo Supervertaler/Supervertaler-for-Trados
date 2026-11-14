@@ -156,6 +156,13 @@ namespace Supervertaler.Trados.Core
         public string RepetitionSummary { get; set; }
 
         /// <summary>
+        /// The lines about restated passages the run translated two ways
+        /// (<see cref="RestatedCheck"/>), or null when there is nothing to say or
+        /// the run did not check.
+        /// </summary>
+        public string RestatedSummary { get; set; }
+
+        /// <summary>
         /// The run's one usage entry - the one also fired through
         /// <see cref="LlmClient.PromptCompleted"/> for the Reports tab and the usage
         /// log - or null when the run sent nothing. SuperBench takes a contender's
@@ -233,6 +240,14 @@ namespace Supervertaler.Trados.Core
         /// and null otherwise, which leaves every result as the AI returned it.
         /// </summary>
         public RepetitionRun Repetitions { get; set; }
+
+        /// <summary>
+        /// Collects what the end-of-run report on restated passages needs
+        /// (docs/design/restated-passages.md). Set by Batch Translate only, like
+        /// <see cref="Repetitions"/>; null otherwise, and then nothing is
+        /// recorded or reported. It changes nothing that is sent or written.
+        /// </summary>
+        internal RestatedCheck Restated { get; set; }
 
         /// <summary>
         /// The document the run was started in, for the write handler; null when the
@@ -860,6 +875,8 @@ namespace Supervertaler.Trados.Core
                 usage = aggEntry;
             }
 
+            var restatedSummary = await RestatedSummaryAsync();
+
             Completed?.Invoke(this, new BatchCompletedEventArgs
             {
                 Translated = translated,
@@ -868,8 +885,32 @@ namespace Supervertaler.Trados.Core
                 TotalTime = sw.Elapsed,
                 WasCancelled = cancellationToken.IsCancellationRequested,
                 RepetitionSummary = Repetitions?.Summary(),
+                RestatedSummary = restatedSummary,
                 Usage = usage
             });
+        }
+
+        /// <summary>
+        /// The run's lines about restated passages, found and compared on a pool
+        /// thread whatever thread the run was started from - never on Studio's UI
+        /// thread - or null when the run does not check. A stopped run reports on
+        /// what it wrote. The check failing must not cost the run its
+        /// <see cref="Completed"/>: it is logged, and the run says nothing.
+        /// </summary>
+        private async Task<string> RestatedSummaryAsync()
+        {
+            var check = Restated;
+            if (check == null) return null;
+
+            try
+            {
+                return await Task.Run(() => check.Summary()).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Restated", "The restated-passages check failed (" + ex.GetType().Name + ": " + ex.Message + "); nothing reported");
+                return null;
+            }
         }
 
         /// <summary>
@@ -979,6 +1020,8 @@ namespace Supervertaler.Trados.Core
             };
             LlmClient.FirePromptCompleted(usage);
 
+            var restatedSummary = await RestatedSummaryAsync().ConfigureAwait(false);
+
             Completed?.Invoke(this, new BatchCompletedEventArgs
             {
                 Translated = translated,
@@ -986,6 +1029,7 @@ namespace Supervertaler.Trados.Core
                 TotalTime = sw.Elapsed,
                 WasCancelled = outcome.Cancelled || cancellationToken.IsCancellationRequested,
                 RepetitionSummary = Repetitions?.Summary(),
+                RestatedSummary = restatedSummary,
                 Usage = usage
             });
         }
@@ -1027,6 +1071,10 @@ namespace Supervertaler.Trados.Core
             };
             SegmentTranslated?.Invoke(this, args);
             if (!args.WriteSucceeded) return DeliveryOutcome.Declined;
+
+            // Only once Studio has taken the write, as the repetitions below: a
+            // declined write is not a translation the report may compare.
+            Restated?.Written(segment, text);
 
             if (delivery != null)
             {
