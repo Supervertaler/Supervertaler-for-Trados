@@ -95,8 +95,8 @@ translations differ in more places than the sources do.
    sources have at the edge cannot excuse one the translations have in the middle.
 
 5. Last, the passage's first and last words. If the four words just outside the shared wording are, in both
-   translations, the same words but for one ("in a perpendicular direction [to the base ...]" against "in a
-   direction perpendicular [to the base ...]"), and the sources have no such thing there, the passage starts or ends
+   translations, the same words but for one ("on the upper left [side of the base plate ...]" against "at the left
+   upper [side of the base plate ...]"), and the sources have no such thing there, the passage starts or ends
    differently and the pair is reported. Added after the real measurement: a known case was missed without it.
 
 A pair is skipped, and never reported, when either translation is empty: a segment the AI left out, one Studio
@@ -128,7 +128,7 @@ Misses (different, not reported):
   most of their words give no pairs and no lines (tested): no noise, and no help either. Identical short strings
   are, again, consistent repetitions' business.
 - **A different word in the first or last two words of a passage** (outside near-twins). The same words in another
-  order are caught by rule 5; another word altogether ("at right angles" / "perpendicular") is not, because nothing
+  order are caught by rule 5; another word altogether ("top left" / "upper left") is not, because nothing
   shows that the passage went on.
 - **A list of values against a different list of values** is not compared at all (see the finder), so "range" in
   one and "interval" in the other for the same source word goes unreported there. One such true difference was lost
