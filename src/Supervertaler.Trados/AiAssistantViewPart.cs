@@ -10997,6 +10997,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     // own, and never align or write to a captured document.
                     Repetitions = repetitions,
                     Restated = restated,
+                    // Earlier translations of repeated passages go with the segments
+                    // that repeat them (docs/design/in-run-references.md). Always on
+                    // for Batch Translate; there is no setting.
+                    InRunReferences = true,
                     DocumentRef = runDocument
                 };
 
@@ -12899,6 +12903,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Collect segments based on mode and scope
                 List<BatchSegment> segments;
+                // Translate: what the run would know about repeated passages, so the
+                // preview can show the earlier translations it would send.
+                RestatedCheck previewKnown = null;
                 if (batchControl.CurrentMode == BatchMode.Proofread)
                 {
                     var proofScope = batchControl.GetSelectedProofreadScope();
@@ -12907,7 +12914,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 else
                 {
                     var scope = batchControl.GetSelectedScope();
-                    segments = CollectSegments(scope);
+                    previewKnown = new RestatedCheck();
+                    segments = CollectSegments(scope, null, previewKnown);
                 }
 
                 if (segments.Count == 0)
@@ -13076,15 +13084,45 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         }
 
                         var promptSegments = new List<BatchSegmentInput>();
+                        bool previewHasEarlier = false;
                         for (int i = 0; i < previewCount; i++)
-                            promptSegments.Add(
-                                BatchTranslator.ToPromptInput(previewSegments[i], i + 1, structureMode));
+                        {
+                            var input = BatchTranslator.ToPromptInput(previewSegments[i], i + 1, structureMode);
+                            try
+                            {
+                                var earlier = previewKnown?.PreviewReferencesFor(previewSegments[i]);
+                                if (earlier != null && earlier.Count > 0)
+                                {
+                                    input.References = earlier;
+                                    previewHasEarlier = true;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Core.DiagnosticLog.Log("Restated", "Preview lookup failed: " + ex.Message);
+                            }
+                            promptSegments.Add(input);
+                        }
 
                         promptText = apiSystemPrompt
                             + Environment.NewLine + Environment.NewLine
                             + "════════ USER MESSAGE ════════"
                             + Environment.NewLine + Environment.NewLine
                             + BatchTranslator.UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, promptSegments);
+
+                        // The run also shows the AI what it wrote in its own earlier
+                        // requests; a preview has only what is in the document now.
+                        if (previewKnown != null)
+                        {
+                            promptText += Environment.NewLine + Environment.NewLine
+                                + (previewHasEarlier
+                                    ? "(Earlier translations: the ones shown above are in the document now. "
+                                    : "(Earlier translations: none of these segments repeats a passage that "
+                                      + "is translated in the document now, so none is shown. ")
+                                + "During a run, a segment that repeats a passage translated in an earlier "
+                                + "request of the same run is shown that translation too; a preview cannot "
+                                + "show those, because they do not exist yet.)";
+                        }
 
                         if (segments.Count > previewCount)
                         {

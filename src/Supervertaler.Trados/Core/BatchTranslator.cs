@@ -250,6 +250,18 @@ namespace Supervertaler.Trados.Core
         internal RestatedCheck Restated { get; set; }
 
         /// <summary>
+        /// Shows the AI, for a segment that repeats a passage of an earlier one,
+        /// that segment and the translation it has - one already in the document,
+        /// or one this run wrote and Studio took (docs/design/in-run-references.md).
+        /// It goes in the request's user prompt; the system prompt stays the same
+        /// for the whole run. Needs <see cref="Restated"/>, which holds what the
+        /// run knows. Set by Batch Translate only, on this instance, like
+        /// <see cref="Repetitions"/>: Alt+T and SuperBench leave it off, and send
+        /// exactly what they sent before.
+        /// </summary>
+        public bool InRunReferences { get; set; }
+
+        /// <summary>
         /// The document the run was started in, for the write handler; null when the
         /// handler should use whatever document is active.
         /// </summary>
@@ -480,7 +492,7 @@ namespace Supervertaler.Trados.Core
 
                 var again = new List<BatchSegmentInput>();
                 for (int k = 0; k < offenders.Count; k++)
-                    again.Add(ToPromptInput(sent[offenders[k]], k + 1, structureContext));
+                    again.Add(PromptInputFor(sent[offenders[k]], k + 1, structureContext));
                 var userPrompt = OutputContract.Reminder + Environment.NewLine + Environment.NewLine
                     + UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, again);
 
@@ -580,7 +592,7 @@ namespace Supervertaler.Trados.Core
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = startIdx; i < endIdx; i++)
                         {
-                            promptSegments.Add(ToPromptInput(segments[i], i + 1, structureContext));
+                            promptSegments.Add(PromptInputFor(segments[i], i + 1, structureContext));
                         }
 
                         // Build user prompt
@@ -762,7 +774,7 @@ namespace Supervertaler.Trados.Core
                             {
                                 var ps = new List<BatchSegmentInput>();
                                 for (int i = rs; i < re; i++)
-                                    ps.Add(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) });
+                                    ps.Add(WithReferences(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) }, pending[i]));
 
                                 var rUserPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, ps);
                                 var rResponse = await client.SendPromptAsync(
@@ -1270,6 +1282,38 @@ namespace Supervertaler.Trados.Core
                 input.FuzzyMatchPercent = segment.TmMatchPercent;
             }
 
+            return input;
+        }
+
+        /// <summary>
+        /// A segment as this run's request carries it: <see cref="ToPromptInput"/>,
+        /// and - when the run shows them - the earlier translations of a passage
+        /// it repeats.
+        /// </summary>
+        private BatchSegmentInput PromptInputFor(BatchSegment segment, int number, StructureContextMode mode) =>
+            WithReferences(ToPromptInput(segment, number, mode), segment);
+
+        /// <summary>
+        /// Adds the earlier translations the run knows now for a segment
+        /// (<see cref="InRunReferences"/>). A lookup that throws costs the segment
+        /// its references and nothing else: it is logged, and the request goes
+        /// out as it would have without them.
+        /// </summary>
+        private BatchSegmentInput WithReferences(BatchSegmentInput input, BatchSegment segment)
+        {
+            var known = Restated;
+            if (!InRunReferences || known == null) return input;
+
+            try
+            {
+                var found = known.ReferencesFor(segment);
+                if (found.Count > 0) input.References = found;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Restated", "Looking up earlier translations failed (" + ex.GetType().Name + ": "
+                    + ex.Message + "); the segment is sent without them");
+            }
             return input;
         }
 
