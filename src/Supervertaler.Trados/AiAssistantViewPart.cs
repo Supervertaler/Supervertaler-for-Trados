@@ -90,11 +90,9 @@ namespace Supervertaler.Trados
         private MemoryBankReader _kbReader;
         private string _kbReaderBankName;
 
-        // The bank block translations send for the open document, and what it
-        // was built from (see KbContextForTranslation). One document at a time;
-        // UI thread only, like _kbReader.
-        private string _translationKbKey;
-        private Task<TranslationBankContext.Result> _translationKb;
+        // The bank block translations send for the open document is not kept
+        // here: TranslationBankContext.ForDocument makes and remembers it, for
+        // this pane and for Alt+T without one alike.
 
         /// <summary>
         /// Resolves the on-disk path of the active memory bank for the current
@@ -8603,17 +8601,25 @@ namespace Supervertaler.Trados
         }
 
         private string ResolveCustomPromptContent(string sourceLang, string targetLang, bool proofread = false)
+            => PromptContentFor(_promptLibrary, _settings?.AiSettings?.GetBatchPrompt(proofread), proofread, sourceLang, targetLang);
+
+        /// <summary>
+        /// The text of the library prompt a stored choice stands for, with its
+        /// language variables filled in; null for the built-in instructions alone.
+        /// One rule for the pane's runs and for Alt+T without the pane.
+        /// </summary>
+        private static string PromptContentFor(PromptLibrary library, string stored, bool proofread,
+            string sourceLang, string targetLang)
         {
-            if (_promptLibrary == null) return null;
+            if (library == null) return null;
             // A prompt never chosen is the mode's shipped default; "built-in only"
             // is none (Core/BatchPromptChoice).
-            var selectedPath = BatchPromptChoice.Effective(
-                _settings?.AiSettings?.GetBatchPrompt(proofread), proofread, _promptLibrary.GetAllPrompts());
+            var selectedPath = BatchPromptChoice.Effective(stored, proofread, library.GetAllPrompts());
             if (string.IsNullOrEmpty(selectedPath))
                 return null;
 
             // Marker-tolerant (#100): the stored path may predate a rename.
-            var prompt = PromptPaths.Find(_promptLibrary, selectedPath);
+            var prompt = PromptPaths.Find(library, selectedPath);
             if (prompt == null || string.IsNullOrWhiteSpace(prompt.Content))
                 return null;
 
@@ -8692,92 +8698,69 @@ namespace Supervertaler.Trados
         /// at once. A larger one is selected on a pool thread - it may ask the
         /// model which articles the document needs - and each caller waits where it
         /// can: the batch and Alt+T inside their own background task
-        /// (<see cref="AwaitKbForTranslation"/>), the preview and SuperBench on the
-        /// UI thread (<see cref="KbBlockNow"/>).</para>
+        /// (<see cref="AwaitKbForTranslation(Task{TranslationBankContext.Result}, CancellationToken, BatchTranslateControl, bool)"/>),
+        /// the preview and SuperBench on the UI thread (<see cref="KbBlockNow"/>).</para>
         ///
-        /// <para>UI thread only: it reads the Trados document and the unsynchronised
-        /// cache fields. The task it returns never faults.</para>
+        /// <para>UI thread only: it reads the Trados document. The task it returns
+        /// never faults.</para>
         /// </summary>
         private Task<TranslationBankContext.Result> KbContextForTranslation(string projectName, string sourceLang, string targetLang)
+            => KbContextForTranslation(_activeDocument, _settings?.AiSettings?.ActiveMemoryBankName,
+                projectName, sourceLang, targetLang);
+
+        /// <summary>
+        /// The same block for any document, with or without this pane: what the
+        /// pane's own callers go through for the document it follows, and what
+        /// Alt+T calls directly when no pane has been set up. It only gathers what
+        /// Studio knows about <paramref name="doc"/>; the setting, the files read,
+        /// the budget and the selection are
+        /// <see cref="TranslationBankContext.ForDocument"/>'s, the same for both.
+        /// UI thread only. The task it returns never faults.
+        /// </summary>
+        private static Task<TranslationBankContext.Result> KbContextForTranslation(IStudioDocument doc, string bankName,
+            string projectName, string sourceLang, string targetLang)
         {
+            string fileName = null;
+            try { fileName = doc?.ActiveFile?.Name; } catch { /* document in transition */ }
+
+            return TranslationBankContext.ForDocument(
+                _settings?.AiSettings, bankName, projectName, sourceLang, targetLang,
+                DocumentKeyForBank(doc), fileName,
+                () => string.Join("\n",
+                    CollectDocumentSourceSegments(doc).Select(seg => SegmentTagHandler.StripTagPlaceholders(seg.Text))),
+                () => CreateLlmClient(out _));
+        }
+
+        /// <summary>
+        /// The memory bank of the project at <paramref name="projectPath"/>, read
+        /// from what is stored on disk: the bank recorded for the project, else
+        /// the one named after it, else none of its own
+        /// (<see cref="TranslationBankContext.BankForProject"/>, the rule the pane
+        /// applies when the project changes). For Alt+T when no pane has been set
+        /// up: nothing has pointed the active-bank setting at this project then,
+        /// and it still names the bank of whichever project was open last.
+        ///
+        /// <para>Reads only. The pane records a match by name and announces the
+        /// bank in the chat when it is set up, and still does. A document without
+        /// a project file keeps the bank the settings hold, as the pane does.</para>
+        /// </summary>
+        private static string ProjectBankNameFor(string projectPath, string projectName)
+        {
+            if (string.IsNullOrEmpty(projectPath))
+                return _settings?.AiSettings?.ActiveMemoryBankName;
+
+            string recorded = null;
+            try { recorded = TermLensEditorViewPart.LoadOrAdoptProjectSettings(projectPath, projectName)?.MemoryBankName; }
+            catch { /* settings that cannot be read record no bank */ }
+
+            var bank = TranslationBankContext.BankForProject(recorded, projectName, out var matchedByName);
             try
             {
-                if (_settings?.AiSettings?.IncludeSuperMemoryContext == false)
-                    return Task.FromResult<TranslationBankContext.Result>(null);
-
-                var reader = EnsureKbReader();
-                if (reader == null || !reader.VaultExists)
-                    return Task.FromResult<TranslationBankContext.Result>(null);
-
-                var bankDir = ActiveMemoryBankDir;
-                var documentKey = DocumentKeyForBank();
-                var key = string.Join("\n", bankDir, TranslationBankContext.BankFingerprint(bankDir),
-                    sourceLang, targetLang, documentKey);
-                if (_translationKb != null && string.Equals(key, _translationKbKey, StringComparison.Ordinal))
-                    return _translationKb;
-
-                // Untrimmed: the selection decides what goes before the budget does.
-                // No domain: it only labels the result, and detecting it analyses the
-                // whole document on every call.
-                var full = reader.LoadContext(projectName, null, sourceLang, targetLang,
-                    tokenBudget: 0, forTranslation: true);
-
-                Task<TranslationBankContext.Result> task;
-                if (full == null)
-                {
-                    task = Task.FromResult<TranslationBankContext.Result>(null);
-                }
-                else if (full.EstimatedTokens <= BankExtract.Threshold)
-                {
-                    // Sent whole, as before: needs neither the document nor a model.
-                    task = Task.FromResult(TranslationBankContext.Build(full, null, sourceLang, targetLang,
-                        null, null, null, null, null));
-                }
-                else
-                {
-                    var documentText = string.Join("\n",
-                        CollectDocumentSourceSegments(_activeDocument).Select(seg => SegmentTagHandler.StripTagPlaceholders(seg.Text)));
-                    var client = CreateLlmClient(out _);   // none: no way to choose, so every article is kept
-                    var ai = _settings?.AiSettings;
-                    var chooserName = ai == null ? null
-                        : (ai.SelectedProvider == LlmModels.ProviderCustomOpenAi
-                            ? ai.GetActiveCustomProfile()?.Model
-                            : ai.GetSelectedModel());
-                    var fileName = GetActiveFileNameSafe();
-                    var label = (projectName ?? "this project") + ", " + (fileName ?? "this document")
-                        + ", bank '" + ActiveMemoryBankName + "'";
-                    var stem = TranslationBankContext.FileStem(fileName, documentKey);
-                    var chooserTimeout = TranslationBankContext.ChooserTimeoutFor(
-                        ai?.SelectedProvider, ai?.OllamaTimeoutMinutes ?? 0);
-
-                    task = Task.Run(() =>
-                    {
-                        try
-                        {
-                            return TranslationBankContext.Build(full, documentText, sourceLang, targetLang,
-                                client == null
-                                    ? null
-                                    : (Func<ArticleSelectionRequest, IList<string>>)(request =>
-                                        TranslationBankContext.ChooseArticles(client, request, chooserTimeout)),
-                                chooserName,
-                                // A fresh reader: _kbReader belongs to the UI thread.
-                                () => new MemoryBankReader(bankDir).LoadContext(projectName, null, sourceLang, targetLang,
-                                    tokenBudget: TranslationBankContext.TokenBudget, forTranslation: true),
-                                label, stem);
-                        }
-                        finally { client?.Dispose(); }
-                    });
-                }
-
-                _translationKbKey = key;
-                _translationKb = task;
-                return task;
+                Core.DiagnosticLog.Log("SuperMemory", "translate segment without the Assistant pane: project "
+                    + (projectName ?? "(no name)") + " reads bank '" + bank + "'" + (matchedByName ? " (matched by name)" : ""));
             }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Log("SuperMemory", "Could not prepare the bank for translation: " + ex.Message);
-                return Task.FromResult<TranslationBankContext.Result>(null);   // the bank is optional - never block translation
-            }
+            catch { }
+            return bank;
         }
 
         /// <summary>
@@ -8785,11 +8768,11 @@ namespace Supervertaler.Trados
         /// of its files (a merged document has several). When they cannot be read,
         /// a key that matches nothing, so no other document's selection is reused.
         /// </summary>
-        private string DocumentKeyForBank()
+        private static string DocumentKeyForBank(IStudioDocument doc)
         {
             try
             {
-                var ids = _activeDocument?.Files?.Select(f => f.Id.ToString("N")).ToList();
+                var ids = doc?.Files?.Select(f => f.Id.ToString("N")).ToList();
                 if (ids != null && ids.Count > 0) return string.Join("+", ids);
             }
             catch { /* document in transition */ }
@@ -8823,16 +8806,29 @@ namespace Supervertaler.Trados
         /// this press had to wait for the selection. Cancelling the run ends the
         /// wait, not the selection, which finishes and serves the next run.
         /// </summary>
-        private async Task<string> AwaitKbForTranslation(Task<TranslationBankContext.Result> task,
+        private Task<string> AwaitKbForTranslation(Task<TranslationBankContext.Result> task,
             CancellationToken ct, BatchTranslateControl log, bool alwaysReport)
+            => AwaitKbForTranslation(task, ct,
+                lines => SafeInvoke(() => { foreach (var line in lines) log.AppendLog(line); }),
+                alwaysReport);
+
+        /// <summary>
+        /// The wait itself, for a run with a Batch log (above) and for Alt+T
+        /// without the pane, which reports to the log files. <paramref name="report"/>
+        /// is called on whichever thread this continues on, never with an empty list.
+        /// </summary>
+        private static async Task<string> AwaitKbForTranslation(Task<TranslationBankContext.Result> task,
+            CancellationToken ct, Action<IList<string>> report, bool alwaysReport)
         {
             var waited = !task.IsCompleted;
             if (waited)
             {
                 var local = TranslationBankContext.IsLocalServer(_settings?.AiSettings?.SelectedProvider);
-                SafeInvoke(() => log.AppendLog(
+                report(new[]
+                {
                     "SuperMemory: choosing the parts of the memory bank this document needs (once per document)..."
-                    + (local ? " With a model on this computer, this can take a few minutes." : "")));
+                    + (local ? " With a model on this computer, this can take a few minutes." : "")
+                });
             }
 
             var cancelled = new TaskCompletionSource<bool>();
@@ -8844,7 +8840,7 @@ namespace Supervertaler.Trados
             if (result != null && (waited || alwaysReport))
             {
                 var lines = result.Log.ToList();
-                SafeInvoke(() => { foreach (var line in lines) log.AppendLog(line); });
+                if (lines.Count > 0) report(lines);
             }
             return result?.Block;
         }
@@ -9488,21 +9484,12 @@ namespace Supervertaler.Trados
                 // the project name). Exact match or nothing: a near miss picked
                 // silently is the bug this whole mechanism exists to prevent. The
                 // pick is recorded, so it is this project's bank from now on.
-                var matchedByName = false;
-                if (string.IsNullOrEmpty(wanted))
-                {
-                    var slug = UserDataPath.SanitizeBankName(projectName);
-                    if (slug.Length > 0 && !UserDataPath.IsSharedBankName(slug)
-                        && UserDataPath.ListMemoryBanks().Any(b => string.Equals(b, slug, StringComparison.Ordinal)))
-                    {
-                        wanted = slug;
-                        matchedByName = true;
-                        RecordBankAgainst(projectPath, slug, projectName);
-                    }
-                }
+                // The rule itself is TranslationBankContext.BankForProject, which
+                // Alt+T without this pane reads as well.
+                var target = TranslationBankContext.BankForProject(wanted, projectName, out var matchedByName);
+                if (matchedByName) RecordBankAgainst(projectPath, target, projectName);
 
                 var current = _settings?.AiSettings?.ActiveMemoryBankName ?? "";
-                var target = wanted ?? "";
                 try
                 {
                     Core.DiagnosticLog.Log("SuperMemory", "project " + projectName + ": bank '" + current + "' -> '"
@@ -12081,7 +12068,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// AutoPrompt paths do inline; the figure pass runs on a background
         /// thread and cannot put a message box up from there.
         /// </summary>
-        private LlmClient CreateLlmClient(out string error)
+        private static LlmClient CreateLlmClient(out string error)
         {
             error = null;
             var aiSettings = _settings?.AiSettings;
@@ -15441,11 +15428,13 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             var instance = _currentInstance;
             if (instance == null)
             {
-                // The Assistant pane was never opened this session, so the
-                // instance/active-document tracking isn't wired up yet (#41). Run
-                // a pane-independent fallback so Ctrl+T / right-click still work.
-                // The pane-open path below is left untouched to avoid any
-                // regression to the common case.
+                // The Assistant pane has not been set up this session, so the
+                // instance/active-document tracking isn't wired up (#41). Studio
+                // start-up normally sets it up without the pane being shown
+                // (AppInitializer.EnsureBridgeViewPartLoads), so this is the path
+                // for when that did not happen. It sends what the path below
+                // sends - memory bank, document context, prompt - through the
+                // same routines; only the reporting differs, as it has no Batch log.
                 TranslateActiveSegmentStandalone();
                 return;
             }
@@ -15559,6 +15548,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         }
                     };
 
+                    // Single segment, but a fallback-served MultiTerm termbase still
+                    // needs an explicit lookup for it to reach the prompt (#38), as
+                    // a batch run and Alt+T without the pane both make.
+                    TermLensEditorViewPart.PrewarmFallbackTermsFor(new[] { sourceText });
+
                     // Get termbase terms (same filtering as batch translate)
                     var allTerms = TermLensEditorViewPart.GetCurrentTermbaseTerms();
                     var aiCfgD = aiSettings ?? new AiSettings();
@@ -15657,6 +15651,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// EditorController and settings from disk, runs the same BatchTranslator
         /// pipeline with a local write-back, and marshals to the UI thread via the
         /// captured SynchronizationContext. Never opens the Assistant pane.
+        ///
+        /// <para>It must send what <see cref="HandleTranslateActiveSegment"/> sends
+        /// with the pane, so it builds each part with the routine that path uses:
+        /// the memory bank (<see cref="KbContextForTranslation(IStudioDocument, string, string, string, string)"/>),
+        /// the document context (<see cref="CollectDocumentContext(IStudioDocument, StructureContextMode, Func{ISegmentPair, string})"/>),
+        /// the prompt (<see cref="PromptContentFor"/>), the terms
+        /// (<see cref="TermsForPrompt"/>) and the list markers
+        /// (<see cref="ApplyStructureMarkers"/>). Add a part to one path and it
+        /// belongs in the other. What it cannot have without the pane: file
+        /// headings in a merged document's context, a Stop button, and the Batch
+        /// log - it writes to bridge.log and the diagnostic log, and shows a
+        /// message only when nothing was written.</para>
         /// </summary>
         private static void TranslateActiveSegmentStandalone()
         {
@@ -15724,6 +15730,24 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     targetLang = f?.Language?.DisplayName ?? "";
                 }
                 catch { }
+                if (string.IsNullOrEmpty(sourceLang) || string.IsNullOrEmpty(targetLang))
+                {
+                    // As with the pane: no request goes out with a language missing.
+                    MessageBox.Show("Cannot determine source/target language from document.",
+                        "Supervertaler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // The project, from the document itself: nothing else tracks it here.
+                string projectPath = null, projectName = null;
+                try
+                {
+                    var project = doc.Project as FileBasedProject;
+                    projectPath = project?.FilePath;
+                    projectName = project?.GetProjectInfo()?.Name;
+                }
+                catch { /* document in transition */ }
+                if (string.IsNullOrEmpty(projectName)) projectName = null;
 
                 var pair = doc.ActiveSegmentPair;
                 var serialization = SegmentTagHandler.Serialize(pair.Source);
@@ -15760,31 +15784,44 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var termbaseTerms = allTerms.Where(t => aiSettings.IsTermbaseAiEnabled(t.TermbaseId)).ToList();
                 termbaseTerms = TermsForPrompt(termbaseTerms, new[] { sourceText }, null);   // #102
 
-                // Document context, same as a batch run. SuperMemory context is
-                // pane state and the pane has never been opened on this path,
-                // so that block stays out here - still a far cry from the bare
-                // sentence this used to send.
+                // Document context, as the pane path collects it: the same routine,
+                // so list markers go on the context here too. Only the file headings
+                // of a merged document are missing - the map behind them is the pane's.
                 List<DocumentSegment> docSegments = null;
                 if (aiSettings.IncludeDocumentContext)
-                    docSegments = CollectDocumentSourceSegments(doc);
+                    docSegments = CollectDocumentContext(doc, structureMode, null).Item1;   // #122
 
-                // Resolve the selected custom prompt from disk (no pane needed).
+                // The memory bank, as the pane path sends it: the same routine, under
+                // the same setting, with the same budget and selection. Nothing of it
+                // was ever the pane's: the setting and the bank a project uses are on
+                // disk. This path sent no bank at all until 208, so a translator got
+                // different translations from Alt+T before and after the pane had
+                // been set up. What the pane would have done on opening the project -
+                // point the active bank at it - is read here instead (ProjectBankNameFor).
+                var kbTask = KbContextForTranslation(doc, ProjectBankNameFor(projectPath, projectName),
+                    projectName, sourceLang, targetLang);
+
+                // The prompt the Batch Operations list would show for this project:
+                // the project's own when it has one, else the global choice, from
+                // disk (BatchPromptChoice.Stored, as the list is filled).
                 string customPromptContent = null;
                 try
                 {
-                    var lib = TermLensEditorViewPart.GetPromptLibrary();
-                    // The same rule as the panel: never chosen = the Default
-                    // Translation Prompt, built-in only = none (Core/BatchPromptChoice).
-                    var sel = lib == null ? null
-                        : BatchPromptChoice.Effective(aiSettings.SelectedPromptPath, false, lib.GetAllPrompts());
-                    if (!string.IsNullOrEmpty(sel) && lib != null)
+                    Settings.ProjectSettings ps = null;
+                    if (!string.IsNullOrEmpty(projectPath))
                     {
-                        var p = PromptPaths.Find(lib, sel);   // marker-tolerant (#100)
-                        if (p != null && !string.IsNullOrWhiteSpace(p.Content))
-                            customPromptContent = PromptLibrary.ApplyVariables(p.Content, sourceLang, targetLang);
+                        try { ps = Settings.ProjectSettings.Load(projectPath); }
+                        catch { }
                     }
+                    BatchPromptChoice.Stored(aiSettings, ps, false, out var storedPrompt, out _);
+                    customPromptContent = PromptContentFor(
+                        TermLensEditorViewPart.GetPromptLibrary() ?? new PromptLibrary(),
+                        storedPrompt, false, sourceLang, targetLang);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    BridgeLog.Write("Translate segment (standalone): the prompt could not be read, so the built-in instructions go alone: " + ex.Message);
+                }
                 var customSystemPrompt = aiSettings.CustomSystemPrompt;
 
                 BridgeLog.Write($"Translate segment (standalone): translating \"{Truncate(SegmentTagHandler.StripTagPlaceholders(sourceText), 60)}\"...");
@@ -15821,11 +15858,23 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     try
                     {
+                        // What the bank holds, or why nothing of it goes, on every
+                        // press: there is no Batch log to read it in. bridge.log gets
+                        // every line; the diagnostic log the first, which is the
+                        // summary or the failure - the lines after it can name the
+                        // document's file, and that log gets pasted into issues.
+                        var kbContext = await AwaitKbForTranslation(kbTask, cts.Token, lines =>
+                        {
+                            foreach (var line in lines)
+                                BridgeLog.Write("Translate segment (standalone): " + line.Trim());
+                            Core.DiagnosticLog.Log("SuperMemory", "translate segment without the Assistant pane: " + lines[0].Trim());
+                        }, alwaysReport: true);
+
                         await worker.TranslateAsync(
                             segments, sourceLang, targetLang,
                             aiSettings, termbaseTerms, 1, cts.Token,
                             customPromptContent, customSystemPrompt,
-                            docSegments,
+                            docSegments, kbContext,
                             structureContext: structureMode);
                     }
                     catch (Exception ex)
@@ -16327,14 +16376,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             return segments;
         }
 
-        /// <summary>Source-side document context over a caller-supplied
-        /// document, for the pane-less Ctrl+T fallback (#41) where the instance
-        /// tracking behind <see cref="CollectDocumentContext"/> was never wired
-        /// up. Same collection, minus the active-index bookkeeping the batch
-        /// prompt does not use - and minus file names: the map that tells a
-        /// merged document's files apart is the pane's, so here a merged
-        /// document's numbers start again at each file without a heading. Each
-        /// is still the segment's own number.</summary>
+        /// <summary>The source text of every segment of a caller-supplied
+        /// document, numbered as Studio numbers them: what the memory-bank
+        /// selection reads to see which parts of a large bank the document
+        /// needs. No list markers and no file names - the document context a
+        /// prompt carries is <see cref="CollectDocumentContext(IStudioDocument, StructureContextMode, Func{ISegmentPair, string})"/>.</summary>
         private static List<DocumentSegment> CollectDocumentSourceSegments(IStudioDocument doc)
         {
             var segments = new List<DocumentSegment>();
@@ -16478,10 +16524,27 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         private Tuple<List<DocumentSegment>, int> CollectDocumentContext(
             StructureContextMode structureMode = StructureContextMode.Off)
         {
+            var doc = _activeDocument;
+            return CollectDocumentContext(doc, structureMode,
+                doc != null && CanAttributeSegmentsToFiles() ? pair => FileOf(doc, pair) : (Func<ISegmentPair, string>)null);
+        }
+
+        /// <summary>
+        /// The collection itself, over any document: the pane's (above) and the
+        /// one Alt+T finds in the editor when no pane has been set up, so both
+        /// send the same context, list markers included.
+        /// </summary>
+        /// <param name="fileOf">Names the file a segment is in, for a document of
+        /// several files the caller can tell apart; null otherwise. The map behind
+        /// it is the pane's, so without a pane a merged document's numbers start
+        /// again at each file without a heading.</param>
+        private static Tuple<List<DocumentSegment>, int> CollectDocumentContext(
+            IStudioDocument doc, StructureContextMode structureMode, Func<ISegmentPair, string> fileOf)
+        {
             var segments = new List<DocumentSegment>();
             int activeIndex = -1;
 
-            if (_activeDocument == null)
+            if (doc == null)
                 return Tuple.Create(segments, activeIndex);
 
             StructureMap markerMap = null;
@@ -16489,7 +16552,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 try
                 {
-                    var resolved = StructureContextResolver.Resolve(_activeDocument);
+                    var resolved = StructureContextResolver.Resolve(doc);
                     if (resolved != null && resolved.Available) markerMap = resolved;
                 }
                 catch { /* context without markers beats no context */ }
@@ -16497,7 +16560,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             try
             {
-                var activePair = _activeDocument.ActiveSegmentPair;
+                var activePair = doc.ActiveSegmentPair;
                 string activeSegId = null;
                 string activePuId = null;
 
@@ -16506,7 +16569,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     try
                     {
                         activeSegId = activePair.Properties.Id.Id;
-                        var parentPU = _activeDocument.GetParentParagraphUnit(activePair);
+                        var parentPU = doc.GetParentParagraphUnit(activePair);
                         activePuId = parentPU.Properties.ParagraphUnitId.Id;
                     }
                     catch { }
@@ -16515,17 +16578,16 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // A segment whose paragraph is missing from the map (one added
                 // since it was built) keeps the file of the segment before it:
                 // the document lists each file's segments together.
-                bool attributeFiles = CanAttributeSegmentsToFiles();
                 string file = null;
 
                 int index = 0;
-                foreach (var pair in _activeDocument.SegmentPairs)
+                foreach (var pair in doc.SegmentPairs)
                 {
                     // #97: placeholders, as the batch segments - never <cf ...>.
                     var sourceText = SegmentTagHandler.ToModelText(pair.Source);
 
-                    if (attributeFiles)
-                        file = FileOf(_activeDocument, pair) ?? file;
+                    if (fileOf != null)
+                        file = fileOf(pair) ?? file;
 
                     // #122: the paragraph's list marker, on its first segment only -
                     // the same rule the segment list uses, so a paragraph reads the
@@ -16534,7 +16596,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     {
                         try
                         {
-                            var pu = _activeDocument.GetParentParagraphUnit(pair);
+                            var pu = doc.GetParentParagraphUnit(pair);
                             var puId = pu?.Properties?.ParagraphUnitId.Id;
                             if (puId != null
                                 && markerMap.MarkerByParagraphUnit.TryGetValue(puId, out var marker)
@@ -16551,7 +16613,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     {
                         try
                         {
-                            var parentPU = _activeDocument.GetParentParagraphUnit(pair);
+                            var parentPU = doc.GetParentParagraphUnit(pair);
                             var puId = parentPU.Properties.ParagraphUnitId.Id;
                             var segId = pair.Properties.Id.Id;
 

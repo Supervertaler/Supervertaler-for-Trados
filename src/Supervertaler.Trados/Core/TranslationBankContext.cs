@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Supervertaler.Core;
 using Supervertaler.Trados.Settings;
 
@@ -117,6 +118,152 @@ namespace Supervertaler.Trados.Core
                 }
             }
             return sb.ToString();
+        }
+
+        // The block made last, and what it was made from. One document at a time:
+        // a translator works in one, and a second key would only keep a finished
+        // job's selection alive.
+        private static readonly object _lastLock = new object();
+        private static string _lastKey;
+        private static Task<Result> _last;
+
+        /// <summary>
+        /// The bank block a translation of one document sends, for every caller
+        /// that translates: Batch Translate, Proofread, Preview prompt, SuperBench
+        /// and Translate active segment (Alt+T) - with the Supervertaler Assistant
+        /// pane or without it. There is no second way to get one, so two callers
+        /// cannot send different banks for the same document and settings.
+        ///
+        /// <para>Null (as a completed task) when the setting is off or the bank
+        /// has no files. Made once per bank, state of its files, language pair and
+        /// document, and the same task is handed to every caller after that, so
+        /// all the requests of a job carry the same bytes. A bank at or under
+        /// <see cref="BankExtract.Threshold"/> is read here and is ready at once.
+        /// A larger one is selected on a pool thread - it may ask the model which
+        /// articles the document needs - and the caller waits where it can.</para>
+        ///
+        /// <para><paramref name="documentText"/> and <paramref name="createClient"/>
+        /// are called here, on the caller's thread, and only for a bank over the
+        /// threshold: reading the document is the host's business, and its
+        /// thread's. The task returned never faults.</para>
+        /// </summary>
+        /// <param name="bankName">The project's bank; blank for the default one.</param>
+        /// <param name="createClient">A client for the model the translation uses, or
+        /// null when there is none: then every article is kept.</param>
+        internal static Task<Result> ForDocument(
+            AiSettings ai,
+            string bankName,
+            string projectName,
+            string sourceLang,
+            string targetLang,
+            string documentKey,
+            string fileName,
+            Func<string> documentText,
+            Func<LlmClient> createClient)
+        {
+            var none = Task.FromResult<Result>(null);
+            try
+            {
+                if (ai?.IncludeSuperMemoryContext == false) return none;
+
+                if (string.IsNullOrWhiteSpace(bankName)) bankName = UserDataPath.DefaultMemoryBankName;
+                var bankDir = UserDataPath.GetMemoryBankDir(bankName);
+                var reader = new MemoryBankReader(bankDir);
+                if (!reader.VaultExists) return none;
+
+                var key = string.Join("\n", bankDir, BankFingerprint(bankDir), sourceLang, targetLang, documentKey);
+                lock (_lastLock)
+                {
+                    if (_last != null && string.Equals(key, _lastKey, StringComparison.Ordinal)) return _last;
+                }
+
+                // Untrimmed: the selection decides what goes before the budget does.
+                // No domain: it only labels the result, and detecting it analyses the
+                // whole document on every call.
+                var full = reader.LoadContext(projectName, null, sourceLang, targetLang,
+                    tokenBudget: 0, forTranslation: true);
+
+                Task<Result> task;
+                if (full == null)
+                {
+                    task = none;
+                }
+                else if (full.EstimatedTokens <= BankExtract.Threshold)
+                {
+                    // Sent whole, as before: needs neither the document nor a model.
+                    task = Task.FromResult(Build(full, null, sourceLang, targetLang,
+                        null, null, null, null, null));
+                }
+                else
+                {
+                    var text = documentText?.Invoke() ?? "";
+                    var client = createClient?.Invoke();   // none: no way to choose, so every article is kept
+                    var chooserName = ai == null ? null
+                        : (ai.SelectedProvider == LlmModels.ProviderCustomOpenAi
+                            ? ai.GetActiveCustomProfile()?.Model
+                            : ai.GetSelectedModel());
+                    var label = (projectName ?? "this project") + ", " + (fileName ?? "this document")
+                        + ", bank '" + bankName + "'";
+                    var stem = FileStem(fileName, documentKey);
+                    var chooserTimeout = ChooserTimeoutFor(ai?.SelectedProvider, ai?.OllamaTimeoutMinutes ?? 0);
+
+                    task = Task.Run(() =>
+                    {
+                        try
+                        {
+                            return Build(full, text, sourceLang, targetLang,
+                                client == null
+                                    ? null
+                                    : (Func<ArticleSelectionRequest, IList<string>>)(request =>
+                                        ChooseArticles(client, request, chooserTimeout)),
+                                chooserName,
+                                // A reader of its own: this runs on a pool thread.
+                                () => new MemoryBankReader(bankDir).LoadContext(projectName, null, sourceLang, targetLang,
+                                    tokenBudget: TokenBudget, forTranslation: true),
+                                label, stem);
+                        }
+                        finally { client?.Dispose(); }
+                    });
+                }
+
+                lock (_lastLock)
+                {
+                    _lastKey = key;
+                    _last = task;
+                }
+                return task;
+            }
+            catch (Exception ex)
+            {
+                // Always written: with the bank switched on, a translation that goes
+                // out without it must leave a trace whatever the logging setting.
+                DiagnosticLog.WriteAlways("SuperMemory", "Could not prepare the bank for translation, so nothing from it is sent: " + ex.Message);
+                return none;   // the bank is optional - never block translation
+            }
+        }
+
+        /// <summary>
+        /// The bank a project's prompts read: the one recorded for it, else the
+        /// one named after it (<see cref="UserDataPath.SanitizeBankName"/> of the
+        /// project's name; exact match or nothing, and never <c>_shared</c>), else
+        /// "" - none of its own, which every reader resolves to the default bank,
+        /// with <c>_shared</c> on top. Never the bank of the project that was open
+        /// before. The one rule, for the pane when the project changes and for
+        /// Alt+T when there is no pane to have applied it.
+        /// </summary>
+        internal static string BankForProject(string recorded, string projectName, out bool matchedByName)
+        {
+            matchedByName = false;
+            if (!string.IsNullOrEmpty(recorded)) return recorded;
+
+            var slug = UserDataPath.SanitizeBankName(projectName);
+            if (slug.Length > 0 && !UserDataPath.IsSharedBankName(slug)
+                && UserDataPath.ListMemoryBanks().Any(b => string.Equals(b, slug, StringComparison.Ordinal)))
+            {
+                matchedByName = true;
+                return slug;
+            }
+            return "";
         }
 
         /// <summary>
