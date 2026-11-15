@@ -90,6 +90,7 @@ namespace Supervertaler.Trados.Core
                     rec.InputRegular = entry.ActualRegularInputTokens ?? 0;
                     rec.InputCacheRead = entry.ActualCacheReadTokens ?? 0;
                     rec.InputCacheWrite = entry.ActualCacheWriteTokens ?? 0;
+                    rec.InputCacheWrite1h = entry.ActualCacheWrite1hTokens ?? 0;
                     rec.Output = entry.ActualOutputTokens ?? 0;
                     rec.CostUsd = entry.ActualCost ?? 0m;
                 }

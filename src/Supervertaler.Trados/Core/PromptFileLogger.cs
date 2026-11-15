@@ -163,6 +163,7 @@ namespace Supervertaler.Trados.Core
                 // 1.25x for a cache nothing uses.
                 CacheReadTokens = e.HasActualUsage ? e.ActualCacheReadTokens : null,
                 CacheWriteTokens = e.HasActualUsage ? e.ActualCacheWriteTokens : null,
+                CacheWrite1hTokens = e.HasActualUsage && (e.ActualCacheWrite1hTokens ?? 0) > 0 ? e.ActualCacheWrite1hTokens : null,
             };
 
             if (e.Messages != null && e.Messages.Count > 0)
@@ -264,6 +265,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "finishReason", EmitDefaultValue = false)] public string FinishReason { get; set; }
         [DataMember(Name = "cacheReadTokens", EmitDefaultValue = false)] public int? CacheReadTokens { get; set; }
         [DataMember(Name = "cacheWriteTokens", EmitDefaultValue = false)] public int? CacheWriteTokens { get; set; }
+        // Of cacheWriteTokens, those kept for an hour (Claude, 2x); absent when none.
+        [DataMember(Name = "cacheWrite1hTokens", EmitDefaultValue = false)] public int? CacheWrite1hTokens { get; set; }
     }
 
     [DataContract]

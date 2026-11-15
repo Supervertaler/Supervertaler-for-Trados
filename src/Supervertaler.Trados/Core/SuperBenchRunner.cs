@@ -129,7 +129,7 @@ namespace Supervertaler.Trados.Core
 
         private static async Task TranslateWith(SuperBenchInputs inputs, SuperBench.Contender contender, CancellationToken ct)
         {
-            var translator = new BatchTranslator();
+            var translator = new BatchTranslator { IsBenchmark = true };
             var translations = contender.Translations;
             var sync = new object();
             translator.SegmentTranslated += (s, e) =>
@@ -300,7 +300,8 @@ namespace Supervertaler.Trados.Core
                 : TokenEstimator.CostCeiling(e.Provider, e.Model,
                     e.ActualRegularInputTokens ?? e.EstimatedInputTokens,
                     e.ActualCacheReadTokens ?? 0, e.ActualCacheWriteTokens ?? 0,
-                    e.ActualOutputTokens ?? e.EstimatedOutputTokens);
+                    e.ActualOutputTokens ?? e.EstimatedOutputTokens,
+                    e.ActualCacheWrite1hTokens ?? 0);
 
         /// <summary>
         /// Sums what the client reported for one provider+model while attached - for

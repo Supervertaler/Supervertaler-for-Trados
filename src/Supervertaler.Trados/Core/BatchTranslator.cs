@@ -268,6 +268,12 @@ namespace Supervertaler.Trados.Core
         public object DocumentRef { get; set; }
 
         /// <summary>
+        /// A SuperBench contender's run: never asks for the one-hour cache, even
+        /// for one segment (see <see cref="KeepsCacheForAnHour"/>).
+        /// </summary>
+        public bool IsBenchmark { get; set; }
+
+        /// <summary>
         /// Translates segments in batches using the configured LLM provider.
         /// This method is async and should be called on a background thread
         /// or via Task.Run.
@@ -318,6 +324,7 @@ namespace Supervertaler.Trados.Core
             int aggActualRegularIn = 0;
             int aggActualCacheRead = 0;
             int aggActualCacheWrite = 0;
+            int aggActualCacheWrite1h = 0;   // of aggActualCacheWrite, written for an hour (2x)
             int aggActualOutput = 0;
             bool aggActualUsageComplete = true;
 
@@ -406,6 +413,9 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            // One choice for every request of the run: they all send systemPrompt.
+            var longCache = KeepsCacheForAnHour(segments.Count, IsBenchmark);
+
             // Determine max tokens based on batch size
             var modelInfo = LlmModels.FindModel(model);
             int maxTokens = modelInfo?.DefaultMaxTokens ?? 16384;
@@ -434,6 +444,7 @@ namespace Supervertaler.Trados.Core
                     aggActualRegularIn += usage.RegularInputTokens;
                     aggActualCacheRead += usage.CacheReadTokens;
                     aggActualCacheWrite += usage.CacheWriteTokens;
+                    aggActualCacheWrite1h += usage.CacheWrite1hTokens;
                     aggActualOutput += usage.OutputTokens;
                 }
                 else
@@ -500,7 +511,8 @@ namespace Supervertaler.Trados.Core
                 try
                 {
                     response = await c.SendPromptAsync(userPrompt, systemPrompt, maxTokens, cancellationToken,
-                        feature: PromptLogFeature.BatchTranslate, suppressLog: true, enablePromptCaching: true);
+                        feature: PromptLogFeature.BatchTranslate, suppressLog: true, enablePromptCaching: true,
+                        longCache: longCache);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -607,12 +619,14 @@ namespace Supervertaler.Trados.Core
                         // in the user prompt (SystemPromptFor) - so it pays off from the second segment.
                         // Anthropic native and OpenRouter->Anthropic get explicit cache_control markers;
                         // OpenAI/DeepSeek/Gemini 2.5+ get implicit automatic caching at the provider layer;
-                        // other providers ignore the flag.
+                        // other providers ignore the flag. longCache: for one segment, Claude keeps
+                        // it for an hour, since the next Alt+T can be minutes away (KeepsCacheForAnHour).
                         var response = await client.SendPromptAsync(
                             userPrompt, systemPrompt, maxTokens, cancellationToken,
                             feature: PromptLogFeature.BatchTranslate,
                             suppressLog: true,
-                            enablePromptCaching: true);
+                            enablePromptCaching: true,
+                            longCache: longCache);
 
                         // #98: suppressLog above keeps the per-batch call out of the Reports
                         // tab and the usage ledger, but the on-disk prompt log needs exactly
@@ -780,7 +794,7 @@ namespace Supervertaler.Trados.Core
                                 var rResponse = await client.SendPromptAsync(
                                     rUserPrompt, systemPrompt, maxTokens, cancellationToken,
                                     feature: PromptLogFeature.BatchTranslate,
-                                    suppressLog: true, enablePromptCaching: true);
+                                    suppressLog: true, enablePromptCaching: true, longCache: longCache);
 
                                 Count(client, rUserPrompt, rResponse);
 
@@ -878,9 +892,11 @@ namespace Supervertaler.Trados.Core
                     aggEntry.ActualRegularInputTokens = aggActualRegularIn;
                     aggEntry.ActualCacheReadTokens = aggActualCacheRead;
                     aggEntry.ActualCacheWriteTokens = aggActualCacheWrite;
+                    aggEntry.ActualCacheWrite1hTokens = aggActualCacheWrite1h;
                     aggEntry.ActualOutputTokens = aggActualOutput;
                     aggEntry.ActualCost = TokenEstimator.ComputeActualCost(model,
-                        aggActualRegularIn, aggActualCacheRead, aggActualCacheWrite, aggActualOutput);
+                        aggActualRegularIn, aggActualCacheRead, aggActualCacheWrite, aggActualOutput,
+                        aggActualCacheWrite1h);
                 }
 
                 LlmClient.FirePromptCompleted(aggEntry);
@@ -1158,6 +1174,19 @@ namespace Supervertaler.Trados.Core
         /// system prompt, where it is cached once for the run.
         /// </summary>
         internal static bool TermsTravelWithTheSegment(int segmentCount) => segmentCount == 1;
+
+        /// <summary>
+        /// Whether a run asks Claude to keep its cached system prompt for an hour
+        /// rather than five minutes: a one-segment run (Translate active segment),
+        /// whose next request comes when the translator has read, checked and
+        /// perhaps corrected the segment - often more than five minutes later. A
+        /// batch run's requests follow each other within seconds, so it keeps the
+        /// cheaper five-minute write (1.25x against 2x), and so does a benchmark,
+        /// which nothing repeats. Every request of a run - the first, a re-ask, a
+        /// retry - makes the same choice, as they share one system prompt.
+        /// </summary>
+        internal static bool KeepsCacheForAnHour(int segmentCount, bool benchmark) =>
+            !benchmark && segmentCount == 1;
 
         /// <summary>
         /// The system prompt a run of <paramref name="segmentCount"/> segments

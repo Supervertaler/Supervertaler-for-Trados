@@ -19,7 +19,7 @@ namespace Supervertaler.Trados.Core
         {
             "timestamp_utc", "product", "app_version", "task", "provider", "model",
             "project", "project_key", "file", "client", "src_lang", "tgt_lang",
-            "input_regular", "input_cache_read", "input_cache_write", "output",
+            "input_regular", "input_cache_read", "input_cache_write", "input_cache_write_1h", "output",
             "input_total", "total_tokens", "source", "cost_usd", "cost_known",
             "duration_s", "ok", "error"
         };
@@ -36,6 +36,7 @@ namespace Supervertaler.Trados.Core
                 r.InputRegular.ToString(CultureInfo.InvariantCulture),
                 r.InputCacheRead.ToString(CultureInfo.InvariantCulture),
                 r.InputCacheWrite.ToString(CultureInfo.InvariantCulture),
+                r.InputCacheWrite1h.ToString(CultureInfo.InvariantCulture),
                 r.Output.ToString(CultureInfo.InvariantCulture),
                 inTotal.ToString(CultureInfo.InvariantCulture),
                 total.ToString(CultureInfo.InvariantCulture),
@@ -49,8 +50,9 @@ namespace Supervertaler.Trados.Core
         }
 
         // Columns that should be written as numbers in XLSX (0-based indices into Headers/FieldsOf).
+        // input_cache_write_1h is part of input_cache_write, not added to it in input_total.
         private static readonly HashSet<int> NumericCols =
-            new HashSet<int> { 12, 13, 14, 15, 16, 17, 19, 21 };
+            new HashSet<int> { 12, 13, 14, 15, 16, 17, 18, 20, 22 };
 
         public static void WriteCsv(string path, IEnumerable<UsageRecord> records)
         {

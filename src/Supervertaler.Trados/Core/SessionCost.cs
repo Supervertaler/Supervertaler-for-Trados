@@ -98,7 +98,8 @@ namespace Supervertaler.Trados.Core
             var c = TokenEstimator.CostCeiling(e.Provider, e.Model,
                 e.ActualRegularInputTokens ?? e.EstimatedInputTokens,
                 e.ActualCacheReadTokens ?? 0, e.ActualCacheWriteTokens ?? 0,
-                e.ActualOutputTokens ?? e.EstimatedOutputTokens);
+                e.ActualOutputTokens ?? e.EstimatedOutputTokens,
+                e.ActualCacheWrite1hTokens ?? 0);
             ceiling = c > 0;   // a free local model is not "up to" anything
             return c;
         }
@@ -223,7 +224,7 @@ namespace Supervertaler.Trados.Core
             ceiling = false;
             if (r.CostUsd > 0m || TokenEstimator.HasPricing(r.Model)) return r.CostUsd;
             var c = TokenEstimator.CostCeiling(r.Provider, r.Model,
-                r.InputRegular, r.InputCacheRead, r.InputCacheWrite, r.Output);
+                r.InputRegular, r.InputCacheRead, r.InputCacheWrite, r.Output, r.InputCacheWrite1h);
             ceiling = c > 0;
             return c;
         }

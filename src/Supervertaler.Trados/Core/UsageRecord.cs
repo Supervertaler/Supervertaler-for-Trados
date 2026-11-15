@@ -49,5 +49,11 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "error", Order = 22)] public string Error { get; set; }
         /// <summary>A machine-translation engine's charged characters (no tokens then); absent for an AI call.</summary>
         [DataMember(Name = "chars", Order = 23, EmitDefaultValue = false)] public int? Characters { get; set; }
+        /// <summary>
+        /// Of <see cref="InputCacheWrite"/>, the tokens written to Claude's one-hour
+        /// cache (2x the input rate, not 1.25x). Absent - 0 - in records written
+        /// before 208 and whenever nothing was written for an hour.
+        /// </summary>
+        [DataMember(Name = "in_cache_write_1h", Order = 24, EmitDefaultValue = false)] public int InputCacheWrite1h { get; set; }
     }
 }

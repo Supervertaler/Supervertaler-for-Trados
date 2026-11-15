@@ -842,7 +842,10 @@ namespace Supervertaler.Trados
             // next one, beginning with the same system prompt and history, so the
             // beginning is worth caching. QuickLauncher and AutoPrompt send a
             // one-off request that nothing repeats; marking it would only add the
-            // 25% cache-write charge.
+            // 25% cache-write charge. With Claude the stable part (tools, system
+            // prompt with the document) is kept for an hour (208): a chat is
+            // often picked up again after a pause longer than five minutes. The
+            // breakpoint on the last message stays at five minutes (core).
             var cacheChat = !isStandalone;
 
             // 5. Resolve provider / API key
@@ -993,7 +996,8 @@ namespace Supervertaler.Trados
                             feature: capturedFeature, promptName: capturedPromptName,
                             toolStatusCallback: toolName =>
                                 SafeInvoke(() => _control.Value.SetThinking(true, FormatToolStatus(toolName))),
-                            enablePromptCaching: cacheChat, stableSystemPromptLength: stableSystemLength);
+                            enablePromptCaching: cacheChat, stableSystemPromptLength: stableSystemLength,
+                            longCache: cacheChat);
                     }
                     else
                     {
@@ -1001,7 +1005,8 @@ namespace Supervertaler.Trados
                             capturedMessages, capturedSystemPrompt,
                             maxTokens: sendMaxTokens, cancellationToken: ct,
                             feature: capturedFeature, promptName: capturedPromptName,
-                            enablePromptCaching: cacheChat, stableSystemPromptLength: stableSystemLength);
+                            enablePromptCaching: cacheChat, stableSystemPromptLength: stableSystemLength,
+                            longCache: cacheChat);
                     }
 
                     // Read now, while this client is in scope; the dialog that may
