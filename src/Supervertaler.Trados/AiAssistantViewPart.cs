@@ -254,6 +254,13 @@ namespace Supervertaler.Trados
             if (_fullyInitialized) return;
             _fullyInitialized = true;
 
+            // Restore the saved chat FIRST. Anything below may post a notice
+            // (ApplyProjectMemoryBank announces a bank switch), and posting one
+            // saves the chat: before this came first, a notice at start-up
+            // overwrote chat_history.json with that one notice before the file
+            // was read, so the earlier conversation was lost (found 15 Nov 2026).
+            LoadChatHistory();
+
             _editorController = Core.StudioEditor.Controller;
             if (_editorController != null)
             {
@@ -460,9 +467,6 @@ namespace Supervertaler.Trados
                 }
             }
             catch { }
-
-            // Restore persisted chat history
-            LoadChatHistory();
         }
 
         // ─── Document / Segment Events ────────────────────────────

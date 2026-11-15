@@ -300,6 +300,16 @@ try {
     $b = Body 'private void ShowSuperMemoryAnswer(string text)'
     Check ($null -ne $b -and $b -match 'ChatPrompt\.Notice\(' -and $b -match 'AddRequestedMessage\(') "ShowSuperMemoryAnswer: a notice, added with the Chat tab shown"
     Check ($src -match 'messagesToSend = ChatPrompt\.MessageWindow\(_chatHistory, 10\);') "a chat turn still takes what it sends from ChatPrompt.MessageWindow"
+
+    # Start-up order: a notice saves the chat, so the saved chat must be read
+    # before anything can post one, or a start-up notice overwrites the file.
+    $b = Body 'private void InitializeFullIfNeeded()'
+    $load = if ($b) { $b.IndexOf('LoadChatHistory();') } else { -1 }
+    # Calls only (a comment may name it): "ApplyProjectMemoryBank();" or "(ApplyProjectMemoryBank)".
+    $m = if ($b) { [regex]::Match($b, 'ApplyProjectMemoryBank(\(\);|\))') } else { $null }
+    $firstApply = if ($m -and $m.Success) { $m.Index } else { -1 }
+    Check ($null -ne $b -and $load -ge 0 -and $firstApply -gt $load) "start-up reads the saved chat before anything can post a notice (load at $load, first bank apply at $firstApply)"
+    Check (([regex]::Matches($src, 'LoadChatHistory\(\);')).Count -eq 1) "the saved chat is read in one place only"
 }
 finally {
     foreach ($h1 in $hosts) { try { $h1.Close(); $h1.Dispose() } catch { } }
