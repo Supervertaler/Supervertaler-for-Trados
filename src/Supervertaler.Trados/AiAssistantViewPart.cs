@@ -10935,14 +10935,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     docSegments = docCtx.Item1;
                 }
 
-                int batchSize = aiSettings.BatchSize > 0 ? aiSettings.BatchSize : 20;
+                int batchSize = Core.MemoryGuard.EffectiveBatchSize(aiSettings.BatchSize);
 
                 // Start the batch translation
                 batchControl.SetRunning(true);
 
                 batchControl.AppendLog(
                     $"Starting: {segments.Count} segments, provider={provider}, model={model}, " +
-                    $"batch size={batchSize}");
+                    $"batch size={Core.MemoryGuard.BatchSizeForLog(aiSettings.BatchSize)}");
 
                 // Warn if document context will be truncated for the AI. Truncation
                 // happens silently inside TranslationPrompt.BuildSystemPrompt – without
@@ -13006,8 +13006,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             sourceLang, targetLang, termbaseTerms, customPromptContent,
                             bilingualDocSegments, includeTermMeta, kbContext, targetOnly);
 
-                        var batchSize = aiSettings != null && aiSettings.BatchSize > 0
-                            ? aiSettings.BatchSize : 20;
+                        var batchSize = Core.MemoryGuard.EffectiveBatchSize(aiSettings?.BatchSize ?? 0);
                         // The first request as the run makes it: Batches never puts
                         // two files, or one number twice, into a request.
                         var firstBatch = BatchProofreader.Batches(segments, batchSize);
@@ -13074,8 +13073,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         // One batch, as the run would send it. A longer scope is split
                         // into several requests that differ only in which segments they
                         // carry, so the first is what there is to look at.
-                        var batchSize = aiSettings != null && aiSettings.BatchSize > 0
-                            ? aiSettings.BatchSize : 20;
+                        var batchSize = Core.MemoryGuard.EffectiveBatchSize(aiSettings?.BatchSize ?? 0);
                         var previewCount = Math.Min(batchSize, segments.Count);
 
                         // #116: the memory block is the part of this prompt most
@@ -13545,7 +13543,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     docSegments = CollectBilingualDocumentContext();
                 }
 
-                int batchSize = aiSettings.BatchSize > 0 ? aiSettings.BatchSize : 20;
+                int batchSize = Core.MemoryGuard.EffectiveBatchSize(aiSettings.BatchSize);
 
                 // Initialize the report
                 var previousReport = _currentReport;
@@ -13561,7 +13559,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 batchControl.SetRunning(true);
                 batchControl.AppendLog(
                     $"Starting proofreading: {segments.Count} segments, provider={provider}, model={model}, " +
-                    $"batch size={batchSize}" +
+                    $"batch size={Core.MemoryGuard.BatchSizeForLog(aiSettings.BatchSize)}" +
                     (targetOnly ? ", translation only (no source, no termbase)" : "") +
                     (docSegments == null ? ", no document context"
                         : targetOnly ? ", document context: the translation only"

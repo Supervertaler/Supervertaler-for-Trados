@@ -129,6 +129,27 @@ try {
     $batch.SetRunning($false)
     Check ($nud.Enabled) "enabled again afterwards"
 
+    Write-Host "6 The run and its log use the size the box shows"
+    $guard = $asm.GetType('Supervertaler.Trados.Core.MemoryGuard', $true)
+    $eff = $guard.GetMethod('EffectiveBatchSize'); $say = $guard.GetMethod('BatchSizeForLog')
+    foreach ($stored in 0, 5, 10, 50, 100) {
+        $batch.BatchSize = $stored
+        $used = [int]$eff.Invoke($null, @([int]$stored))
+        Check ($used -eq $batch.BatchSize) "stored ${stored}: the run uses $used, the box shows $($batch.BatchSize)"
+        $text = [string]$say.Invoke($null, @([int]$stored))
+        Check ($text -match "^$used(\D|$)") "stored ${stored}: the log line starts with $used ($text)"
+    }
+    $text = [string]$say.Invoke($null, @([int]100))
+    if ($is32) { Check ($text -eq '10 (the setting is 100; a 32-bit Trados Studio takes at most 10)') "a held size says what the setting is and why ($text)" }
+    else { Check ($text -eq '100') "a size that is not held is just the number ($text)" }
+
+    Write-Host "7 Settings: OK without touching the box keeps the stored size"
+    $store = $asm.GetType('Supervertaler.Trados.Controls.AiSettingsPanel', $true).GetMethod('BatchSizeToStore', [System.Reflection.BindingFlags]'Static,NonPublic')
+    Check ([int]$store.Invoke($null, @([int]100, [int]10, [int]10)) -eq 100) "stored 100, shown 10, left at 10: 100 is kept"
+    Check ([int]$store.Invoke($null, @([int]100, [int]10, [int]8)) -eq 8) "stored 100, shown 10, changed to 8: 8 is saved"
+    Check ([int]$store.Invoke($null, @([int]0, [int]20, [int]20)) -eq 0) "never set, left alone: stays unset"
+    Check ([int]$store.Invoke($null, @([int]50, [int]50, [int]60)) -eq 60) "stored 50, changed to 60: 60 is saved"
+
     $host2.Close(); $host2.Dispose()
 }
 finally {

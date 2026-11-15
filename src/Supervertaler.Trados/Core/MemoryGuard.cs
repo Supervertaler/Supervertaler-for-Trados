@@ -67,5 +67,22 @@ namespace Supervertaler.Trados.Core
             if (requested <= 0) return 5;
             return Math.Min(requested, 10);
         }
+
+        /// <summary>
+        /// The batch size a run really uses, from the stored setting: 20 when it
+        /// was never set, and held to what this Studio takes. One place, so the
+        /// Batch size box, the log and the run cannot disagree.
+        /// </summary>
+        public static int EffectiveBatchSize(int stored) => ClampBatchSize(stored > 0 ? stored : 20);
+
+        /// <summary>The batch size as a run's first log line gives it: the size
+        /// used, and when the setting asks for more, that too and why.</summary>
+        public static string BatchSizeForLog(int stored)
+        {
+            int asked = stored > 0 ? stored : 20, used = EffectiveBatchSize(stored);
+            return used < asked
+                ? used + " (the setting is " + asked + "; a 32-bit Trados Studio takes at most " + used + ")"
+                : used.ToString();
+        }
     }
 }

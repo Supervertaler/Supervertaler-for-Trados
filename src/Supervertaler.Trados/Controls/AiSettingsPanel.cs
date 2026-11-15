@@ -103,6 +103,11 @@ namespace Supervertaler.Trados.Controls
         private NumericUpDown _nudMonthlyBudget;
         private Label _lblBatchSize;
         private NumericUpDown _nudBatchSize;
+        // What the settings file holds and what the box showed for it. They differ
+        // only in a 32-bit Studio, which holds a larger stored size to 10: the box
+        // then shows the 10 this Studio uses, and OK without touching it must not
+        // write that 10 over the size the 64-bit Studio uses.
+        private int _storedBatchSize, _shownBatchSize;
         private CheckBox _chkTcAsComments;
         private CheckBox _chkProofreadCommentLabel;
         private CheckBox _chkKeepRepetitions;
@@ -742,13 +747,16 @@ namespace Supervertaler.Trados.Controls
             Pair(root, ref row, _lblTmFuzzyMinScore, _nudTmFuzzyMinScore);
 
             _lblBatchSize = FieldLabel("Batch size:");
-            _nudBatchSize = SmallNud(5, 100, 20, 1);
+            _nudBatchSize = SmallNud(5, BatchTranslateControl.MaxBatchSize, Math.Min(20, BatchTranslateControl.MaxBatchSize), 1);
             var batchTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
             batchTip.SetToolTip(_nudBatchSize,
                 "Number of segments sent to the AI provider per API call during\r\n" +
                 "Batch Translate and Batch Proofread. Lower values are safer;\r\n" +
                 "higher values reduce cost and improve cross-segment consistency." + "\r\n" +
-                "Also on the Batch Operations tab, beside Limit.");
+                "Also on the Batch Operations tab, beside Limit." +
+                (BatchTranslateControl.MaxBatchSize < 100
+                    ? "\r\nThis Studio is a 32-bit program, so " + BatchTranslateControl.MaxBatchSize + " is the most it takes."
+                    : ""));
             Pair(root, ref row, _lblBatchSize, _nudBatchSize);
 
             _chkKeepRepetitions = Check("Keep repetitions consistent in Batch Translate");
@@ -1034,13 +1042,19 @@ namespace Supervertaler.Trados.Controls
             _chkPersistUsageLog.Checked = settings.IsUsageLogEnabled;
             _nudMonthlyBudget.Value = Math.Max(_nudMonthlyBudget.Minimum,
                 Math.Min(_nudMonthlyBudget.Maximum, (decimal)settings.MonthlyBudgetUsd));
-            _nudBatchSize.Value = Math.Max(_nudBatchSize.Minimum,
+            _storedBatchSize = settings.BatchSize;
+            _shownBatchSize = (int)Math.Max(_nudBatchSize.Minimum,
                 Math.Min(_nudBatchSize.Maximum, settings.BatchSize > 0 ? settings.BatchSize : 20));
+            _nudBatchSize.Value = _shownBatchSize;
             _chkTcAsComments.Checked = settings.TcMarkersAsComments;
             _chkProofreadCommentLabel.Checked = settings.ProofreadCommentLabel;
             _chkKeepRepetitions.Checked = settings.KeepRepetitionsConsistent;
         }
 
+
+        /// <summary>The batch size to save: what is in the box when the translator
+        /// changed it, otherwise the stored size as it was (see _storedBatchSize).</summary>
+        internal static int BatchSizeToStore(int stored, int shown, int inBox) => inBox == shown ? stored : inBox;
 
         public void ApplyToSettings(AiSettings settings)
         {
@@ -1144,7 +1158,7 @@ namespace Supervertaler.Trados.Controls
             settings.LogPromptsToReports = _chkLogPrompts.Checked;
             settings.PersistUsageLog = _chkPersistUsageLog.Checked;
             settings.MonthlyBudgetUsd = (double)_nudMonthlyBudget.Value;
-            settings.BatchSize = (int)_nudBatchSize.Value;
+            settings.BatchSize = BatchSizeToStore(_storedBatchSize, _shownBatchSize, (int)_nudBatchSize.Value);
             settings.TcMarkersAsComments = _chkTcAsComments.Checked;
             settings.ProofreadCommentLabel = _chkProofreadCommentLabel.Checked;
             settings.KeepRepetitionsConsistent = _chkKeepRepetitions.Checked;
