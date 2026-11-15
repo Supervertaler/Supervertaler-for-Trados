@@ -150,8 +150,9 @@ the note is and that the AI should flag its own segment the same way if it has t
 The earlier translation is shown with its note, whether the run keeps notes in the target or writes them as Trados
 comments (the run records the translation before the note is taken off). So a near-identical segment later in the
 run sees that the AI found a problem in the first. An earlier twin that got no note is not sent again when a later
-one gets one: step 1's "note on one only" line is what reports that. A segment translated in an earlier run whose
-note is a Trados comment is shown without it, because comments are not read.
+one gets one, and nothing reports it: step 1's line for a note on one of two near-twins was dropped on 15 Nov 2026
+(see `docs/design/restated-passages.md`). A segment translated in an earlier run whose note is a Trados comment is
+shown without it, because comments are not read.
 
 ## The risk
 
@@ -224,9 +225,6 @@ Memory is step 1's: two strings per segment for the run.
 - A passage (not a twin) inside a segment over 400 tokens is not shown. A twin is shown at any length up to the
   finder's 1,000 words.
 - Whether a model keeps its own numbers when shown a twin is unmeasured.
-- The "note on one only" line of step 1 also fires on notes that are about the pair itself ("duplicates segment
-  27", "numeral 22 differs from 12 used elsewhere"), which can only stand on the later segment. Seen with Opus 5.5
-  on the test document. The rule is unchanged; an open point for Michael.
 - A resumed run does not see notes that an earlier run wrote as Trados comments.
 - memoQ is not covered: memoQ calls the plugin in parallel and the plugin never sees existing targets there.
 

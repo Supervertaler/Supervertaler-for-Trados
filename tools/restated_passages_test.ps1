@@ -13,7 +13,7 @@
 #      naming both segments as Studio numbers them
 #   B  worded the same                                        -> no line at all
 #   C  nothing sent changes: the requests are the same with the check on and off
-#   D  near-identical segments, a [[TC: ...]] note on one     -> one line; the same when
+#   D  near-identical segments, a [[TC: ...]] note on one     -> no line; the same when
 #      notes are written as Trados comments
 #   E  failure: the AI leaves the description out             -> skipped, no line
 #   F  failure: Studio declines the write                     -> skipped, no line
@@ -261,19 +261,16 @@ public static class RestatedPassagesTest {
         Check(off.Requests.Count == b.Requests.Count && off.Requests.SequenceEqual(b.Requests),
             "the AI is sent exactly the same with the check on as off (" + b.Requests.Count + " requests)");
 
-        Console.WriteLine("D  near-identical segments, a note on one only");
+        Console.WriteLine("D  near-identical segments, a note on one of the two");
         Answer(Pin12, Pin12En + " [[TC: the figures show no flange 16]]");
         Answer(Pin22, Pin22En);
         foreach (var asComments in new[] { false, true }) {
             var d = Go(Document(Pin12, Pin22), tcAsComments: asComments);
             var how = asComments ? "notes as Trados comments" : "notes kept in the target";
-            Check(d.Lines.Length == 2 && d.Lines[0] == "1 near-identical pair with a note on only one (listed).", how + ": the count: " + (d.Lines.Length > 0 ? d.Lines[0] : "(none)"));
-            Check(d.Lines.Length == 2 && d.Lines[1] == "Note on one only: segment 2 has a note, the near-identical segment 5 has none",
-                how + ": the case: " + (d.Lines.Length > 1 ? d.Lines[1] : "(none)"));
+            Check(d.Done != null && d.Done.Translated == 6, how + ": six written");
+            Check(d.Done != null && d.Done.RestatedSummary == null,
+                how + ": the note is not a difference and is not reported: " + string.Join(" / ", d.Lines));
         }
-        Answer(Pin22, Pin22En + " [[TC: the figures show no flange 16]]");
-        var both = Go(Document(Pin12, Pin22));
-        Check(both.Done != null && both.Done.RestatedSummary == null, "a note on both: nothing to say");
 
         Console.WriteLine("E  failure: the AI leaves the description out of its reply");
         Answer(Desc, null);

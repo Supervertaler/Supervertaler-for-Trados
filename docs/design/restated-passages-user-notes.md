@@ -8,10 +8,9 @@ Running notes for the user documentation, written while building (14 Nov 2026). 
 At the end of a Batch Translate run, after "Complete: N translated" and the Repetitions line, the log may show:
 
 ```
-Repeated passages: 2 translated differently – 1 near-identical pair with a note on only one (listed).
+Repeated passages: 2 translated differently (listed).
 Repeated passages: Translated differently: segment 12 and segment 340 – source “any information disclosed by one party to the …” (15 words the same)
 Repeated passages: Translated differently: segment 48 and segment 207 – source “Disconnect the appliance from the mains supply before …” (11 words the same)
-Repeated passages: Note on one only: segment 101 has a note, the near-identical segment 219 has none
 ```
 
 If there is nothing to report, there are no "Repeated passages" lines at all.
@@ -34,11 +33,7 @@ Examples for the Help page (use more than one):
 - **Translated differently.** The two segments contain the same run of source words (eight or more), and the
   translations of that passage are not worded the same. The quoted words are the start of the shared source passage,
   to search for. Open both segments and make them agree.
-- **Note on one only.** The two segments are the same sentence but for a few words. The AI left a note for the
-  translator (`[[TC: ...]]`, or a Trados comment if you have chosen that) on one of them and not on the other. If the
-  note is about a problem in the source, the other segment probably has the same problem. These lines only appear
-  when your prompt asks the AI for such notes (AutoPrompt's prompts do). With any other prompt there are none.
-- **(listed)** Up to 20 cases of each kind are listed; a last line says how many more there are.
+- **(listed)** Up to 20 cases are listed; a last line says how many more there are.
 
 ## What it does not do
 
@@ -52,8 +47,9 @@ Examples for the Help page (use more than one):
 - It does not compare punctuation or capital letters.
 - It only knows the segments the run looked at. With a "Filtered" scope those are the filtered segments.
 - Segments the run did not translate (already translated, or locked) are compared by the translation they have, so
-  translating a document in two runs works. Their comments are not read, so the "note on one only" line is only for
-  segments this run translated.
+  translating a document in two runs works.
+- It does not look at the AI's notes for the translator (`[[TC: ...]]` or Trados comments). A note is not part of
+  the translation compared, and a note on only one of two near-identical segments is not reported.
 
 ## Languages
 
@@ -92,8 +88,7 @@ Under `### Added`:
 > **Batch Translate reports repeated passages that came out worded differently.** When two segments contain the same
 > run of source words – a contract clause restating a definition, a warning repeated across the chapters of a manual,
 > two messages that differ in one word – and the translations of that part differ, the log lists the two segments at
-> the end of the run. It also lists near-identical segments where the AI left a note on only one. Nothing is changed
-> and nothing extra is sent to the AI. Not yet for Chinese, Japanese or Thai.
+> the end of the run. Nothing is changed and nothing extra is sent to the AI. Not yet for Chinese, Japanese or Thai.
 
 ## Scale statement
 

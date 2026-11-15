@@ -51,15 +51,14 @@ namespace Supervertaler.Trados.Core
         private readonly HashSet<int> _shown = new HashSet<int>();
 
         /// <summary>
-        /// A segment the run will not write, with the translation it has. Its
-        /// comments are not read, so whether it has a note is not known.
+        /// A segment the run will not write, with the translation it has.
         /// </summary>
         public void Kept(string label, string source, string target)
         {
             lock (_lock)
             {
                 _sources.Add(Plain(source));
-                _targets.Add(new RestatedTarget { Label = label, Text = Plain(target), HasNote = null });
+                _targets.Add(new RestatedTarget { Label = label, Text = Plain(target) });
                 Forget();
             }
         }
@@ -76,7 +75,7 @@ namespace Supervertaler.Trados.Core
             {
                 _sent[segment] = _sources.Count;
                 _sources.Add(Plain(segment.SourceText));
-                _targets.Add(new RestatedTarget { Label = segment.Label(), Text = null, HasNote = false });
+                _targets.Add(new RestatedTarget { Label = segment.Label(), Text = null });
                 Forget();
             }
         }
@@ -148,7 +147,7 @@ namespace Supervertaler.Trados.Core
                 shown = _shown.Count;
                 targets = new List<RestatedTarget>(_targets.Count);
                 foreach (var t in _targets)
-                    targets.Add(new RestatedTarget { Label = t.Label, Text = t.Text, HasNote = t.HasNote });
+                    targets.Add(new RestatedTarget { Label = t.Label, Text = t.Text });
             }
 
             // Counts and time only, never text: the diagnostic log gets pasted
@@ -158,8 +157,8 @@ namespace Supervertaler.Trados.Core
             clock.Stop();
             DiagnosticLog.Log("Restated", segments + " segments: " + shown + " shown an earlier translation, "
                 + report.Compared + " pairs compared, "
-                + report.Skipped + " skipped (no translation), " + report.Different.Count + " translated differently, "
-                + report.OneNote.Count + " with a note on one only; " + clock.ElapsedMilliseconds + " ms"
+                + report.Skipped + " skipped (no translation), " + report.Different.Count + " translated differently; "
+                + clock.ElapsedMilliseconds + " ms"
                 + (report.Limited ? "; pair limit reached" : ""));
 
             var lines = report.Summary();

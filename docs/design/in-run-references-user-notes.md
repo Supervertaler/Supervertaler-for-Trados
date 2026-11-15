@@ -86,8 +86,7 @@ translation of it. No extra step is needed in between.
 
 If the AI left a note on a segment (`[[TC: ...]]`) and a later segment is almost the same sentence, the AI is shown
 the first one with its note, so it can flag the same problem again. It does not go back: if it only notices the
-problem in the second segment, the first is not sent again. The end-of-run line "Note on one only" tells you when
-that happened.
+problem in the second segment, the first is not sent again, and nothing at the end of the run reports it.
 
 ## What it does not do
 

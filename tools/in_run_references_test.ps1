@@ -397,8 +397,8 @@ public static class InRunReferencesTest {
         var later = Go(Document(Pin12, Pin22));
         Check(later.Requests.Count == 3 && later.Requests.Count(r => r.User.Contains("2. " + Pin12)) == 1,
             "an earlier twin that got no note is not revisited (3 requests, segment 2 sent once)");
-        Check(later.Lines.Any(l => l == "Note on one only: segment 5 has a note, the near-identical segment 2 has none"),
-            "the end-of-run report is what catches it: " + string.Join(" / ", later.Lines));
+        Check(later.Lines.All(l => !l.Contains("note")),
+            "and the end-of-run report says nothing about it: " + string.Join(" / ", later.Lines));
         Answer(Pin22, Pin22En);
 
         Console.WriteLine("K  tags");

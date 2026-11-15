@@ -5,8 +5,8 @@ real job, a patent (see "Measured on a real job" at the end); no other kind of d
 **Code:** `core/src/RestatedPassages.cs` (the finder and the comparison, shared with memoQ),
 `src/Supervertaler.Trados/Core/RestatedCheck.cs` (what a Batch Translate run collects), and the hooks in
 `src/Supervertaler.Trados/Core/BatchTranslator.cs` and `AiAssistantViewPart.cs`.
-**Tests:** `core/tests/RestatedPassagesTests.cs` (24), `core/tests/RestatedDocumentTypesTests.cs` (19),
-`tools/restated_passages_test.ps1` (32 checks).
+**Tests:** `core/tests/RestatedPassagesTests.cs` (25), `core/tests/RestatedDocumentTypesTests.cs` (18),
+`tools/restated_passages_test.ps1` (31 checks).
 **User-facing notes:** `docs/design/restated-passages-user-notes.md`.
 
 ## The problem
@@ -161,13 +161,11 @@ counting characters instead of words; not built.
 
 ## Notes on one of two near-twins
 
-For a near-twin pair with both translations present: if exactly one has a note, it is reported. The run knows its own
-notes: the `[[TC: ...]]` marker is still on the translation when the run records it, whether it later goes into the
-target or into a Trados comment. For a segment the run did not write, the comments are not read, so its notes are
-unknown and the pair is not reported (unless the marker is in its target text).
+Not reported. A line for a near-twin pair with a note (`[[TC: ...]]`, or a Trados comment) on only one of the two
+translations was built and dropped on 15 Nov 2026, because in a measured run both cases it reported were noise.
 
-The marker is a convention of AutoPrompt-written prompts. A document translated with a prompt that does not use it
-has no notes, and simply gets no such lines (tested).
+A note at the end of a translation is still taken off before the translations are compared, so a note is never a
+wording difference (tested).
 
 ## In Trados
 
@@ -206,7 +204,7 @@ Memory at 10,000 segments: the word numbers (about 1.2 MB), one index entry per 
 when the finder returns. Comparing a near-twin pair takes a table of words × words (4 MB at the 1,000-word limit),
 one pair at a time. Limits that keep the worst case bounded, each tested: a segment over 1,000 words is left out
 and counted; at most 50,000 candidate pairs are compared, and the summary says so if that was reached; the log lists
-at most 20 cases of each kind and says how many more there are.
+at most 20 cases and says how many more there are.
 
 ## Measured on a real job
 
@@ -246,10 +244,8 @@ The 22 lines as it now stands:
     reporting every such pair.
   - A seventh pair differs in punctuation only, which is not compared, by design.
 - **The twin with a note on only one.** The known pair is found as a near-twin (108 apart in the saved file, 118 in
-  Studio). Whether the note line would be written cannot be measured from this file: the run wrote its notes as
-  Trados comments, so the saved translations carry none. In a live run the notes are known; that is covered by the
-  offline tests only. The pair next to it, the same construction without the defect, is the 380-word false alarm
-  below.
+  Studio). A note on only one of the two is no longer reported (see "Notes on one of two near-twins"). The pair next
+  to it, the same construction without the defect, is the 380-word false alarm below.
 - **False alarms.** One is a 380-word near-twin whose sources differ in 45 places and whose translations differ in
   46 (an "a"/"an" that follows a changed noun). One is a number range that the source writes as one word and the
   translation as two. One is two unrelated sentences sharing 8 words. So 3 of 22, or 5 of 22 counting the unclear
