@@ -479,7 +479,8 @@ namespace Supervertaler.Trados.Controls
         {
             if (report == null) return;
 
-            ClearResultsInternal();
+            // The findings only: the request log stays (only Clear empties it).
+            ClearFindings();
 
             _issueCount = report.IssueCount;
             var totalChecked = report.TotalSegmentsChecked;
@@ -498,8 +499,7 @@ namespace Supervertaler.Trados.Controls
 
             if (_issueCount == 0)
             {
-                _lblEmpty.Text = "No issues found \u2013 all segments look good!";
-                _lblEmpty.Visible = true;
+                ShowEmptyText("No issues found \u2013 all segments look good!");
                 UpdateApplyAllButton();
                 return;
             }
@@ -509,8 +509,7 @@ namespace Supervertaler.Trados.Controls
             {
                 _checkedCount = _issueCount;
                 UpdateIssueCountLabel();
-                _lblEmpty.Text = "All issues addressed \u2013 well done!";
-                _lblEmpty.Visible = true;
+                ShowEmptyText("All issues addressed \u2013 well done!");
                 UpdateApplyAllButton();
                 return;
             }
@@ -598,7 +597,7 @@ namespace Supervertaler.Trados.Controls
 
         private readonly Dictionary<ProofreadingIssue, Panel> _boundCards = new Dictionary<ProofreadingIssue, Panel>();
         private readonly Stack<Panel> _freeCards = new Stack<Panel>();
-        private readonly List<Panel> _promptCards = new List<Panel>();   // newest first
+        private readonly List<Panel> _promptCards = new List<Panel>();   // oldest first, as on screen
         private VScrollBar _scrollBar;
         private int _scrollY;
         private bool _binding;   // a card's tick box is being reset, not ticked
@@ -821,10 +820,32 @@ namespace Supervertaler.Trados.Controls
             return found;
         }
 
+        // The list, top to bottom: the findings (document order), then the prompt
+        // log cards (oldest first). The log is last because it grows at the
+        // bottom, like the chat, and a report's findings stay where they are.
+        private const int ListTop = 4;
+
+        /// <summary>The prompt log cards' height, with their gaps.</summary>
+        private int PromptsHeight()
+        {
+            int h = 0;
+            foreach (var p in _promptCards) h += p.Height + 4;
+            return h;
+        }
+
+        /// <summary>The whole list's height: findings, then prompt log cards.</summary>
+        private int ListHeight()
+        {
+            EnsureRowTops();
+            return ListTop + _rowTops[_rows.Count] + PromptsHeight();
+        }
+
+        private int ViewHeight() => Math.Max(1, _resultsPanel.ClientSize.Height);
+
         /// <summary>
-        /// Places everything for the current scroll position: the prompt log cards
-        /// (newest first), then a card for each finding in view. Cards whose row
-        /// has scrolled away go back to the pool. Cheap enough to run on every
+        /// Places everything for the current scroll position: a card for each
+        /// finding in view, then the prompt log cards (oldest first). Cards whose
+        /// row has scrolled away go back to the pool. Cheap enough to run on every
         /// scroll step: it measures only rows in view whose height is still an
         /// estimate.
         /// </summary>
@@ -832,20 +853,17 @@ namespace Supervertaler.Trados.Controls
         {
             if (_resultsPanel == null) return;
             int cardWidth = CardWidth();
-            int viewHeight = Math.Max(1, _resultsPanel.ClientSize.Height);
-
-            int promptsBottom = 4;
-            foreach (var p in _promptCards) promptsBottom += p.Height + 4;
+            int viewHeight = ViewHeight();
 
             // Rows in view whose height is still an estimate: measured now, the
             // rest by the refine timer.
             EnsureRowTops();
-            int first = FirstRowAt(_scrollY - promptsBottom);
+            int first = FirstRowAt(_scrollY - ListTop);
             bool remeasured = false;
             using (var g = MeasureGraphics())
             {
                 int header = -1;
-                for (int i = first; i < _rows.Count && promptsBottom + _rowTops[i] < _scrollY + viewHeight; i++)
+                for (int i = first; i < _rows.Count && ListTop + _rowTops[i] < _scrollY + viewHeight; i++)
                 {
                     var info = _rowInfo[_rows[i]];
                     if (info.Width == cardWidth) continue;
@@ -855,14 +873,14 @@ namespace Supervertaler.Trados.Controls
                 }
                 if (remeasured) EnsureRowTops();
 
-                int total = promptsBottom + _rowTops[_rows.Count];
+                int total = ListTop + _rowTops[_rows.Count] + PromptsHeight();
                 UpdateScrollBar(total, viewHeight);
-                first = FirstRowAt(_scrollY - promptsBottom);
+                first = FirstRowAt(_scrollY - ListTop);
 
                 _resultsPanel.SuspendLayout();
                 try
                 {
-                    int y = 4;
+                    int y = ListTop + _rowTops[_rows.Count];
                     foreach (var p in _promptCards)
                     {
                         bool inView = y + p.Height > _scrollY && y < _scrollY + viewHeight;
@@ -879,7 +897,7 @@ namespace Supervertaler.Trados.Controls
                     // The rows to show, then cards: a card keeps its row while the
                     // row stays in view, and only cards whose row left are reused.
                     var inViewRows = new List<int>();
-                    for (int i = first; i < _rows.Count && promptsBottom + _rowTops[i] < _scrollY + viewHeight; i++)
+                    for (int i = first; i < _rows.Count && ListTop + _rowTops[i] < _scrollY + viewHeight; i++)
                         inViewRows.Add(i);
                     var wanted = new HashSet<ProofreadingIssue>(inViewRows.Select(i => _rows[i]));
                     foreach (var issue in _boundCards.Keys.Where(k => !wanted.Contains(k)).ToList())
@@ -896,7 +914,7 @@ namespace Supervertaler.Trados.Controls
                             BindCard(card, issue, _rowInfo[issue], cardWidth, g, headerBottom);
                             _boundCards[issue] = card;
                         }
-                        var at = new Point(4, promptsBottom + _rowTops[i] - _scrollY);
+                        var at = new Point(4, ListTop + _rowTops[i] - _scrollY);
                         if (card.Location != at) card.Location = at;
                         if (!card.Visible) card.Visible = true;
                     }
@@ -967,9 +985,9 @@ namespace Supervertaler.Trados.Controls
 
             int cardWidth = CardWidth();
             EnsureRowTops();
-            int promptsBottom = 4;
-            foreach (var p in _promptCards) promptsBottom += p.Height + 4;
-            int anchor = FirstRowAt(_scrollY - promptsBottom);
+            // With the view on the prompt log cards (below every row), every row
+            // is above it and moves the scroll position: the cards stay put.
+            int anchor = FirstRowAt(_scrollY - ListTop);
 
             int shift = 0;
             bool measured = false, more = false;
@@ -1311,10 +1329,16 @@ namespace Supervertaler.Trados.Controls
 
             // Show empty state if all issues addressed
             if (_checkedCount >= _issueCount)
-            {
-                _lblEmpty.Text = "All issues addressed \u2013 well done!";
-                _lblEmpty.Visible = true;
-            }
+                ShowEmptyText("All issues addressed \u2013 well done!");
+        }
+
+        /// <summary>The empty-list text, which fills the panel - so only while
+        /// there are no request cards for it to cover. The header's count says
+        /// the same when there are.</summary>
+        private void ShowEmptyText(string text)
+        {
+            _lblEmpty.Text = text;
+            _lblEmpty.Visible = _promptCards.Count == 0;
         }
 
         /// <summary>Apply all is on while it runs (it is Stop then) and while
@@ -1359,9 +1383,14 @@ namespace Supervertaler.Trados.Controls
 
         // ─── Prompt Log ─────────────────────────────────────────────
 
+        // How near the bottom the view may be and still count as "at the bottom".
+        private const int FollowSlack = 8;
+
         /// <summary>
-        /// Adds a prompt log card to the results panel.
-        /// Cards are inserted at the top so the latest call is always visible.
+        /// Adds a prompt log card at the bottom of the list, as the chat does.
+        /// The view follows it - scrolls to the very bottom - if it was at the
+        /// bottom already, or the list did not scroll yet; a view scrolled up to
+        /// read something stays where it is.
         /// </summary>
         public void AddPromptLog(PromptLogEntry entry)
         {
@@ -1369,11 +1398,19 @@ namespace Supervertaler.Trados.Controls
 
             _lblEmpty.Visible = false;
 
-            // Cap entries: the oldest card goes. (The list is newest first.)
+            // Before anything changes: is the view at the bottom (or is there
+            // nothing to scroll)?
+            bool follow = _scrollY >= ListHeight() - ViewHeight() - FollowSlack;
+
+            // Cap entries: the oldest card goes - the first one. If it was above
+            // the view, the view moves up with what is under it, so it stays on
+            // what it showed.
             if (_promptCards.Count >= MaxPromptLogEntries)
             {
-                var oldest = _promptCards[_promptCards.Count - 1];
-                _promptCards.RemoveAt(_promptCards.Count - 1);
+                var oldest = _promptCards[0];
+                int oldestTop = ListTop + _rowTops[_rows.Count];
+                _scrollY -= Math.Min(oldest.Height + 4, Math.Max(0, _scrollY - oldestTop));
+                _promptCards.RemoveAt(0);
                 _resultsPanel.Controls.Remove(oldest);
                 oldest.Dispose();
             }
@@ -1493,11 +1530,15 @@ namespace Supervertaler.Trados.Controls
                 applyHover(child);
 
             _resultsPanel.Controls.Add(card);
-            _promptCards.Insert(0, card);
+            _promptCards.Add(card);
             _resultsPanel.ResumeLayout(false);
 
-            // Scroll to top so the newest entry is visible
-            ScrollFindingsTo(0);
+            if (!follow) { Arrange(); return; }
+            // To the bottom. Twice at most: rows coming into view on the way are
+            // measured, which can change how long the list is.
+            ScrollFindingsTo(ListHeight() - ViewHeight());
+            int end = ListHeight() - ViewHeight();
+            if (_scrollY < end) ScrollFindingsTo(end);
         }
 
         private int AddExpandableSection(Panel card, string title, string content,
@@ -1603,15 +1644,24 @@ namespace Supervertaler.Trados.Controls
 
         // ─── Internal Helpers ──────────────────────────────────────
 
-        /// <summary>Empties the list: every row, every prompt log card. The pool's
-        /// cards are kept, unbound, for the next report.</summary>
-        private void ClearResultsInternal()
+        /// <summary>Takes every finding out of the list, and puts the view at its
+        /// top; the prompt log cards stay. The pool's cards are kept, unbound,
+        /// for the next report.</summary>
+        private void ClearFindings()
         {
             foreach (var issue in _boundCards.Keys.ToList())
                 UnbindCard(issue);
             _rows.Clear();
             _rowInfo.Clear();
             _rowTopsStale = true;
+            _scrollY = 0;
+            Arrange();
+        }
+
+        /// <summary>Empties the list: every row, every prompt log card (Clear).</summary>
+        private void ClearResultsInternal()
+        {
+            ClearFindings();
 
             _resultsPanel.SuspendLayout();
             foreach (var p in _promptCards)
