@@ -422,7 +422,9 @@ namespace Supervertaler.Trados.Controls
                 "It costs more input tokens. Untick it to spend less.\r\n\r\n" +
                 "Followed by Batch Translate, Batch Proofread, Translate active segment\r\n" +
                 "(Alt+T) and SuperBench. Chat and QuickLauncher have a tick box of their\r\n" +
-                "own, on the Chat tab.");
+                "own, on the Chat tab.\r\n\r\n" +
+                "AutoPrompt is not affected: it always reads the whole document, because\r\n" +
+                "the document is what it writes the prompt from.");
             Controls.Add(_chkIncludeDocument);
 
             y += Px(24);
