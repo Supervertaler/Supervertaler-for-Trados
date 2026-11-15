@@ -914,7 +914,11 @@ namespace Supervertaler.Trados
             // Cost guard: warn if estimated cost exceeds $0.50
             var estimatedTokens = promptCharCount / 4; // rough: 1 token ≈ 4 chars
             var estimatedCost = TokenEstimator.EstimateInputCost(capturedModel, estimatedTokens);
-            if (estimatedCost > 0.50m)
+            // Not for an AutoPrompt request large enough to have had its own question
+            // ("Large document – AutoPrompt"), a moment ago: one box, not two.
+            var askedByAutoPrompt = capturedFeature == PromptLogFeature.PromptGeneration
+                && Core.AutoPromptSizeCheck.Asks(TokenEstimator.EstimateTokens(messageText));
+            if (estimatedCost > 0.50m && !askedByAutoPrompt)
             {
                 var costStr = estimatedCost.ToString("F2");
                 var tokenStr = estimatedTokens.ToString("N0");
@@ -1062,7 +1066,12 @@ namespace Supervertaler.Trados
                         _control.Value.SetThinking(false);
                         var inner = ex.InnerException?.Message;
                         var detail = inner != null ? $"\n\nInner: {inner}" : "";
-                        AddErrorMessage($"Error: {ex.Message}{detail}");
+                        // AutoPrompt refused for its size: say so in plain words
+                        // first, then what the provider said.
+                        var lead = capturedFeature == PromptLogFeature.PromptGeneration
+                                && Core.AutoPromptSizeCheck.IsSizeRefusal(ex.Message)
+                            ? Core.AutoPromptSizeCheck.SizeRefusalLead + "\n\n" : "";
+                        AddErrorMessage($"{lead}Error: {ex.Message}{detail}");
                     });
                 }
             });
@@ -7741,17 +7750,36 @@ namespace Supervertaler.Trados
                     UserContextHint = userContextHint
                 };
 
+                var metaPrompt = PromptGenerator.BuildMetaPrompt(ctx);
+                var displayText = PromptGenerator.BuildDisplayMessage(ctx);
+
+                // A very long document: say what the request comes to and ask, before
+                // anything is put in the chat or sent. Nothing below the threshold.
+                // The meta-prompt is the whole request (no system prompt, history or
+                // tools go with it), so its size is the size.
+                var sizeWarn = Core.AutoPromptSizeCheck.For(
+                    analysis.SegmentCount, analysis.WordCount, metaPrompt, provider, model);
+                if (sizeWarn != null)
+                {
+                    var choiceSize = MessageBox.Show(
+                        _control.Value.FindForm(), sizeWarn, Core.AutoPromptSizeCheck.Title,
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2);
+                    if (choiceSize != DialogResult.Yes)
+                        return;
+                }
+
                 // Record how this run's glossary will be sourced, so the saved prompt can
                 // carry that provenance in its YAML `description` (library panel and
                 // QuickLauncher tooltip only). It deliberately does NOT go into the prompt
                 // body: that is shipped verbatim to the translating AI, where a caveat
                 // beside a LOCKED glossary would undermine it. See BuildTerminologySection.
+                // Only now, after the last point at which the run can be called off: a
+                // prompt from an earlier run may still be in the chat waiting to be
+                // saved, and it must be checked against its own run, not this one.
                 _lastAutoPromptGlossaryDerived = termbaseTerms.Count == 0;
                 _lastAutoPromptTerms = termbaseTerms;   // #124
                 _lastAutoPromptDomain = ctx.DetectedDomain;
-
-                var metaPrompt = PromptGenerator.BuildMetaPrompt(ctx);
-                var displayText = PromptGenerator.BuildDisplayMessage(ctx);
 
                 // Phase 6: Send via chat (switches to AI Assistant panel)
                 // Use 32768 tokens for prompt generation – comprehensive prompts with
