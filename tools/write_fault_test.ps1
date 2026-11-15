@@ -23,14 +23,23 @@
 #      after it landed: none lost, none reported as failed
 #   9  a comment add that throws AFTER adding: counted as added (so the note is
 #      not written inline as well); one that throws without adding: not
+#  10  the MCP tool add_comment (and a proofreading finding added as a
+#      comment), through SegmentWriteCheck.AddCommentChecked: an add that
+#      throws AFTER adding stands and is logged with its stack trace, without
+#      the text; one that throws without adding reaches the caller - also when
+#      a comment with the same text was already on the segment; unreadable
+#      afterwards: reaches the caller; 2,000 adds, every 7th throwing after
+#      it was added: none reported as failed, none added twice
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\write_fault_test.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\write_fault_test.ps1 -Dll <Supervertaler.Trados.dll>
 # A Studio 2024 / 2022 build is 32-bit: the script starts the 32-bit PowerShell
 # for it by itself.
 #
-# What it cannot reach: Studio's own ProcessSegmentPair. Why Studio throws is
-# not tested here, only what Supervertaler does when it has.
+# What it cannot reach: Studio's own ProcessSegmentPair and AddCommentOnSegment.
+# Why Studio throws is not tested here, only what Supervertaler does when it
+# has. Nor the MCP bridge around add_comment (BridgeAddComment needs the
+# running view part): case 10 runs the call it now makes.
 param(
     [string]$Dll = (Join-Path (Split-Path -Parent $PSScriptRoot) "src\Supervertaler.Trados\bin\Studio19\Debug\Supervertaler.Trados.dll"),
     [string]$Root = (Join-Path $env:TEMP "sv-write-fault-test"),
@@ -186,7 +195,8 @@ public partial class FakeDocument
     public bool ThrowAfterApply, ThrowBeforeApply, DontApply, Unreadable;
     public int FaultEvery;                 // 0 = never; n = throw after applying on every nth write
     public bool CommentThrowAfter, CommentThrowBefore;
-    public int Writes, Faults;
+    public int CommentFaultEvery;          // 0 = never; n = throw after adding on every nth comment
+    public int Writes, Faults, CommentAdds;
 
     ISegmentPair LiveOf(ISegmentPair pair) { return Pairs.First(p => p.Properties.Id.Id == pair.Properties.Id.Id); }
     void FakeProcessSegmentPair(ISegmentPair pair, string undoName, Action<ISegmentPair, CancelEventArgs> edit)
@@ -220,7 +230,8 @@ public partial class FakeDocument
         var marker = F.CreateCommentMarker(props);
         live.Target.MoveAllItemsTo(marker);
         live.Target.Add(marker);
-        if (CommentThrowAfter) throw new AccessViolationException();
+        CommentAdds++;
+        if (CommentThrowAfter || (CommentFaultEvery > 0 && CommentAdds % CommentFaultEvery == 0)) { Faults++; throw new AccessViolationException(); }
     }
 }
 
@@ -229,7 +240,7 @@ public static class WriteFaultTest
     const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
     static int Pass, Fail;
     static Assembly P;
-    static MethodInfo ProcessChecked, TryAddTcComment;
+    static MethodInfo ProcessChecked, TryAddTcComment, AddCommentChecked;
     static IDocumentItemFactory F;
     static IPropertiesFactory PF;
     static string LogPath;
@@ -284,6 +295,13 @@ public static class WriteFaultTest
     }
 
     sealed class Outcome { public Exception Thrown; public List<Exception> Told = new List<Exception>(); }
+
+    // The plugin's own AddCommentChecked, which add_comment calls; what it threw, or null.
+    static Exception AddComment(FakeDocument d, ISegmentPair pair, string text)
+    {
+        try { AddCommentChecked.Invoke(null, new object[] { d, pair, text, Severity.Low }); return null; }
+        catch (TargetInvocationException ex) { return ex.InnerException; }
+    }
 
     // The plugin's own ProcessChecked, with an edit that sets the target's text.
     static Outcome Write(FakeDocument d, ISegmentPair pair, string text, Action<ISegmentPair> edit = null)
@@ -411,6 +429,66 @@ public static class WriteFaultTest
             d = Doc(2, Dutch); d.CommentThrowBefore = true; d.Unreadable = true;
             ok = (bool)TryAddTcComment.Invoke(null, new object[] { d, d.Pairs[0], note });
             Check(!ok, "9 and one that throws on a segment that cannot be read back: not added");
+        }
+
+        // 10
+        AddCommentChecked = swc.GetMethod("AddCommentChecked", Any);
+        Check(AddCommentChecked != null, "10 the build has AddCommentChecked");
+        if (AddCommentChecked != null)
+        {
+            const string remark = "Acme: check 'bronzin' against the PROJ-001 drawing.";
+            ClearLog();
+            d = Doc(2, Dutch);
+            var threw = AddComment(d, d.Pairs[0], remark);
+            Check(threw == null && Comments(d.Pairs[0].Target) == 1 && !Log().Contains("AddCommentOnSegment"), "10 an ordinary add: added, nothing thrown, nothing logged");
+
+            ClearLog();
+            d = Doc(2, Dutch); d.CommentThrowAfter = true;
+            threw = AddComment(d, d.Pairs[1], remark);
+            log = Log();
+            Check(threw == null, "10 Studio adds the comment, then throws: nothing is thrown, so add_comment answers ok" + (threw != null ? " (threw " + threw.GetType().Name + ")" : ""));
+            Check(Comments(d.Pairs[1].Target) == 1 && Comments(d.Pairs[0].Target) == 0, "10 the comment is on that segment, once, and on no other");
+            Check(log.Contains("System.AccessViolationException") && log.Contains("from AddCommentOnSegment") && log.Contains("IS on the segment"), "10 the log names the exception and says the add stands");
+            Check(log.Contains("FakeAddCommentOnSegment"), "10 the log has the stack trace (the throwing method is named)");
+            Check(log.Contains(remark.Length + " chars") && log.Contains("segment id 2") && log.Contains("-bit"), "10 the log has the comment's length, the segment id and the bitness");
+            Check(!log.Contains("Acme") && !log.Contains("bronzin"), "10 the log does not hold the comment's text");
+
+            ClearLog();
+            d = Doc(2, Dutch); d.CommentThrowBefore = true;
+            threw = AddComment(d, d.Pairs[0], remark);
+            log = Log();
+            Check(threw is AccessViolationException && Comments(d.Pairs[0].Target) == 0, "10 Studio throws without adding: the same exception reaches the caller, so add_comment reports the failure as before");
+            Check(threw != null && (threw.StackTrace ?? "").Contains("FakeAddCommentOnSegment"), "10 with its original stack trace");
+            Check(log.Contains("is NOT on the segment"), "10 and the log says the comment is not there");
+
+            // The same remark is already on the segment (an earlier add): a failed
+            // second add must not be taken for a successful one because of it.
+            d = Doc(2, Dutch);
+            AddComment(d, d.Pairs[0], remark);
+            d.CommentThrowBefore = true;
+            threw = AddComment(d, d.Pairs[0], remark);
+            Check(threw is AccessViolationException && Comments(d.Pairs[0].Target) == 1, "10 throws without adding while the same text is already on the segment: still reported as failed");
+            d.CommentThrowBefore = false; d.CommentThrowAfter = true;
+            threw = AddComment(d, d.Pairs[0], remark);
+            Check(threw == null && Comments(d.Pairs[0].Target) == 2, "10 throws after adding a second comment with the same text: stands");
+
+            d = Doc(2, Dutch); d.CommentThrowAfter = true; d.Unreadable = true;
+            threw = AddComment(d, d.Pairs[0], remark);
+            Check(threw is AccessViolationException, "10 added, thrown, but unreadable afterwards: not given the benefit of the doubt, the exception reaches the caller");
+
+            ClearLog();
+            d = Doc(2000, Dutch); d.CommentFaultEvery = 7;
+            int failedAdds = 0, wrongCount = 0;
+            var sw2 = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < d.Pairs.Count; i++)
+            {
+                if (AddComment(d, d.Pairs[i], remark + " " + i) != null) failedAdds++;
+                if (Comments(d.Pairs[i].Target) != 1) wrongCount++;
+            }
+            sw2.Stop();
+            Check(failedAdds == 0 && wrongCount == 0 && d.Faults == 2000 / 7,
+                "10 2,000 comment adds, " + d.Faults + " thrown on after adding: none reported as failed, each segment has its comment once ("
+                + sw2.ElapsedMilliseconds + " ms, log " + (new FileInfo(LogPath).Length / 1024) + " KB)");
         }
 
         Console.WriteLine(Pass + " passed, " + Fail + " failed");

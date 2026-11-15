@@ -192,18 +192,65 @@ namespace Supervertaler.Trados.Core
         /// the same.</summary>
         internal static bool HasComment(IAbstractMarkupDataContainer container, string text)
         {
-            if (container == null) return false;
+            return CountComments(container, text) > 0;
+        }
+
+        /// <summary>How many comments with this text <paramref name="container"/> holds.</summary>
+        internal static int CountComments(IAbstractMarkupDataContainer container, string text)
+        {
+            if (container == null) return 0;
+            int n = 0;
             foreach (var item in container)
             {
                 if (item is ICommentMarker m)
                 {
                     var cs = m.Comments;
                     for (int i = 0; cs != null && i < cs.Count; i++)
-                        if (cs.GetItem(i)?.Text == text) return true;
+                        if (cs.GetItem(i)?.Text == text) n++;
                 }
-                if (item is IAbstractMarkupDataContainer inner && HasComment(inner, text)) return true;
+                if (item is IAbstractMarkupDataContainer inner) n += CountComments(inner, text);
             }
-            return false;
+            return n;
+        }
+
+        private static int CountComments(ISegmentPair pair, string text)
+        {
+            return pair == null ? 0 : CountComments(pair.Source, text) + CountComments(pair.Target, text);
+        }
+
+        /// <summary>
+        /// <see cref="IStudioDocument.AddCommentOnSegment"/>, then a look when Studio
+        /// throws: it can throw AFTER it has added the comment, as it can after a
+        /// write (see <see cref="ProcessChecked"/>). When the segment, read back,
+        /// holds one more comment with this text than <paramref name="pair"/> did,
+        /// the add stands: the fault is logged with its stack trace (never the
+        /// text) and nothing is thrown. When it does not, or the segment cannot be
+        /// read back, Studio's exception goes on to the caller as before.
+        /// Counted, not just looked for, so that a comment with the same text that
+        /// was already there is not taken for the new one. UI thread.
+        /// </summary>
+        /// <param name="pair">The segment as the document holds it now (just read).</param>
+        internal static void AddCommentChecked(IStudioDocument doc, ISegmentPair pair, string text,
+            Sdl.FileTypeSupport.Framework.NativeApi.Severity severity)
+        {
+            if (doc == null) throw new ArgumentNullException(nameof(doc));
+            int before = CountComments(pair, text);
+            try
+            {
+                doc.AddCommentOnSegment(pair, text, severity);
+            }
+            catch (Exception ex)
+            {
+                var live = ReadLivePair(doc, pair);
+                bool landed = live != null && CountComments(live, text) > before;
+                DiagnosticLog.Log("Write", "Studio threw " + ex.GetType().FullName + " from AddCommentOnSegment; the comment "
+                    + (landed ? "IS on the segment, so the add stands" : "is NOT on the segment (or it cannot be read back), so it is reported as failed")
+                    + ". Comment: " + (text ?? "").Length + " chars; segment id " + (pair?.Properties?.Id.Id ?? "?")
+                    + "; thread " + Thread.CurrentThread.ManagedThreadId
+                    + (Environment.Is64BitProcess ? "; 64-bit" : "; 32-bit")
+                    + Environment.NewLine + ex);
+                if (!landed) throw;
+            }
         }
 
         /// <summary>

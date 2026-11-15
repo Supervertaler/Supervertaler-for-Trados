@@ -6098,7 +6098,10 @@ namespace Supervertaler.Trados
                     };
                 }
 
-                _activeDocument.AddCommentOnSegment(pair, req.DecodeEntities ? Core.EntityEscapes.Decode(req.Text) : req.Text, severity);
+                // Checked: Studio can throw after it has added the comment, and the
+                // caller was then told the add had failed (and added it again).
+                Core.SegmentWriteCheck.AddCommentChecked(_activeDocument, pair,
+                    req.DecodeEntities ? Core.EntityEscapes.Decode(req.Text) : req.Text, severity);
                 return new BridgeResultResponse
                 {
                     Ok = true,

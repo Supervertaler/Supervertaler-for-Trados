@@ -278,7 +278,8 @@ namespace Supervertaler.Trados
                 if (ProofreadFindingComment.AlreadyOn(EnumerateSegmentComments(pair).Select(c => c?.Text), text))
                     return FindingCommentOutcome.AlreadyThere;
 
-                _activeDocument.AddCommentOnSegment(pair, text, Sdl.FileTypeSupport.Framework.NativeApi.Severity.Medium);
+                // Checked: Studio can throw after it has added the comment.
+                Core.SegmentWriteCheck.AddCommentChecked(_activeDocument, pair, text, Sdl.FileTypeSupport.Framework.NativeApi.Severity.Medium);
                 return FindingCommentOutcome.Added;
             }
             catch (Exception ex)
