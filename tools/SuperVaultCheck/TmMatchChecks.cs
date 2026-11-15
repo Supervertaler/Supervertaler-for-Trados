@@ -217,17 +217,18 @@ static class TmMatchChecks
 
     static void ProjectFile()
     {
+        bool Uses(XDocument doc) => TmSearcher.FindLookupTms(doc, null, "nl-NL", "en-GB").EverTm;
         XDocument P(string entries) => XDocument.Parse("<Project><CascadeItem>" + entries + "</CascadeItem><LanguageDirections><LanguageDirection><CascadeItem/></LanguageDirection></LanguageDirections></Project>");
         string E(string uri, string lookup = "true", string enabled = "true") =>
             "<CascadeEntryItem PerformConcordanceSearch=\"true\" Penalty=\"0\" PerformUpdate=\"false\" PerformNormalSearch=\"" + lookup + "\"><MainTranslationProviderItem Uri=\"" + uri + "\" State=\"\" Enabled=\"" + enabled + "\" /></CascadeEntryItem>";
-        Check(TmSearcher.UsesEverTm(P(E("sdltm.file:///C:/Acme.sdltm") + E("evertm:///"))), "a project with EverTM, Lookup ticked: used");
-        Check(TmSearcher.UsesEverTm(P(E("supervault:///"))), "the old name (supervault:///): used");
-        Check(!TmSearcher.UsesEverTm(P(E("evertm:///", lookup: "false"))), "Lookup unticked: not used");
-        Check(!TmSearcher.UsesEverTm(P(E("evertm:///", enabled: "false"))), "disabled in the project: not used");
-        Check(!TmSearcher.UsesEverTm(P(E("sdltm.file:///C:/Acme.sdltm"))), "a project without EverTM: not used");
+        Check(Uses(P(E("sdltm.file:///C:/Acme.sdltm") + E("evertm:///"))), "a project with EverTM, Lookup ticked: used");
+        Check(Uses(P(E("supervault:///"))), "the old name (supervault:///): used");
+        Check(!Uses(P(E("evertm:///", lookup: "false"))), "Lookup unticked: not used");
+        Check(!Uses(P(E("evertm:///", enabled: "false"))), "disabled in the project: not used");
+        Check(!Uses(P(E("sdltm.file:///C:/Acme.sdltm"))), "a project without EverTM: not used");
         var inPair = XDocument.Parse("<Project><CascadeItem/><LanguageDirections><LanguageDirection><CascadeItem OverrideParent=\"true\">" + E("evertm:///") + "</CascadeItem></LanguageDirection></LanguageDirections></Project>");
-        Check(TmSearcher.UsesEverTm(inPair), "EverTM set for one language pair only: used");
-        Check(!TmSearcher.ProjectUsesEverTm(@"C:\nowhere\at\all\doc.sdlxliff") && !TmSearcher.ProjectUsesEverTm(null), "no project file: not used, no error");
+        Check(Uses(inPair), "EverTM set for one language pair only: used");
+        Check(!TmSearcher.FindLookupTms(@"C:\nowhere\at\all\doc.sdlxliff", "nl-NL", "en-GB").EverTm && !TmSearcher.FindLookupTms((string)null, null, null).EverTm, "no project file: not used, no error");
     }
 
     static string Tmx(string dir, string name, params (string nl, string en)[] units)

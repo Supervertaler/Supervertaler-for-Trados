@@ -14,6 +14,7 @@
 ### Added
 
 ### Fixed
+- **Batch Translate no longer takes TM matches from a memory you have switched off.** With **Send TM matches to the AI** ticked, Batch Translate searched every translation memory the project file named, and every `.sdltm` in the project's `Tm` folder, also those whose **Enabled** or **Lookup** box was unticked under **Project Settings → Language Pairs → Translation Memory and Automated Translation**. It now searches a memory only when it is enabled and has Lookup ticked, in the list that applies to the document's language pair: the pair's own list when it has one, and All Language Pairs otherwise. EverTM follows the same rule. When a run leaves memories out, the log says so once, for example "TM matches: 1 of 3 project TMs searched; 2 are switched off or have Lookup unticked in Project Settings." The same goes for Clipboard Mode and **Preview prompt**. SuperSearch and the MCP tools that search a TM you name are unchanged: they still offer every memory attached to the project.
 
 ## [18.20.207 / 19.20.207] – 2026-11-15
 

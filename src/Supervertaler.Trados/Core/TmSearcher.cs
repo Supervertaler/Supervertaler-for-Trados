@@ -111,40 +111,152 @@ namespace Supervertaler.Trados.Core
                 .ToList();
         }
 
+        /// <summary>What <see cref="FindLookupTms(string,string,string)"/> found: the memories to search for TM matches.</summary>
+        public sealed class LookupTms
+        {
+            /// <summary>File paths and server URIs to search, as <see cref="FindProjectTms"/> gives them.</summary>
+            public List<string> Tms = new List<string>();
+            /// <summary>EverTM is in the list, enabled and with Lookup ticked: search it too, through its own provider.</summary>
+            public bool EverTm;
+            /// <summary>How many memories the list for this language pair holds (EverTM included, machine translation not).</summary>
+            public int Total;
+            /// <summary>How many of them are searched.</summary>
+            public int Searched;
+        }
+
         /// <summary>
-        /// True when the project that contains <paramref name="anyProjectFilePath"/> has EverTM
-        /// (<c>evertm:///</c>, or <c>supervault:///</c> from before the rename) in its TM settings, enabled and with
-        /// Lookup ticked (<c>PerformNormalSearch</c>), in the project's own list or a language pair's. EverTM is not in
-        /// <see cref="FindProjectTms"/>'s list, which is of files and server URIs that other features open
-        /// themselves; the TM-match lookup searches EverTM through its own provider instead.
-        /// Never throws; false when the project file can't be found or read.
+        /// The memories a TM-match lookup may search, for a document in the given language pair: those in
+        /// Project Settings &gt; Language Pairs &gt; Translation Memory and Automated Translation that are
+        /// Enabled AND have Lookup ticked (<c>PerformNormalSearch</c>) - what Studio itself would look up in.
+        /// EverTM (<c>evertm:///</c>, or <c>supervault:///</c> from before the rename) follows the same rule and
+        /// is reported apart, because it is searched through its own provider and not opened as a file.
+        ///
+        /// <para>Unlike <see cref="FindProjectTms"/>, which lists every memory the project file names and every
+        /// <c>.sdltm</c> in its <c>Tm</c> folder, for the features where the translator picks what to search.
+        /// Until 208 the lookup used that list too, so a memory that was switched off was searched all the same.</para>
+        ///
+        /// <para>The list is the language pair's own when the pair has one ("Use different translation
+        /// providers for this language pair", <c>OverrideParent="true"</c>), and All Language Pairs' otherwise. A
+        /// pair that does not override still carries a list in the project file - a copy from when it was last
+        /// edited - and that copy is not read.</para>
+        /// Never throws; empty when the project file can't be found or read.
         /// </summary>
-        public static bool ProjectUsesEverTm(string anyProjectFilePath)
+        /// <param name="sourceCulture">The document's source language ("nl-NL"), or null when unknown.</param>
+        /// <param name="targetCulture">The document's target language ("en-GB"), or null when unknown.</param>
+        public static LookupTms FindLookupTms(string anyProjectFilePath, string sourceCulture, string targetCulture)
         {
             try
             {
                 var projPath = FindProjectFile(anyProjectFilePath);
-                if (projPath == null) return false;
-                return UsesEverTm(XDocument.Load(projPath));
+                if (projPath == null) return new LookupTms();
+                return FindLookupTms(XDocument.Load(projPath), Path.GetDirectoryName(projPath), sourceCulture, targetCulture);
             }
-            catch { return false; }
+            catch { return new LookupTms(); }
         }
 
-        public static bool UsesEverTm(XDocument projDoc)
+        /// <summary>The same, of a project file already read. <paramref name="projDir"/> is where relative TM paths start.</summary>
+        public static LookupTms FindLookupTms(XDocument projDoc, string projDir, string sourceCulture, string targetCulture)
         {
-            foreach (var entry in projDoc.Descendants().Where(e => e.Name.LocalName == "CascadeEntryItem"))
+            var result = new LookupTms();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);      // every memory in the list
+            var searched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);  // those that are on
+            var added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);     // the files and URIs in Tms
+            var cascade = EffectiveCascade(projDoc, sourceCulture, targetCulture);
+            if (cascade == null) return result;
+
+            foreach (var entry in cascade.Elements().Where(e => e.Name.LocalName == "CascadeEntryItem"))
             {
-                if (string.Equals(entry.Attribute("PerformNormalSearch")?.Value, "false", StringComparison.OrdinalIgnoreCase)) continue;
-                foreach (var item in entry.Elements().Where(e => e.Name.LocalName == "MainTranslationProviderItem"))
+                var main = entry.Elements().FirstOrDefault(e => e.Name.LocalName == "MainTranslationProviderItem");
+                var mainUri = main?.Attribute("Uri")?.Value;
+                if (string.IsNullOrEmpty(mainUri)) continue;
+
+                bool everTm = IsEverTmUri(mainUri);
+                // The entry's memories: its main one and, when the project has one for it, its project TM.
+                var files = new List<string>();
+                if (!everTm)
                 {
-                    if (string.Equals(item.Attribute("Enabled")?.Value, "false", StringComparison.OrdinalIgnoreCase)) continue;
-                    Uri uri;
-                    if (Uri.TryCreate(item.Attribute("Uri")?.Value ?? "", UriKind.Absolute, out uri)
-                        && Supervertaler.Trados.SuperVault.SuperVaultProvider.IsOurs(uri))
-                        return true;
+                    foreach (var item in entry.Elements().Where(e => e.Name.LocalName == "MainTranslationProviderItem"
+                                                                  || e.Name.LocalName == "ProjectTranslationProviderItem"))
+                    {
+                        if (item != main && IsFalse(item.Attribute("Enabled"))) continue;
+                        var tm = LookupTarget(item.Attribute("Uri")?.Value, projDir);
+                        if (tm != null) files.Add(tm);
+                    }
+                    // Machine translation, a termbase provider, or a memory whose file is gone: not a TM to count.
+                    if (files.Count == 0) continue;
                 }
+
+                // One memory listed twice counts once, and is searched if either line has it on.
+                bool on = !IsFalse(main.Attribute("Enabled")) && !IsFalse(entry.Attribute("PerformNormalSearch"));
+                var key = everTm ? "evertm" : files[0];
+                if (seen.Add(key)) result.Total++;
+                if (!on) continue;
+                if (searched.Add(key)) result.Searched++;
+
+                if (everTm) result.EverTm = true;
+                else foreach (var tm in files) if (added.Add(tm)) result.Tms.Add(tm);
             }
-            return false;
+
+            result.Tms = result.Tms
+                .OrderBy(p => ServerTmClient.IsServerTmUri(p) ? p : Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return result;
+        }
+
+        /// <summary>
+        /// What the Batch Translate log says when a run left memories out, or null when it searched them all.
+        /// </summary>
+        public static string SkippedTmsSentence(int searched, int total)
+        {
+            int skipped = total - searched;
+            if (total <= 0 || skipped <= 0) return null;
+            return "TM matches: " + searched + " of " + total + " project TM" + (total == 1 ? "" : "s") + " searched; "
+                + skipped + (skipped == 1 ? " is switched off or has" : " are switched off or have")
+                + " Lookup unticked in Project Settings.";
+        }
+
+        /// <summary>
+        /// The TM list that applies to a document in this language pair: the pair's own when it overrides, the
+        /// project's (All Language Pairs) otherwise. Null when the project file has none.
+        /// </summary>
+        static XElement EffectiveCascade(XDocument projDoc, string sourceCulture, string targetCulture)
+        {
+            var directions = projDoc.Descendants().Where(e => e.Name.LocalName == "LanguageDirection").ToList();
+            var pair = directions.FirstOrDefault(d =>
+                !string.IsNullOrEmpty(sourceCulture) && !string.IsNullOrEmpty(targetCulture)
+                && string.Equals(d.Attribute("SourceLanguageCode")?.Value, sourceCulture, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.Attribute("TargetLanguageCode")?.Value, targetCulture, StringComparison.OrdinalIgnoreCase));
+            // A project with one language pair: the document is in it, whatever the two name it.
+            if (pair == null && directions.Count == 1) pair = directions[0];
+
+            var own = pair?.Descendants().FirstOrDefault(e => e.Name.LocalName == "CascadeItem");
+            if (own != null && string.Equals(own.Attribute("OverrideParent")?.Value, "true", StringComparison.OrdinalIgnoreCase))
+                return own;
+
+            return projDoc.Descendants().FirstOrDefault(e => e.Name.LocalName == "CascadeItem"
+                && !e.Ancestors().Any(a => a.Name.LocalName == "LanguageDirection"));
+        }
+
+        static bool IsFalse(XAttribute a)
+        {
+            return string.Equals(a?.Value, "false", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsEverTmUri(string value)
+        {
+            Uri uri;
+            return Uri.TryCreate(value ?? "", UriKind.Absolute, out uri)
+                && Supervertaler.Trados.SuperVault.SuperVaultProvider.IsOurs(uri);
+        }
+
+        /// <summary>A TM line's memory as the search takes it: a server URI, or the full path of an existing .sdltm. Null for anything else.</summary>
+        static string LookupTarget(string uri, string projDir)
+        {
+            if (string.IsNullOrEmpty(uri)) return null;
+            if (ServerTmClient.IsServerTmUri(uri)) return uri;
+            if (uri.IndexOf(".sdltm", StringComparison.OrdinalIgnoreCase) < 0) return null;
+            var path = ResolveTmUri(uri, projDir);
+            return path != null && File.Exists(path) ? path : null;
         }
 
         /// <summary>The .sdlproj in the folder of <paramref name="anyProjectFilePath"/> or above it, or null.</summary>

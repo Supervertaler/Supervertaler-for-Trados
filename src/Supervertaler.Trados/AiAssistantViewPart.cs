@@ -8006,6 +8006,11 @@ namespace Supervertaler.Trados
             /// <summary>The project looks things up in EverTM: search it too, for this target language (with its variant).</summary>
             public bool EverTm;
             public string TargetCulture;
+            /// <summary>For the log, once per run: memories left out because they are switched off or have Lookup
+            /// unticked in Project Settings. Null when every memory in the project's list is searched.</summary>
+            public string SkippedNote;
+            /// <summary>Every memory in the project's list is switched off: nothing to search, only the note to show.</summary>
+            public bool NothingToSearch { get { return (Tms == null || Tms.Count == 0) && !EverTm; } }
         }
 
         /// <summary>MUST be called on the UI thread - it reads the Trados model.</summary>
@@ -8016,19 +8021,26 @@ namespace Supervertaler.Trados
                 if (aiSettings == null || !aiSettings.SendTmMatchesInBatch) return null;
 
                 var anchor = ResolveProjectAnchorPathCore();
-                var tms = Core.TmSearcher.FindProjectTms(anchor) ?? new List<string>();
-                // EverTM, when the project has it with Lookup ticked: searched through its own provider, not as a file.
-                var target = GetDocumentTargetCultureName();
-                bool everTm = target != null && Core.TmSearcher.ProjectUsesEverTm(anchor);
-                if (tms.Count == 0 && !everTm) return null;
-
                 var culture = GetDocumentSourceCulture();
                 if (culture == null) return null;
+
+                // Only the memories that are Enabled with Lookup ticked in Project Settings, for this
+                // document's language pair - EverTM among them, which is searched through its own
+                // provider, not as a file. Until 208 every memory the project file named was searched.
+                var target = GetDocumentTargetCultureName();
+                var lookup = Core.TmSearcher.FindLookupTms(anchor, culture.Name, target);
+                if (lookup.Total == 0) return null;
+                var tms = lookup.Tms;
+                bool everTm = target != null && lookup.EverTm;
 
                 var min = aiSettings.TmFuzzyMinScore;
                 if (min < 1 || min > 100) min = 70;
 
-                return new TmLookupPlan { Tms = tms, SourceCulture = culture, MinScore = min, EverTm = everTm, TargetCulture = target };
+                return new TmLookupPlan
+                {
+                    Tms = tms, SourceCulture = culture, MinScore = min, EverTm = everTm, TargetCulture = target,
+                    SkippedNote = Core.TmSearcher.SkippedTmsSentence(lookup.Searched, lookup.Total)
+                };
             }
             catch (Exception ex)
             {
@@ -8055,7 +8067,7 @@ namespace Supervertaler.Trados
             TmLookupPlan plan, List<BatchSegment> segments, CancellationToken ct,
             Action<int, int> progress = null)
         {
-            if (plan == null || segments == null || segments.Count == 0) return 0;
+            if (plan == null || plan.NothingToSearch || segments == null || segments.Count == 0) return 0;
 
             var texts = new List<string>(segments.Count);
             foreach (var s in segments) texts.Add(s.SourceText);
@@ -11035,7 +11047,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     try
                     {
-                        if (tmPlan != null)
+                        if (tmPlan != null && tmPlan.SkippedNote != null)
+                            SafeInvoke(() => batchControl.AppendLog(tmPlan.SkippedNote));
+                        if (tmPlan != null && !tmPlan.NothingToSearch)
                         {
                             SafeInvoke(() => batchControl.AppendLog(
                                 "Searching the project's translation memories for matches..."));
@@ -11437,6 +11451,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         {
             var plan = PrepareTmLookup(aiSettings);
             if (plan == null) { then(); return; }
+            if (plan.SkippedNote != null) batchControl.AppendLog(plan.SkippedNote);
+            if (plan.NothingToSearch) { then(); return; }
 
             // A second click during the search, or a run: SetRunning(false) below
             // would otherwise unlock the panel under the other one.
