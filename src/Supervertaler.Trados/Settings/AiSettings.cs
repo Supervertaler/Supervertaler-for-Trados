@@ -292,12 +292,49 @@ namespace Supervertaler.Trados.Settings
         public int TmFuzzyMinScore { get; set; } = 70;
 
         /// <summary>
-        /// Whether to include the full document content (all source segments) in the
-        /// AI chat prompt. Enables the AI to assess the document type and provide
-        /// context-appropriate assistance.
+        /// Whether the full document content (all source segments, up to
+        /// <see cref="DocumentContextMaxSegments"/>) goes to the AI as context, for
+        /// the BATCH features: Batch Translate, Batch Proofread, Translate active
+        /// segment (Alt+T), SuperBench and the Batch prompt previews. The tick box
+        /// is on the Batch Operations tab.
+        ///
+        /// <para>Until 208 this one setting decided for Chat and QuickLauncher
+        /// too. It keeps its name in the file, so a settings file from before
+        /// needs no migration; Chat has <see cref="IncludeDocumentContextInChat"/>.</para>
         /// </summary>
         [DataMember(Name = "includeDocumentContext")]
         public bool IncludeDocumentContext { get; set; } = true;
+
+        /// <summary>
+        /// The same for Chat and QuickLauncher (the tick box on the Chat tab). Null
+        /// = never set: Chat then follows <see cref="IncludeDocumentContext"/>, as
+        /// it did while there was one setting. Not written to the file while null.
+        /// Read it through <see cref="ChatIncludesDocumentContext"/>.
+        /// </summary>
+        [DataMember(Name = "includeDocumentContextInChat", EmitDefaultValue = false)]
+        public bool? IncludeDocumentContextInChat { get; set; }
+
+        /// <summary>Whether Chat and QuickLauncher send the document: Chat's own
+        /// setting, or the batch one while Chat's has never been set. Not stored.</summary>
+        public bool ChatIncludesDocumentContext => IncludeDocumentContextInChat ?? IncludeDocumentContext;
+
+        /// <summary>The Chat tab's tick box was changed. The batch setting is not touched.</summary>
+        public void SetChatDocumentContext(bool include)
+        {
+            IncludeDocumentContextInChat = include;
+        }
+
+        /// <summary>
+        /// The Batch Operations tab's tick box was changed. Chat keeps what it
+        /// had: while Chat's setting has never been set it follows this one, so it
+        /// is first given the value it has been following.
+        /// </summary>
+        public void SetBatchDocumentContext(bool include)
+        {
+            if (IncludeDocumentContextInChat == null && include != IncludeDocumentContext)
+                IncludeDocumentContextInChat = IncludeDocumentContext;
+            IncludeDocumentContext = include;
+        }
 
         /// <summary>
         /// Maximum number of source segments to include in the AI chat prompt.

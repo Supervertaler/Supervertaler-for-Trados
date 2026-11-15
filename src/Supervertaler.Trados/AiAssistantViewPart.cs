@@ -296,6 +296,17 @@ namespace Supervertaler.Trados
             _control.Value.SetChatFontSize(_settings.ChatFontSize);
             _control.Value.ChatFontSizeChanged += OnChatFontSizeChanged;
 
+            // The document-context tick box on the Chat tab: shows the stored
+            // setting and writes a change back, as the Batch size box does.
+            if (_settings?.AiSettings != null)
+                _control.Value.IncludeDocumentContext = _settings.AiSettings.ChatIncludesDocumentContext;
+            _control.Value.IncludeDocumentContextChanged += (s, ev) =>
+            {
+                if (_settings?.AiSettings == null) return;
+                _settings.AiSettings.SetChatDocumentContext(_control.Value.IncludeDocumentContext);
+                _settings.Save();
+            };
+
             // Wire batch translate control events
             var batchControl = _control.Value.BatchTranslateControl;
             batchControl.TranslateRequested += OnBatchTranslateRequested;
@@ -333,6 +344,15 @@ namespace Supervertaler.Trados
             {
                 if (_settings?.AiSettings == null) return;
                 _settings.AiSettings.BatchSize = batchControl.BatchSize;
+                _settings.Save();
+            };
+            // And its twin on this tab, for the batch features.
+            if (_settings?.AiSettings != null)
+                batchControl.IncludeDocumentContext = _settings.AiSettings.IncludeDocumentContext;
+            batchControl.IncludeDocumentContextChanged += (s, ev) =>
+            {
+                if (_settings?.AiSettings == null) return;
+                _settings.AiSettings.SetBatchDocumentContext(batchControl.IncludeDocumentContext);
                 _settings.Save();
             };
             batchControl.ModelChangeRequested += OnModelChangeRequested;
@@ -715,7 +735,9 @@ namespace Supervertaler.Trados
             List<DocumentSegment> documentSegments = null;
             int activeSegmentIndex = -1;
             int totalSegmentCount = 0;
-            if (_settings?.AiSettings?.IncludeDocumentContext != false)
+            // Chat and QuickLauncher's own setting (the tick box on the Chat tab),
+            // not the batch one.
+            if (_settings?.AiSettings?.ChatIncludesDocumentContext != false)
             {
                 var docCtx = CollectDocumentContext();
                 documentSegments = docCtx.Item1;
@@ -15180,6 +15202,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 }
 
                 _control.Value.BatchTranslateControl.BatchSize = ai.BatchSize;
+                _control.Value.BatchTranslateControl.IncludeDocumentContext = ai.IncludeDocumentContext;
+                _control.Value.IncludeDocumentContext = ai.ChatIncludesDocumentContext;
 
                 var provider = ai.SelectedProvider ?? "Not configured";
                 var model = ai.GetSelectedModel() ?? "";

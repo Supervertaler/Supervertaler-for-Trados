@@ -74,6 +74,8 @@ namespace Supervertaler.Trados.Controls
         // Clipboard Mode
         private CheckBox _chkClipboardMode;
         private CheckBox _chkSendTmMatches;   // #110
+        private CheckBox _chkIncludeDocument;   // the batch features' document context (208)
+        private bool _settingIncludeDocument;   // true while IncludeDocumentContext is set from the stored setting
         private Button _btnCopyToClipboard;
         private Button _btnPasteFromClipboard;
 
@@ -165,6 +167,30 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Raised when the translator toggles the TM-match checkbox, so the setting persists.</summary>
         public event EventHandler SendTmMatchesChanged;
+
+        /// <summary>The label of the tick box, here and on the Chat tab.</summary>
+        internal const string DocumentContextLabel = "Include full document content in AI context";
+
+        /// <summary>
+        /// Whether the batch features send the whole document as context, as the
+        /// tick box shows it. Setting it shows the stored value and never raises
+        /// <see cref="IncludeDocumentContextChanged"/>, like <see cref="BatchSize"/>:
+        /// a refresh from the settings is not a change the translator made.
+        /// </summary>
+        public bool IncludeDocumentContext
+        {
+            get { return _chkIncludeDocument?.Checked ?? true; }
+            set
+            {
+                if (_chkIncludeDocument == null) return;
+                _settingIncludeDocument = true;
+                try { _chkIncludeDocument.Checked = value; }
+                finally { _settingIncludeDocument = false; }
+            }
+        }
+
+        /// <summary>Raised when the translator ticks or unticks the document box on the tab, so the setting persists.</summary>
+        public event EventHandler IncludeDocumentContextChanged;
 
         /// <summary>The largest batch size this Studio takes: a 32-bit Studio is held to 10 (MemoryGuard.ClampBatchSize).</summary>
         internal static int MaxBatchSize => Supervertaler.Trados.Core.MemoryGuard.Is32Bit ? 10 : 100;
@@ -369,6 +395,35 @@ namespace Supervertaler.Trados.Controls
                 "no termbase is sent either. Untick it for the full check.\r\n\r\n" +
                 "Not remembered: Studio always starts with the full check.");
             Controls.Add(_chkTargetOnly);
+
+            y += Px(24);
+
+            // ─── Document context (208) ────
+            // Under the TM-matches row, in Translate and in Proofread mode alike.
+            // Until 208 one tick box in AI Settings decided this for Chat as well.
+            _chkIncludeDocument = new CheckBox
+            {
+                Text = DocumentContextLabel,
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                Font = bodyFont,
+                ForeColor = labelColor,
+                Checked = true
+            };
+            _chkIncludeDocument.CheckedChanged += (s, ev) =>
+            {
+                if (!_settingIncludeDocument) IncludeDocumentContextChanged?.Invoke(this, EventArgs.Empty);
+            };
+            var docTip = new ToolTip { AutoPopDelay = 20000, InitialDelay = 300 };
+            docTip.SetToolTip(_chkIncludeDocument,
+                "Sends the whole document to the AI as context with every request, up to\r\n" +
+                "the number of segments set as Max segments in AI Settings, so the AI can\r\n" +
+                "see what kind of document this is and what the rest of it says.\r\n\r\n" +
+                "It costs more input tokens. Untick it to spend less.\r\n\r\n" +
+                "Followed by Batch Translate, Batch Proofread, Translate active segment\r\n" +
+                "(Alt+T) and SuperBench. Chat and QuickLauncher have a tick box of their\r\n" +
+                "own, on the Chat tab.");
+            Controls.Add(_chkIncludeDocument);
 
             y += Px(24);
 
@@ -1568,6 +1623,7 @@ namespace Supervertaler.Trados.Controls
             UpdateActionButtonText();
             _cmbScope.Enabled = !running;
             _nudBatchSize.Enabled = !running;   // a run uses the size it started with
+            _chkIncludeDocument.Enabled = !running;   // and the document context it started with
             _cmbPrompt.Enabled = !running;
             _rbTranslate.Enabled = !running;
             _rbProofread.Enabled = !running;

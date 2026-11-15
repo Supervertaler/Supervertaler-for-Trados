@@ -90,7 +90,6 @@ namespace Supervertaler.Trados.Controls
 
         // AI Context section – shared (all AI features)
         private Label _lblAiContextHeader;
-        private CheckBox _chkIncludeDocumentContext;
         private Label _lblMaxSegments;
         private NumericUpDown _nudMaxSegments;
         private Label _lblPromptContext;
@@ -627,28 +626,31 @@ namespace Supervertaler.Trados.Controls
             _lblAiContextHeader = Header("Context layers (Batch operations, Chat and QuickLauncher)");
             Span(root, ref row, _lblAiContextHeader);
 
-            _chkIncludeDocumentContext = Check("Include full document content in AI context");
-            _chkIncludeDocumentContext.Checked = true;
-            var docTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
-            docTip.SetToolTip(_chkIncludeDocumentContext,
-                "Sends all source segments to the AI so it can determine the document type\r\n" +
-                "(legal, medical, technical, etc.) and provide context-appropriate assistance.\r\n" +
-                "Uses more tokens but greatly improves response quality.\r\n" +
-                "Applies to Chat, QuickLauncher, and Batch Operations.");
-            _chkIncludeDocumentContext.CheckedChanged += (s, ev) =>
-            {
-                _nudMaxSegments.Enabled = _chkIncludeDocumentContext.Checked;
-                _lblMaxSegments.Enabled = _chkIncludeDocumentContext.Checked;
-            };
-            Span(root, ref row, _chkIncludeDocumentContext);
-
-            _lblMaxSegments = FieldLabel("Max segments:", indentSteps: 1);
+            // "Include full document content in AI context" was one tick box here
+            // until 208. It is now two, where they are used: on the Chat tab (Chat
+            // and QuickLauncher) and on the Batch Operations tab (the batch
+            // features). This panel no longer reads or writes either; what stays
+            // is how much of the document is sent when one of them is ticked.
+            _lblMaxSegments = FieldLabel("Max segments:");
             _nudMaxSegments = SmallNud(100, 2000, 500, 100);
-            var maxSegTip = new ToolTip { AutoPopDelay = 10000, InitialDelay = 300 };
-            maxSegTip.SetToolTip(_nudMaxSegments,
-                "Maximum number of source segments to include in the AI prompt.\r\n" +
-                "Documents larger than this will be truncated (first 80% + last 20%).");
+            var maxSegText =
+                "The most source segments of the document sent to the AI as context, where\r\n" +
+                "\"Include full document content in AI context\" is ticked. That tick box is\r\n" +
+                "on the Chat tab (for Chat and QuickLauncher) and on the Batch Operations\r\n" +
+                "tab (for the batch features).\r\n" +
+                "A longer document is cut down to this: its first 80% and last 20%.";
+            var maxSegTip = new ToolTip { AutoPopDelay = 15000, InitialDelay = 300 };
+            maxSegTip.SetToolTip(_nudMaxSegments, maxSegText);
+            maxSegTip.SetToolTip(_lblMaxSegments, maxSegText);
             Pair(root, ref row, _lblMaxSegments, _nudMaxSegments);
+            var documentContextNote = new Label
+            {
+                Text = "The tick box \"Include full document content in AI context\" is now on the Chat tab " +
+                       "and on the Batch Operations tab.",
+                AutoSize = true, ForeColor = Color.Gray, Font = HintFont(), Anchor = AnchorStyles.Left,
+                MaximumSize = new Size(UiScale.Pixels(560), 0), Margin = new Padding(0, 0, 0, UiScale.Pixels(4)),
+            };
+            Pair(root, ref row, NoLabel(), documentContextNote);
 
             _chkIncludeTermMetadata = Check("Include term definitions and domains");
             _chkIncludeTermMetadata.Checked = true;
@@ -1026,11 +1028,8 @@ namespace Supervertaler.Trados.Controls
             _chkIncludeTmMatches.Checked = settings.IncludeTmMatches;
             _nudTmFuzzyMinScore.Value = Math.Min(100, Math.Max(50, settings.TmFuzzyMinScore));
             _chkDemoMode.Checked = settings.DemoMode;
-            _chkIncludeDocumentContext.Checked = settings.IncludeDocumentContext;
             _nudMaxSegments.Value = Math.Max(_nudMaxSegments.Minimum,
                 Math.Min(_nudMaxSegments.Maximum, settings.DocumentContextMaxSegments));
-            _nudMaxSegments.Enabled = settings.IncludeDocumentContext;
-            _lblMaxSegments.Enabled = settings.IncludeDocumentContext;
             _nudPromptContext.Value = Math.Max(_nudPromptContext.Minimum,
                 Math.Min(_nudPromptContext.Maximum, settings.PromptContextMaxSegments));
             _nudSurroundingSegments.Value = Math.Max(_nudSurroundingSegments.Minimum,
@@ -1149,7 +1148,6 @@ namespace Supervertaler.Trados.Controls
             settings.IncludeTmMatches = _chkIncludeTmMatches.Checked;
             settings.TmFuzzyMinScore = (int)_nudTmFuzzyMinScore.Value;
             settings.DemoMode = _chkDemoMode.Checked;
-            settings.IncludeDocumentContext = _chkIncludeDocumentContext.Checked;
             settings.DocumentContextMaxSegments = (int)_nudMaxSegments.Value;
             settings.PromptContextMaxSegments = (int)_nudPromptContext.Value;
             settings.QuickLauncherSurroundingSegments = (int)_nudSurroundingSegments.Value;

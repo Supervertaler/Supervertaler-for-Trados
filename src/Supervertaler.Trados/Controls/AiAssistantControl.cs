@@ -170,6 +170,29 @@ namespace Supervertaler.Trados.Controls
 
         private float _chatFontSize = 9f;
 
+        private CheckBox _chkIncludeDocument;   // Chat and QuickLauncher's document context (208)
+        private bool _settingIncludeDocument;   // true while IncludeDocumentContext is set from the stored setting
+
+        /// <summary>
+        /// Whether Chat and QuickLauncher send the whole document as context, as
+        /// the tick box under the chat shows it. Setting it shows the stored value
+        /// and never raises <see cref="IncludeDocumentContextChanged"/>.
+        /// </summary>
+        public bool IncludeDocumentContext
+        {
+            get { return _chkIncludeDocument?.Checked ?? true; }
+            set
+            {
+                if (_chkIncludeDocument == null) return;
+                _settingIncludeDocument = true;
+                try { _chkIncludeDocument.Checked = value; }
+                finally { _settingIncludeDocument = false; }
+            }
+        }
+
+        /// <summary>Raised when the user ticks or unticks the document box on the Chat tab. The ViewPart persists it.</summary>
+        public event EventHandler IncludeDocumentContextChanged;
+
         /// <summary>Exposes the BatchTranslateControl for event wiring by the ViewPart.</summary>
         public BatchTranslateControl BatchTranslateControl => _batchTranslateControl;
 
@@ -665,6 +688,41 @@ namespace Supervertaler.Trados.Controls
                 Visible = false
             };
 
+            // ─── Document context tick box (a strip of its own above the input) ──
+            // Its own row, so it is always in view and takes nothing from the
+            // input box or the button row, where the model name already competes
+            // for room in a narrow pane. Quiet, like the model line.
+            _chkIncludeDocument = new CheckBox
+            {
+                Text = BatchTranslateControl.DocumentContextLabel,
+                Dock = DockStyle.Fill,
+                AutoEllipsis = true,
+                Font = new Font("Segoe UI", UiScale.FontSize(7.5f)),
+                ForeColor = Color.FromArgb(90, 90, 90),
+                Checked = true,
+                TabIndex = 5
+            };
+            _chkIncludeDocument.CheckedChanged += (s, e) =>
+            {
+                if (!_settingIncludeDocument) IncludeDocumentContextChanged?.Invoke(this, EventArgs.Empty);
+            };
+            var docTip = new ToolTip { AutoPopDelay = 20000, InitialDelay = 400 };
+            docTip.SetToolTip(_chkIncludeDocument,
+                "Sends the whole document to the AI as context with every message, up to\r\n" +
+                "the number of segments set as Max segments in AI Settings, so the AI can\r\n" +
+                "see what kind of document this is and what the rest of it says.\r\n\r\n" +
+                "It costs more input tokens. Untick it to spend less.\r\n\r\n" +
+                "Followed by Chat and QuickLauncher. The batch features have a tick box\r\n" +
+                "of their own, on the Batch Operations tab.");
+            var documentStrip = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = UiScale.Pixels(22),
+                Padding = new Padding(UiScale.Pixels(10), 0, UiScale.Pixels(8), 0),
+                BackColor = Color.FromArgb(250, 250, 250)
+            };
+            documentStrip.Controls.Add(_chkIncludeDocument);
+
             // ─── Chat message area (fill) ─────────────────────────
             _chatPanel = new Panel
             {
@@ -731,6 +789,7 @@ namespace Supervertaler.Trados.Controls
             // (bottom first, then top, then fill)
             page.Controls.Add(_chatPanel);
             page.Controls.Add(_lblThinking);
+            page.Controls.Add(documentStrip);   // directly above the input panel
             page.Controls.Add(_inputPanel);
             page.Controls.Add(_contextStrip);
 
