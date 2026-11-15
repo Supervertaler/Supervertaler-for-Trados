@@ -1701,6 +1701,27 @@ namespace Supervertaler.Trados.Controls
         /// </summary>
         private const int BubbleTruncateDisplayChars = 2000;
 
+        /// <summary>
+        /// Adds a message the user asked for by clicking something outside the
+        /// Chat tab (the Report button on the SuperMemory bar): shows the Chat
+        /// tab and scrolls to the message. On another tab the click seemed to do
+        /// nothing. A message nobody asked for goes through
+        /// <see cref="AddMessage"/>, which leaves the tab alone.
+        ///
+        /// <para>The tab is selected before the bubble is added: a bubble
+        /// measured on an unselected tab gets no "Show full response" link.
+        /// Selecting the tab moves the keyboard focus to the Chat tab's first
+        /// control. The click that asked had already put the focus in this
+        /// pane, so the Trados editor loses nothing more; that is why this is
+        /// for clicks only.</para>
+        /// </summary>
+        public void AddRequestedMessage(ChatMessage message)
+        {
+            SwitchToChatTab();
+            ReengageAutoScroll();
+            AddMessage(message);
+        }
+
         public void AddMessage(ChatMessage message)
         {
             // ── Truncate long assistant responses for display ────────

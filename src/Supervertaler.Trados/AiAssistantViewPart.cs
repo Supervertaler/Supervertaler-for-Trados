@@ -8329,12 +8329,9 @@ namespace Supervertaler.Trados
                     PopulateBatchPromptDropdown();
 
                     // Confirmation in chat
-                    var confirmMsg = new ChatMessage
-                    {
-                        Role = ChatRole.Assistant,
-                        Content = $"Prompt saved as **\"{name}\"** in the Translate category. " +
-                                  "You can select it from the Prompt dropdown on the Batch Operations tab."
-                    };
+                    var confirmMsg = ChatPrompt.Notice(
+                        $"Prompt saved as **\"{name}\"** in the Translate category. " +
+                        "You can select it from the Prompt dropdown on the Batch Operations tab.");
                     _chatHistory.Add(confirmMsg);
                     _control.Value.AddMessage(confirmMsg);
                     SaveChatHistory();
@@ -8368,7 +8365,7 @@ namespace Supervertaler.Trados
 
                 if (!Directory.Exists(vaultDir))
                 {
-                    ShowSuperMemoryMessage(
+                    ShowSuperMemoryAnswer(
                         $"Memory bank **{bankName}** does not exist yet.\n\n" +
                         $"Expected location:\n`{vaultDir}`");
                     return;
@@ -8435,7 +8432,7 @@ namespace Supervertaler.Trados
                 // MemoryBankReader globs the bank root with TopDirectoryOnly.
                 // A note the user believes is feeding the AI, that silently is
                 // not, is the worst version of this.
-                ShowSuperMemoryMessage(
+                ShowSuperMemoryAnswer(
                     $"Saved to memory bank **{bankName}**:\n" +
                     $"`reference/{fileName}`\n\n" +
                     "The `reference` folder is the audit trail - it is kept so a claim "
@@ -9753,12 +9750,16 @@ namespace Supervertaler.Trados
         private void OnMatchByProjectNameRequested(object sender, EventArgs e)
         {
             _control.Value.ReengageAutoScroll();
+            // The user picked this from the dropdown, and every outcome is
+            // reported in the chat (by ApplyProjectMemoryBank, which is also run
+            // when the document changes and so never changes the tab itself).
+            _control.Value.SwitchToChatTab();
             try
             {
                 var projectPath = CurrentProjectPathFromDocument();
                 if (string.IsNullOrEmpty(projectPath))
                 {
-                    ShowSuperMemoryMessage("No project is open, so there is no project name to match.");
+                    ShowSuperMemoryAnswer("No project is open, so there is no project name to match.");
                     return;
                 }
                 var projectName = CurrentProjectNameFromDocument() ?? "this project";
@@ -9776,7 +9777,7 @@ namespace Supervertaler.Trados
                 {
                     // Nothing changed, so the resolution said nothing: say why.
                     var found = UserDataPath.ListMemoryBanks().Any(b => string.Equals(b, slug, StringComparison.Ordinal));
-                    ShowSuperMemoryMessage(found
+                    ShowSuperMemoryAnswer(found
                         ? "This project's recorded bank was cleared. **" + slug + "** is named after the project and is already the active bank, so it is recorded again."
                         : "This project's recorded bank was cleared, but no bank is named **" + slug + "**, so nothing changed. "
                           + "Create a bank with that name and it is picked up the next time this project is opened, or pick one from the dropdown.");
@@ -10095,7 +10096,7 @@ namespace Supervertaler.Trados
                 {
                     // With no bank of its own a project still sends _shared, so
                     // "does not exist" alone read as "nothing is sent".
-                    ShowSuperMemoryMessage("Memory bank **" + bankName + "** does not exist yet.\n\n" +
+                    ShowSuperMemoryAnswer("Memory bank **" + bankName + "** does not exist yet.\n\n" +
                         "Expected location:\n`" + bankDir + "`" +
                         (UserDataPath.HasBankToRead(bankDir)
                             ? "\n\nYour `" + MemoryBankReader.SharedBankName + "` bank is still sent with this project's requests."
@@ -10105,7 +10106,7 @@ namespace Supervertaler.Trados
 
                 if (UserDataPath.IsLegacyBankLayout(bankDir))
                 {
-                    ShowSuperMemoryMessage(
+                    ShowSuperMemoryAnswer(
                         "**" + bankName + "** still uses the old folder layout, so nothing in it is " +
                         "being read - it contributes nothing to the AI's context.\n\n" +
                         "Use the Convert button in the toolbar first.");
@@ -10292,11 +10293,11 @@ namespace Supervertaler.Trados
                     foreach (var w in warnings) sb.AppendLine("- " + w);
                 }
 
-                ShowSuperMemoryMessage(sb.ToString().TrimEnd());
+                ShowSuperMemoryAnswer(sb.ToString().TrimEnd());
             }
             catch (Exception ex)
             {
-                AddErrorMessage("Could not build the bank report: " + ex.Message);
+                AddErrorMessage("Could not build the bank report: " + ex.Message, userAsked: true);
             }
         }
 
@@ -10314,7 +10315,7 @@ namespace Supervertaler.Trados
             {
                 if (_activeDocument == null)
                 {
-                    ShowSuperMemoryMessage("No document is open in the Trados editor.");
+                    ShowSuperMemoryAnswer("No document is open in the Trados editor.");
                     return;
                 }
 
@@ -10323,7 +10324,7 @@ namespace Supervertaler.Trados
 
                 if (result == null || !result.Available)
                 {
-                    ShowSuperMemoryMessage(result?.Note ?? "Could not read the document's tracked changes.");
+                    ShowSuperMemoryAnswer(result?.Note ?? "Could not read the document's tracked changes.");
                     return;
                 }
 
@@ -10332,7 +10333,7 @@ namespace Supervertaler.Trados
                     // Worth being explicit: an empty harvest almost always means
                     // Track Changes was off while editing, not that the review
                     // made no changes.
-                    ShowSuperMemoryMessage(
+                    ShowSuperMemoryAnswer(
                         "**No tracked changes found** in this document.\n\n" +
                         "Studio only records them when Track Changes was switched ON while you " +
                         "were editing (Review \u2192 Track Changes). Nothing was written.");
@@ -10341,13 +10342,13 @@ namespace Supervertaler.Trados
 
                 if (string.IsNullOrEmpty(result.SavedTo))
                 {
-                    ShowSuperMemoryMessage(
+                    ShowSuperMemoryAnswer(
                         $"Found {result.SegmentsWithChanges} segment(s) with tracked changes, but the " +
                         $"harvest could not be saved.\n\n{result.Note}");
                     return;
                 }
 
-                ShowSuperMemoryMessage(
+                ShowSuperMemoryAnswer(
                     $"**Harvested {result.SegmentsWithChanges} segment(s)** with tracked changes into " +
                     $"memory bank **{bankName}**.\n\n" +
                     $"`{result.SavedTo}`\n\n" +
@@ -10358,7 +10359,7 @@ namespace Supervertaler.Trados
             }
             catch (Exception ex)
             {
-                AddErrorMessage("Could not harvest tracked changes: " + ex.Message);
+                AddErrorMessage("Could not harvest tracked changes: " + ex.Message, userAsked: true);
             }
         }
 
@@ -10375,7 +10376,7 @@ namespace Supervertaler.Trados
             }
             catch (Exception ex)
             {
-                AddErrorMessage("Could not open the bank folder: " + ex.Message);
+                AddErrorMessage("Could not open the bank folder: " + ex.Message, userAsked: true);
             }
         }
 
@@ -10770,10 +10771,31 @@ namespace Supervertaler.Trados
             catch { }
         }
 
+        /// <summary>
+        /// A notice in the chat that nobody asked for (the bank changed with the
+        /// project, a background task finished). Leaves the tab the user is
+        /// working on alone. Saved with the chat, never sent to the model
+        /// (<see cref="ChatPrompt.Notice"/>).
+        /// </summary>
         private void ShowSuperMemoryMessage(string text)
         {
-            _chatHistory.Add(new ChatMessage { Role = ChatRole.Assistant, Content = text });
-            _control.Value.AddMessage(new ChatMessage { Role = ChatRole.Assistant, Content = text });
+            var notice = ChatPrompt.Notice(text);
+            _chatHistory.Add(notice);
+            _control.Value.AddMessage(notice);
+            SaveChatHistory();
+        }
+
+        /// <summary>
+        /// The answer to something the user just clicked (Report, Harvest
+        /// changes): the same notice, and the pane shows the Chat tab, where it
+        /// is. Call it from the click's own handler only, never from a timer, a
+        /// document event or a background task.
+        /// </summary>
+        private void ShowSuperMemoryAnswer(string text)
+        {
+            var notice = ChatPrompt.Notice(text);
+            _chatHistory.Add(notice);
+            _control.Value.AddRequestedMessage(notice);
             SaveChatHistory();
         }
 
@@ -16210,10 +16232,22 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// </summary>
         private void AddNoticeMessage(string text)
         {
-            AddErrorMessage(text);
+            // Not sent to the model (208); an error still is, see AddErrorMessage.
+            var msg = ChatPrompt.Notice(text);
+            _chatHistory.Add(msg);
+            _control.Value.AddMessage(msg);
         }
 
-        private void AddErrorMessage(string text)
+        /// <summary>
+        /// An error in the chat. <paramref name="userAsked"/>: it answers a click
+        /// outside the Chat tab, so the pane shows the Chat tab.
+        ///
+        /// <para>Still an assistant message, and so still sent to the model with
+        /// the conversation: after a failed request it is what stands between
+        /// two questions, and without it the model gets two user messages in a
+        /// row, which some local models refuse.</para>
+        /// </summary>
+        private void AddErrorMessage(string text, bool userAsked = false)
         {
             var msg = new ChatMessage
             {
@@ -16221,7 +16255,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 Content = text
             };
             _chatHistory.Add(msg);
-            _control.Value.AddMessage(msg);
+            if (userAsked) _control.Value.AddRequestedMessage(msg);
+            else _control.Value.AddMessage(msg);
         }
 
         // ─── Chat History Persistence ─────────────────────────────

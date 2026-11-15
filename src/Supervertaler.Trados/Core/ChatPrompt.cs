@@ -381,6 +381,33 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// A notice: text Supervertaler itself puts in the chat (a memory bank
+        /// report, "Switched to memory bank ..."), as distinct from what the
+        /// translator asked and the model answered. It is shown like an answer
+        /// and saved with the chat, and it is never sent to the model.
+        ///
+        /// <para>Marked by its role, <c>ChatRole.System</c>, which nothing else
+        /// in the chat history uses: the role is already in the saved file, so
+        /// a notice is still one after a restart and files from before 208
+        /// load as they are (their notices were saved as answers, and stay
+        /// answers).</para>
+        /// </summary>
+        public static Supervertaler.Core.Models.ChatMessage Notice(string text)
+        {
+            return new Supervertaler.Core.Models.ChatMessage
+            {
+                Role = Supervertaler.Core.Models.ChatRole.System,
+                Content = text
+            };
+        }
+
+        /// <summary>True for a message made by <see cref="Notice"/>.</summary>
+        public static bool IsNotice(Supervertaler.Core.Models.ChatMessage message)
+        {
+            return message != null && message.Role == Supervertaler.Core.Models.ChatRole.System;
+        }
+
+        /// <summary>
         /// How far the start of the history window moves at a time:
         /// two exchanges. Even, so the window keeps starting on the same side of
         /// the user/assistant alternation.
@@ -402,6 +429,11 @@ namespace Supervertaler.Trados.Core
         /// from the last and prompt caching, which matches a beginning, could
         /// never read the history back. Now it starts the same for two exchanges
         /// at a time.</para>
+        ///
+        /// <para>Notices (<see cref="Notice"/>) are left out before anything is
+        /// counted (208): the model never said them, and each one took a place
+        /// among the <paramref name="maxMessages"/> from a real question or
+        /// answer.</para>
         /// </summary>
         public static List<Supervertaler.Core.Models.ChatMessage> MessageWindow(
             List<Supervertaler.Core.Models.ChatMessage> history, int maxMessages)
@@ -410,6 +442,14 @@ namespace Supervertaler.Trados.Core
 
             var result = new List<Supervertaler.Core.Models.ChatMessage>();
             if (history == null || history.Count == 0)
+                return result;
+
+            // One pass, into a list of its own; the caller's history is not changed.
+            var conversation = new List<Supervertaler.Core.Models.ChatMessage>(history.Count);
+            foreach (var m in history)
+                if (m != null && !IsNotice(m)) conversation.Add(m);
+            history = conversation;
+            if (history.Count == 0)
                 return result;
 
             var startIdx = history.Count > maxMessages
