@@ -89,16 +89,24 @@ namespace Supervertaler.Trados.Core
                 return new MatchResult { Error = "Say which project to open: its name or its .sdlproj file." };
             projects = projects ?? new List<Entry>();
 
-            if (query.EndsWith(".sdlproj", StringComparison.OrdinalIgnoreCase))
+            var file = AsProjectFile(query);
+            if (file != null)
             {
-                var wanted = NormalPath(query);
+                var wanted = NormalPath(file);
                 var byPath = projects.FirstOrDefault(p => NormalPath(p.ProjectFile) == wanted);
                 if (byPath != null) return new MatchResult { Project = byPath };
+                if (!FileExists(file)) return new MatchResult { Error = $"\"{query}\" does not exist." };
+
+                // Say what was compared: a project file of the same name that the
+                // list has somewhere else is the likeliest reason for a miss.
+                var sameName = projects.Where(p => string.Equals(FileNameOf(p.ProjectFile), FileNameOf(file), StringComparison.OrdinalIgnoreCase))
+                    .Take(3).Select(p => p.ProjectFile).ToList();
                 return new MatchResult
                 {
-                    Error = File.Exists(query)
-                        ? $"\"{query}\" is not in this Studio's Projects list. Add it in Studio first (File > Open > Open Project), then ask again."
-                        : $"\"{query}\" does not exist."
+                    Error = $"\"{query}\" is not in this Studio's Projects list" +
+                            $" (looked for {wanted} among {projects.Count} project(s)" +
+                            (sameName.Count > 0 ? "; the list has a project file of that name at " + string.Join("; ", sameName) : "") +
+                            "). Add it in Studio first (File > Open > Open Project), then ask again."
                 };
             }
 
@@ -123,6 +131,60 @@ namespace Supervertaler.Trados.Core
                 };
 
             return new MatchResult { Error = $"No project in this Studio's Projects list matches \"{query}\"." };
+        }
+
+        /// <summary>
+        /// <see cref="Match"/> against Studio's projects.xml and, on a miss, against
+        /// Studio's live list (<paramref name="askStudio"/>, a call to Studio's UI
+        /// thread, made at most once). projects.xml lags behind the live list: a
+        /// project added moments ago - by create_project, say - is in Studio's
+        /// list before it is in the file.
+        ///
+        /// <para>Until 208 the live list was asked for a name and not for a
+        /// .sdlproj path, so the path create_project had just returned was
+        /// refused as "not in this Studio's Projects list" while the same
+        /// project's name was found (seen in Studio 2024). A path is now asked
+        /// too, unless no such file exists: Studio cannot open that whatever
+        /// its list says.</para>
+        /// </summary>
+        internal static MatchResult Find(string query, IList<Entry> listed, Func<IList<Entry>> askStudio)
+        {
+            var match = Match(query, listed);
+            if (match.Project != null || askStudio == null) return match;
+
+            if (string.IsNullOrWhiteSpace((query ?? "").Trim().Trim('"'))) return match;
+            var file = AsProjectFile(query);
+            if (file != null && !FileExists(file)) return match;
+
+            var live = Match(query, askStudio());
+            return live.Project != null ? live : match;
+        }
+
+        /// <summary>The request as a .sdlproj path, plainly spelled, when it is one; null when it is a name.</summary>
+        private static string AsProjectFile(string query)
+        {
+            var plain = PlainPath(query);
+            return plain.EndsWith(".sdlproj", StringComparison.OrdinalIgnoreCase) ? plain : null;
+        }
+
+        /// <summary>A path without what can be wrapped around it: spaces, quotes,
+        /// forward slashes, a "\\?\" prefix, a trailing backslash.</summary>
+        private static string PlainPath(string p)
+        {
+            p = (p ?? "").Trim().Trim('"').Trim().Replace('/', '\\');
+            if (p.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) p = @"\\" + p.Substring(8);
+            else if (p.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase)) p = p.Substring(4);
+            return p.Length > 3 ? p.TrimEnd('\\') : p;
+        }
+
+        private static bool FileExists(string path)
+        {
+            try { return File.Exists(path); } catch { return false; }
+        }
+
+        private static string FileNameOf(string path)
+        {
+            try { return Path.GetFileName(PlainPath(path)); } catch { return null; }
         }
 
         /// <summary>
@@ -212,10 +274,17 @@ namespace Supervertaler.Trados.Core
             return Eq(f.Name ?? "") || Eq(f.Display);
         }
 
+        /// <summary>
+        /// A path in the one form paths are compared in: full, backslashes, no
+        /// quotes or spaces around it, no "\\?\" prefix, no trailing backslash,
+        /// upper case. Two spellings of one file compare equal; an 8.3 short name
+        /// ("CONSIS~1") and its long name do not, which would need the disk.
+        /// </summary>
         internal static string NormalPath(string p)
         {
             if (string.IsNullOrWhiteSpace(p)) return null;
-            try { p = Path.GetFullPath(p.Trim()); } catch { }
+            p = PlainPath(p);
+            try { p = Path.GetFullPath(p); } catch { }
             return p.TrimEnd('\\').ToUpperInvariant();
         }
     }

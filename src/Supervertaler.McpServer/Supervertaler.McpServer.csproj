@@ -17,6 +17,12 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
   </ItemGroup>
 
+  <!-- tools/McpServerCheck runs the instance selection against handshake files
+       of its own, through the test seams (the runtime-directory overloads). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="McpServerCheck" />
+  </ItemGroup>
+
   <!-- Bundled fallback tool registry: the SAME file the plugin embeds and
        serves at /v1/tools. Only used on a first-ever run with no disk cache
        and Trados closed; the bridge's live copy overrides it when reachable. -->

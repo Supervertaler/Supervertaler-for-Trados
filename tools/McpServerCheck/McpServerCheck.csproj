@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Offline check of the MCP server's choice of Trados Studio (list_trados_instances,
+    select_trados_instance, a call's own `instance`), without Studio: handshake files
+    written to a temporary runtime folder, with this program's own child processes
+    standing in for the running Studios.
+
+    Run it with tools\select_instance_test.ps1, which builds it first.
+
+    Nothing in the user's data folder is read or written.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>McpServerCheck</AssemblyName>
+    <RootNamespace>McpServerCheck</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Supervertaler.McpServer\Supervertaler.McpServer.csproj" />
+  </ItemGroup>
+
+</Project>

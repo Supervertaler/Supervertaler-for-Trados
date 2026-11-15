@@ -247,12 +247,7 @@ namespace Supervertaler.Trados.Core
             return t.GetAwaiter().GetResult();
         }
 
-        internal static string NormalPath(string p)
-        {
-            if (string.IsNullOrWhiteSpace(p)) return null;
-            try { p = Path.GetFullPath(p.Trim()); } catch { }
-            return p.TrimEnd('\\').ToUpperInvariant();
-        }
+        internal static string NormalPath(string p) => ProjectOpener.NormalPath(p);
 
         private static string SafePath(FileBasedProject p)
         {

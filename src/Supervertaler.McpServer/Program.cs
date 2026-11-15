@@ -116,7 +116,11 @@ builder.Services
             // misleading, a write into the wrong instance destroys work. So writes
             // are refused until an instance is selected, and reads go through with
             // a warning naming the instance they came from. See issue #72.
-            var selection = bridge.Resolve();
+            // The call's own `instance`, read here (and stripped further down) so
+            // that a stored selection of a Studio that has since been closed does
+            // not refuse a call that names a running one.
+            StripInstanceArg(args, out var namedInstance);
+            var selection = bridge.ResolveForCall(namedInstance);
 
             // isError:false to match the bridge-unavailable path below: the whole
             // value of this refusal is the AI reading it and asking the user which

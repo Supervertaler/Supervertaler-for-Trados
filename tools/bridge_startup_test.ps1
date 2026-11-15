@@ -226,6 +226,77 @@ try {
     Check ($mRead.Invoke($null, @([string]$bad)).Count -eq 0) 'A16 malformed projects.xml = empty list, no exception'
     Check ($mRead.Invoke($null, @([string]$null)).Count -eq 0) 'A17 no path = empty list'
 
+    # 208: open_project with the .sdlproj path create_project had just returned was
+    # refused while the project's name was found - the live list (Studio's own,
+    # ahead of projects.xml) was asked for a name only. ProjectOpener.Find asks it
+    # for a path too.
+    $mFind = $PO.GetMethod('Find', $Static)
+    $mNorm = $PO.GetMethod('NormalPath', $Static)
+    $funcT = [Func``1].MakeGenericType([System.Collections.Generic.IList``1].MakeGenericType($EntryT))
+    $script:asked = 0; $script:liveList = $null; $script:liveThrows = $false
+    $ask = [System.Management.Automation.LanguagePrimitives]::ConvertTo(
+        { $script:asked++; if ($script:liveThrows) { throw 'fake: Studio did not answer' }; , $script:liveList.psobject.BaseObject }, $funcT)
+    function F($q, $listed, $live) {
+        $script:asked = 0; $script:liveList = $live
+        $a = New-Object 'object[]' 3; $a[0] = [string]$q; $a[1] = $listed.psobject.BaseObject
+        $a[2] = if ($null -eq $live) { $null } else { $ask }
+        return $mFind.Invoke($null, $a)
+    }
+    $newProj = Join-Path $work 'Acme consistency test\Projects\Acme PROJ-001 (before)\Acme PROJ-001 (before).sdlproj'
+    New-Item -ItemType Directory -Path (Split-Path $newProj) | Out-Null; Set-Content -LiteralPath $newProj -Value '<x/>'
+    $live = Entries @(@('Acme PROJ-001', $acme1), @('Acme PROJ-001 (before)', $newProj))
+    $r = F $newProj $list $live
+    Check ($r.Project.Name -eq 'Acme PROJ-001 (before)' -and $script:asked -eq 1) "A18 a .sdlproj path projects.xml does not have yet is found in Studio's live list (asked $($script:asked) time(s))"
+    $r = F $acme1 $list $live
+    Check ($r.Project.Name -eq 'Acme PROJ-001' -and $script:asked -eq 0) 'A19 a path projects.xml has: Studio is not asked'
+    $r = F (Join-Path $work 'nope\nope.sdlproj') $list $live
+    Check ($null -eq $r.Project -and $r.Error -like '*does not exist*' -and $script:asked -eq 0) 'A20 a .sdlproj that is not on disk: refused without asking Studio'
+    $r = F $loose $list $live
+    Check ($null -eq $r.Project -and $r.Error -like "*not in this Studio's Projects list*" -and $script:asked -eq 1) 'A21 a .sdlproj in neither list: Studio is asked once, then refused'
+    Check ($r.Error -like "*looked for $($loose.ToUpperInvariant()) among 6 project(s)*" -and $r.Error -like '*File > Open > Open Project*') "A22 the refusal says which path it compared and with how many: $($r.Error)"
+    $twinElsewhere = Join-Path $work 'Elsewhere\Twin.sdlproj'
+    New-Item -ItemType Directory -Path (Split-Path $twinElsewhere) | Out-Null; Set-Content -LiteralPath $twinElsewhere -Value '<x/>'
+    $r = F $twinElsewhere $list (Entries @())
+    Check ($null -eq $r.Project -and $r.Error -like "*the list has a project file of that name at *TwinA\Twin.sdlproj; *TwinB\Twin.sdlproj*") "A23 and names the project files of the same name it does have: $($r.Error)"
+    $r = F 'Acme PROJ-001 (before)' $list $live
+    Check ($r.Project.ProjectFile -eq $newProj -and $script:asked -eq 1) 'A24 a name projects.xml does not have yet is still found in the live list, as before'
+    $r = F 'Globex manual' $list $live
+    Check ($r.Project.Name -eq 'Globex manual' -and $script:asked -eq 0) 'A25 a name projects.xml has: Studio is not asked'
+    $r = F '  ' $list $live
+    Check ($null -eq $r.Project -and $r.Error -like '*Say which project*' -and $script:asked -eq 0) 'A26 an empty request: Studio is not asked'
+    $r = F $newProj $list $null
+    Check ($null -eq $r.Project -and $r.Error -like "*not in this Studio's Projects list*") 'A27 no live list to ask: refused as before, no exception'
+    $script:liveThrows = $true; $threw = $null
+    try { [void](F $newProj $list $live) } catch { $threw = $_.Exception; while ($threw.InnerException) { $threw = $threw.InnerException } }
+    $script:liveThrows = $false
+    Check ($null -ne $threw -and $threw.Message -like '*Studio did not answer*') 'A28 Studio failing to answer is not passed off as "not in the list": the error comes through'
+
+    $norm = [string]$mNorm.Invoke($null, @([string]$newProj))
+    $spellings = @(
+        $newProj.ToLowerInvariant(),
+        $newProj.Replace('\', '/'),
+        ('"' + $newProj + '"'),
+        ("  $newProj  "),
+        ('\\?\' + $newProj),
+        ((Split-Path $newProj) + '\..\Acme PROJ-001 (before)\Acme PROJ-001 (before).sdlproj'),
+        ($newProj + '\'))
+    $same = @($spellings | Where-Object { [string]$mNorm.Invoke($null, @([string]$_)) -eq $norm }).Count
+    Check ($same -eq $spellings.Count) "A29 one project file, spelled $($spellings.Count) ways (case, forward slashes, quotes, spaces around it, \\?\ prefix, .., trailing backslash): all compare equal ($same)"
+    Check ($norm -like '*\ACME PROJ-001 (BEFORE)\ACME PROJ-001 (BEFORE).SDLPROJ') 'A30 spaces and parentheses in the name are kept'
+    Check ([string]$mNorm.Invoke($null, @('\\?\UNC\acme-server\share\P\P.sdlproj')) -eq '\\ACME-SERVER\SHARE\P\P.SDLPROJ' -and $null -eq $mNorm.Invoke($null, @('  '))) 'A31 a \\?\UNC\ path compares as its \\server form; an empty path is no path'
+    $ok = $true
+    foreach ($s in $spellings) { $r = F $s (Entries @()) $live; if ($r.Project.Name -ne 'Acme PROJ-001 (before)') { $ok = $false; Write-Host "  not found: $s ($($r.Error))" } }
+    Check $ok 'A32 open_project finds the project by each of those spellings'
+
+    $manyPairs = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt 5000; $i++) { [void]$manyPairs.Add(@("Acme PROJ-$i", (Join-Path $projDir "Acme PROJ-$i\Acme PROJ-$i.sdlproj"))) }
+    $many = Entries $manyPairs
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $r = F $newProj $many $live
+    $r2 = F $loose $many $many
+    $sw.Stop()
+    Check ($r.Project.Name -eq 'Acme PROJ-001 (before)' -and $null -eq $r2.Project -and $sw.ElapsedMilliseconds -lt 3000) "A33 5,000 projects in each list: a path found in the live list and one found in neither, $($sw.ElapsedMilliseconds) ms (limit 3,000)"
+
     # ---- B: files ------------------------------------------------------------------
     $one = Files @(
         @('spec.docx.sdlxliff', '', 'en-GB'),

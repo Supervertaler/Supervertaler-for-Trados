@@ -58,16 +58,11 @@ namespace Supervertaler.Trados.Core
                 // 1. Which project: this Studio's projects.xml, read off the UI thread.
                 var studioDocs = ProjectCreator.RunningStudioDocumentsFolder();
                 var xml = studioDocs != null ? Path.Combine(studioDocs, "Projects", "projects.xml") : null;
-                var match = ProjectOpener.Match(projectQuery, ProjectOpener.ReadProjectList(xml));
-
                 // projects.xml can lag behind Studio's live list (a project added
-                // moments ago). Only on a miss: ask Studio itself.
-                if (match.Project == null && !(projectQuery ?? "").Trim().EndsWith(".sdlproj", StringComparison.OrdinalIgnoreCase))
-                {
-                    var live = OnUi(() => LiveProjectList(), progress, "looking in Studio's Projects list", 0);
-                    var liveMatch = ProjectOpener.Match(projectQuery, live);
-                    if (liveMatch.Project != null) match = liveMatch;
-                }
+                // moments ago). Only on a miss: ask Studio itself - for a .sdlproj
+                // path as for a name (see ProjectOpener.Find).
+                var match = ProjectOpener.Find(projectQuery, ProjectOpener.ReadProjectList(xml),
+                    () => OnUi(() => LiveProjectList(), progress, "looking in Studio's Projects list", 0));
                 if (match.Project == null)
                 {
                     result.Error = match.Error + OtherStudioHint(projectQuery, studioDocs);
@@ -136,7 +131,7 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>Studio's live list, name + file. UI thread. One GetProjectInfo
         /// per project - only used when projects.xml did not find it.</summary>
-        private static List<ProjectOpener.Entry> LiveProjectList()
+        private static IList<ProjectOpener.Entry> LiveProjectList()
         {
             var list = new List<ProjectOpener.Entry>();
             foreach (var p in Projects().GetAllProjects())

@@ -51,15 +51,20 @@ public static class LocalTools
 
     /// <summary>Run a local tool. Returns the JSON text to hand back to the client.</summary>
     public static string Invoke(string name, IReadOnlyDictionary<string, JsonElement> args, BridgeClient bridge)
+        => Invoke(name, args, bridge, BridgeClient.ResolveRuntimeDir());
+
+    /// <summary>The same, against an explicit runtime directory. Test seam.</summary>
+    internal static string Invoke(string name, IReadOnlyDictionary<string, JsonElement> args, BridgeClient bridge,
+        string runtimeDir)
     {
-        return name == SelectInstance ? Select(args, bridge) : List(bridge);
+        return name == SelectInstance ? Select(args, bridge, runtimeDir) : List(bridge, runtimeDir);
     }
 
-    private static string List(BridgeClient bridge)
+    private static string List(BridgeClient bridge, string runtimeDir)
     {
         try
         {
-            var sel = bridge.Resolve();
+            var sel = bridge.Resolve(runtimeDir);
             return Json(new
             {
                 ok = true,
@@ -91,7 +96,7 @@ public static class LocalTools
         }
     }
 
-    private static string Select(IReadOnlyDictionary<string, JsonElement> args, BridgeClient bridge)
+    private static string Select(IReadOnlyDictionary<string, JsonElement> args, BridgeClient bridge, string runtimeDir)
     {
         var raw = args.TryGetValue("instance", out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString() ?? ""
@@ -110,8 +115,12 @@ public static class LocalTools
             });
         }
 
-        List<BridgeInstance> live;
-        try { live = bridge.Resolve().Live.ToList(); }
+        // The Studios that ARE running, whatever was selected before. This used
+        // to go through Resolve(), which refuses while the stored selection
+        // matches no running Studio - so with "2024" selected and Studio 2024
+        // closed, choosing "2026" was refused until the selection was cleared.
+        IReadOnlyList<BridgeInstance> live;
+        try { live = bridge.LiveInstances(runtimeDir); }
         catch (BridgeUnavailableException ex) { return Json(new { ok = false, error = ex.Message }); }
 
         // Validate against what is actually running, so a typo is caught here

@@ -276,15 +276,36 @@ public sealed class BridgeClient
 
     public BridgeSelection Resolve() => Resolve(ResolveRuntimeDir());
 
-    /// <summary>Resolve against an explicit runtime directory. Test seam.</summary>
-    internal BridgeSelection Resolve(string runtimeDir)
+    /// <summary>
+    /// <see cref="Resolve()"/> for a call that names its own Studio
+    /// (<paramref name="callInstance"/>, the call's <c>instance</c> argument; null
+    /// when it has none). The same, but for one case: a stored selection that no
+    /// running Studio answers to does not refuse a call that says which Studio it
+    /// means - the call is then resolved against the Studios that are running.
+    /// </summary>
+    public BridgeSelection ResolveForCall(string? callInstance) => Resolve(ResolveRuntimeDir(), callInstance);
+
+    /// <summary>
+    /// Every Studio running now, whatever selection is stored. For choosing one:
+    /// <see cref="Resolve()"/> refuses while the stored selection matches nothing,
+    /// which is exactly when a new choice has to be possible.
+    /// Throws <see cref="BridgeUnavailableException"/> when none is running.
+    /// </summary>
+    public IReadOnlyList<BridgeInstance> LiveInstances() => LiveInstances(ResolveRuntimeDir());
+
+    /// <summary>The same, against an explicit runtime directory. Test seam.</summary>
+    internal IReadOnlyList<BridgeInstance> LiveInstances(string runtimeDir)
     {
         var live = DiscoverLiveInstances(runtimeDir);
-
         if (live.Count == 0)
-        {
             throw new BridgeUnavailableException(NoInstanceMessage(IsMemoQ, !IsMemoQ && IsTradosStudioRunning()));
-        }
+        return live;
+    }
+
+    /// <summary>Resolve against an explicit runtime directory. Test seam.</summary>
+    internal BridgeSelection Resolve(string runtimeDir, string? callInstance = null)
+    {
+        var live = LiveInstances(runtimeDir);
 
         var selector = ActiveSelector;
         var candidates = live;
@@ -292,6 +313,14 @@ public sealed class BridgeClient
         if (selector != null)
         {
             candidates = live.Where(i => Matches(i, selector)).ToList();
+
+            // The stored selection is of a Studio that has since been closed, and
+            // this call names its own: the stored one has nothing to say about it.
+            if (candidates.Count == 0 && !string.IsNullOrWhiteSpace(callInstance))
+            {
+                candidates = live;
+                selector = null;
+            }
 
             // A selector that matches nothing must NOT quietly fall back to
             // "whichever is newest" — that is precisely the silent misrouting
@@ -414,7 +443,7 @@ public sealed class BridgeClient
         }
     }
 
-    private static string ResolveRuntimeDir() => Path.Combine(ResolveSharedRoot(), "trados", "runtime");
+    internal static string ResolveRuntimeDir() => Path.Combine(ResolveSharedRoot(), "trados", "runtime");
 
     /// <summary>The shared Supervertaler data folder — config.json's user_data_path, else ~\Supervertaler.</summary>
     private static string ResolveSharedRoot()
