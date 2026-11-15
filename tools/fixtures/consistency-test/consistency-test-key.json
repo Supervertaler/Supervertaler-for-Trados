@@ -1,0 +1,1124 @@
+{
+ "document": "consistency-test-nl.txt",
+ "language": "nl-NL into en-GB",
+ "segments": [
+  {
+   "n": 1,
+   "id": "c-title",
+   "words": 4,
+   "tokens": 7,
+   "text": "Deel 1 Leveringsovereenkomst PROJ-001"
+  },
+  {
+   "n": 2,
+   "id": "c-parties",
+   "words": 12,
+   "tokens": 26,
+   "text": "Deze overeenkomst wordt gesloten tussen Acme, hierna de afnemer, en de leverancier."
+  },
+  {
+   "n": 3,
+   "id": "c-h1",
+   "words": 3,
+   "tokens": 5,
+   "text": "Artikel 1 Definities"
+  },
+  {
+   "n": 4,
+   "id": "c-def-info",
+   "words": 27,
+   "tokens": 55,
+   "text": "Onder vertrouwelijke informatie wordt verstaan alle informatie die een partij in verband met deze overeenkomst aan de andere partij verstrekt, ongeacht of dit schriftelijk of mondeling gebeurt."
+  },
+  {
+   "n": 5,
+   "id": "c-def-defect",
+   "words": 23,
+   "tokens": 46,
+   "text": "Onder een gebrek wordt verstaan elke afwijking van de overeengekomen specificaties die het normale gebruik van het product aanzienlijk beperkt of onmogelijk maakt."
+  },
+  {
+   "n": 6,
+   "id": "c-def-date",
+   "words": 21,
+   "tokens": 42,
+   "text": "Onder de leverdatum wordt verstaan de dag waarop de producten volgens de planning op het magazijn van de afnemer worden afgeleverd."
+  },
+  {
+   "n": 7,
+   "id": "c-h2",
+   "words": 3,
+   "tokens": 5,
+   "text": "Artikel 2 Levering"
+  },
+  {
+   "n": 8,
+   "id": "c-pack",
+   "words": 14,
+   "tokens": 28,
+   "text": "De leverancier levert de producten in de verpakking die in bijlage 1 is beschreven."
+  },
+  {
+   "n": 9,
+   "id": "c-plate",
+   "words": 9,
+   "tokens": 18,
+   "text": "Elk product draagt een afneembaar typeplaatje met het serienummer."
+  },
+  {
+   "n": 10,
+   "id": "c-inspect",
+   "words": 10,
+   "tokens": 20,
+   "text": "De afnemer controleert de producten binnen vijf werkdagen na ontvangst."
+  },
+  {
+   "n": 11,
+   "id": "c-audit",
+   "words": 17,
+   "tokens": 34,
+   "text": "De afnemer mag de fabriek van de leverancier eenmaal per jaar bezoeken om de productie te controleren."
+  },
+  {
+   "n": 12,
+   "id": "c-label",
+   "words": 11,
+   "tokens": 22,
+   "text": "De leverancier bevestigt op elke doos een etiket met het ordernummer."
+  },
+  {
+   "n": 13,
+   "id": "c-late",
+   "words": 28,
+   "tokens": 57,
+   "text": "Indien de leverancier voorziet dat de dag waarop de producten volgens de planning op het magazijn van de afnemer worden afgeleverd niet wordt gehaald, meldt hij dit onmiddellijk."
+  },
+  {
+   "n": 14,
+   "id": "c-h3",
+   "words": 3,
+   "tokens": 5,
+   "text": "Artikel 3 Garantie"
+  },
+  {
+   "n": 15,
+   "id": "c-repair",
+   "words": 30,
+   "tokens": 61,
+   "text": "De leverancier herstelt kosteloos elke afwijking van de overeengekomen specificaties die het normale gebruik van het product aanzienlijk beperkt of onmogelijk maakt, mits de afnemer dit binnen dertig dagen meldt."
+  },
+  {
+   "n": 16,
+   "id": "c-part",
+   "words": 13,
+   "tokens": 26,
+   "text": "De garantie geldt niet voor een onderdeel dat de afnemer zelf heeft vervangen."
+  },
+  {
+   "n": 17,
+   "id": "c-penalty-a",
+   "words": 28,
+   "tokens": 57,
+   "text": "Een boete van 500 euro per dag is verschuldigd wanneer de leverancier de producten later dan de leverdatum aflevert, tot een maximum van tien procent van de orderwaarde."
+  },
+  {
+   "n": 18,
+   "id": "c-h4",
+   "words": 3,
+   "tokens": 5,
+   "text": "Artikel 4 Geheimhouding"
+  },
+  {
+   "n": 19,
+   "id": "c-secret",
+   "words": 27,
+   "tokens": 54,
+   "text": "De ontvangende partij gebruikt alle informatie die een partij in verband met deze overeenkomst aan de andere partij verstrekt uitsluitend voor het doel waarvoor zij is verstrekt."
+  },
+  {
+   "n": 20,
+   "id": "c-reworded",
+   "words": 19,
+   "tokens": 39,
+   "text": "Informatie die een partij met betrekking tot deze overeenkomst aan de andere partij geeft, blijft eigendom van die partij."
+  },
+  {
+   "n": 21,
+   "id": "c-term5",
+   "words": 14,
+   "tokens": 28,
+   "text": "Deze verplichting blijft na het einde van de overeenkomst nog vijf jaar van kracht."
+  },
+  {
+   "n": 22,
+   "id": "c-h5",
+   "words": 3,
+   "tokens": 5,
+   "text": "Artikel 5 Aansprakelijkheid"
+  },
+  {
+   "n": 23,
+   "id": "c-long",
+   "words": 81,
+   "tokens": 167,
+   "text": "De leverancier is aansprakelijk voor directe schade die de afnemer lijdt als gevolg van een gebrek, met dien verstande dat deze aansprakelijkheid per gebeurtenis beperkt is tot het bedrag dat de afnemer in de twaalf maanden voorafgaand aan de gebeurtenis voor de betrokken producten heeft betaald, en dat de leverancier in geen geval aansprakelijk is voor gederfde winst, gemiste besparingen, schade door bedrijfsstilstand of andere indirecte schade, tenzij de schade het gevolg is van opzet of bewuste roekeloosheid van de leverancier."
+  },
+  {
+   "n": 24,
+   "id": "c-long-force",
+   "words": 70,
+   "tokens": 144,
+   "text": "Geen van de partijen is gehouden tot het nakomen van een verplichting indien zij daartoe verhinderd is door een omstandigheid die niet aan haar schuld te wijten is en die evenmin krachtens de wet of de in het verkeer geldende opvattingen voor haar rekening komt, zoals brand, overstroming, een staking bij een vervoerder of een uitvoerverbod, op voorwaarde dat zij haar wederpartij binnen drie werkdagen schriftelijk op de hoogte brengt."
+  },
+  {
+   "n": 25,
+   "id": "c-h6",
+   "words": 5,
+   "tokens": 9,
+   "text": "Artikel 6 Duur en wijziging"
+  },
+  {
+   "n": 26,
+   "id": "c-period",
+   "words": 10,
+   "tokens": 20,
+   "text": "Deze overeenkomst wordt aangegaan voor een periode van drie jaar."
+  },
+  {
+   "n": 27,
+   "id": "c-punct-a",
+   "words": 18,
+   "tokens": 36,
+   "text": "Wijzigingen van deze overeenkomst zijn alleen geldig indien zij schriftelijk zijn overeengekomen en door beide partijen zijn ondertekend."
+  },
+  {
+   "n": 28,
+   "id": "c-notice",
+   "words": 13,
+   "tokens": 26,
+   "text": "Elke partij kan de overeenkomst schriftelijk opzeggen met een opzegtermijn van zes maanden."
+  },
+  {
+   "n": 29,
+   "id": "c-law",
+   "words": 8,
+   "tokens": 16,
+   "text": "Op deze overeenkomst is Nederlands recht van toepassing."
+  },
+  {
+   "n": 30,
+   "id": "c-punct-b",
+   "words": 18,
+   "tokens": 37,
+   "text": "Wijzigingen van deze overeenkomst zijn alleen geldig, indien zij schriftelijk zijn overeengekomen en door beide partijen zijn ondertekend."
+  },
+  {
+   "n": 31,
+   "id": "c-penalty-b",
+   "words": 28,
+   "tokens": 57,
+   "text": "Een boete van 250 euro per dag is verschuldigd wanneer de leverancier de producten later dan de leverdatum aflevert, tot een maximum van tien procent van de orderwaarde."
+  },
+  {
+   "n": 32,
+   "id": "c-annex",
+   "words": 9,
+   "tokens": 18,
+   "text": "De bijlagen maken een onderdeel uit van deze overeenkomst."
+  },
+  {
+   "n": 33,
+   "id": "m-title",
+   "words": 5,
+   "tokens": 9,
+   "text": "Deel 2 Handleiding Acme-pomp P100"
+  },
+  {
+   "n": 34,
+   "id": "m-h1",
+   "words": 3,
+   "tokens": 5,
+   "text": "Hoofdstuk 1 Veiligheid"
+  },
+  {
+   "n": 35,
+   "id": "m-warn",
+   "words": 19,
+   "tokens": 38,
+   "text": "Schakel de pomp uit en trek de stekker uit het stopcontact voordat u het deksel van de behuizing verwijdert."
+  },
+  {
+   "n": 36,
+   "id": "m-fumes",
+   "words": 13,
+   "tokens": 26,
+   "text": "Gebruik de pomp nooit in een ruimte waar brandbare dampen aanwezig kunnen zijn."
+  },
+  {
+   "n": 37,
+   "id": "m-h2",
+   "words": 3,
+   "tokens": 5,
+   "text": "Hoofdstuk 2 Installatie"
+  },
+  {
+   "n": 38,
+   "id": "m-ground",
+   "words": 9,
+   "tokens": 18,
+   "text": "Plaats de pomp op een vlakke en stevige ondergrond."
+  },
+  {
+   "n": 39,
+   "id": "m-bolts",
+   "words": 17,
+   "tokens": 34,
+   "text": "Draai de vier bouten kruiselings aan met een momentsleutel tot een aanhaalmoment van 12 newtonmeter is bereikt."
+  },
+  {
+   "n": 40,
+   "id": "m-hose",
+   "words": 11,
+   "tokens": 22,
+   "text": "Bevestig vervolgens de afneembare slang aan de uitlaat van de pomp."
+  },
+  {
+   "n": 41,
+   "id": "m-hosecheck",
+   "words": 11,
+   "tokens": 22,
+   "text": "Controleer of de slang stevig vastzit voordat u de pomp inschakelt."
+  },
+  {
+   "n": 42,
+   "id": "m-gland",
+   "words": 13,
+   "tokens": 26,
+   "text": "Zet de wartel stevig vast met de hand en gebruik daarbij geen tang."
+  },
+  {
+   "n": 43,
+   "id": "m-h3",
+   "words": 4,
+   "tokens": 7,
+   "text": "Hoofdstuk 3 Dagelijks gebruik"
+  },
+  {
+   "n": 44,
+   "id": "m-fill",
+   "words": 10,
+   "tokens": 20,
+   "text": "Vul het reservoir met schoon water tot aan de markering."
+  },
+  {
+   "n": 45,
+   "id": "m-valve",
+   "words": 10,
+   "tokens": 20,
+   "text": "Het ventiel is een onderdeel dat u zelf kunt vervangen."
+  },
+  {
+   "n": 46,
+   "id": "m-pressure",
+   "words": 12,
+   "tokens": 24,
+   "text": "De pomp levert een aanzienlijk hogere druk wanneer het filter schoon is."
+  },
+  {
+   "n": 47,
+   "id": "m-h4",
+   "words": 3,
+   "tokens": 5,
+   "text": "Hoofdstuk 4 Onderhoud"
+  },
+  {
+   "n": 48,
+   "id": "m-warn-filter",
+   "words": 25,
+   "tokens": 51,
+   "text": "Let op, schakel de pomp uit en trek de stekker uit het stopcontact voordat u het deksel van de behuizing verwijdert of het filter vervangt."
+  },
+  {
+   "n": 49,
+   "id": "m-filter",
+   "words": 11,
+   "tokens": 22,
+   "text": "Verwijder het afneembare filter en spoel het af onder stromend water."
+  },
+  {
+   "n": 50,
+   "id": "m-close",
+   "words": 8,
+   "tokens": 16,
+   "text": "Plaats het filter terug en sluit het deksel."
+  },
+  {
+   "n": 51,
+   "id": "m-bolts-again",
+   "words": 24,
+   "tokens": 48,
+   "text": "Na het sluiten van het deksel draait u de vier bouten kruiselings aan met een momentsleutel tot een aanhaalmoment van 12 newtonmeter is bereikt."
+  },
+  {
+   "n": 52,
+   "id": "m-leak",
+   "words": 10,
+   "tokens": 20,
+   "text": "Controleer vervolgens of er geen water lekt langs de afdichting."
+  },
+  {
+   "n": 53,
+   "id": "m-gauge",
+   "words": 9,
+   "tokens": 18,
+   "text": "Wacht vervolgens tot de drukmeter een stabiele waarde aangeeft."
+  },
+  {
+   "n": 54,
+   "id": "m-list-under-a",
+   "words": 167,
+   "tokens": 359,
+   "text": "Vervang de afdichting van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur na 490 bedrijfsuren, met meer voorkeur na 480 bedrijfsuren, met meer voorkeur na 470 bedrijfsuren, met meer voorkeur na 460 bedrijfsuren, met meer voorkeur na 450 bedrijfsuren, met meer voorkeur na 440 bedrijfsuren, met meer voorkeur na 430 bedrijfsuren, met meer voorkeur na 420 bedrijfsuren, met meer voorkeur na 410 bedrijfsuren, met meer voorkeur na 400 bedrijfsuren, met meer voorkeur na 390 bedrijfsuren, met meer voorkeur na 380 bedrijfsuren, met meer voorkeur na 370 bedrijfsuren, met meer voorkeur na 360 bedrijfsuren, met meer voorkeur na 350 bedrijfsuren, met meer voorkeur na 340 bedrijfsuren, met meer voorkeur na 330 bedrijfsuren, met meer voorkeur na 320 bedrijfsuren, met meer voorkeur na 310 bedrijfsuren, met meer voorkeur na 300 bedrijfsuren, met meer voorkeur na 290 bedrijfsuren, met meer voorkeur na 280 bedrijfsuren, met meer voorkeur na 270 bedrijfsuren, met meer voorkeur na 260 bedrijfsuren, met meer voorkeur na 250 bedrijfsuren en met de meeste voorkeur na 240 bedrijfsuren."
+  },
+  {
+   "n": 55,
+   "id": "m-h5",
+   "words": 3,
+   "tokens": 5,
+   "text": "Hoofdstuk 5 Storingen"
+  },
+  {
+   "n": 56,
+   "id": "m-defect-a",
+   "words": 20,
+   "tokens": 41,
+   "text": "Als het rode lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt."
+  },
+  {
+   "n": 57,
+   "id": "m-service",
+   "words": 9,
+   "tokens": 18,
+   "text": "Neem contact op met Acme wanneer de storing aanhoudt."
+  },
+  {
+   "n": 58,
+   "id": "m-reworded",
+   "words": 15,
+   "tokens": 30,
+   "text": "Trek altijd eerst de stekker uit het stopcontact wanneer de pomp een vreemd geluid maakt."
+  },
+  {
+   "n": 59,
+   "id": "m-h6",
+   "words": 4,
+   "tokens": 7,
+   "text": "Hoofdstuk 6 Elektrische delen"
+  },
+  {
+   "n": 60,
+   "id": "m-warn-fuse",
+   "words": 23,
+   "tokens": 46,
+   "text": "Schakel de pomp uit en trek de stekker uit het stopcontact voordat u het deksel van de behuizing verwijdert en de zekering controleert."
+  },
+  {
+   "n": 61,
+   "id": "m-defect-b",
+   "words": 20,
+   "tokens": 41,
+   "text": "Als het gele lampje brandt, wacht dan minimaal 10 minuten en maximaal 5 minuten voordat u de pomp opnieuw inschakelt."
+  },
+  {
+   "n": 62,
+   "id": "m-list-under-b",
+   "words": 167,
+   "tokens": 359,
+   "text": "Vervang de pakking van de pomp uiterlijk na 500 bedrijfsuren, bij voorkeur na 490 bedrijfsuren, met meer voorkeur na 480 bedrijfsuren, met meer voorkeur na 470 bedrijfsuren, met meer voorkeur na 460 bedrijfsuren, met meer voorkeur na 450 bedrijfsuren, met meer voorkeur na 440 bedrijfsuren, met meer voorkeur na 430 bedrijfsuren, met meer voorkeur na 420 bedrijfsuren, met meer voorkeur na 410 bedrijfsuren, met meer voorkeur na 400 bedrijfsuren, met meer voorkeur na 390 bedrijfsuren, met meer voorkeur na 380 bedrijfsuren, met meer voorkeur na 370 bedrijfsuren, met meer voorkeur na 360 bedrijfsuren, met meer voorkeur na 350 bedrijfsuren, met meer voorkeur na 340 bedrijfsuren, met meer voorkeur na 330 bedrijfsuren, met meer voorkeur na 320 bedrijfsuren, met meer voorkeur na 310 bedrijfsuren, met meer voorkeur na 300 bedrijfsuren, met meer voorkeur na 290 bedrijfsuren, met meer voorkeur na 280 bedrijfsuren, met meer voorkeur na 270 bedrijfsuren, met meer voorkeur na 260 bedrijfsuren, met meer voorkeur na 250 bedrijfsuren en met de meeste voorkeur na 240 bedrijfsuren."
+  },
+  {
+   "n": 63,
+   "id": "m-h7",
+   "words": 3,
+   "tokens": 5,
+   "text": "Hoofdstuk 7 Opslag"
+  },
+  {
+   "n": 64,
+   "id": "m-drain",
+   "words": 9,
+   "tokens": 18,
+   "text": "Laat de pomp volledig leeglopen voordat u haar opbergt."
+  },
+  {
+   "n": 65,
+   "id": "m-store",
+   "words": 13,
+   "tokens": 26,
+   "text": "Bewaar de pomp op een droge plaats waar de temperatuur niet aanzienlijk schommelt."
+  },
+  {
+   "n": 66,
+   "id": "m-long",
+   "words": 76,
+   "tokens": 158,
+   "text": "Wanneer de pomp langer dan drie maanden niet wordt gebruikt, verdient het aanbeveling om het reservoir te legen, het filter te reinigen en te laten drogen, de slang los te koppelen en opgerold naast de pomp te bewaren, de bouten van het deksel licht in te vetten zodat zij niet vastroesten, en de pomp af te dekken met een doek die lucht doorlaat, omdat een afgesloten plastic hoes condensvorming veroorzaakt die de elektrische aansluitingen kan aantasten."
+  },
+  {
+   "n": 67,
+   "id": "p-title",
+   "words": 4,
+   "tokens": 7,
+   "text": "Deel 3 Octrooiaanvraag Lamphouder"
+  },
+  {
+   "n": 68,
+   "id": "p-field",
+   "words": 19,
+   "tokens": 38,
+   "text": "De uitvinding heeft betrekking op een lamphouder voor het bevestigen van een lamp aan het stuur van een fiets."
+  },
+  {
+   "n": 69,
+   "id": "p-prior",
+   "words": 11,
+   "tokens": 22,
+   "text": "Bekende lamphouders hebben het nadeel dat de lamp bij trillingen losraakt."
+  },
+  {
+   "n": 70,
+   "id": "p-aim",
+   "words": 15,
+   "tokens": 30,
+   "text": "Het doel van de uitvinding is een lamphouder te verschaffen die dit nadeel niet heeft."
+  },
+  {
+   "n": 71,
+   "id": "p-summary",
+   "words": 100,
+   "tokens": 205,
+   "text": "Volgens een eerste aspect verschaft de uitvinding een lamphouder voor het bevestigen van een lamp aan het stuur van een fiets, omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, waarbij de klembeugel uit twee scharnierend verbonden helften bestaat, waarbij de lampvoet aan zijn onderzijde een geleiding heeft waarin een schuif past, waarbij de schuif in gesloten stand over de borgnok valt, en waarbij de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt."
+  },
+  {
+   "n": 72,
+   "id": "p-desc-1",
+   "words": 45,
+   "tokens": 91,
+   "text": "Volgens de uitvinding wordt dit doel bereikt doordat de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt, zodat de lamp ook bij sterke trillingen op haar plaats blijft."
+  },
+  {
+   "n": 73,
+   "id": "p-fig1",
+   "words": 8,
+   "tokens": 16,
+   "text": "Figuur 1 toont een zijaanzicht van de lamphouder."
+  },
+  {
+   "n": 74,
+   "id": "p-fig2",
+   "words": 8,
+   "tokens": 16,
+   "text": "Figuur 2 toont een doorsnede van de klembeugel."
+  },
+  {
+   "n": 75,
+   "id": "p-desc-2",
+   "words": 28,
+   "tokens": 57,
+   "text": "In een voorkeursuitvoering geldt dat de lampvoet afneembaar aan de klembeugel is bevestigd door middel van een schuifverbinding met een borgnok, wat het opladen van de lamp vergemakkelijkt."
+  },
+  {
+   "n": 76,
+   "id": "p-material",
+   "words": 9,
+   "tokens": 18,
+   "text": "De klembeugel 2 is vervaardigd uit een stevige kunststof."
+  },
+  {
+   "n": 77,
+   "id": "p-top",
+   "words": 11,
+   "tokens": 22,
+   "text": "De lampvoet 3 heeft een vlakke bovenzijde waarop de lamp rust."
+  },
+  {
+   "n": 78,
+   "id": "p-twin-a",
+   "words": 19,
+   "tokens": 38,
+   "text": "De borgnok 12 valt in de opening 14 van de geleiding 16 en wordt daarna vergrendeld met de schuif."
+  },
+  {
+   "n": 79,
+   "id": "p-list-over-a",
+   "words": 218,
+   "tokens": 464,
+   "text": "In een alternatieve uitvoeringsvorm bedraagt de breedte van de klembeugel minimaal 10,0 mm, bij voorkeur minimaal 10,5 mm, met meer voorkeur minimaal 11,0 mm, met meer voorkeur minimaal 11,5 mm, met meer voorkeur minimaal 12,0 mm, met meer voorkeur minimaal 12,5 mm, met meer voorkeur minimaal 13,0 mm, met meer voorkeur minimaal 13,5 mm, met meer voorkeur minimaal 14,0 mm, met meer voorkeur minimaal 14,5 mm, met meer voorkeur minimaal 15,0 mm, met meer voorkeur minimaal 15,5 mm, met meer voorkeur minimaal 16,0 mm, met meer voorkeur minimaal 16,5 mm, met meer voorkeur minimaal 17,0 mm, met meer voorkeur minimaal 17,5 mm, met meer voorkeur minimaal 18,0 mm, met meer voorkeur minimaal 18,5 mm, met meer voorkeur minimaal 19,0 mm, met meer voorkeur minimaal 19,5 mm, met meer voorkeur minimaal 20,0 mm, met meer voorkeur minimaal 20,5 mm, met meer voorkeur minimaal 21,0 mm, met meer voorkeur minimaal 21,5 mm, met meer voorkeur minimaal 22,0 mm, met meer voorkeur minimaal 22,5 mm, met meer voorkeur minimaal 23,0 mm, met meer voorkeur minimaal 23,5 mm, met meer voorkeur minimaal 24,0 mm en met de meeste voorkeur minimaal 24,5 mm."
+  },
+  {
+   "n": 80,
+   "id": "p-max-over-a",
+   "words": 216,
+   "tokens": 460,
+   "text": "Het gewicht van de lamphouder zonder lamp bedraagt maximaal 120,0 gram, bij voorkeur maximaal 117,5 gram, met meer voorkeur maximaal 115,0 gram, met meer voorkeur maximaal 112,5 gram, met meer voorkeur maximaal 110,0 gram, met meer voorkeur maximaal 107,5 gram, met meer voorkeur maximaal 105,0 gram, met meer voorkeur maximaal 102,5 gram, met meer voorkeur maximaal 100,0 gram, met meer voorkeur maximaal 97,5 gram, met meer voorkeur maximaal 95,0 gram, met meer voorkeur maximaal 92,5 gram, met meer voorkeur maximaal 90,0 gram, met meer voorkeur maximaal 87,5 gram, met meer voorkeur maximaal 85,0 gram, met meer voorkeur maximaal 82,5 gram, met meer voorkeur maximaal 80,0 gram, met meer voorkeur maximaal 77,5 gram, met meer voorkeur maximaal 75,0 gram, met meer voorkeur maximaal 72,5 gram, met meer voorkeur maximaal 70,0 gram, met meer voorkeur maximaal 67,5 gram, met meer voorkeur maximaal 65,0 gram, met meer voorkeur maximaal 62,5 gram, met meer voorkeur maximaal 60,0 gram, met meer voorkeur maximaal 57,5 gram, met meer voorkeur maximaal 55,0 gram, met meer voorkeur maximaal 52,5 gram, met meer voorkeur maximaal 50,0 gram en met de meeste voorkeur maximaal 47,5 gram."
+  },
+  {
+   "n": 81,
+   "id": "p-thin",
+   "words": 13,
+   "tokens": 26,
+   "text": "De verende lip 4 is aanzienlijk dunner dan de rest van de klembeugel."
+  },
+  {
+   "n": 82,
+   "id": "p-desc-3",
+   "words": 33,
+   "tokens": 67,
+   "text": "Bij voorkeur geldt dat de verende lip aan zijn vrije uiteinde is omgebogen voor het vormen van een haak die achter de rand van de uitsparing grijpt, waardoor de lamp niet kan loskomen."
+  },
+  {
+   "n": 83,
+   "id": "p-range-under-a",
+   "words": 159,
+   "tokens": 327,
+   "text": "De dikte van de verende lip ligt in het bereik van 0,5 mm tot 5,0 mm, bij voorkeur in het bereik van 0,6 mm tot 4,8 mm, met meer voorkeur in het bereik van 0,7 mm tot 4,6 mm, met meer voorkeur in het bereik van 0,8 mm tot 4,4 mm, met meer voorkeur in het bereik van 0,9 mm tot 4,2 mm, met meer voorkeur in het bereik van 1,0 mm tot 4,0 mm, met meer voorkeur in het bereik van 1,1 mm tot 3,8 mm, met meer voorkeur in het bereik van 1,2 mm tot 3,6 mm, met meer voorkeur in het bereik van 1,3 mm tot 3,4 mm, met meer voorkeur in het bereik van 1,4 mm tot 3,2 mm en met de meeste voorkeur in het bereik van 1,5 mm tot 3,0 mm."
+  },
+  {
+   "n": 84,
+   "id": "p-long-use",
+   "words": 77,
+   "tokens": 158,
+   "text": "Bij het monteren van de lamphouder legt de gebruiker de klembeugel om het stuur, drukt hij de twee helften naar elkaar toe totdat de sluiting vastklikt, schuift hij de lampvoet van voren in de geleiding totdat de borgnok in de opening valt, en controleert hij ten slotte door licht aan de lamp te trekken of alles goed vastzit, waarna de lamp met de draaiknop in de gewenste stand kan worden gezet zonder dat de lamphouder daarbij verschuift."
+  },
+  {
+   "n": 85,
+   "id": "p-twin-b",
+   "words": 19,
+   "tokens": 38,
+   "text": "De borgnok 22 valt in de opening 14 van de geleiding 16 en wordt daarna vergrendeld met de schuif."
+  },
+  {
+   "n": 86,
+   "id": "p-wear",
+   "words": 10,
+   "tokens": 21,
+   "text": "Het onderdeel dat het meest slijt, is de verende lip."
+  },
+  {
+   "n": 87,
+   "id": "p-trial",
+   "words": 13,
+   "tokens": 26,
+   "text": "Een proef heeft uitgewezen dat de klemkracht na duizend ritten niet aanzienlijk afneemt."
+  },
+  {
+   "n": 88,
+   "id": "p-slide",
+   "words": 11,
+   "tokens": 22,
+   "text": "De schuif is afneembaar zodat zij bij slijtage kan worden vervangen."
+  },
+  {
+   "n": 89,
+   "id": "p-list-over-b",
+   "words": 218,
+   "tokens": 464,
+   "text": "In een alternatieve uitvoeringsvorm bedraagt de breedte van de lampvoet minimaal 10,0 mm, bij voorkeur minimaal 10,5 mm, met meer voorkeur minimaal 11,0 mm, met meer voorkeur minimaal 11,5 mm, met meer voorkeur minimaal 12,0 mm, met meer voorkeur minimaal 12,5 mm, met meer voorkeur minimaal 13,0 mm, met meer voorkeur minimaal 13,5 mm, met meer voorkeur minimaal 14,0 mm, met meer voorkeur minimaal 14,5 mm, met meer voorkeur minimaal 15,0 mm, met meer voorkeur minimaal 15,5 mm, met meer voorkeur minimaal 16,0 mm, met meer voorkeur minimaal 16,5 mm, met meer voorkeur minimaal 17,0 mm, met meer voorkeur minimaal 17,5 mm, met meer voorkeur minimaal 18,0 mm, met meer voorkeur minimaal 18,5 mm, met meer voorkeur minimaal 19,0 mm, met meer voorkeur minimaal 19,5 mm, met meer voorkeur minimaal 20,0 mm, met meer voorkeur minimaal 20,5 mm, met meer voorkeur minimaal 21,0 mm, met meer voorkeur minimaal 21,5 mm, met meer voorkeur minimaal 22,0 mm, met meer voorkeur minimaal 22,5 mm, met meer voorkeur minimaal 23,0 mm, met meer voorkeur minimaal 23,5 mm, met meer voorkeur minimaal 24,0 mm en met de meeste voorkeur minimaal 24,5 mm."
+  },
+  {
+   "n": 90,
+   "id": "p-max-over-b",
+   "words": 216,
+   "tokens": 460,
+   "text": "Het gewicht van de lamphouder met schuif bedraagt maximaal 125,0 gram, bij voorkeur maximaal 119,0 gram, met meer voorkeur maximaal 115,0 gram, met meer voorkeur maximaal 112,5 gram, met meer voorkeur maximaal 110,0 gram, met meer voorkeur maximaal 107,5 gram, met meer voorkeur maximaal 105,0 gram, met meer voorkeur maximaal 102,5 gram, met meer voorkeur maximaal 100,0 gram, met meer voorkeur maximaal 97,5 gram, met meer voorkeur maximaal 95,0 gram, met meer voorkeur maximaal 92,5 gram, met meer voorkeur maximaal 90,0 gram, met meer voorkeur maximaal 87,5 gram, met meer voorkeur maximaal 85,0 gram, met meer voorkeur maximaal 82,5 gram, met meer voorkeur maximaal 80,0 gram, met meer voorkeur maximaal 77,5 gram, met meer voorkeur maximaal 75,0 gram, met meer voorkeur maximaal 72,5 gram, met meer voorkeur maximaal 70,0 gram, met meer voorkeur maximaal 67,5 gram, met meer voorkeur maximaal 65,0 gram, met meer voorkeur maximaal 62,5 gram, met meer voorkeur maximaal 60,0 gram, met meer voorkeur maximaal 57,5 gram, met meer voorkeur maximaal 55,0 gram, met meer voorkeur maximaal 52,5 gram, met meer voorkeur maximaal 50,0 gram en met de meeste voorkeur maximaal 45,0 gram."
+  },
+  {
+   "n": 91,
+   "id": "p-notool",
+   "words": 10,
+   "tokens": 20,
+   "text": "De lamphouder kan zonder gereedschap aan het stuur worden bevestigd."
+  },
+  {
+   "n": 92,
+   "id": "p-click",
+   "words": 13,
+   "tokens": 26,
+   "text": "Vervolgens wordt de lamp in de lampvoet geschoven tot de borgnok hoorbaar vastklikt."
+  },
+  {
+   "n": 93,
+   "id": "p-range-under-b",
+   "words": 158,
+   "tokens": 325,
+   "text": "De dikte van de borgnok ligt in het bereik van 0,5 mm tot 5,0 mm, bij voorkeur in het bereik van 0,6 mm tot 4,8 mm, met meer voorkeur in het bereik van 0,7 mm tot 4,6 mm, met meer voorkeur in het bereik van 0,8 mm tot 4,4 mm, met meer voorkeur in het bereik van 0,9 mm tot 4,2 mm, met meer voorkeur in het bereik van 1,0 mm tot 4,0 mm, met meer voorkeur in het bereik van 1,1 mm tot 3,8 mm, met meer voorkeur in het bereik van 1,2 mm tot 3,6 mm, met meer voorkeur in het bereik van 1,3 mm tot 3,4 mm, met meer voorkeur in het bereik van 1,4 mm tot 3,2 mm en met de meeste voorkeur in het bereik van 1,5 mm tot 3,0 mm."
+  },
+  {
+   "n": 94,
+   "id": "p-long-adv",
+   "words": 62,
+   "tokens": 126,
+   "text": "Een belangrijk voordeel van deze constructie is dat de krachten die tijdens het rijden op de lamp werken niet door de schuifverbinding maar door de verende lip worden opgenomen, waardoor de schuifverbinding licht kan worden uitgevoerd en de lamp toch met één hand en zonder gereedschap kan worden verwijderd wanneer de fiets onbeheerd wordt achtergelaten, ook wanneer de gebruiker dikke handschoenen draagt."
+  },
+  {
+   "n": 95,
+   "id": "p-claims",
+   "words": 1,
+   "tokens": 1,
+   "text": "Conclusies"
+  },
+  {
+   "n": 96,
+   "id": "p-claim-1",
+   "words": 94,
+   "tokens": 193,
+   "text": "Lamphouder voor het bevestigen van een lamp aan het stuur van een fiets, omvattende een klembeugel die om het stuur kan worden geklemd en een lampvoet waarop de lamp kan worden geplaatst, waarbij de klembeugel uit twee scharnierend verbonden helften bestaat, waarbij de lampvoet aan zijn onderzijde een geleiding heeft waarin een schuif past, waarbij de schuif in gesloten stand over de borgnok valt, met het kenmerk dat de klembeugel is voorzien van een verende lip die in een richting dwars op de lengteas van het stuur in een uitsparing van de lampvoet grijpt."
+  },
+  {
+   "n": 97,
+   "id": "p-claim-2",
+   "words": 27,
+   "tokens": 55,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de lampvoet afneembaar aan de klembeugel is bevestigd door middel van een schuifverbinding met een borgnok."
+  },
+  {
+   "n": 98,
+   "id": "p-claim-3",
+   "words": 34,
+   "tokens": 69,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de verende lip aan zijn vrije uiteinde is omgebogen voor het vormen van een haak die achter de rand van de uitsparing grijpt."
+  },
+  {
+   "n": 99,
+   "id": "p-claim-4",
+   "words": 17,
+   "tokens": 35,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de klembeugel uit glasvezelversterkte kunststof bestaat."
+  },
+  {
+   "n": 100,
+   "id": "p-claim-5",
+   "words": 16,
+   "tokens": 33,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de lampvoet een oplaadpoort omvat."
+  },
+  {
+   "n": 101,
+   "id": "p-claim-6",
+   "words": 16,
+   "tokens": 33,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de schuifverbinding een zwaluwstaartprofiel heeft."
+  },
+  {
+   "n": 102,
+   "id": "p-claim-7",
+   "words": 19,
+   "tokens": 39,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de borgnok met een drukknop kan worden ontgrendeld."
+  },
+  {
+   "n": 103,
+   "id": "p-claim-8",
+   "words": 17,
+   "tokens": 35,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de uitsparing een afgeronde bodem heeft."
+  },
+  {
+   "n": 104,
+   "id": "p-claim-9",
+   "words": 23,
+   "tokens": 47,
+   "text": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat de haak een hoek van 45 graden met de verende lip insluit."
+  },
+  {
+   "n": 105,
+   "id": "p-claim-10",
+   "words": 11,
+   "tokens": 22,
+   "text": "Fiets voorzien van een lamphouder volgens een van de voorgaande conclusies."
+  }
+ ],
+ "pairs": [
+  {
+   "kind": "verbatim",
+   "a": 6,
+   "b": 13,
+   "a_id": "c-def-date",
+   "b_id": "c-late",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 5,
+   "b": 15,
+   "a_id": "c-def-defect",
+   "b_id": "c-repair",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 4,
+   "b": 19,
+   "a_id": "c-def-info",
+   "b_id": "c-secret",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 35,
+   "b": 48,
+   "a_id": "m-warn",
+   "b_id": "m-warn-filter",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 35,
+   "b": 60,
+   "a_id": "m-warn",
+   "b_id": "m-warn-fuse",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 48,
+   "b": 60,
+   "a_id": "m-warn-filter",
+   "b_id": "m-warn-fuse",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 39,
+   "b": 51,
+   "a_id": "m-bolts",
+   "b_id": "m-bolts-again",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 68,
+   "b": 96,
+   "a_id": "p-field",
+   "b_id": "p-claim-1",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 72,
+   "b": 96,
+   "a_id": "p-desc-1",
+   "b_id": "p-claim-1",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 68,
+   "b": 71,
+   "a_id": "p-field",
+   "b_id": "p-summary",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 71,
+   "b": 72,
+   "a_id": "p-summary",
+   "b_id": "p-desc-1",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "twin-claim",
+   "a": 71,
+   "b": 96,
+   "a_id": "p-summary",
+   "b_id": "p-claim-1",
+   "correct": "must agree but for the opening and the last link",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 75,
+   "b": 97,
+   "a_id": "p-desc-2",
+   "b_id": "p-claim-2",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "verbatim",
+   "a": 82,
+   "b": 98,
+   "a_id": "p-desc-3",
+   "b_id": "p-claim-3",
+   "correct": "must agree",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "reworded",
+   "a": 4,
+   "b": 20,
+   "a_id": "c-def-info",
+   "b_id": "c-reworded",
+   "correct": "should agree where the wording is the same",
+   "finder": "cannot see it"
+  },
+  {
+   "kind": "reworded",
+   "a": 35,
+   "b": 58,
+   "a_id": "m-warn",
+   "b_id": "m-reworded",
+   "correct": "should agree where the wording is the same",
+   "finder": "cannot see it"
+  },
+  {
+   "kind": "twin-number",
+   "a": 17,
+   "b": 31,
+   "a_id": "c-penalty-a",
+   "b_id": "c-penalty-b",
+   "correct": "must agree but for the number",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "twin-number",
+   "a": 78,
+   "b": 85,
+   "a_id": "p-twin-a",
+   "b_id": "p-twin-b",
+   "correct": "must agree but for the number",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "punctuation",
+   "a": 27,
+   "b": 30,
+   "a_id": "c-punct-a",
+   "b_id": "c-punct-b",
+   "correct": "must agree word for word",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "defect-twin",
+   "a": 56,
+   "b": 61,
+   "a_id": "m-defect-a",
+   "b_id": "m-defect-b",
+   "correct": "must agree but for the colour, and a note on both or on neither",
+   "finder": "reports a difference, and a note on only one"
+  },
+  {
+   "kind": "list-under-limit",
+   "a": 54,
+   "b": 62,
+   "a_id": "m-list-under-a",
+   "b_id": "m-list-under-b",
+   "correct": "must agree but for the changed word",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "list-over-limit",
+   "a": 79,
+   "b": 89,
+   "a_id": "p-list-over-a",
+   "b_id": "p-list-over-b",
+   "correct": "must agree but for the changed word",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "list-over-limit",
+   "a": 80,
+   "b": 90,
+   "a_id": "p-max-over-a",
+   "b_id": "p-max-over-b",
+   "correct": "must agree but for the changed words and three numbers, each translation with its own numbers",
+   "finder": "reports a difference"
+  },
+  {
+   "kind": "list-under-limit",
+   "a": 83,
+   "b": 93,
+   "a_id": "p-range-under-a",
+   "b_id": "p-range-under-b",
+   "correct": "must agree but for the changed words",
+   "finder": "reports a difference"
+  }
+ ],
+ "boilerplate": {
+  "segments": [
+   97,
+   98,
+   99,
+   100,
+   101,
+   102,
+   103,
+   104
+  ],
+  "phrase": "Lamphouder volgens een van de voorgaande conclusies, met het kenmerk dat",
+  "correct": "no pair among these segments on the strength of the formula alone"
+ },
+ "synonyms": [
+  {
+   "word": "afneembaar",
+   "stems": [
+    "afneemba"
+   ],
+   "english": [
+    "removabl",
+    "detachabl"
+   ],
+   "segments": [
+    9,
+    40,
+    49,
+    75,
+    88,
+    97
+   ]
+  },
+  {
+   "word": "aanzienlijk",
+   "stems": [
+    "aanzienlijk"
+   ],
+   "english": [
+    "considerabl",
+    "significant",
+    "substantial",
+    "material",
+    "marked",
+    "appreciabl",
+    "much",
+    "far"
+   ],
+   "segments": [
+    5,
+    15,
+    46,
+    65,
+    81,
+    87
+   ]
+  },
+  {
+   "word": "bevestigen",
+   "stems": [
+    "bevestig"
+   ],
+   "english": [
+    "attach",
+    "fasten",
+    "fix",
+    "secur",
+    "mount",
+    "fit"
+   ],
+   "segments": [
+    12,
+    40,
+    68,
+    71,
+    75,
+    91,
+    96,
+    97
+   ]
+  },
+  {
+   "word": "stevig",
+   "stems": [
+    "stevig"
+   ],
+   "english": [
+    "firm",
+    "secure",
+    "sturd",
+    "solid",
+    "strong",
+    "robust",
+    "rigid",
+    "stable",
+    "tight"
+   ],
+   "segments": [
+    38,
+    41,
+    42,
+    76
+   ]
+  },
+  {
+   "word": "onderdeel",
+   "stems": [
+    "onderdeel"
+   ],
+   "english": [
+    "part",
+    "component"
+   ],
+   "segments": [
+    16,
+    32,
+    45,
+    86
+   ]
+  },
+  {
+   "word": "controleren",
+   "stems": [
+    "controle"
+   ],
+   "english": [
+    "check",
+    "inspect",
+    "verif",
+    "examin",
+    "make sure",
+    "ensure",
+    "test"
+   ],
+   "segments": [
+    10,
+    11,
+    41,
+    52,
+    60,
+    84
+   ]
+  },
+  {
+   "word": "vervolgens",
+   "stems": [
+    "vervolgens"
+   ],
+   "english": [
+    "then",
+    "subsequent",
+    "next",
+    "afterwards",
+    "thereafter",
+    "after that"
+   ],
+   "segments": [
+    40,
+    52,
+    53,
+    92
+   ]
+  }
+ ],
+ "token_limit": 400
+}

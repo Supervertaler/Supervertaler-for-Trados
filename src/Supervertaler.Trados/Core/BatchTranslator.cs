@@ -156,6 +156,13 @@ namespace Supervertaler.Trados.Core
         public string RepetitionSummary { get; set; }
 
         /// <summary>
+        /// The lines about restated passages the run translated two ways
+        /// (<see cref="RestatedCheck"/>), or null when there is nothing to say or
+        /// the run did not check.
+        /// </summary>
+        public string RestatedSummary { get; set; }
+
+        /// <summary>
         /// The run's one usage entry - the one also fired through
         /// <see cref="LlmClient.PromptCompleted"/> for the Reports tab and the usage
         /// log - or null when the run sent nothing. SuperBench takes a contender's
@@ -233,6 +240,26 @@ namespace Supervertaler.Trados.Core
         /// and null otherwise, which leaves every result as the AI returned it.
         /// </summary>
         public RepetitionRun Repetitions { get; set; }
+
+        /// <summary>
+        /// Collects what the end-of-run report on restated passages needs
+        /// (docs/design/restated-passages.md). Set by Batch Translate only, like
+        /// <see cref="Repetitions"/>; null otherwise, and then nothing is
+        /// recorded or reported. It changes nothing that is sent or written.
+        /// </summary>
+        internal RestatedCheck Restated { get; set; }
+
+        /// <summary>
+        /// Shows the AI, for a segment that repeats a passage of an earlier one,
+        /// that segment and the translation it has - one already in the document,
+        /// or one this run wrote and Studio took (docs/design/in-run-references.md).
+        /// It goes in the request's user prompt; the system prompt stays the same
+        /// for the whole run. Needs <see cref="Restated"/>, which holds what the
+        /// run knows. Set by Batch Translate only, on this instance, like
+        /// <see cref="Repetitions"/>: Alt+T and SuperBench leave it off, and send
+        /// exactly what they sent before.
+        /// </summary>
+        public bool InRunReferences { get; set; }
 
         /// <summary>
         /// The document the run was started in, for the write handler; null when the
@@ -465,7 +492,7 @@ namespace Supervertaler.Trados.Core
 
                 var again = new List<BatchSegmentInput>();
                 for (int k = 0; k < offenders.Count; k++)
-                    again.Add(ToPromptInput(sent[offenders[k]], k + 1, structureContext));
+                    again.Add(PromptInputFor(sent[offenders[k]], k + 1, structureContext));
                 var userPrompt = OutputContract.Reminder + Environment.NewLine + Environment.NewLine
                     + UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, again);
 
@@ -565,7 +592,7 @@ namespace Supervertaler.Trados.Core
                         var promptSegments = new List<BatchSegmentInput>();
                         for (int i = startIdx; i < endIdx; i++)
                         {
-                            promptSegments.Add(ToPromptInput(segments[i], i + 1, structureContext));
+                            promptSegments.Add(PromptInputFor(segments[i], i + 1, structureContext));
                         }
 
                         // Build user prompt
@@ -747,7 +774,7 @@ namespace Supervertaler.Trados.Core
                             {
                                 var ps = new List<BatchSegmentInput>();
                                 for (int i = rs; i < re; i++)
-                                    ps.Add(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) });
+                                    ps.Add(WithReferences(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) }, pending[i]));
 
                                 var rUserPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, ps);
                                 var rResponse = await client.SendPromptAsync(
@@ -860,6 +887,8 @@ namespace Supervertaler.Trados.Core
                 usage = aggEntry;
             }
 
+            var restatedSummary = await RestatedSummaryAsync();
+
             Completed?.Invoke(this, new BatchCompletedEventArgs
             {
                 Translated = translated,
@@ -868,8 +897,32 @@ namespace Supervertaler.Trados.Core
                 TotalTime = sw.Elapsed,
                 WasCancelled = cancellationToken.IsCancellationRequested,
                 RepetitionSummary = Repetitions?.Summary(),
+                RestatedSummary = restatedSummary,
                 Usage = usage
             });
+        }
+
+        /// <summary>
+        /// The run's lines about restated passages, found and compared on a pool
+        /// thread whatever thread the run was started from - never on Studio's UI
+        /// thread - or null when the run does not check. A stopped run reports on
+        /// what it wrote. The check failing must not cost the run its
+        /// <see cref="Completed"/>: it is logged, and the run says nothing.
+        /// </summary>
+        private async Task<string> RestatedSummaryAsync()
+        {
+            var check = Restated;
+            if (check == null) return null;
+
+            try
+            {
+                return await Task.Run(() => check.Summary()).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Restated", "The restated-passages check failed (" + ex.GetType().Name + ": " + ex.Message + "); nothing reported");
+                return null;
+            }
         }
 
         /// <summary>
@@ -979,6 +1032,8 @@ namespace Supervertaler.Trados.Core
             };
             LlmClient.FirePromptCompleted(usage);
 
+            var restatedSummary = await RestatedSummaryAsync().ConfigureAwait(false);
+
             Completed?.Invoke(this, new BatchCompletedEventArgs
             {
                 Translated = translated,
@@ -986,6 +1041,7 @@ namespace Supervertaler.Trados.Core
                 TotalTime = sw.Elapsed,
                 WasCancelled = outcome.Cancelled || cancellationToken.IsCancellationRequested,
                 RepetitionSummary = Repetitions?.Summary(),
+                RestatedSummary = restatedSummary,
                 Usage = usage
             });
         }
@@ -1027,6 +1083,10 @@ namespace Supervertaler.Trados.Core
             };
             SegmentTranslated?.Invoke(this, args);
             if (!args.WriteSucceeded) return DeliveryOutcome.Declined;
+
+            // Only once Studio has taken the write, as the repetitions below: a
+            // declined write is not a translation the report may compare.
+            Restated?.Written(segment, text);
 
             if (delivery != null)
             {
@@ -1222,6 +1282,38 @@ namespace Supervertaler.Trados.Core
                 input.FuzzyMatchPercent = segment.TmMatchPercent;
             }
 
+            return input;
+        }
+
+        /// <summary>
+        /// A segment as this run's request carries it: <see cref="ToPromptInput"/>,
+        /// and - when the run shows them - the earlier translations of a passage
+        /// it repeats.
+        /// </summary>
+        private BatchSegmentInput PromptInputFor(BatchSegment segment, int number, StructureContextMode mode) =>
+            WithReferences(ToPromptInput(segment, number, mode), segment);
+
+        /// <summary>
+        /// Adds the earlier translations the run knows now for a segment
+        /// (<see cref="InRunReferences"/>). A lookup that throws costs the segment
+        /// its references and nothing else: it is logged, and the request goes
+        /// out as it would have without them.
+        /// </summary>
+        private BatchSegmentInput WithReferences(BatchSegmentInput input, BatchSegment segment)
+        {
+            var known = Restated;
+            if (!InRunReferences || known == null) return input;
+
+            try
+            {
+                var found = known.ReferencesFor(segment);
+                if (found.Count > 0) input.References = found;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Restated", "Looking up earlier translations failed (" + ex.GetType().Name + ": "
+                    + ex.Message + "); the segment is sent without them");
+            }
             return input;
         }
 

@@ -10885,8 +10885,13 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // segments this run will not write (docs/design/consistent-repetitions.md).
                 var scope = batchControl.GetSelectedScope();
                 var repetitions = aiSettings.KeepRepetitionsConsistent ? new RepetitionRun() : null;
+                // Restated passages: collecting also notes every segment's source,
+                // and the target of each one this run will not write, for the
+                // report at the end (docs/design/restated-passages.md). Nothing
+                // sent or written changes.
+                var restated = new RestatedCheck();
                 var runDocument = _activeDocument;
-                var segments = CollectSegments(scope, repetitions);
+                var segments = CollectSegments(scope, repetitions, restated);
                 var structureMode = ApplyStructureMarkers(_activeDocument, segments, aiSettings, out var structureNote);   // #109
                 if (structureNote != null) batchControl.AppendLog(structureNote);
 
@@ -11002,6 +11007,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     // On this run's translator only: Alt+T and SuperBench use their
                     // own, and never align or write to a captured document.
                     Repetitions = repetitions,
+                    Restated = restated,
+                    // Earlier translations of repeated passages go with the segments
+                    // that repeat them (docs/design/in-run-references.md). Always on
+                    // for Batch Translate; there is no setting.
+                    InRunReferences = true,
                     DocumentRef = runDocument
                 };
 
@@ -11317,6 +11327,17 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 {
                     foreach (var line in e.RepetitionSummary.Split(new[] { Environment.NewLine }, StringSplitOptions.None))
                         _control.Value.BatchTranslateControl.AppendLog("Repetitions: " + line);
+                }
+
+                // Repeated passages: the same source wording inside two segments,
+                // translated two ways, and near-identical segments with a note on
+                // one only (listed, never changed). Nothing when there are none.
+                // In any kind of document; "Repeated" rather than the code's
+                // "restated" because that is the plainer word for a log.
+                if (!string.IsNullOrEmpty(e.RestatedSummary))
+                {
+                    foreach (var line in e.RestatedSummary.Split(new[] { Environment.NewLine }, StringSplitOptions.None))
+                        _control.Value.BatchTranslateControl.AppendLog("Repeated passages: " + line);
                 }
 
                 if (backup != null && backup.Count > 0)
@@ -12920,6 +12941,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 // Collect segments based on mode and scope
                 List<BatchSegment> segments;
+                // Translate: what the run would know about repeated passages, so the
+                // preview can show the earlier translations it would send.
+                RestatedCheck previewKnown = null;
                 if (batchControl.CurrentMode == BatchMode.Proofread)
                 {
                     var proofScope = batchControl.GetSelectedProofreadScope();
@@ -12928,7 +12952,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 else
                 {
                     var scope = batchControl.GetSelectedScope();
-                    segments = CollectSegments(scope);
+                    previewKnown = new RestatedCheck();
+                    segments = CollectSegments(scope, null, previewKnown);
                 }
 
                 if (segments.Count == 0)
@@ -13095,15 +13120,45 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         }
 
                         var promptSegments = new List<BatchSegmentInput>();
+                        bool previewHasEarlier = false;
                         for (int i = 0; i < previewCount; i++)
-                            promptSegments.Add(
-                                BatchTranslator.ToPromptInput(previewSegments[i], i + 1, structureMode));
+                        {
+                            var input = BatchTranslator.ToPromptInput(previewSegments[i], i + 1, structureMode);
+                            try
+                            {
+                                var earlier = previewKnown?.PreviewReferencesFor(previewSegments[i]);
+                                if (earlier != null && earlier.Count > 0)
+                                {
+                                    input.References = earlier;
+                                    previewHasEarlier = true;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Core.DiagnosticLog.Log("Restated", "Preview lookup failed: " + ex.Message);
+                            }
+                            promptSegments.Add(input);
+                        }
 
                         promptText = apiSystemPrompt
                             + Environment.NewLine + Environment.NewLine
                             + "════════ USER MESSAGE ════════"
                             + Environment.NewLine + Environment.NewLine
                             + BatchTranslator.UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, promptSegments);
+
+                        // The run also shows the AI what it wrote in its own earlier
+                        // requests; a preview has only what is in the document now.
+                        if (previewKnown != null)
+                        {
+                            promptText += Environment.NewLine + Environment.NewLine
+                                + (previewHasEarlier
+                                    ? "(Earlier translations: the ones shown above are in the document now. "
+                                    : "(Earlier translations: none of these segments repeats a passage that "
+                                      + "is translated in the document now, so none is shown. ")
+                                + "During a run, a segment that repeats a passage translated in an earlier "
+                                + "request of the same run is shown that translation too; a preview cannot "
+                                + "show those, because they do not exist yet.)";
+                        }
 
                         if (segments.Count > previewCount)
                         {
@@ -14378,7 +14433,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// overwrites - hands its existing target to <see cref="RepetitionRun.Keep"/>,
         /// in document order, before anything is written.
         /// </param>
-        private List<BatchSegment> CollectSegments(BatchScope scope, RepetitionRun repetitions = null)
+        /// <param name="restated">
+        /// Batch Translate's check for restated passages, else null. When set,
+        /// every segment in scope is noted in document order: one the run will
+        /// write by its source, one it will not - locked, or outside what the
+        /// scope overwrites - by its source and the target it has.
+        /// </param>
+        private List<BatchSegment> CollectSegments(BatchScope scope, RepetitionRun repetitions = null,
+            RestatedCheck restated = null)
         {
             var segments = new List<BatchSegment>();
             if (_activeDocument == null) return segments;
@@ -14420,6 +14482,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         // Never written - but its translation can still be the one its
                         // repetitions get.
                         if (repetitions != null) KeepForRepetitions(repetitions, pair, labelFiles);
+                        if (restated != null) KeepForRestated(restated, pair, index, file, labelFiles);
                         index++;
                         continue;
                     }
@@ -14476,10 +14539,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             // spaces in what is sent, and must not be in the key.
                             RepetitionKey = repetitions != null ? RepetitionTokens.KeyOf(sourceSegment) : null
                         });
+                        restated?.Sent(segments[segments.Count - 1]);
                     }
-                    else if (repetitions != null)
+                    else
                     {
-                        KeepForRepetitions(repetitions, pair, labelFiles);
+                        if (repetitions != null) KeepForRepetitions(repetitions, pair, labelFiles);
+                        if (restated != null) KeepForRestated(restated, pair, index, file, labelFiles);
                     }
 
                     index++;
@@ -14519,6 +14584,29 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 // A segment that cannot be read is not kept: its group then takes
                 // the run's first translation instead, as if it were empty.
+            }
+        }
+
+        /// <summary>
+        /// Hands a segment Batch Translate will not write to the run's check for
+        /// restated passages: its source and the target it has, as plain text.
+        /// Read here, on the UI thread, with the rest of the collection; the
+        /// comparing is done after the run, off it.
+        /// </summary>
+        /// <param name="lastFile">The file of the segment before it, for one whose paragraph the file map lacks.</param>
+        private void KeepForRestated(RestatedCheck restated, ISegmentPair pair, int index, string lastFile, bool labelFiles)
+        {
+            try
+            {
+                var source = SegmentTagHandler.Serialize(pair.Source);
+                var sourceText = source.HasTags ? source.SerializedText : (pair.Source?.ToString() ?? "");
+                var targetText = pair.Target != null ? SegmentTagHandler.GetFinalText(pair.Target) : "";
+                var file = labelFiles ? (FileOf(_activeDocument, pair) ?? lastFile) : null;
+                restated.Kept(SegmentLabel.Of(StudioNumberOf(pair, index), file), sourceText, targetText);
+            }
+            catch
+            {
+                // A segment that cannot be read is left out of the report.
             }
         }
 
