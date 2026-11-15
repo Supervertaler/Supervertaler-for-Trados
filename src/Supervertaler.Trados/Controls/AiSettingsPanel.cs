@@ -770,7 +770,8 @@ namespace Supervertaler.Trados.Controls
                 "repetitions get. If two such segments already disagree, nothing is changed and the\r\n" +
                 "log lists them. Nothing sent to the AI changes.\r\n\r\n" +
                 "A repetition is the same text exactly – same case, spaces (a non-breaking space is not\r\n" +
-                "an ordinary one) and tags; only tag numbering may differ.");
+                "an ordinary one) and tags; only tag numbering may differ. Segments that are similar\r\n" +
+                "but not identical are handled by short-term memory, which is always on.");
             Span(root, ref row, _chkKeepRepetitions);
 
             _chkTcAsComments = Check("Add the AI's [[TC: …]] notes as Trados comments");
