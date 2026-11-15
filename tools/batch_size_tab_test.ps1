@@ -140,7 +140,7 @@ try {
         Check ($text -match "^$used(\D|$)") "stored ${stored}: the log line starts with $used ($text)"
     }
     $text = [string]$say.Invoke($null, @([int]100))
-    if ($is32) { Check ($text -eq '10 (the setting is 100; a 32-bit Trados Studio takes at most 10)') "a held size says what the setting is and why ($text)" }
+    if ($is32) { Check ($text -eq '10 (the most a 32-bit Trados Studio takes)') "a held size says why, and names no number the translator cannot see ($text)" }
     else { Check ($text -eq '100') "a size that is not held is just the number ($text)" }
 
     Write-Host "7 Settings: OK without touching the box keeps the stored size"

@@ -76,12 +76,13 @@ namespace Supervertaler.Trados.Core
         public static int EffectiveBatchSize(int stored) => ClampBatchSize(stored > 0 ? stored : 20);
 
         /// <summary>The batch size as a run's first log line gives it: the size
-        /// used, and when the setting asks for more, that too and why.</summary>
+        /// used, and when this Studio holds it below the stored size, why. The stored
+        /// size is not named: in this Studio no box shows it.</summary>
         public static string BatchSizeForLog(int stored)
         {
             int asked = stored > 0 ? stored : 20, used = EffectiveBatchSize(stored);
             return used < asked
-                ? used + " (the setting is " + asked + "; a 32-bit Trados Studio takes at most " + used + ")"
+                ? used + " (the most a 32-bit Trados Studio takes)"
                 : used.ToString();
         }
     }
