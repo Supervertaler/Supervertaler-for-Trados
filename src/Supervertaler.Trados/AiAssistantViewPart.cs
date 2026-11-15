@@ -8651,8 +8651,9 @@ namespace Supervertaler.Trados
                 if (_settings?.AiSettings?.IncludeSuperMemoryContext == false)
                     return null;
 
+                // The bank or _shared beside it (UserDataPath.HasBankToRead).
                 var reader = EnsureKbReader();
-                if (reader == null || !reader.VaultExists) return null;
+                if (reader == null || !UserDataPath.HasBankToRead(ActiveMemoryBankDir)) return null;
 
                 var ctx = reader.LoadContext(
                     projectName, null, sourceLang, targetLang,
@@ -8919,16 +8920,19 @@ namespace Supervertaler.Trados
                 bankName = ActiveMemoryBankName;
             }
 
-            if (reader == null || !reader.VaultExists)
+            // The bank or _shared beside it (UserDataPath.HasBankToRead): with no
+            // project bank the house defaults are still the answer, as they are
+            // in the prompts.
+            var readDir = requestedBank.Length > 0
+                ? Settings.UserDataPath.GetMemoryBankDir(bankName)
+                : ActiveMemoryBankDir;
+            if (reader == null || !Settings.UserDataPath.HasBankToRead(readDir))
             {
                 return new BridgeSuperMemoryContextResponse
                 {
                     Available = false,
                     Bank = bankName,
-                    Note = "No memory bank found at "
-                         + (requestedBank.Length > 0
-                                ? Settings.UserDataPath.GetMemoryBankDir(bankName)
-                                : ActiveMemoryBankDir)
+                    Note = "No memory bank found at " + readDir
                 };
             }
 
@@ -10089,8 +10093,13 @@ namespace Supervertaler.Trados
 
                 if (!Directory.Exists(bankDir))
                 {
+                    // With no bank of its own a project still sends _shared, so
+                    // "does not exist" alone read as "nothing is sent".
                     ShowSuperMemoryMessage("Memory bank **" + bankName + "** does not exist yet.\n\n" +
-                        "Expected location:\n`" + bankDir + "`");
+                        "Expected location:\n`" + bankDir + "`" +
+                        (UserDataPath.HasBankToRead(bankDir)
+                            ? "\n\nYour `" + MemoryBankReader.SharedBankName + "` bank is still sent with this project's requests."
+                            : ""));
                     return;
                 }
 

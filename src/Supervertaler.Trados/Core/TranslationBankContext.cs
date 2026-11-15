@@ -168,8 +168,10 @@ namespace Supervertaler.Trados.Core
 
                 if (string.IsNullOrWhiteSpace(bankName)) bankName = UserDataPath.DefaultMemoryBankName;
                 var bankDir = UserDataPath.GetMemoryBankDir(bankName);
+                // The bank or _shared beside it: a project with no bank of its own
+                // still sends the house defaults.
+                if (!UserDataPath.HasBankToRead(bankDir)) return none;
                 var reader = new MemoryBankReader(bankDir);
-                if (!reader.VaultExists) return none;
 
                 var key = string.Join("\n", bankDir, BankFingerprint(bankDir), sourceLang, targetLang, documentKey);
                 lock (_lastLock)
@@ -203,7 +205,9 @@ namespace Supervertaler.Trados.Core
                             ? ai.GetActiveCustomProfile()?.Model
                             : ai.GetSelectedModel());
                     var label = (projectName ?? "this project") + ", " + (fileName ?? "this document")
-                        + ", bank '" + bankName + "'";
+                        + (reader.VaultExists
+                            ? ", bank '" + bankName + "'"
+                            : ", no project bank (" + MemoryBankReader.SharedBankName + " only)");
                     var stem = FileStem(fileName, documentKey);
                     var chooserTimeout = ChooserTimeoutFor(ai?.SelectedProvider, ai?.OllamaTimeoutMinutes ?? 0);
 

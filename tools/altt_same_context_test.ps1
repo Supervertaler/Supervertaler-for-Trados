@@ -131,7 +131,6 @@ $build = Method $tbc 'Build' 9
 function Reference($bank, $target, $docText) {
     $dir = Join-Path $banks $bank
     $reader = [Activator]::CreateInstance($readerT, @([string]$dir))
-    if (-not $reader.VaultExists) { return '' }
     $full = $reader.LoadContext('PROJ-001', $null, 'English (United Kingdom)', [string]$target, 0, $null, $true)
     if ($null -eq $full) { return '' }
     $argv = New-Object object[] 9
@@ -200,13 +199,15 @@ try {
     Check ($block -ceq (Reference 'default' $nl 'Text.')) "byte for byte what the pane path's building blocks give"
     $block = Block (Send $on '   ' $nl 'Text.')
     Check ($block -match 'British spelling') "a blank bank name is the default bank"
-    # With NO default bank folder, nothing goes - not even _shared. That is what
-    # the pane path has always done (its check that the active bank exists comes
-    # before the load), so it is what both paths do; whether it should be is for
-    # the owner to decide, and one line in ForDocument when he does.
+    # With NO default bank folder - most data folders have none - the shared
+    # bank goes alone. Until 208 nothing went: every reader stopped when the
+    # bank's own folder was missing, while the toolbar said "shared only". This
+    # check pinned that as "nothing is sent" in the commit before; section 11
+    # has the rest.
     Remove-Item -Recurse -Force "$banks\default"
-    $task = Send $on '' $nl 'Text.'
-    Check ($null -eq (ResultOf $task)) "no bank of its own and no default bank on disk: nothing is sent, shared included (as the pane path)"
+    $block = Block (Send $on '' $nl 'Text.')
+    Check ($block -match 'thin space' -and $block -notmatch 'British spelling') "no bank of its own and no default bank on disk: the shared bank goes alone"
+    Check ($block -ceq (Reference 'default' $nl 'Text.')) "byte for byte what core gives for a bank folder that is not there"
 
     Write-Host "5. Files for one target language"
     Utf8 "$banks\acme-legal\style.nl-BE.md" "# Style, Belgium`r`n`r`nBelgian rule: 'gsm', not 'mobieltje'.`r`n"
@@ -227,14 +228,26 @@ try {
     $task = Send $null 'acme-legal' $nl 'A widget.'
     Check ((Block $task) -match 'operating manual') "no settings object at all is not 'off' (as the pane path reads it)"
 
-    Write-Host "7. No bank at all"
-    $task = Send $on 'no-such-bank' $nl 'Text.'
-    Check ($task.IsCompleted -and $null -eq (ResultOf $task)) "a bank that is not on disk: no block, and no error"
-    New-Item -ItemType Directory -Force -Path "$banks\empty-bank" | Out-Null
-    $task = Send $on 'empty-bank' $nl 'Text.'
-    Check ($null -eq (ResultOf $task)) "a bank folder with no files: no block"
-    $task = Send $on '..\..\outside' $nl 'Text.'
-    Check ($null -eq (ResultOf $task)) "a bank name that is not a folder name reads nothing outside the banks folder"
+    Write-Host "7. No bank at all: neither the project's nor the shared one"
+    $aside = Join-Path $temp 'shared-set-aside'
+    Move-Item "$banks\_shared" $aside
+    try {
+        $task = Send $on 'no-such-bank' $nl 'Text.'
+        Check ($task.IsCompleted -and $null -eq (ResultOf $task)) "a bank that is not on disk, and no shared bank: no block, and no error"
+        $task = Send $on '' $nl 'Text.'
+        Check ($task.IsCompleted -and $null -eq (ResultOf $task)) "no bank of its own, no default bank, no shared bank: no block"
+        New-Item -ItemType Directory -Force -Path "$banks\empty-bank" | Out-Null
+        $task = Send $on 'empty-bank' $nl 'Text.'
+        Check ($null -eq (ResultOf $task)) "a bank folder with no files: no block"
+        New-Item -ItemType Directory -Force -Path "$banks\_shared" | Out-Null
+        $task = Send $on 'empty-bank' $nl 'Text.'
+        Check ($null -eq (ResultOf $task)) "nor with an empty shared folder beside it"
+        Remove-Item "$banks\_shared"
+        $task = Send $on '..\..\outside' $nl 'Text.'
+        Check ($null -eq (ResultOf $task)) "a bank name that is not a folder name reads nothing outside the banks folder"
+    } finally { Move-Item $aside "$banks\_shared" }
+    $block = Block (Send $on 'no-such-bank' $nl 'Text.')
+    Check ($block -match 'thin space') "with the shared bank back, a bank that is not on disk sends the shared one"
 
     Write-Host "8. A bank file that cannot be read"
     $before = Block (Send $on 'acme-legal' $nl 'A widget.')
@@ -339,6 +352,90 @@ try {
     Check (([regex]::Matches($src, 'TranslationBankContext\.ForDocument\(')).Count -eq 1) "the view part calls TranslationBankContext.ForDocument in exactly one place"
     Check (([regex]::Matches($src, 'TranslationBankContext\.Build\(')).Count -eq 0) "and builds no translation bank block of its own anywhere else"
     Check (([regex]::Matches($src, 'TranslationBankContext\.BankForProject\(')).Count -eq 2) "the rule for a project's bank is called by the pane and by Alt+T without it, and written once"
+
+    Write-Host "12. A project with no bank of its own still sends the shared bank"
+    # The rule, UserDataPath.HasBankToRead: something to read when the bank
+    # exists or _shared beside it does. No default bank is on disk here.
+    $udp = $asm.GetType('Supervertaler.Trados.Settings.UserDataPath', $true)
+    $hasBank = Method $udp 'HasBankToRead' 1
+    function Has($name) { return [bool]$hasBank.Invoke($null, @([string](Join-Path $banks $name))) }
+    Check (-not (Test-Path "$banks\default")) "there is no default bank folder, and none is made to get this to work"
+    Check (Has 'default') "no bank folder, a shared bank beside it: there is something to read"
+    Check ((Has 'acme-legal') -and (Has '_shared')) "a bank that exists, and the shared bank itself: something to read"
+    Check (-not [bool]$hasBank.Invoke($null, @([string](Join-Path $temp 'nowhere\default'))) -and -not [bool]$hasBank.Invoke($null, @($null))) "no bank and no shared bank beside it, or no folder at all: nothing to read"
+
+    # The same answer from each entry point, for the same inputs. The chat,
+    # AutoPrompt and get_supermemory_context are methods of the pane object and
+    # cannot be called here; what they do after the rule is one LoadContext
+    # call each, made here with their own arguments.
+    $format = Method $readerT 'FormatForPrompt' 1
+    function Loaded($bank, $target, [int]$budget, [bool]$forTranslation) {
+        $reader = [Activator]::CreateInstance($readerT, @([string](Join-Path $banks $bank)))
+        $ctx = $reader.LoadContext('PROJ-001', $null, 'English (United Kingdom)', [string]$target, $budget, $null, $forTranslation)
+        if ($null -eq $ctx) { return '' }
+        return [string]$format.Invoke($null, @($ctx))
+    }
+    $translation = Block (Send $on '' $nl 'Text.')
+    Check ($translation -match '# House defaults' -and $translation -match 'thin space' -and $translation -match 'no capital after a colon') "a translation gets the shared brief and the shared file for its target language"
+    Check ($translation -ceq (Loaded 'default' $nl 24000 $false)) "the chat (24,000 tokens, all notes) gets the same block"
+    Check ($translation -ceq (Loaded 'default' $nl 24000 $true)) "AutoPrompt (24,000 tokens, translation notes) gets the same block"
+    Check ($translation -ceq (Loaded 'default' $nl 6000 $false)) "get_supermemory_context (6,000 tokens) gets the same block"
+    Write-Host "       the block's headings: $((($translation -split "`n") | Where-Object { $_ -match '^# ' } | ForEach-Object { $_.Trim() }) -join ' | ')"
+
+    Utf8 "$banks\_shared\style.nl-BE.md" "# House style, Belgium`r`n`r`nBelgian house rule: 'gsm'.`r`n"
+    $be = Block (Send $on '' 'Dutch (Belgium)' 'Text.')
+    Check ($be -match 'Belgian house rule' -and $be -match 'no capital after a colon') "into Dutch (Belgium): the shared style.nl-BE.md and style.nl.md both go"
+    $fr = Block (Send $on '' 'French (France)' 'Text.')
+    Check ($fr -match 'thin space' -and $fr -notmatch 'Belgian house rule' -and $fr -notmatch 'no capital after a colon') "into French (France): neither, only the shared brief"
+    $task = Send $off '' $nl 'Text.'
+    Check ($task.IsCompleted -and $null -eq (ResultOf $task)) "the setting switched off: nothing, shared bank or not"
+
+    # One block per document here too, and a change is seen on the next press.
+    $t1 = ForDocumentTask $on '' $nl 'doc-no-project-bank' 'Text.'
+    $t2 = ForDocumentTask $on '' $nl 'doc-no-project-bank' 'Text.'
+    Check ([object]::ReferenceEquals($t1, $t2)) "a second press in the same document gets the very same block"
+    $t3 = ForDocumentTask $on '' $nl 'doc-of-another-project' 'Text.'
+    Check (-not [object]::ReferenceEquals($t1, $t3) -and (Block $t3) -ceq (Block $t1)) "another project's document without a bank gets a block of its own, with the same shared content"
+    $t4 = ForDocumentTask $on 'acme-legal' $nl 'doc-of-another-project' 'Text.'
+    Check ((Block $t4) -match 'operating manual') "and a project that has a bank is not handed the bankless block for the same document"
+    Start-Sleep -Milliseconds 50
+    Utf8 "$banks\_shared\brief.md" "# House defaults`r`n`r`nHouse rule: thousands separator is a thin space. Edited: dates as 3 May 2026.`r`n"
+    $t5 = ForDocumentTask $on '' $nl 'doc-no-project-bank' 'Text.'
+    Check ((Block $t5) -match '3 May 2026') "an edit in the shared bank is picked up on the next press"
+    Utf8 "$banks\proj-002\brief.md" "# PROJ-002`r`n`r`nA bank the project gained while the document was open.`r`n"
+    $t6 = ForDocumentTask $on 'proj-002' $nl 'doc-no-project-bank' 'Text.'
+    Check ((Block $t6) -match 'gained while the document was open' -and (Block $t6) -match '3 May 2026') "a project that gains a bank mid-session sends it from the next press, with the shared bank"
+    Utf8 "$banks\default\brief.md" "# Default`r`n`r`nA default bank that appeared.`r`n"
+    $t7 = ForDocumentTask $on '' $nl 'doc-no-project-bank' 'Text.'
+    Check ((Block $t7) -match 'A default bank that appeared') "and so does a default bank that appears"
+    Remove-Item -Recurse -Force "$banks\default"
+
+    # A shared bank over the threshold, alone: selected for the document as any
+    # large bank is. No client here, so every note and rule is kept; the
+    # terminology rows are narrowed without a model.
+    $rows = New-Object Text.StringBuilder
+    [void]$rows.Append("# House terms`r`n`r`n| EN | NL | Note |`r`n|---|---|---|`r`n")
+    for ($i = 1; $i -le 1500; $i++) { [void]$rows.Append("| sprocket$i | tandwiel$i | house decision |`r`n") }
+    Utf8 "$banks\_shared\terminology.md" $rows.ToString()
+    Utf8 "$banks\_shared\style.md" "# House style`r`n`r`n## Numbers`r`n`r`nScope: all work.`r`n`r`nHouse numbers rule: decimal comma.`r`n`r`n## Headings`r`n`r`nScope: all work.`r`n`r`nHouse headings rule: sentence case.`r`n"
+    $doc2 = "Fit sprocket9 before sprocket1400."
+    $task = ForDocumentTask $on '' $nl 'doc-big-shared' $doc2
+    $bigShared = Block $task
+    Check ($bigShared -match 'tandwiel9 ' -and $bigShared -match 'tandwiel1400' -and $bigShared -notmatch 'tandwiel10 ' -and $bigShared -notmatch 'tandwiel1500') "a large shared bank alone: only the terminology rows whose terms occur in the document go"
+    Check ($bigShared -match '3 May 2026' -and $bigShared -match 'decimal comma' -and $bigShared -match 'sentence case') "its brief and its style rules still go"
+    Check ($bigShared -ceq (Reference 'default' $nl $doc2)) "byte for byte what the same selection gives through core"
+    $log = (LogOf $task) -join "`n"
+    Check ($log -match 'SuperMemory: sending [\d,]+ tokens of the bank''s [\d,]+ tokens, selected for this document') "and the log says how much of it goes: $((LogOf $task)[0])"
+    $written = @(Get-ChildItem (Join-Path $temp 'trados\bank-extracts') -Filter 'Acme manual.docx - *.md' | Sort-Object LastWriteTime | Select-Object -Last 1)
+    Check ($written.Count -eq 1 -and [IO.File]::ReadAllText($written[0].FullName) -match 'no project bank \(_shared only\)' -and [IO.File]::ReadAllText($written[0].FullName) -notmatch "bank 'default'") "the file that says what was sent names no bank that does not exist"
+
+    # Every reader asks the one rule, and none stops on the bank's own folder.
+    $tbcSrc = [IO.File]::ReadAllText((Join-Path $root 'src\Supervertaler.Trados\Core\TranslationBankContext.cs'))
+    $chat = Body 'private string LoadKbContextForPrompt('
+    $mcp = Body 'private BridgeSuperMemoryContextResponse BridgeGetSuperMemoryContext('
+    Check ($tbcSrc -match 'if \(!UserDataPath\.HasBankToRead\(bankDir\)\) return none;') "translations ask UserDataPath.HasBankToRead"
+    Check ($chat -match 'HasBankToRead\(' -and $chat -notmatch 'reader\.VaultExists') "the chat and AutoPrompt ask it"
+    Check ($mcp -match 'HasBankToRead\(' -and $mcp -notmatch 'reader\.VaultExists') "get_supermemory_context asks it"
 }
 finally {
     $paths.GetMethod('Reset', $Static).Invoke($null, @()) | Out-Null

@@ -323,6 +323,39 @@ namespace Supervertaler.Trados.Settings
         }
 
         /// <summary>
+        /// Whether a prompt for the bank at <paramref name="bankDir"/> has
+        /// anything to read: the bank itself, or the <c>_shared</c> bank beside
+        /// it, which goes with every bank. The one rule for every reader -
+        /// translations, the chat, AutoPrompt and the MCP tools.
+        ///
+        /// <para>A project with no bank of its own resolves to the default bank,
+        /// which most data folders do not have. That is not an error and must not
+        /// hide <c>_shared</c>: each reader used to stop when the bank's own
+        /// folder was missing, so such a project sent no house rules at all while
+        /// the toolbar and the chat said the shared bank was in use.
+        /// <see cref="MemoryBankReader.LoadContext"/> has always read
+        /// <c>_shared</c> beside a bank that is not there.</para>
+        /// </summary>
+        public static bool HasBankToRead(string bankDir)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(bankDir)) return false;
+                var reader = new MemoryBankReader(bankDir);
+                if (reader.VaultExists) return true;
+                if (reader.IsSharedBank) return false;   // it is its own shared bank, and it is empty
+
+                var root = Path.GetDirectoryName(bankDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                return !string.IsNullOrEmpty(root)
+                    && new MemoryBankReader(Path.Combine(root, MemoryBankReader.SharedBankName)).VaultExists;
+            }
+            catch
+            {
+                return false;   // a folder that cannot be looked at has nothing to read
+            }
+        }
+
+        /// <summary>
         /// True when the name refers to the reserved shared bank
         /// (<see cref="MemoryBankReader.SharedBankName"/>), which is loaded
         /// alongside every other bank rather than being a bank of its own.
