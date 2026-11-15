@@ -27,6 +27,12 @@ namespace Supervertaler.Trados.Controls
         private const string DocsUrl =
             "https://docs.supervertaler.com/trados/";
 
+        /// <summary>Where Claude Desktop installs an extension from a file, as its
+        /// own window names it (checked 15 Nov 2026; the Extensions page used to be
+        /// directly under Settings and moved to Settings → Desktop app).</summary>
+        private const string ClaudeExtensionsPath =
+            "Settings → Desktop app → Extensions → Manage → Advanced settings → Install extension";
+
         public McpConnectDialog()
         {
             Icon = Supervertaler.Trados.Core.IconHelper.AppIcon;
@@ -222,10 +228,10 @@ namespace Supervertaler.Trados.Controls
                       "1.  Download the new extension file (Supervertaler-MCP-Server.mcpb).\r\n" +
                       "2.  Quit Claude Desktop completely – closing the window is not enough, it keeps\r\n" +
                       "     running in the notification area. Then start it again.\r\n" +
-                      "3.  Settings → Extensions → Advanced settings → Install extension…\r\n" +
+                      "3.  " + ClaudeExtensionsPath + "\r\n" +
                       "4.  Restart Claude Desktop and ask: \"What's the status of my Trados project?\""
                     : "1.  Download the extension file (Supervertaler-MCP-Server.mcpb).\r\n" +
-                      "2.  In Claude Desktop: Settings → Extensions → Advanced settings → Install extension…\r\n" +
+                      "2.  In Claude Desktop: " + ClaudeExtensionsPath + "\r\n" +
                       "3.  Restart Claude Desktop and ask: \"What's the status of my Trados project?\"",
                 AutoSize = true,
                 MaximumSize = new Size(UiScale.Pixels(520), 0),
