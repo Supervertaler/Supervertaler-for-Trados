@@ -9,7 +9,7 @@
 > (`17.20.199`), with the same tail; headings name only the 2024 and 2026
 > numbers, and the website's changelog page adds the 2022 one.
 
-## [18.20.207 / 19.20.207] – Unreleased
+## [18.20.207 / 19.20.207] – 2026-11-15
 
 ### Added
 - ★ **Short-term memory for Batch Translate.** A long document often says the same thing twice: a clause that comes back in a later article, a warning repeated in every chapter, two table rows that differ in one number. Batch Translate sends the document to the AI in batches, and until now the AI did not see, in a later batch, how it had put the same passage in an earlier one, so the two could come out differently. It now does. When a segment repeats a passage of eight words or more from a segment translated earlier in the same run, that earlier segment and its translation are sent along with the request, the way a translation memory match is. Think of it as a translation memory for the run itself: a temporary one, which the AI uses during the batch translation and which is gone when the run ends. Two segments that are almost the same are shown whole, with the words in which they differ pointed out, and the AI is told to take every number from its own segment and never from the earlier one. There is nothing to switch on. At the end of a run, the log lists any repeated passages that were still translated differently, by segment number, so you can look at them. On a 105-segment test document translated by Claude Opus 5.5 in batches of 10, the repeated passages that came out the same went from 12 of 22 to 20 of 22, with every number correct. What it does not do is keep single terms consistent: for a term, a termbase entry is still the way. A larger batch size helps too, where your Trados Studio and the AI model allow it.
