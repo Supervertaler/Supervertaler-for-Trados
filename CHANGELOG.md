@@ -21,6 +21,7 @@
 - **A description run can be stopped.** While it runs, the button reads **Stop**. A stopped run saves nothing and leaves an existing figures.md as it was.
 - **An image too large for the AI provider is scaled down before it is sent**, instead of being sent whole and refused. Your file is not changed. A file over 50 MB, an empty file, and a file that is not really an image (whatever its name says) are skipped with the reason in their row, before any request is paid for.
 - **A wrongly chosen folder no longer slows the FigureLens window.** It used to list every file in the folder each time it refreshed. It now stops counting at 200 image files.
+- **A segment that was written is no longer reported as failed.** On long segments, Trados Studio sometimes reports an internal error (“Attempted to read or write protected memory”) straight after it has put the translation into the document. Batch Translate then logged “Failed to write segment”, left the segment out of the backup TMX and sent it to the AI a second time, although nothing was wrong with it. Supervertaler now looks at the segment first: if the translation is in the document, it counts as written, and the log says so. If it is not, the failure is reported as before. The same goes for every other way Supervertaler writes a segment, and for the comment a translator’s note is saved in.
 
 ## [18.20.206 / 19.20.206] – 2026-11-13
 
