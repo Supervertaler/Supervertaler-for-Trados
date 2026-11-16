@@ -11229,7 +11229,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     "Translating " + segmentCount + " segment(s)…", segmentCount)
                 {
                     CancelText = "Stop",
-                    CancellingStatus = "Stopping – finishing the current batch…",
+                    CancellingStatus = "Stopping…",
                     // Above Studio, not above every other program: a run can take
                     // minutes, and the translator may be working elsewhere meanwhile.
                     TopMost = false,

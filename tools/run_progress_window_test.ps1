@@ -60,7 +60,7 @@ $ctor = $type.GetConstructor($private, $null, [Type[]]@([string], [string], [int
 $form = $ctor.Invoke(@('Supervertaler - Batch Translate', 'Translating 105 segment(s)...', 105))
 try {
     $form.CancelText = 'Stop'
-    $form.CancellingStatus = 'Stopping - finishing the current batch...'
+    $form.CancellingStatus = 'Stopping...'
     $form.TopMost = $false
     $form.StartPosition = 'Manual'
     $form.Location = New-Object System.Drawing.Point(-32000, -32000)
@@ -118,6 +118,7 @@ $close = Body 'private void CloseRunProgress()'
 Check ($close -match 'Interlocked\.Exchange\(ref _runProgress, null\)' -and $close -match 'form\.Finish\(\);') "closing takes the window out of the field first, so a second call finds nothing"
 $show = Body 'private void ShowRunProgress(int segmentCount)'
 Check ($show -match 'form\.CancelRequested \+= OnBatchStopRequested;') "its Stop button asks for the same stop as the tab's"
+Check ($show -match 'CancellingStatus = "Stopping\u2026",' -and -not ($show -match 'finishing the current batch')) "the stopping line does not promise to finish the batch (Stop drops it)"
 Check ($show -match 'catch \(Exception ex\)\s*\{[^}]*CloseRunProgress\(\);') "a window that cannot be shown is closed again and the run goes on"
 $altT = Body 'public static void HandleTranslateActiveSegment()'
 Check (-not ($altT -match 'ShowRunProgress')) "Alt+T opens no window"
