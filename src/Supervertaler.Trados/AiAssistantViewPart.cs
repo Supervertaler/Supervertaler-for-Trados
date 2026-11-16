@@ -11235,8 +11235,8 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     TopMost = false,
                     StartPosition = FormStartPosition.Manual
                 };
-                form.SetDetail("Translations are written into the document as each batch comes back. "
-                    + "This window closes when the run has finished.");
+                // One short line: the label cut a longer one off at Michael's screen scaling.
+                form.SetDetail("This window closes when the run has finished.");
                 form.CancelRequested += OnBatchStopRequested;
 
                 // Bottom right of Studio's window, clear of the segments being written.
