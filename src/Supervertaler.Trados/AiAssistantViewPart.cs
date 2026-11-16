@@ -11409,6 +11409,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             _batchBackup = null;
             backup?.Flush();
 
+            // A Batch Translate run, or Alt+T (Translate active segment), which
+            // reuses this handler? Only a run is tied to a document (DocumentRef,
+            // set where the run starts); Alt+T's translator has none. The save
+            // and the pull to the front below are for runs only: after Alt+T they
+            // brought the pane in front of Translation Results every time, and
+            // saved the whole document on the UI thread after one segment
+            // (Michael, 16 Nov 2026; found with REA).
+            bool isBatchRun = (sender as BatchTranslator)?.DocumentRef != null;
+
             SafeInvoke(() =>
             {
                 _control.Value.BatchTranslateControl.ReportCompleted(
@@ -11455,8 +11464,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // costs one freeze and needs no throttling.
                 //
                 // Runs on cancellation too – segments written before the user stopped are
-                // exactly the ones worth persisting.
-                if (e.Translated > 0)
+                // exactly the ones worth persisting. Not after Alt+T: one segment
+                // does not justify freezing Studio on every keypress, and Studio's
+                // AutoSave covers it.
+                if (isBatchRun && e.Translated > 0)
                 {
                     var saveSw = System.Diagnostics.Stopwatch.StartNew();
                     var saveResult = BridgeSaveDocument();
@@ -11483,15 +11494,20 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // arriving; once the run ends, Trados' Translation Results
                 // pane can still steal focus on the last segment write. Use
                 // the same dual sync + deferred pattern as OnNavigateToSegment.
-                try { Activate(); } catch { }
-                try
+                // Runs only: after Alt+T the translator wants Translation Results
+                // to stay where it is.
+                if (isBatchRun)
                 {
-                    _control.Value.BeginInvoke((Action)(() =>
+                    try { Activate(); } catch { }
+                    try
                     {
-                        try { Activate(); } catch { }
-                    }));
+                        _control.Value.BeginInvoke((Action)(() =>
+                        {
+                            try { Activate(); } catch { }
+                        }));
+                    }
+                    catch { /* control may not be available */ }
                 }
-                catch { /* control may not be available */ }
             });
 
             // Clean up
