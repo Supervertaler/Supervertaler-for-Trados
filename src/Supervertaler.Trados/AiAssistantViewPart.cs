@@ -11472,6 +11472,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // lookup can still bring Translation Results forward a tick later.
                 // Runs only: after Alt+T the translator wants Translation Results
                 // to stay where it is.
+                //
+                // And once more a second later: Studio starts its lookup for the
+                // row the last write left the cursor on 200 ms after the row
+                // changes (SideBySideDocumentEditingView.SideBySideEditor_ActiveRowChanged)
+                // and brings Translation Results forward then - after the two
+                // calls above. Without the mid-run pulls (removed 16 Nov 2026)
+                // nothing else won that race, and Michael's 105-segment run
+                // ended on Translation Results. One-shot timer, stopped and
+                // disposed in its own tick, whatever Activate does.
                 if (isBatchRun)
                 {
                     try { Activate(); } catch { }
@@ -11483,6 +11492,15 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         }));
                     }
                     catch { /* control may not be available */ }
+
+                    var late = new System.Windows.Forms.Timer { Interval = 1000 };
+                    late.Tick += (s, a) =>
+                    {
+                        late.Stop();
+                        late.Dispose();
+                        try { Activate(); } catch { }
+                    };
+                    late.Start();
                 }
             });
 

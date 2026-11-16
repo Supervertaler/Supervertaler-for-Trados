@@ -28,7 +28,8 @@ Check ($body -match 'bool isBatchRun = \(sender as BatchTranslator\)\?\.Document
 
 Write-Host "2 The pull to the front is for runs only"
 $acts = [regex]::Matches($body, 'Activate\(\)')
-Check ($acts.Count -eq 2) "two Activate() calls in the handler ($($acts.Count))"
+Check ($acts.Count -eq 3) "three Activate() calls in the handler: now, next tick, a second later ($($acts.Count))"
+Check ($body -match 'Interval = 1000' -and $body -match 'late\.Stop\(\);\s*late\.Dispose\(\);') "the late one is a one-shot timer that stops and disposes itself before activating"
 $guard = $body.IndexOf('if (isBatchRun)')
 Check ($guard -ge 0) "an 'if (isBatchRun)' block exists"
 if ($guard -ge 0) {
