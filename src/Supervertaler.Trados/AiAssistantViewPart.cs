@@ -15650,7 +15650,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         $"Translate segment: \"{Truncate(SegmentTagHandler.StripTagPlaceholders(sourceText), 60)}\"...");
 
                     instance._batchCts = new CancellationTokenSource();
-                    instance._batchTranslator = new BatchTranslator();
+                    instance._batchTranslator = new BatchTranslator { LogFeature = PromptLogFeature.Translate };
 
                     instance._batchTranslator.SegmentTranslated += instance.OnBatchSegmentTranslated;
                     instance._batchTranslator.Completed += instance.OnBatchCompleted;
@@ -15882,7 +15882,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
                 BridgeLog.Write($"Translate segment (standalone): translating \"{Truncate(SegmentTagHandler.StripTagPlaceholders(sourceText), 60)}\"...");
 
-                var worker = new BatchTranslator();
+                var worker = new BatchTranslator { LogFeature = PromptLogFeature.Translate };
                 worker.SegmentTranslated += (s, e) =>
                 {
                     Action doWrite = () => WriteTranslatedSegment(doc, e);

@@ -274,6 +274,14 @@ namespace Supervertaler.Trados.Core
         public bool IsBenchmark { get; set; }
 
         /// <summary>
+        /// What its calls are logged as - the Reports card's heading and the usage
+        /// log's task. Batch Translate unless set: Alt+T sets
+        /// <see cref="PromptLogFeature.Translate"/> ("Translate active segment"),
+        /// so its cards and costs are not counted as a Batch Translate run.
+        /// </summary>
+        public PromptLogFeature LogFeature { get; set; } = PromptLogFeature.BatchTranslate;
+
+        /// <summary>
         /// Translates segments in batches using the configured LLM provider.
         /// This method is async and should be called on a background thread
         /// or via Task.Run.
@@ -511,7 +519,7 @@ namespace Supervertaler.Trados.Core
                 try
                 {
                     response = await c.SendPromptAsync(userPrompt, systemPrompt, maxTokens, cancellationToken,
-                        feature: PromptLogFeature.BatchTranslate, suppressLog: true, enablePromptCaching: true,
+                        feature: LogFeature, suppressLog: true, enablePromptCaching: true,
                         longCache: longCache);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -623,7 +631,7 @@ namespace Supervertaler.Trados.Core
                         // it for an hour, since the next Alt+T can be minutes away (KeepsCacheForAnHour).
                         var response = await client.SendPromptAsync(
                             userPrompt, systemPrompt, maxTokens, cancellationToken,
-                            feature: PromptLogFeature.BatchTranslate,
+                            feature: LogFeature,
                             suppressLog: true,
                             enablePromptCaching: true,
                             longCache: longCache);
@@ -793,7 +801,7 @@ namespace Supervertaler.Trados.Core
                                 var rUserPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, ps);
                                 var rResponse = await client.SendPromptAsync(
                                     rUserPrompt, systemPrompt, maxTokens, cancellationToken,
-                                    feature: PromptLogFeature.BatchTranslate,
+                                    feature: LogFeature,
                                     suppressLog: true, enablePromptCaching: true, longCache: longCache);
 
                                 Count(client, rUserPrompt, rResponse);
@@ -867,7 +875,7 @@ namespace Supervertaler.Trados.Core
                 var aggEntry = new PromptLogEntry
                 {
                     Timestamp = DateTime.Now,
-                    Feature = PromptLogFeature.BatchTranslate,
+                    Feature = LogFeature,
                     PromptName = totalBatches > 1 ? $"{totalBatches} batches · {segments.Count} segments" : null,
                     Provider = provider,
                     Model = model,
@@ -1034,7 +1042,7 @@ namespace Supervertaler.Trados.Core
             var usage = new PromptLogEntry
             {
                 Timestamp = DateTime.Now,
-                Feature = PromptLogFeature.BatchTranslate,
+                Feature = LogFeature,
                 PromptName = segments.Count + " segments",
                 Provider = engine,
                 Model = MachineTranslation.ModelName(engine),

@@ -51,7 +51,13 @@ $sets = [regex]::Matches($src, 'DocumentRef = ')
 Check ($sets.Count -eq 1) "DocumentRef is set in one place ($($sets.Count))"
 $run = [regex]::Match($src, '_batchTranslator = new BatchTranslator\s*\{[^}]*DocumentRef = runDocument')
 Check $run.Success "that place is the Batch Translate run"
-Check ($src -match 'instance\._batchTranslator = new BatchTranslator\(\);') "Alt+T creates its translator without one"
+Check ($src -match 'instance\._batchTranslator = new BatchTranslator \{ LogFeature = PromptLogFeature\.Translate \};') "Alt+T creates its translator without one, logged as Translate active segment"
+
+Write-Host "5 Alt+T is logged as itself, not as Batch Translate"
+Check ($src -match 'var worker = new BatchTranslator \{ LogFeature = PromptLogFeature\.Translate \};') "Alt+T without the pane is logged the same way"
+$bt = Get-Content -Raw -LiteralPath (Join-Path $root 'src\Supervertaler.Trados\Core\BatchTranslator.cs')
+Check (-not ($bt -match 'PromptLogFeature\.BatchTranslate,')) "the translator names no feature itself; every log entry uses LogFeature"
+Check ([regex]::Matches($bt, '[Ff]eature ?[:=] ?LogFeature,').Count -eq 5) "all five log entries use LogFeature ($([regex]::Matches($bt, '[Ff]eature ?[:=] ?LogFeature,').Count))"
 
 Write-Host ""
 Write-Host "$pass passed, $fail failed"
