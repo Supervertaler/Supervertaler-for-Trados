@@ -2,10 +2,10 @@
 # bottom, like the chat - checked against the built plugin DLL, outside Studio,
 # with the real ReportsControl.
 #
-# What it must do: put each new request card at the bottom; scroll to it if the
-# view was at the bottom (or nothing scrolled yet), and leave the view alone if
-# the translator has scrolled up; keep 500 cards, dropping the oldest without
-# moving the view; with a proofreading report, list its findings first and the
+# What it must do: put each new request card at the bottom and always scroll to
+# it, also when the translator had scrolled up (Michael, 16 Nov 2026) - except
+# under a proofreading report, where it follows only from the bottom; keep 500
+# cards, dropping the oldest; with a proofreading report, list its findings first and the
 # request cards after them, and show a report from its top; Clear empties it.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\reports_order_test.ps1
@@ -180,21 +180,16 @@ try {
     for ($i = 1; $i -lt $cards.Count; $i++) { if (-not ($cards[$i].Tag.Timestamp -gt $cards[$i - 1].Tag.Timestamp)) { $order = $false } }
     Check $order "all $($cards.Count) cards in time order"
 
-    Write-Host "3 Scrolled up to read: a new card does not move the view"
+    Write-Host "3 Scrolled up to read: a new card still takes the view to the bottom"
     ScrollTo ((ScrollY) - 400)
-    $at = ScrollY
-    $reading = $null
-    foreach ($c in $cards) { if (InView $c) { $reading = $c; break } }
-    $readTop = $reading.Top
-    Add; Add
-    Check ((ScrollY) -eq $at) "the scroll position stayed at $at ($(ScrollY))"
-    Check ($reading.Visible -and $reading.Top -eq $readTop) "the card being read did not move ($readTop -> $($reading.Top))"
-    Check (-not (InView (Newest))) "the new card is below the view, not in it"
-
-    Write-Host "4 Within a few pixels of the bottom counts as the bottom"
-    ScrollTo ((MaxScroll) - 5)
+    Check ((ScrollY) -lt (MaxScroll)) "scrolled up ($(ScrollY) of $(MaxScroll))"
     Add
-    Check ((ScrollY) -eq (MaxScroll) -and (InView (Newest))) "followed to the new card ($(ScrollY) of $(MaxScroll))"
+    Check ((ScrollY) -eq (MaxScroll) -and (InView (Newest))) "back at the bottom, newest in view ($(ScrollY) of $(MaxScroll))"
+
+    Write-Host "4 Scrolled to the very top: the same"
+    ScrollTo 0
+    Add
+    Check ((ScrollY) -eq (MaxScroll) -and (InView (Newest))) "back at the bottom, newest in view ($(ScrollY) of $(MaxScroll))"
 
     Write-Host "5 Opening a card's section does not jump the view"
     ScrollTo 1000000
@@ -224,18 +219,14 @@ try {
     Check ((Newest).Tag.Timestamp -gt $cards[498].Tag.Timestamp -and (InView (Newest))) "the newest is last, and in view"
     Check ($t500 -lt 500 -and $tArr -lt 500) "adding and arranging at 500 cards take under half a second each"
 
-    Write-Host "7 At the cap, scrolled up: dropping the oldest does not move what is shown"
+    Write-Host "7 At the cap, scrolled up: the oldest goes and the view goes to the newest"
     ScrollTo ([int]((MaxScroll) / 2))
-    $reading = $null
-    foreach ($c in $cards) { if (InView $c) { $reading = $c; break } }
-    $readTop = $reading.Top
     Add
     Check ($cards.Count -eq 500) "still 500"
-    Check ($reading.Visible -and $reading.Top -eq $readTop) "the card being read is where it was ($readTop -> $($reading.Top))"
+    Check ((ScrollY) -eq (MaxScroll) -and (InView (Newest))) "at the bottom, newest in view ($(ScrollY) of $(MaxScroll))"
     ScrollTo 0
-    $topCard = $cards[0]; $topAt = $topCard.Top
     Add
-    Check ($cards[0].Visible -and $cards[0].Top -eq $topAt) "scrolled to the very top: the (new) oldest card is at the top"
+    Check ((ScrollY) -eq (MaxScroll) -and (InView (Newest))) "from the very top too ($(ScrollY) of $(MaxScroll))"
 
     Write-Host "8 Clear empties the request log"
     $reports.ClearResults()

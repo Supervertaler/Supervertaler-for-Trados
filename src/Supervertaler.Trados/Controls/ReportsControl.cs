@@ -1387,10 +1387,16 @@ namespace Supervertaler.Trados.Controls
         private const int FollowSlack = 8;
 
         /// <summary>
-        /// Adds a prompt log card at the bottom of the list, as the chat does.
-        /// The view follows it - scrolls to the very bottom - if it was at the
-        /// bottom already, or the list did not scroll yet; a view scrolled up to
-        /// read something stays where it is.
+        /// Adds a prompt log card at the bottom of the list, as the chat does,
+        /// and always scrolls the view to the very bottom - also when it was
+        /// scrolled up to read something. Michael's call (16 Nov 2026): Studio
+        /// switches the pane back to its own tab whenever a segment is confirmed
+        /// or translated, so a view left scrolled up meant coming back to the
+        /// Reports tab stuck at old cards instead of the newest one.
+        /// Exception: while a proofreading report's findings are listed, the
+        /// view follows only if it was at the bottom already, so working
+        /// through the findings (and fixing segments with Alt+T on the way)
+        /// does not lose your place in them.
         /// </summary>
         public void AddPromptLog(PromptLogEntry entry)
         {
@@ -1398,9 +1404,10 @@ namespace Supervertaler.Trados.Controls
 
             _lblEmpty.Visible = false;
 
-            // Before anything changes: is the view at the bottom (or is there
-            // nothing to scroll)?
-            bool follow = _scrollY >= ListHeight() - ViewHeight() - FollowSlack;
+            // Before anything changes: no findings listed, or the view at the
+            // bottom (or nothing to scroll)?
+            bool follow = _rows.Count == 0
+                || _scrollY >= ListHeight() - ViewHeight() - FollowSlack;
 
             // Cap entries: the oldest card goes - the first one. If it was above
             // the view, the view moves up with what is under it, so it stays on
