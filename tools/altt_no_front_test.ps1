@@ -53,6 +53,13 @@ $run = [regex]::Match($src, '_batchTranslator = new BatchTranslator\s*\{[^}]*Doc
 Check $run.Success "that place is the Batch Translate run"
 Check ($src -match 'instance\._batchTranslator = new BatchTranslator \{ LogFeature = PromptLogFeature\.Translate \};') "Alt+T creates its translator without one, logged as Translate active segment"
 
+Write-Host "6 No pull to the front during a run, only at its end"
+$pStart = $src.IndexOf('private void OnBatchProgress(object sender, BatchProgressEventArgs e)')
+Check ($pStart -ge 0) "OnBatchProgress found"
+$pNext = [regex]::Match($src.Substring($pStart + 10), '\r?\n        (private|public|internal|protected) ')
+$pBody = $src.Substring($pStart, 10 + $pNext.Index)
+Check (-not ($pBody -match 'Activate\(\)\s*;')) "OnBatchProgress calls no Activate() (Michael, 16 Nov 2026: no tug-of-war with Translation Results)"
+
 Write-Host "5 Alt+T is logged as itself, not as Batch Translate"
 Check ($src -match 'var worker = new BatchTranslator \{ LogFeature = PromptLogFeature\.Translate \};') "Alt+T without the pane is logged the same way"
 $bt = Get-Content -Raw -LiteralPath (Join-Path $root 'src\Supervertaler.Trados\Core\BatchTranslator.cs')

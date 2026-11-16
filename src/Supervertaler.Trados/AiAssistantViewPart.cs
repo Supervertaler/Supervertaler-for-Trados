@@ -11228,38 +11228,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             {
                 _control.Value.BatchTranslateControl.ReportProgress(e.Current, e.Total, e.Message, e.IsError);
 
-                // Re-activate the Supervertaler Assistant pane at every batch
-                // boundary. When ProcessSegmentPair writes a translation to a
-                // segment, Trados' built-in Translation Results pane reacts to
-                // the active-segment change and steals focus. Without this
-                // counter-Activate, the user's Supervertaler Assistant tab
-                // loses front position on every batch boundary.
-                //
-                // Trigger on both "Translating batch ..." (next batch starting)
-                // AND "✓ Batch X complete" (this batch's writes just landed).
-                // Trados' focus steal happens DURING/AFTER ProcessSegmentPair
-                // writes, which fire just before "✓ Batch ... complete" is
-                // logged. Activating only on next-batch-start was too late on
-                // the last batch and on slow API runs where the steal landed
-                // mid-gap and stuck. The synchronous Activate handles inline
-                // steals; the deferred Activate (posted via BeginInvoke) wins
-                // against steals queued for a later UI tick — same pattern as
-                // OnNavigateToSegment.
-                if (!string.IsNullOrEmpty(e.Message) &&
-                    (e.Message.StartsWith("Translating batch ", StringComparison.Ordinal) ||
-                     e.Message.StartsWith("Proofreading batch ", StringComparison.Ordinal) ||
-                     e.Message.StartsWith("✓ Batch ", StringComparison.Ordinal)))
-                {
-                    try { Activate(); } catch { }
-                    try
-                    {
-                        _control.Value.BeginInvoke((Action)(() =>
-                        {
-                            try { Activate(); } catch { }
-                        }));
-                    }
-                    catch { /* control may not be available */ }
-                }
+                // No Activate() here (removed 16 Nov 2026, Michael). During a
+                // run Studio brings Translation Results to the front whenever it
+                // starts a TM lookup for the active segment, which our writes set
+                // off (EditorView.HighlightTmViewPart in Sdl.TranslationStudio.Editor,
+                // hard-coded, no user setting; found with REA). Pulling our pane
+                // back at every batch boundary only made the two panes flick to
+                // and fro for the whole run. OnBatchCompleted brings the pane
+                // back once, at the end of a Batch Translate run.
             });
         }
 
@@ -11489,11 +11465,11 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     }
                 }
 
-                // Final counter-Activate for the last batch. The mid-run fix
-                // in OnBatchProgress only fires while progress messages are
-                // arriving; once the run ends, Trados' Translation Results
-                // pane can still steal focus on the last segment write. Use
-                // the same dual sync + deferred pattern as OnNavigateToSegment.
+                // The one pull to the front of a run: Studio brings Translation
+                // Results forward during it (see OnBatchProgress), and the pane
+                // comes back here, once, when the run is over. Same dual sync +
+                // deferred pattern as OnNavigateToSegment, as the last write's
+                // lookup can still bring Translation Results forward a tick later.
                 // Runs only: after Alt+T the translator wants Translation Results
                 // to stay where it is.
                 if (isBatchRun)
