@@ -23,6 +23,13 @@ namespace Supervertaler.Trados.Controls
         /// <summary>Raised when the user clicks Cancel.</summary>
         public event EventHandler CancelRequested;
 
+        /// <summary>The Cancel button's caption ("Stop" for a Batch Translate run,
+        /// to match the Batch Operations tab).</summary>
+        public string CancelText { get { return _cancel.Text; } set { _cancel.Text = value; } }
+
+        /// <summary>The status line shown once Cancel is clicked.</summary>
+        public string CancellingStatus { get; set; } = "Cancelling – finishing the current segment…";
+
         public ReimportProgressForm(string fileName, int total)
             : this("Re-import bilingual file", "Applying changes to " + fileName + "…", total)
         {
@@ -81,7 +88,7 @@ namespace Supervertaler.Trados.Controls
             _cancel.Click += (s, e) =>
             {
                 _cancel.Enabled = false;
-                _status.Text = "Cancelling – finishing the current segment…";
+                _status.Text = CancellingStatus;
                 CancelRequested?.Invoke(this, EventArgs.Empty);
             };
 
@@ -97,6 +104,15 @@ namespace Supervertaler.Trados.Controls
             if (InvokeRequired) { try { BeginInvoke(new Action(() => SetProgress(value, status))); } catch { } return; }
             try { _bar.Value = Math.Max(_bar.Minimum, Math.Min(value, _bar.Maximum)); } catch { }
             if (!string.IsNullOrEmpty(status)) _status.Text = status;
+        }
+
+        /// <summary>Thread-safe: advance the bar against a total that can change
+        /// (a Batch Translate run reports its own total with each step).</summary>
+        public void SetProgress(int value, int total, string status)
+        {
+            if (InvokeRequired) { try { BeginInvoke(new Action(() => SetProgress(value, total, status))); } catch { } return; }
+            try { if (total > 0 && _bar.Maximum != total) { _bar.Value = _bar.Minimum; _bar.Maximum = total; } } catch { }
+            SetProgress(value, status);
         }
 
         /// <summary>Thread-safe: replace the grey detail line.</summary>

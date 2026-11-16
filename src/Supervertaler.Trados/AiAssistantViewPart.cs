@@ -11123,6 +11123,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 // search itself runs inside the background task below.
                 var tmPlan = PrepareTmLookup(aiSettings);
 
+                // Last thing before the run: nothing between here and Task.Run can
+                // throw and leave the window behind.
+                ShowRunProgress(segments.Count);
+
                 Task.Run(async () =>
                 {
                     try
@@ -11197,6 +11201,70 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
             _batchCts?.Dispose();
             _batchCts = null;
+
+            CloseRunProgress();
+        }
+
+        // ─── A run's progress window ─────────────────────────────
+
+        // The window of the Batch Translate run in progress, or null. During a
+        // run Studio keeps Translation Results in front of this pane (see
+        // OnBatchProgress), which hides the tab's Stop button and its progress;
+        // this small window of its own shows both, and Studio's docking cannot
+        // cover it (Michael, 16 Nov 2026: with the pane hidden he could not stop
+        // a run). One per run: shown where the run starts, closed by
+        // CloseRunProgress on every way out - OnBatchCompleted (finished,
+        // cancelled, failed), ReleaseBatchTranslator (ended while preparing) and
+        // Dispose.
+        private Controls.ReimportProgressForm _runProgress;
+
+        /// <summary>Shows the run's progress window. UI thread.</summary>
+        private void ShowRunProgress(int segmentCount)
+        {
+            CloseRunProgress();   // never two
+            try
+            {
+                var form = new Controls.ReimportProgressForm(
+                    "Supervertaler – Batch Translate",
+                    "Translating " + segmentCount + " segment(s)…", segmentCount)
+                {
+                    CancelText = "Stop",
+                    CancellingStatus = "Stopping – finishing the current batch…",
+                    // Above Studio, not above every other program: a run can take
+                    // minutes, and the translator may be working elsewhere meanwhile.
+                    TopMost = false,
+                    StartPosition = FormStartPosition.Manual
+                };
+                form.SetDetail("Translations are written into the document as each batch comes back. "
+                    + "This window closes when the run has finished.");
+                form.CancelRequested += OnBatchStopRequested;
+
+                // Bottom right of Studio's window, clear of the segments being written.
+                var owner = _control.Value.FindForm();
+                var area = owner != null ? owner.Bounds : Screen.PrimaryScreen.WorkingArea;
+                form.Location = new System.Drawing.Point(
+                    Math.Max(area.Left, area.Right - form.Width - 40),
+                    Math.Max(area.Top, area.Bottom - form.Height - 60));
+
+                _runProgress = form;
+                if (owner != null) form.Show(owner); else form.Show();
+            }
+            catch (Exception ex)
+            {
+                // The run does not depend on the window.
+                CloseRunProgress();
+                try { Core.DiagnosticLog.Log("Batch", "progress window could not be shown: " + ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>Closes the run's progress window, if there is one. Any thread;
+        /// safe to call twice.</summary>
+        private void CloseRunProgress()
+        {
+            var form = System.Threading.Interlocked.Exchange(ref _runProgress, null);
+            if (form == null) return;
+            try { form.CancelRequested -= OnBatchStopRequested; } catch { }
+            form.Finish();
         }
 
         private void OnOpenBackupFolderRequested(object sender, EventArgs e)
@@ -11227,6 +11295,18 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             SafeInvoke(() =>
             {
                 _control.Value.BatchTranslateControl.ReportProgress(e.Current, e.Total, e.Message, e.IsError);
+
+                // The run's own window: the bar, and the batch lines only (the
+                // log has the rest - warnings can be long).
+                var runProgress = _runProgress;
+                if (runProgress != null)
+                {
+                    var line = e.Message != null
+                        && (e.Message.StartsWith("Translating batch ", StringComparison.Ordinal)
+                            || e.Message.StartsWith("✓ Batch ", StringComparison.Ordinal))
+                        ? e.Message : null;
+                    runProgress.SetProgress(e.Current, e.Total, line);
+                }
 
                 // No Activate() here (removed 16 Nov 2026, Michael). During a
                 // run Studio brings Translation Results to the front whenever it
@@ -11380,6 +11460,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
 
         private void OnBatchCompleted(object sender, BatchCompletedEventArgs e)
         {
+            // First, before anything here can throw: the run is over, however it ended.
+            CloseRunProgress();
+
             // Flush any remaining segments to the backup TMX before reporting completion
             var backup = _batchBackup;
             _batchBackup = null;
@@ -16938,6 +17021,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             _chatCts?.Dispose();
 
             // Cancel any running batch translation
+            CloseRunProgress();
             _batchCts?.Cancel();
             _batchCts?.Dispose();
             _batchCts = null;
