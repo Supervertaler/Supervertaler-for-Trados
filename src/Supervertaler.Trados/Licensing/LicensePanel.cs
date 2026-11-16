@@ -12,8 +12,12 @@ namespace Supervertaler.Trados.Licensing
     /// </summary>
     public class LicensePanel : UserControl
     {
-        private const string PurchaseUrl = "https://supervertaler-for-trados.lemonsqueezy.com/checkout/buy/86e8dcb3-2a38-4396-aa38-9a67e5c72204";
-        private const string ManageUrl = "https://supervertaler-for-trados.lemonsqueezy.com/billing";
+        // Both are pages on supervertaler.com that forward to whichever company
+        // takes the payments, so a released plugin never holds that company's
+        // address (Lemon Squeezy closes on 31 March 2027). The pages are
+        // buy/index.html and manage/index.html in the Supervertaler-Website repo.
+        private const string PurchaseUrl = "https://supervertaler.com/buy";
+        private const string ManageUrl = "https://supervertaler.com/manage";
         internal const string TermsText = "By activating a licence, you agree to the Terms of Use.";
 
         private const int LeftPad = 16;
