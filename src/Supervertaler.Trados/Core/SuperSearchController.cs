@@ -1194,7 +1194,7 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         /// <param name="wholeSegment">With Track Changes on, why a replace was
         /// recorded as one whole-segment change rather than word by word (the
-        /// segment already holds tracked changes, say); null otherwise.</param>
+        /// match lies inside another author's tracked insertion, say); null otherwise.</param>
         private ActiveReplaceOutcome ReplaceInActiveSegmentPair(
             ISegmentPair pair, string searchText, string replaceText,
             bool caseSensitive, bool useRegex, bool wholeWord, out string newFlatTarget,

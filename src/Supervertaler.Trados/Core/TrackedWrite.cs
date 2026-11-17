@@ -15,6 +15,12 @@ namespace Supervertaler.Trados.Core
     /// AiAssistantViewPart, so the two replace features edited the text nodes in
     /// place and let Studio track that: a one-word replace came out as the whole
     /// sentence struck through and retyped (seen live on 19 Oct 2026).
+    ///
+    /// <para>From 208 a target that already carries tracked changes is recorded
+    /// word by word as well (<see cref="TrackedTargetMerge"/>): a second write
+    /// to a segment adds revisions only for the words that differ from the text
+    /// as it reads now. Seen on a post-editing job on 16 Nov 2026, where every
+    /// segment written twice came out struck through whole.</para>
     /// </summary>
     internal sealed class TrackedWrite
     {
@@ -58,7 +64,8 @@ namespace Supervertaler.Trados.Core
         /// <param name="targetBefore">A clone of the target as it was, taken
         /// before the write changed it. It becomes the merged target.</param>
         /// <param name="tagRevisionsBefore"><see cref="TrackedTargetMerge.HasTagRevisions"/>
-        /// of the LIVE target before the write: the clone has lost those.</param>
+        /// of the LIVE target before the write: the clone has lost those. Revisions
+        /// around TEXT survive the clone, and the merge works around them.</param>
         public static TrackingSuspension Rewrite(IStudioDocument doc,
             ISegment target, ISegment targetBefore, bool tagRevisionsBefore,
             out string note, out string revisionMode, out int tagsReplaced)
@@ -68,7 +75,9 @@ namespace Supervertaler.Trados.Core
             tagsReplaced = 0;
             if (tagRevisionsBefore)
             {
-                note = "tracked as a whole-segment change (the segment already carries tracked changes).";
+                // A revision on a tag itself, which Clone() has already dropped from
+                // targetBefore: the merge could not see it, let alone keep it.
+                note = "tracked as a whole-segment change (a tag in the segment carries a tracked change of its own).";
                 return null;
             }
 

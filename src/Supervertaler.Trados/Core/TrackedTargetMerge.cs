@@ -51,11 +51,25 @@ namespace Supervertaler.Trados.Core
     /// Placeholders are only ever swapped like for like, never added or
     /// removed this way - those are content, not formatting.</para>
     ///
+    /// <para><b>A target that already carries tracked changes is diffed as it
+    /// reads now</b> (208; until then any earlier revision meant a refusal, so
+    /// a second write to a segment struck the whole of it through). Text inside
+    /// an earlier insertion is part of the text; text inside an earlier
+    /// deletion is not, and is never touched. Only the words that differ from
+    /// that reading get new revisions, and every earlier marker the edit does
+    /// not reach stays exactly as it is. Where the edit does reach into an
+    /// earlier insertion by the same author, that insertion is edited in
+    /// place, as Studio does when you retype your own tracked insertion: text
+    /// that was never in the original needs no deletion mark. An insertion
+    /// that ends up restoring exactly what the same author's neighbouring
+    /// deletion took out cancels against it, leaving plain text.</para>
+    ///
     /// <para><b>Refuses rather than guesses.</b> If the tags cannot be lined up
-    /// that way, or the target already carries tracked changes, it returns a
+    /// that way, or the earlier tracked changes are of a shape this does not
+    /// edit around (see <c>Walk</c> and <c>RewriteLeaves</c>), it returns the
     /// reason and changes nothing the caller will use. The caller then writes
-    /// the way it always has, with tracking left on - so the worst case is
-    /// today's behaviour.</para>
+    /// the way it always has, with tracking left on - so the worst case is one
+    /// whole-segment change, with the reason reported.</para>
     ///
     /// <para><b>And it checks itself.</b> Before handing anything back it projects
     /// the result both ways: accepting every change must give exactly the new
@@ -69,6 +83,9 @@ namespace Supervertaler.Trados.Core
         private sealed class Run
         {
             public readonly List<IText> Leaves = new List<IText>();
+            // Owners[i] is the earlier tracked insertion Leaves[i] sits in, or
+            // null for text that is not inside one.
+            public readonly List<IRevisionMarker> Owners = new List<IRevisionMarker>();
             public readonly StringBuilder Text = new StringBuilder();
             // Where an empty run sits, for inserting into it: before AnchorBefore
             // in AnchorContainer, or at the end when AnchorBefore is null.
@@ -95,9 +112,13 @@ namespace Supervertaler.Trados.Core
             public readonly List<Run> Runs = new List<Run>();
             public readonly List<Tok> Tokens = new List<Tok>();
             public string Refusal;
+            public bool HasRevisions;   // any revision marker at all, deletions included
         }
 
         private const string TagsDiffer = "the inline tags differ between the old and new target";
+        private const string TagRevision = "a tag in the segment carries a tracked change of its own";
+        private const string ForeignInsertion =
+            "the edit reaches into text another author inserted as a tracked change";
 
         /// <summary>
         /// Rewrites <paramref name="oldTarget"/> in place so that it carries
@@ -153,6 +174,10 @@ namespace Supervertaler.Trados.Core
 
             try
             {
+                // Insertions this write made or changed: the ones that may turn
+                // out to restore what a neighbouring deletion took out.
+                var touched = new List<IRevisionMarker>();
+
                 for (int i = 0; i < before.Runs.Count; i++)
                 {
                     var oldRun = before.Runs[i];
@@ -166,7 +191,8 @@ namespace Supervertaler.Trados.Core
 
                     if (oldRun.Leaves.Count > 0)
                     {
-                        RewriteLeaves(oldRun, pieces, factory, insertProps, deleteProps);
+                        var why = RewriteLeaves(oldRun, pieces, factory, insertProps, deleteProps, touched);
+                        if (why != null) return why;
                     }
                     else
                     {
@@ -178,8 +204,11 @@ namespace Supervertaler.Trados.Core
                         var marker = factory.CreateRevision(insertProps);
                         marker.Add(TextLike(template, newText));
                         InsertAt(oldRun.AnchorContainer, oldRun.AnchorBefore, marker);
+                        touched.Add(marker);
                     }
                 }
+
+                foreach (var marker in touched) CancelRestored(marker);
             }
             catch (Exception ex)
             {
@@ -203,7 +232,7 @@ namespace Supervertaler.Trados.Core
             var flat = new Flat();
             var current = new Run();
             flat.Runs.Add(current);
-            Walk(root, flat, ref current);
+            Walk(root, flat, ref current, null);
             if (flat.Refusal == null)
             {
                 Close(current, root, null);
@@ -269,7 +298,21 @@ namespace Supervertaler.Trados.Core
             return false;
         }
 
-        private static void Walk(IAbstractMarkupDataContainer container, Flat flat, ref Run current)
+        /// <summary>
+        /// Flattens <paramref name="container"/> as it READS NOW: the text
+        /// inside an earlier tracked insertion is part of it, the text inside an
+        /// earlier tracked deletion is not. <paramref name="insertion"/> is the
+        /// tracked insertion being walked, null outside one.
+        ///
+        /// <para>A deletion is stepped over whole, whatever it holds: nothing
+        /// in it is read, so nothing in it can be changed. An insertion may
+        /// hold text and comments only. Anything else - a tag inside an
+        /// insertion, one revision inside another, a revision on a tag itself,
+        /// a kind of revision that is neither insertion nor deletion - is
+        /// refused with its reason rather than guessed at.</para>
+        /// </summary>
+        private static void Walk(IAbstractMarkupDataContainer container, Flat flat, ref Run current,
+            IRevisionMarker insertion)
         {
             // A snapshot: nothing is mutated during flattening, but a live
             // enumerator over a Studio container is not something to lean on.
@@ -281,30 +324,47 @@ namespace Supervertaler.Trados.Core
                 if (item is IText text)
                 {
                     current.Leaves.Add(text);
+                    current.Owners.Add(insertion);
                     current.Text.Append(text.Properties?.Text ?? "");
                 }
-                else if (item is IRevisionMarker)
+                else if (item is IRevisionMarker revision)
                 {
-                    // Diffing against a target that already carries revisions
-                    // would mean editing inside someone else's marks. Refused
-                    // rather than flattened.
-                    flat.Refusal = "the segment already carries tracked changes";
+                    flat.HasRevisions = true;
+                    var type = revision.Properties?.RevisionType;
+                    if (insertion != null)
+                        flat.Refusal = "the segment holds one tracked change inside another";
+                    else if (type == RevisionType.Delete)
+                    {
+                        // Not part of the text as it reads. Left exactly as it is.
+                    }
+                    else if (type == RevisionType.Insert)
+                        Walk(revision, flat, ref current, revision);
+                    else
+                        flat.Refusal = "the segment holds a kind of tracked change this cannot edit around ("
+                                     + (type?.ToString() ?? "unknown") + ")";
                 }
                 else if (item is ICommentMarker comment)
                 {
-                    Walk(comment, flat, ref current);   // transparent
+                    Walk(comment, flat, ref current, insertion);   // transparent
+                }
+                else if (insertion != null)
+                {
+                    // A tag or locked content that was itself inserted with
+                    // tracking on. Its revision belongs to the tag as much as
+                    // to the text, and tags are never revised here.
+                    flat.Refusal = "an earlier tracked insertion in the segment covers a tag";
                 }
                 else if (item is ITagPair pair)
                 {
                     if (Revised(pair.StartTagRevisionProperties) || Revised(pair.EndTagRevisionProperties))
                     {
-                        flat.Refusal = "the segment already carries tracked changes";
+                        flat.Refusal = TagRevision;
                         return;
                     }
                     var id = TagId(pair.StartTagProperties);
                     Boundary(flat, ref current, container, pair,
                         Token(TokKind.Open, id, pair, "<" + id + ">"));
-                    Walk(pair, flat, ref current);
+                    Walk(pair, flat, ref current, null);
                     if (flat.Refusal != null) return;
                     Close(current, pair, null);
                     flat.Tokens.Add(Token(TokKind.Close, id, pair, "</" + id + ">"));
@@ -315,7 +375,7 @@ namespace Supervertaler.Trados.Core
                 {
                     if (Revised(ph.RevisionProperties))
                     {
-                        flat.Refusal = "the segment already carries tracked changes";
+                        flat.Refusal = TagRevision;
                         return;
                     }
                     var id = TagId(ph.Properties);
@@ -421,6 +481,12 @@ namespace Supervertaler.Trados.Core
                 replaced = swaps.Count;
                 return null;
             }
+
+            // Adding or removing a pair places it by counting characters across
+            // the whole target. With earlier revisions in it, those counts would
+            // have to step over deleted text everywhere; not taken on.
+            if (before.HasRevisions)
+                return "tags were added or removed, and the segment already carries tracked changes";
 
             // A different number of tags is only taken on when nothing else
             // changed. With identical text every tag has an exact character
@@ -716,38 +782,106 @@ namespace Supervertaler.Trados.Core
             public string Text;
         }
 
+        private enum LeafKind { Plain, Own, Foreign }
+
+        /// <summary>An insertion to go beside another author's tracked
+        /// insertion, as a marker of its own: before it or after it.</summary>
+        private struct Beside
+        {
+            public IRevisionMarker Marker;
+            public bool After;
+            public string Text;
+            public IText Model;
+        }
+
         /// <summary>
-        /// Spreads the edit script over the run's text nodes by position in the old
-        /// text. Unchanged and deleted text stays in the node it came from; an
-        /// insertion goes to the node ending where it occurs, so text inserted at
-        /// a comment's edge lands outside the comment rather than inside it.
+        /// Spreads the edit script over the run's text nodes by position in the
+        /// text as it reads now. Returns null, or why the edit cannot be made
+        /// this way (the tree may then be half done; the caller discards it).
+        ///
+        /// <para><b>Plain text</b> (not inside an earlier insertion): unchanged
+        /// and deleted text stays in the node it came from, the deleted part
+        /// inside a new deletion; inserted text becomes a new insertion.</para>
+        ///
+        /// <para><b>Text inside an earlier insertion by the same author</b> is
+        /// edited in place: what the edit removes from it is simply removed (it
+        /// was never in the original, so there is nothing to strike through),
+        /// and what the edit adds becomes part of it. An insertion emptied this
+        /// way is taken out.</para>
+        ///
+        /// <para><b>Text inside another author's insertion</b> is never
+        /// changed. Removing part of it, or adding text in the middle of it, is
+        /// refused; text added at its edge becomes a new insertion beside it.</para>
+        ///
+        /// <para><b>Where an insertion goes</b> when it falls between two
+        /// nodes: into the same author's earlier insertion if one touches that
+        /// spot (so one edit stays one insertion); otherwise to the plain node
+        /// ending there, so text inserted where a comment begins lands outside
+        /// the comment.</para>
         /// </summary>
-        private static void RewriteLeaves(Run run, List<TokenDiff.Piece> pieces,
-            IDocumentItemFactory factory, IRevisionProperties ins, IRevisionProperties del)
+        private static string RewriteLeaves(Run run, List<TokenDiff.Piece> pieces,
+            IDocumentItemFactory factory, IRevisionProperties ins, IRevisionProperties del,
+            List<IRevisionMarker> touched)
         {
             int n = run.Leaves.Count;
             var starts = new int[n];
             var ends = new int[n];
+            var kinds = new LeafKind[n];
             int pos = 0;
             for (int i = 0; i < n; i++)
             {
                 starts[i] = pos;
                 pos += (run.Leaves[i].Properties?.Text ?? "").Length;
                 ends[i] = pos;
+                var owner = run.Owners[i];
+                kinds[i] = owner == null ? LeafKind.Plain
+                         : SameAuthor(owner.Properties, ins) ? LeafKind.Own
+                         : LeafKind.Foreign;
             }
 
             var frags = new List<Fragment>[n];
             for (int i = 0; i < n; i++) frags[i] = new List<Fragment>();
+            var beside = new List<Beside>();
 
             int oldPos = 0;
             foreach (var p in pieces)
             {
                 if (p.Op == TokenDiff.Op.Insert)
                 {
-                    int leaf = 0;
+                    // e: the node this position lies in, or ends. s: the next
+                    // node with text, which starts here when e ends here.
+                    int e = -1, s = -1;
                     for (int i = 0; i < n; i++)
-                        if (oldPos > starts[i] && oldPos <= ends[i]) { leaf = i; break; }
-                    Append(frags[leaf], p.Op, p.Text);
+                        if (oldPos > starts[i] && oldPos <= ends[i]) { e = i; break; }
+                    if (e >= 0 && oldPos < ends[e])
+                    {
+                        if (kinds[e] == LeafKind.Foreign) return ForeignInsertion;
+                        Append(frags[e], p.Op, p.Text);
+                        continue;
+                    }
+                    for (int i = e + 1; i < n; i++)
+                        if (ends[i] > starts[i]) { s = i; break; }
+
+                    int pick;
+                    if (e >= 0 && kinds[e] == LeafKind.Own) pick = e;
+                    else if (s >= 0 && kinds[s] == LeafKind.Own) pick = s;
+                    else if (e >= 0 && kinds[e] == LeafKind.Plain) pick = e;
+                    else if (s >= 0 && kinds[s] == LeafKind.Plain) pick = s;
+                    else if (e < 0 && s < 0 && kinds[0] != LeafKind.Foreign) pick = 0;   // only empty nodes
+                    else pick = -1;
+
+                    if (pick >= 0)
+                    {
+                        Append(frags[pick], p.Op, p.Text);
+                        continue;
+                    }
+
+                    // Another author's insertion on every side that has text:
+                    // a marker of our own beside theirs. Between two nodes of
+                    // ONE such insertion there is no "beside".
+                    if (e >= 0 && s >= 0 && ReferenceEquals(run.Owners[e], run.Owners[s])) return ForeignInsertion;
+                    int at = e >= 0 ? e : s >= 0 ? s : 0;
+                    beside.Add(new Beside { Marker = run.Owners[at], After = e >= 0, Text = p.Text, Model = run.Leaves[at] });
                     continue;
                 }
 
@@ -768,6 +902,31 @@ namespace Supervertaler.Trados.Core
                 if (f.Count == 0) continue;   // an empty node nothing touched
                 if (f.Count == 1 && f[0].Op == TokenDiff.Op.Equal && f[0].Text == original) continue;
 
+                if (kinds[i] == LeafKind.Foreign) return ForeignInsertion;
+
+                if (kinds[i] == LeafKind.Own)
+                {
+                    var owner = run.Owners[i];
+                    var kept = new StringBuilder();
+                    foreach (var frag in f)
+                        if (frag.Op != TokenDiff.Op.Delete) kept.Append(frag.Text);
+                    if (kept.Length > 0)
+                    {
+                        leaf.Properties.Text = kept.ToString();
+                        if (!touched.Contains(owner)) touched.Add(owner);
+                        continue;
+                    }
+
+                    var holder = leaf.Parent;
+                    leaf.RemoveFromParent();
+                    // A comment on exactly the words being taken out would be
+                    // left on nothing, or lost. Neither is this write's to decide.
+                    if (!ReferenceEquals(holder, owner) && holder.Count == 0)
+                        return "the edit removes commented text from an earlier tracked insertion";
+                    if (owner.Count == 0) owner.RemoveFromParent();
+                    continue;
+                }
+
                 var parent = leaf.Parent;
                 int index = leaf.IndexInParent;
                 leaf.RemoveFromParent();
@@ -782,10 +941,82 @@ namespace Supervertaler.Trados.Core
                     {
                         var marker = factory.CreateRevision(frag.Op == TokenDiff.Op.Insert ? ins : del);
                         marker.Add(TextLike(leaf, frag.Text));
+                        if (frag.Op == TokenDiff.Op.Insert) touched.Add(marker);
                         node = marker;
                     }
                     parent.Insert(index++, node);
                 }
+            }
+
+            foreach (var b in beside)
+            {
+                var marker = factory.CreateRevision(ins);
+                marker.Add(TextLike(b.Model, b.Text));
+                b.Marker.Parent.Insert(b.Marker.IndexInParent + (b.After ? 1 : 0), marker);
+                touched.Add(marker);
+            }
+            return null;
+        }
+
+        /// <summary>Whether a revision was made by the author now writing. An
+        /// unnamed revision is nobody's, so never "the same author".</summary>
+        private static bool SameAuthor(IRevisionProperties theirs, IRevisionProperties ours)
+        {
+            var a = theirs?.Author;
+            return !string.IsNullOrEmpty(a) && string.Equals(a, ours?.Author, StringComparison.Ordinal);
+        }
+
+        /// <summary>The text of a revision that holds text nodes only; null
+        /// when it holds anything else, or nothing.</summary>
+        private static string OnlyText(IRevisionMarker marker)
+        {
+            var sb = new StringBuilder();
+            int nodes = 0;
+            foreach (var item in marker)
+            {
+                if (!(item is IText t)) return null;
+                sb.Append(t.Properties?.Text);
+                nodes++;
+            }
+            return nodes == 0 ? null : sb.ToString();
+        }
+
+        /// <summary>
+        /// An insertion this write made or changed that now holds exactly the
+        /// text the same author's deletion right beside it took out: the two
+        /// cancel, and the text is plain again, as it was before either. So
+        /// sending back a segment's original wording removes the tracked change
+        /// instead of stacking a second one on it. Same author only: taking
+        /// back somebody else's deletion without a trace is not ours to do.
+        /// Accepting or rejecting everything reads the same before and after.
+        /// </summary>
+        private static void CancelRestored(IRevisionMarker insertion)
+        {
+            var parent = insertion.Parent;
+            if (parent == null) return;   // emptied and taken out above
+            var text = OnlyText(insertion);
+            if (string.IsNullOrEmpty(text)) return;
+
+            int at = insertion.IndexInParent;
+            foreach (int beside in new[] { at - 1, at + 1 })
+            {
+                if (beside < 0 || beside >= parent.Count) continue;
+                if (!(parent[beside] is IRevisionMarker deletion)
+                    || deletion.Properties?.RevisionType != RevisionType.Delete
+                    || !SameAuthor(deletion.Properties, insertion.Properties)
+                    || OnlyText(deletion) != text)
+                    continue;
+
+                insertion.RemoveFromParent();
+                int index = deletion.IndexInParent;
+                var content = new List<IAbstractMarkupData>(deletion);
+                deletion.RemoveFromParent();
+                foreach (var item in content)
+                {
+                    item.RemoveFromParent();
+                    parent.Insert(index++, item);
+                }
+                return;
             }
         }
 
