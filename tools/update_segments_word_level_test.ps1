@@ -1064,7 +1064,7 @@ public static class WordLevelWriteTest
         try
         {
             var o = P.GetType("Supervertaler.Trados.Core.SegmentWriteCheck", true).GetMethod("ProcessChecked", Any)
-                .Invoke(null, new object[] { d, d.Pairs[0], "Supervertaler MCP", edit, false, true, null });
+                .Invoke(null, new object[] { d, d.Pairs[0], "Supervertaler MCP", edit, false, true, null, false });
             if (o != null)
             {
                 r.Mode = (string)o.GetType().GetField("RevisionMode").GetValue(o);
@@ -1104,6 +1104,68 @@ public static class WordLevelWriteTest
             "E3 the word inside the REVISER's insertion replaced: whole-segment, reason named, Reject All still the original");
     }
 
+    // ── F: Batch Translate and Alt+T (wordLevel + overTextOnly) ────────
+    static Replaced Translate(FakeDocument d, string text, bool overTextOnly = true)
+    {
+        Action<ISegmentPair, CancelEventArgs> edit = (sp, cancel) => { sp.Target.Clear(); sp.Target.Add(T(text)); };
+        var r = new Replaced();
+        try
+        {
+            var o = P.GetType("Supervertaler.Trados.Core.SegmentWriteCheck", true).GetMethod("ProcessChecked", Any)
+                .Invoke(null, new object[] { d, d.Pairs[0], "Supervertaler", edit, false, true, null, overTextOnly });
+            if (o != null)
+            {
+                r.Mode = (string)o.GetType().GetField("RevisionMode").GetValue(o);
+                r.Note = (string)o.GetType().GetField("Note").GetValue(o);
+            }
+        }
+        catch (TargetInvocationException ex) { r.Error = ex.InnerException; }
+        return r;
+    }
+    static void Translations()
+    {
+        Console.WriteLine("=== F: a translation written by Batch Translate / Alt+T with Track Changes on");
+        const string fuzzy = "The Acme pump is switched on at 230 V before the valve opens.";
+        const string adapted = "The Acme pump is switched off at 230 V before the valve closes.";
+
+        var d = One(fuzzy);
+        var r = Translate(d, adapted);
+        Say("F1: " + Mk(Tgt(d)));
+        Check(r.Error == null && r.Mode == "word" && r.Note == null && Reject(Tgt(d)) == fuzzy && Accept(Tgt(d)) == adapted
+              && Count(Tgt(d)) == 4 && d.TrackingAtApply == false && TrackingRestored(d),
+            "F1 over a fuzzy match, two words changed: 'word', two deletions and two insertions, Reject All gives the match back");
+
+        d = One(null, () => new IAbstractMarkupData[0], () => new IAbstractMarkupData[] { T("De Acme-pomp wordt ingeschakeld.") });
+        r = Translate(d, adapted);
+        Check(r.Error == null && r.Mode == null && Accept(Tgt(d)) == adapted && d.TrackingAtApply == true
+              && d.Editor.TurnOffs == 0 && d.Editor.TrackChanges,
+            "F2 into an EMPTY target: left to Studio, Track Changes never switched off (" + d.Editor.TurnOffs + " switches), text written");
+
+        d = One(null, () => new IAbstractMarkupData[0], () => new IAbstractMarkupData[] { T("De Acme-pomp wordt ingeschakeld.") });
+        r = Translate(d, adapted, overTextOnly: false);
+        Check(r.Error == null && r.Mode != null && Accept(Tgt(d)) == adapted && TrackingRestored(d),
+            "F3 the same without overTextOnly (update_segments, unchanged): still recorded by the plugin ('" + r.Mode + "')");
+
+        Func<IAbstractMarkupData[]> seg = () => new IAbstractMarkupData[]
+            { T("The Acme pump is switched "), Del(Me, T("on")), Ins(Me, T("off")), T(" at 230 V before the valve opens.") };
+        d = One(null, seg, seg);
+        r = Translate(d, adapted);
+        Say("F4: " + Mk(Tgt(d)));
+        Check(r.Error == null && r.Mode == "word" && Reject(Tgt(d)) == fuzzy && Accept(Tgt(d)) == adapted && TrackingRestored(d),
+            "F4 over a segment that already holds a tracked change: 'word', Reject All still gives the original");
+
+        d = One(fuzzy);
+        r = Translate(d, fuzzy);
+        Check(r.Error == null && r.Mode == null && Count(Tgt(d)) == 0 && d.Editor.TurnOffs == 0,
+            "F5 the AI returns the match unchanged: no revision, Track Changes never switched off");
+
+        d = One(fuzzy);
+        d.Editor.TrackChanges = false;
+        r = Translate(d, adapted);
+        Check(r.Error == null && r.Mode == null && Accept(Tgt(d)) == adapted && Count(Tgt(d)) == 0 && d.Editor.TurnOffs == 0,
+            "F6 Track Changes off: a plain write, no revisions");
+    }
+
     public static int Run(string pluginPath)
     {
         P = Assembly.LoadFrom(pluginPath);
@@ -1125,6 +1187,7 @@ public static class WordLevelWriteTest
         Fallbacks();
         Scale();
         OtherDoors();
+        Translations();
         Console.WriteLine(Pass + " passed, " + Fail + " failed");
         return Fail == 0 ? 0 : 1;
     }

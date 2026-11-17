@@ -314,7 +314,7 @@ public static class WriteFaultTest
             sp.Target.Add(T(text));
         };
         Action<Exception> told = ex => o.Told.Add(ex);
-        try { ProcessChecked.Invoke(null, new object[] { d, pair, "Supervertaler", e, false, false, told }); }
+        try { ProcessChecked.Invoke(null, new object[] { d, pair, "Supervertaler", e, false, false, told, false }); }
         catch (TargetInvocationException ex) { o.Thrown = ex.InnerException; }
         return o;
     }
@@ -329,8 +329,8 @@ public static class WriteFaultTest
         LogPath = logPath;
         var swc = P.GetType("Supervertaler.Trados.Core.SegmentWriteCheck", true);
         ProcessChecked = swc.GetMethod("ProcessChecked", Any);
-        Check(ProcessChecked != null && ProcessChecked.GetParameters().Length == 7, "the build has ProcessChecked with the faultAfterWrite parameter");
-        if (ProcessChecked == null || ProcessChecked.GetParameters().Length != 7) return 1;
+        Check(ProcessChecked != null && ProcessChecked.GetParameters().Length == 8, "the build has ProcessChecked with the faultAfterWrite and overTextOnly parameters");
+        if (ProcessChecked == null || ProcessChecked.GetParameters().Length != 8) return 1;
         TryAddTcComment = P.GetType("Supervertaler.Trados.AiAssistantViewPart", true).GetMethod("TryAddTcComment", Any);
         F = (IDocumentItemFactory)Activator.CreateInstance(Type.GetType(
             "Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory, Sdl.FileTypeSupport.Framework.Implementation", true));

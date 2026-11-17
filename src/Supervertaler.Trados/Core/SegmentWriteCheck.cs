@@ -46,6 +46,11 @@ namespace Supervertaler.Trados.Core
         /// (<see cref="TrackedWrite.Rewrite"/>, as update_segments does) rather
         /// than as the whole-segment change Studio records for any edit made
         /// here. Track Changes off: no difference.</param>
+        /// <param name="overTextOnly">With <paramref name="wordLevel"/>: record word
+        /// by word only when the target holds text before the edit. A write into
+        /// an empty target is one insertion whichever way it is recorded, so it is
+        /// left to Studio and Track Changes is not switched off and on around it:
+        /// what a translation run of thousands of empty segments needs.</param>
         /// <param name="faultAfterWrite">Told when Studio threw out of
         /// <c>ProcessSegmentPair</c> although the edit is in the document (see
         /// below), so the caller can say so to the user. The write then counts
@@ -67,7 +72,7 @@ namespace Supervertaler.Trados.Core
         /// </remarks>
         public static TrackedWrite ProcessChecked(IStudioDocument doc, ISegmentPair pair, string undoName,
             Action<ISegmentPair, CancelEventArgs> edit, bool comments = false, bool wordLevel = false,
-            Action<Exception> faultAfterWrite = null)
+            Action<Exception> faultAfterWrite = null, bool overTextOnly = false)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
             long sincePrevious = MsSincePreviousWrite();
@@ -94,9 +99,17 @@ namespace Supervertaler.Trados.Core
                     shapeBefore = TrackedTargetMerge.Shape(sp.Target);
                     // Both asked of the live target before the edit: Clone() drops
                     // a revision recorded on a tag itself.
-                    var targetBefore = wordLevel && tracked ? sp.Target.Clone() as ISegment : null;
+                    var targetBefore = wordLevel && tracked && !(overTextOnly && string.IsNullOrEmpty(textBefore))
+                        ? sp.Target.Clone() as ISegment : null;
                     bool tagRevisionsBefore = targetBefore != null && TrackedTargetMerge.HasTagRevisions(sp.Target);
                     edit(sp, cancel);
+                    // An edit that leaves the target reading as it did (the AI sent a
+                    // match back unchanged) is not applied at all: Studio would track
+                    // the rewrite as the whole segment deleted and typed again.
+                    // Translation writes only: other callers' edits may also change
+                    // what this view does not show (a status).
+                    if (overTextOnly && targetBefore != null && !cancel.Cancel && view(sp.Target) == before)
+                        cancel.Cancel = true;
                     // Nothing to record for an edit that changed nothing or was
                     // cancelled. On a refusal the target stays as the edit left it
                     // and Studio records its whole-segment change, as before.

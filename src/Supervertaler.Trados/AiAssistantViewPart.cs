@@ -11393,7 +11393,10 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                             if (faultSaid) return;
                             faultSaid = true;
                             _control.Value.BatchTranslateControl.AppendLog(WrittenDespiteFault(e.SegmentName, ex), true);
-                        });
+                        },
+                        // With Track Changes on, a translation written over text (a fuzzy match,
+                        // a draft) shows only the words it changed: until 208 the whole segment.
+                        wordLevel: true, overTextOnly: true);
 
                     Write(e.Translation);
                     if (e.Comment != null && !TryAddTcComment(doc, pair, e.Comment))
@@ -13588,7 +13591,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                         }
                                     },
                                     // Studio threw, but the translation is in the document.
-                                    faultAfterWrite: ex => batchControl.AppendLog(WrittenDespiteFault(seg.Label(), ex), true));
+                                    faultAfterWrite: ex => batchControl.AppendLog(WrittenDespiteFault(seg.Label(), ex), true),
+                                    // Word by word over text, as in an API run (see OnBatchSegmentTranslated).
+                                    wordLevel: true, overTextOnly: true);
                                 success++;
                             }
                             catch (Exception ex)
@@ -16072,7 +16077,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         SegmentTagHandler.AppendText(sp.Target, translation, sp.Source, e.TagMap, textTpl);
                     }
                     Core.EditCapture.CaptureController.NoteProposal(sp, doc);
-                });
+                },
+                // Word by word over text, as in a Batch Translate run.
+                wordLevel: true, overTextOnly: true);
             }
             catch (Exception ex)
             {
