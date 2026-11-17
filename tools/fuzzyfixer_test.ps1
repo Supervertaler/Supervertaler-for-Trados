@@ -629,8 +629,8 @@ public static class FuzzyFixerTest
         Check(system.Contains(OwnPrompt) && system.Contains("Acme house rules.") && !system.Contains(instruction) && !system.Contains("segment 13 source:"),
             "B system prompt: the translator's prompt and the bank, and nothing that differs from one repair to the next");
         Check(!system.Contains("# DOCUMENT CONTENT"), "B system prompt: no document section");
-        var user = (string)Call(typeof(BatchTranslator), "WithLead", lead, "**SEGMENTS TO TRANSLATE**");
-        Check(user.StartsWith(instruction) && user.IndexOf("segment 13 source:") < user.IndexOf("**SEGMENTS TO TRANSLATE**"),
+        var ledPrompt = (string)Call(typeof(BatchTranslator), "WithLead", lead, "**SEGMENTS TO TRANSLATE**");
+        Check(ledPrompt.StartsWith(instruction) && ledPrompt.IndexOf("segment 13 source:") < ledPrompt.IndexOf("**SEGMENTS TO TRANSLATE**"),
             "B user prompt: the repair instruction and the neighbours first, then the segment");
         Check((string)Call(typeof(BatchTranslator), "WithLead", null, "x") == "x" && (string)Call(typeof(BatchTranslator), "WithLead", "  ", "x") == "x",
             "B no lead (Alt+T, Batch Translate): the user prompt as it was");
