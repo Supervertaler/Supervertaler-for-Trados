@@ -133,9 +133,10 @@ namespace Supervertaler.Trados.VoiceControl
         /// 6 = select source (20.191), 7 = dictate split into start/stop (20.191),
         /// 8 = select all (20.192), 9 = numbers / source numbers (#128),
         /// 10 = press enter, 11 = super search / web search (20.198),
-        /// 12 = split segment / merge segments (20.204).
+        /// 12 = split segment / merge segments (20.204),
+        /// 13 = repair match (FuzzyFixer, 20.208).
         /// </summary>
-        internal const int CurrentDefaultsVersion = 12;
+        internal const int CurrentDefaultsVersion = 13;
 
         public static string CommandsFilePath =>
             Path.Combine(UserDataPath.TradosSettingsDir, "voice_commands.json");
@@ -231,6 +232,7 @@ namespace Supervertaler.Trados.VoiceControl
 
                 // AI / search
                 new VoiceCommand { Phrase = "translate", Aliases = new List<string> { "translate segment" }, ActionType = "keystroke", Action = "alt+t", Description = "AI-translate the active segment", Category = "translation" },
+                new VoiceCommand { Phrase = "repair match", Aliases = new List<string> { "fix match" }, ActionType = "keystroke", Action = "ctrl+alt+f", Description = "FuzzyFixer: repair the best fuzzy TM match for the active segment with AI (Ctrl+Alt+F)", Category = "translation", AddedIn = 13 },
                 new VoiceCommand { Phrase = "concordance", Aliases = new List<string> { "search memory" }, ActionType = "keystroke", Action = "f3", Description = "Concordance search on the selection", Category = "lookup" },
                 // Two words, not "supersearch": the model's lexicon has no such word,
                 // and a grammar word it lacks is dropped in silence (VoiceVocabulary).
