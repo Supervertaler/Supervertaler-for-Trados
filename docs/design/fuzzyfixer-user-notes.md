@@ -33,7 +33,7 @@ status) is what the code does, to be confirmed in Studio before the Help page lo
   Editor waits.
 - When the repair is ready, the window shows **what changed in the match's translation**: removed words struck through
   in red, added words underlined in green.
-- **Enter** writes the repair into the target, as a **draft**. **Escape** (or Discard) throws it away. Nothing is
+- **Enter** (or Alt+W) writes the repair into the target, as a **draft**. **Escape** (or Alt+D, or Discard) throws it away. Nothing is
   written before Enter.
 - You then review and confirm the segment as usual. Ctrl+Z undoes the write.
 - With **Track Changes** on, a repair written over text that is already in the target (the fuzzy match you applied,

@@ -94,7 +94,8 @@ namespace Supervertaler.Trados.Controls
             if (_note.Visible) y += 26;
 
             _discard = new Button { Text = "Cancel", Size = new Size(110, 30), Location = new Point(margin + width - 110, y), DialogResult = DialogResult.Cancel };
-            _write = new Button { Text = "Write to target", Size = new Size(150, 30), Location = new Point(margin + width - 110 - 8 - 150, y), Enabled = false };
+            // Alt+W writes, Alt+D discards (Enter and Escape do the same).
+            _write = new Button { Text = "&Write to target", Size = new Size(150, 30), Location = new Point(margin + width - 110 - 8 - 150, y), Enabled = false };
             _write.Click += (s, e) => { DialogResult = DialogResult.OK; Close(); };
             Controls.Add(_write);
             Controls.Add(_discard);
@@ -168,7 +169,7 @@ namespace Supervertaler.Trados.Controls
             {
                 _header.Text = header;
                 Render(pieces);
-                _discard.Text = "Discard";
+                _discard.Text = "&Discard";
                 _write.Enabled = true;
                 AcceptButton = _write;
                 _write.Focus();
