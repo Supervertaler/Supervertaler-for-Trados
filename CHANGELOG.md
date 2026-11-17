@@ -12,6 +12,7 @@
 ## [18.20.208 / 19.20.208] – Unreleased
 
 ### Added
+- ★ **FuzzyFixer: the AI repairs a fuzzy match for you (Ctrl+Alt+F).** In the Editor, press **Ctrl+Alt+F** or right-click and choose **FuzzyFixer**. The AI changes the best match below 100% from the translation memories your project looks things up in, only where your segment differs from it, and a window shows what it changed. **Enter** writes the repair as a draft; **Escape** discards it. Each repair is one AI request.
 - **“Include full document content in AI context” is now two tick boxes, one on the Chat tab and one on the Batch Operations tab.** The one on the **Chat** tab is followed by Chat and QuickLauncher; the one on the **Batch Operations** tab by Batch Translate, Batch Proofread, Translate active segment (Alt+T) and SuperBench. Both start as your one setting was. The tick box in **Settings → AI Settings** is gone; **Max segments** stays there and applies to both. AutoPrompt follows neither: it always reads the whole document. (Requested by a user.)
 - **AutoPrompt asks before it sends a very long document.** From about 100,000 tokens (a document of some 60,000 words), it first shows the document’s size, the token count and the estimated cost with your model, and you choose **Yes** or **No**; on No, nothing is sent. If the provider still refuses the request for its size, the error now says so in plain words. Smaller documents work as before.
 
