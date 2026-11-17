@@ -456,13 +456,14 @@ public static class FuzzyFixerTest
         Set(plan, "EverTm", false); Set(plan, "TargetCulture", "nl-NL");
         return plan;
     }
-    static object Job(string source, string instructions, List<string> tms = null)
+    const string OwnPrompt = "Translate Acme manuals formally.";
+    static object Job(string source, string lead, List<string> tms = null)
     {
         var seg = new BatchSegment { Index = 0, Number = "12", SourceText = source, ExistingTarget = "" };
         var job = Activator.CreateInstance(JobType, true);
         Set(job, "Ai", Ai()); Set(job, "SourceLang", "English"); Set(job, "TargetLang", "Dutch");
         Set(job, "Segment", seg); Set(job, "Lookup", Plan(tms ?? new List<string>()));
-        Set(job, "Terms", new List<TermEntry>()); Set(job, "Instructions", instructions);
+        Set(job, "Terms", new List<TermEntry>()); Set(job, "Instructions", OwnPrompt); Set(job, "Lead", lead);
         Set(job, "Structure", Enum.Parse(JobType.GetField("Structure", Any).FieldType, "Off"));
         return job;
     }
@@ -619,15 +620,20 @@ public static class FuzzyFixerTest
             "B a one-segment document: no neighbours section at all");
         Check((int)Fixer.GetField("NeighbourCount", Any).GetValue(null) == 3, "B three segments before and three after");
 
-        var withOwn = (string)Call(Fixer, "WithRepairInstruction", "Translate Acme manuals formally.", block);
-        Check(withOwn.StartsWith("Translate Acme manuals formally.") && withOwn.IndexOf(instruction) > 0 && withOwn.EndsWith(block)
-            && withOwn.IndexOf(instruction) < withOwn.IndexOf(block), "B the translator's prompt first, then the repair instruction, then the neighbours");
-        Check((string)Call(Fixer, "WithRepairInstruction", null, null) == instruction && (string)Call(Fixer, "WithRepairInstruction", "  ", " ") == instruction,
-            "B no prompt of the translator's and no neighbours: the repair instruction alone");
-        var system = (string)Call(typeof(BatchTranslator), "SystemPromptFor", 1, "English", "Dutch", withOwn, new List<TermEntry>(), null,
-            null, 500, true, null, StructureContextMode.Off);
-        Check(system.Contains(instruction) && system.Contains("Translate Acme manuals formally.") && system.Contains("segment 13 source:"), "B system prompt: carries all three");
+        var lead = (string)Call(Fixer, "RepairLead", block);
+        Check(lead.StartsWith(instruction) && lead.EndsWith(block), "B the lead of a repair: the repair instruction, then the neighbours");
+        Check((string)Call(Fixer, "RepairLead", new object[] { null }) == instruction && (string)Call(Fixer, "RepairLead", " ") == instruction,
+            "B no neighbours: the repair instruction alone");
+        var system = (string)Call(typeof(BatchTranslator), "SystemPromptFor", 1, "English", "Dutch", OwnPrompt, new List<TermEntry>(), null,
+            null, 500, true, "# SUPERMEMORY\nAcme house rules.", StructureContextMode.Off);
+        Check(system.Contains(OwnPrompt) && system.Contains("Acme house rules.") && !system.Contains(instruction) && !system.Contains("segment 13 source:"),
+            "B system prompt: the translator's prompt and the bank, and nothing that differs from one repair to the next");
         Check(!system.Contains("# DOCUMENT CONTENT"), "B system prompt: no document section");
+        var ledPrompt = (string)Call(typeof(BatchTranslator), "WithLead", lead, "**SEGMENTS TO TRANSLATE**");
+        Check(ledPrompt.StartsWith(instruction) && ledPrompt.IndexOf("segment 13 source:") < ledPrompt.IndexOf("**SEGMENTS TO TRANSLATE**"),
+            "B user prompt: the repair instruction and the neighbours first, then the segment");
+        Check((string)Call(typeof(BatchTranslator), "WithLead", null, "x") == "x" && (string)Call(typeof(BatchTranslator), "WithLead", "  ", "x") == "x",
+            "B no lead (Alt+T, Batch Translate): the user prompt as it was");
 
         Console.WriteLine("C  the reply");
         Check(Verdict(Repair, MatchTarget, NewSource) == "Repaired", "C a real repair: repaired");
@@ -850,7 +856,7 @@ public static class FuzzyFixerTest
 
         Console.WriteLine("J  the run");
         {
-            var instructions = (string)Call(Fixer, "WithRepairInstruction", "Translate Acme manuals formally.", block);
+            var instructions = (string)Call(Fixer, "RepairLead", block);
 
             _answer = Repair; _fail = false; _hold = null;
             int n0 = RequestCount();
@@ -859,9 +865,22 @@ public static class FuzzyFixerTest
             Check(r.CanWrite && r.Header.Contains("82% match") && r.Body.Contains("door de regeleenheid"), "J the window shows it and Enter can write it");
             Check(RequestCount() == n0 + 1, "J one AI request per repair");
             var sent = LastRequest();
-            Check(sent.System.Contains("## Fuzzy match repair") && sent.System.Contains("Translate Acme manuals formally."), "J the request carried the translator's prompt and the repair instruction");
-            Check(sent.System.Contains("## Surrounding segments") && sent.System.Contains("segment 10 source:") && sent.System.Contains("segment 13 source:"),
+            Check(sent.System.Contains(OwnPrompt) && sent.User.Contains("## Fuzzy match repair"), "J the request carried the translator's prompt and the repair instruction");
+            Check(sent.User.Contains("## Surrounding segments") && sent.User.Contains("segment 10 source:") && sent.User.Contains("segment 13 source:"),
                 "J and the neighbours");
+            Check(!sent.System.Contains("## Fuzzy match repair") && !sent.System.Contains("## Surrounding segments")
+                  && sent.User.IndexOf("## Surrounding segments") < sent.User.IndexOf(NewSource),
+                "J the instruction and the neighbours open the user prompt; the system prompt has neither");
+            {
+                // Another segment, other neighbours: the system prompt must be the same bytes, or the
+                // provider's cache never serves the bank and every repair pays for it again.
+                var otherLead = (string)Call(Fixer, "RepairLead", "## Surrounding segments (context only)\n- segment 77 source: Another Acme sentence.");
+                var r2 = Run(Job("The Acme pump starts.", otherLead), Match("The Acme pump stops.", "De Acme-pomp stopt.", 85), "FuzzyFixRepair");
+                var sent2 = LastRequest();
+                Check(sent2.System == sent.System && sent2.User != sent.User && sent2.User.Contains("segment 77 source:"),
+                    "J a repair of another segment sends the same system prompt, byte for byte (" + sent.System.Length + " chars): only the user prompt differs");
+                n0++;
+            }
             Check(!sent.System.Contains("# DOCUMENT CONTENT") && !sent.User.Contains("# DOCUMENT CONTENT"),
                 "J and not the document, although \"Include document context\" is ticked in these settings");
             Check(sent.User.Contains(MatchSource) && sent.User.Contains(MatchTarget) && sent.User.Contains(NewSource) && sent.User.Contains("82% match"),

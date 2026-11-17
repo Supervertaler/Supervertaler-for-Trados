@@ -299,7 +299,8 @@ namespace Supervertaler.Trados.Core
             IList<DocumentSegment> documentSegments = null,
             string kbContext = null,
             bool retryUntilComplete = false,
-            StructureContextMode structureContext = StructureContextMode.Off)
+            StructureContextMode structureContext = StructureContextMode.Off,
+            string requestLead = null)
         {
             var sw = Stopwatch.StartNew();
             int translated = 0;
@@ -513,7 +514,7 @@ namespace Supervertaler.Trados.Core
                 for (int k = 0; k < offenders.Count; k++)
                     again.Add(PromptInputFor(sent[offenders[k]], k + 1, structureContext));
                 var userPrompt = OutputContract.Reminder + Environment.NewLine + Environment.NewLine
-                    + UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, again);
+                    + WithLead(requestLead, UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, again));
 
                 string response;
                 try
@@ -616,7 +617,7 @@ namespace Supervertaler.Trados.Core
                         }
 
                         // Build user prompt
-                        var userPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, promptSegments);
+                        var userPrompt = WithLead(requestLead, UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, promptSegments));
                         if (totalBatches == 1) singleUserPrompt = userPrompt;
 
                         // Call LLM - suppress per-batch log entries; we fire one aggregated entry at the end.
@@ -798,7 +799,7 @@ namespace Supervertaler.Trados.Core
                                 for (int i = rs; i < re; i++)
                                     ps.Add(WithReferences(new BatchSegmentInput { Number = (i - rs) + 1, SourceText = PromptSource(pending[i], structureContext) }, pending[i]));
 
-                                var rUserPrompt = UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, ps);
+                                var rUserPrompt = WithLead(requestLead, UserPromptFor(segments.Count, termbaseTerms, includeTermMeta, ps));
                                 var rResponse = await client.SendPromptAsync(
                                     rUserPrompt, systemPrompt, maxTokens, cancellationToken,
                                     feature: LogFeature,
@@ -1251,6 +1252,19 @@ namespace Supervertaler.Trados.Core
         /// run - by that segment's terms, worded exactly as the system prompt
         /// would have worded them.
         /// </summary>
+        /// <summary>
+        /// Text that belongs to this run alone (FuzzyFixer's repair instruction
+        /// and the segments around the one being repaired), put at the start of
+        /// each user prompt. It is kept out of the system prompt on purpose: the
+        /// system prompt holds the translator's prompt and the memory bank, which
+        /// the provider caches only as long as every byte before them is the same
+        /// from one request to the next.
+        /// </summary>
+        internal static string WithLead(string requestLead, string userPrompt) =>
+            string.IsNullOrWhiteSpace(requestLead)
+                ? userPrompt
+                : requestLead.Trim() + Environment.NewLine + Environment.NewLine + userPrompt;
+
         internal static string UserPromptFor(int segmentCount, List<TermEntry> termbaseTerms,
             bool includeTermMetadata, List<BatchSegmentInput> promptSegments)
         {

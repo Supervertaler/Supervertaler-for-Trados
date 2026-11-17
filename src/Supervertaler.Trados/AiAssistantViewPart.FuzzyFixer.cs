@@ -46,8 +46,10 @@ namespace Supervertaler.Trados
             public BatchSegment Segment;
             public TmLookupPlan Lookup;
             public List<TermEntry> Terms;
-            /// <summary>The translator's prompt, the repair instruction and the surrounding segments.</summary>
+            /// <summary>The translator's prompt, as Alt+T sends it (system prompt).</summary>
             public string Instructions;
+            /// <summary>The repair instruction and the surrounding segments (start of the user prompt).</summary>
+            public string Lead;
             public StructureContextMode Structure;
             public Task<TranslationBankContext.Result> Bank;      // null: no SuperMemory context
         }
@@ -339,7 +341,8 @@ namespace Supervertaler.Trados
                 Segment = segments[0],
                 Lookup = lookup,
                 Terms = terms,
-                Instructions = Core.FuzzyFixer.WithRepairInstruction(customPrompt, Core.FuzzyFixer.NeighboursBlock(before, after)),
+                Instructions = customPrompt,
+                Lead = Core.FuzzyFixer.RepairLead(Core.FuzzyFixer.NeighboursBlock(before, after)),
                 Structure = structure,
                 Bank = bank
             };
@@ -423,14 +426,17 @@ namespace Supervertaler.Trados
                     if (e.IsError && !string.IsNullOrWhiteSpace(e.Message)) lastProblem = e.Message.Trim();
                 };
 
-                // No document: the neighbours are in the instructions, whatever
-                // "Include document context" says.
+                // No document: the neighbours go with the request, whatever
+                // "Include document context" says. They and the repair instruction
+                // open the user prompt, so the system prompt stays the same bytes
+                // from one repair to the next and the bank is served from the cache.
                 await worker.TranslateAsync(
                     new List<BatchSegment> { job.Segment }, job.SourceLang, job.TargetLang,
                     job.Ai, job.Terms, 1, ct,
                     job.Instructions, job.Ai.CustomSystemPrompt,
                     null, bankBlock,
-                    structureContext: job.Structure).ConfigureAwait(false);
+                    structureContext: job.Structure,
+                    requestLead: job.Lead).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
 
                 var replyVerdict = Core.FuzzyFixer.JudgeReply(reply?.Translation, match.TargetText, job.Segment.SourceText, out var detail);

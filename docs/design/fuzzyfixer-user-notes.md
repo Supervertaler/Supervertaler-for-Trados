@@ -73,7 +73,7 @@ written; a message says so.
 
 - **Tags.** The match comes out of the memory as plain text, so the AI places your segment's tags in the repair, as it
   does when translating. A repair with missing, extra or other tags is not written.
-- **Cost.** One AI request per repair, smaller than an Alt+T request that sends the document. Usage is recorded with
+- **Cost.** One AI request per repair, smaller than an Alt+T request that sends the document. The prompt and the memory bank are the same for every repair, so with Claude they are read from the cache from the second repair within an hour (measured before this was arranged: about 10,000 tokens and 2 cents per repair on Haiku 4.5, 0.15 cents when cached). Usage is recorded with
   Translate active segment.
 - **The match percentage** is the memory's own score from Supervertaler's search. It can differ by a few points from
   the percentage in Translation Results, where Studio applies your penalties.
