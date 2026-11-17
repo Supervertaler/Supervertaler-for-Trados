@@ -17,9 +17,18 @@ namespace Supervertaler.Trados.Core
     /// it is given, whether the reply is usable, and what changed. The request
     /// itself is an ordinary one-segment translation (the Alt+T pipeline), with
     /// the match in the user prompt's memory block and
-    /// <see cref="RepairInstruction"/> in the system prompt - so the prompt, the
-    /// termbase terms and SuperMemory reach the model exactly as they do for
-    /// Alt+T, and Plugin Core is not changed.</para>
+    /// <see cref="RepairInstruction"/> at the start of the user prompt - so the
+    /// prompt, the termbase terms and SuperMemory reach the model exactly as they
+    /// do for Alt+T, and Plugin Core is not changed.</para>
+    ///
+    /// <para><b>Cost.</b> Everything that differs from one repair to the next
+    /// (the segments around the active one, the match, the segment) is in the
+    /// user prompt. The system prompt - the translator's prompt and the memory
+    /// bank, by far the largest part - is then the same bytes for every repair,
+    /// and the same as Alt+T's when Alt+T sends no document, so the provider's
+    /// prompt cache serves it. With the neighbours in the system prompt, as it
+    /// was first built, every repair of another segment paid for the whole bank
+    /// again (about 10,000 tokens, written to the cache at twice the price).</para>
     ///
     /// <para><b>Document context.</b> Unlike Alt+T it never sends the whole
     /// document, whatever "Include document context" says: a repair keeps the
@@ -39,8 +48,8 @@ namespace Supervertaler.Trados.Core
         public const int NeighbourCount = 3;
 
         /// <summary>
-        /// Goes into the system prompt after the translator's own prompt. The same
-        /// text for every repair; the match itself travels with the segment. It
+        /// Opens the user prompt (see <see cref="RepairLead"/>). The same text for
+        /// every repair; the match itself travels with the segment. It
         /// has to say that it replaces the memory block's "reference only" note,
         /// which is written for Batch Translate, where a match is advice and not
         /// the starting point.
@@ -58,7 +67,7 @@ namespace Supervertaler.Trados.Core
             + "- Keep everything else exactly as it is in the translation in memory: wording, terminology, "
             + "spelling and punctuation. Do not improve or restyle parts the differences do not touch, even if "
             + "you would have translated them differently.\n"
-            + "- Where the termbase or the instructions above require a particular term for something the "
+            + "- Where the termbase or your instructions require a particular term for something the "
             + "differences touch, follow them.\n"
             + "- The translation in memory carries no formatting tags. Put this segment's tags into the repaired "
             + "translation as you would in any translation.\n"
@@ -72,7 +81,7 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// The segments around the active one, as a section for the system prompt;
+        /// The segments around the active one, as a section of the user prompt;
         /// null when there are none (a one-segment document). Plain text, no tag
         /// markers: the model must not carry a neighbour's tags into the repair.
         /// A neighbour's translation is shown where it has one, so that what the
@@ -110,17 +119,14 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// What goes where the translator's prompt goes: that prompt (or none),
-        /// then the repair instruction, then the surrounding segments. The part
-        /// that differs from one repair to the next comes last.
+        /// What opens the user prompt of a repair: the repair instruction, then
+        /// the surrounding segments. The translator's own prompt is not part of
+        /// it: that stays where Alt+T puts it, in the system prompt.
         /// </summary>
-        public static string WithRepairInstruction(string customPromptContent, string neighboursBlock = null)
-        {
-            var text = string.IsNullOrWhiteSpace(customPromptContent)
+        public static string RepairLead(string neighboursBlock = null) =>
+            string.IsNullOrWhiteSpace(neighboursBlock)
                 ? RepairInstruction
-                : customPromptContent.TrimEnd() + "\n\n" + RepairInstruction;
-            return string.IsNullOrWhiteSpace(neighboursBlock) ? text : text + "\n\n" + neighboursBlock.Trim();
-        }
+                : RepairInstruction + "\n\n" + neighboursBlock.Trim();
 
         /// <summary>The lowest match the setting allows, as Batch Translate reads it: 70 when the stored value is unusable.</summary>
         public static int MinScore(int stored) => stored < 1 || stored > 100 ? 70 : stored;
