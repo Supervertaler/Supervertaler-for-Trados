@@ -1793,6 +1793,14 @@ namespace Supervertaler.Trados
             return func();
         }
 
+        /// <summary>"on" / "off" for a tool result, so an AI assistant can see that its edits are not being
+        /// recorded as tracked changes; null when Studio's setting cannot be read.</summary>
+        private static string TrackChangesLabel(IStudioDocument doc)
+        {
+            var tracking = Core.TrackingSuspension.IsTracking(doc);
+            return tracking == true ? "on" : tracking == false ? "off" : null;
+        }
+
         /// <summary>The UI-thread half of <see cref="BridgeUpdateSegments"/>:
         /// writes the segments and, with updateTm, builds the TM plan.</summary>
         private BridgeUpdateSegmentsResponse ApplySegmentUpdates(
@@ -1807,6 +1815,7 @@ namespace Supervertaler.Trados
                 Ok = true,
                 Results = new List<BridgeUpdateResultItem>()
             };
+            response.TrackChanges = TrackChangesLabel(_activeDocument);
 
             var pairIndex = BuildSegmentPairIndex(null);
             int processed = 0;
@@ -7100,6 +7109,7 @@ namespace Supervertaler.Trados
                     "(editing content would otherwise have demoted them to Draft) – pass setStatus to change that.";
             else if (!req.DryRun && !preserveStatus && response.SegmentsChanged > 0)
                 response.Note += $" All changed segments were set to {forcedLevel}.";
+            response.TrackChanges = TrackChangesLabel(_activeDocument);
             if (!req.DryRun && response.SegmentsChanged > 0)
             {
                 response.Note += " Changes are in the open document; the user still needs to save in Studio.";
@@ -17810,7 +17820,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                     MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
                 if (dr != DialogResult.OK) return;
 
-                int applied = 0, failed = 0, skippedTagMismatch = 0;
+                int applied = 0, failed = 0, skippedTagMismatch = 0, trackedWholeSegment = 0;
 
                 // Build a (puId/segId → pair) index ONCE. The previous code
                 // called FindSegmentPair for every changed segment, and each
@@ -17891,7 +17901,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                         }
                         try
                         {
-                            Core.SegmentWriteCheck.ProcessChecked(_activeDocument, pair, "Supervertaler",
+                            var trackedWrite = Core.SegmentWriteCheck.ProcessChecked(_activeDocument, pair, "Supervertaler",
                                 (sp, cancel) =>
                                 {
                                     // v4.20.7-tag: try the tag-aware reconstruction
@@ -17968,8 +17978,12 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                                         }
                                     }
                                     Core.EditCapture.CaptureController.NoteProposal(sp, _activeDocument);
-                                });
+                                },
+                                // With Track Changes on, a reviewer's correction shows as the words
+                                // changed, not as the whole segment replaced (until 208).
+                                wordLevel: true, overTextOnly: true);
                             applied++;
+                            if (trackedWrite?.RevisionMode == "whole-segment") trackedWholeSegment++;
                         }
                         catch (Exception ex)
                         {
@@ -18015,6 +18029,9 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 if (otherIssues > 0)
                     summary += $", {otherIssues} other issue(s) skipped";
                 summary += ".";
+                if (trackedWholeSegment > 0)
+                    summary += $" Track Changes is on: {trackedWholeSegment} of them could not be recorded word by word "
+                             + "and show as a whole-segment change.";
                 ctrl.AppendLog(summary, stoppedForMemory || cancelled);
 
                 if (stoppedForMemory)

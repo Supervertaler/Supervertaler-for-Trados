@@ -1337,6 +1337,8 @@ namespace Supervertaler.Trados.Core
         /// <summary>Segments whose pre-existing confirmation status was restored after the write.</summary>
         [DataMember(Name = "statusRestored", Order = 10)] public int StatusRestored { get; set; }
         [DataMember(Name = "note", Order = 11, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>"on" or "off": Track Changes in Studio when the call ran. Left out when it cannot be read.</summary>
+        [DataMember(Name = "trackChanges", Order = 90, EmitDefaultValue = false)] public string TrackChanges { get; set; }
         /// <summary>Segments that matched but that Studio did not let us change -
         /// tracked changes it protects while Track Changes is off (SegmentWriteCheck).
         /// Not counted in segmentsChanged.</summary>
@@ -1559,6 +1561,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "results", Order = 4, EmitDefaultValue = false)]
         public List<BridgeUpdateResultItem> Results { get; set; }
         [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>"on" or "off": Track Changes in Studio when the call ran. Left out when it cannot be read.</summary>
+        [DataMember(Name = "trackChanges", Order = 90, EmitDefaultValue = false)] public string TrackChanges { get; set; }
     }
 
     [DataContract]

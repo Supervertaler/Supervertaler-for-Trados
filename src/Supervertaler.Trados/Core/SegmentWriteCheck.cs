@@ -97,6 +97,7 @@ namespace Supervertaler.Trados.Core
                     textBefore = comments ? TrackedTargetMerge.Project(sp.Target, accept: true) : before;
                     levelBefore = sp.Properties?.ConfirmationLevel ?? ConfirmationLevel.Unspecified;
                     shapeBefore = TrackedTargetMerge.Shape(sp.Target);
+                    string rejectedBefore = comments && tracked ? TrackedTargetMerge.Project(sp.Target, accept: false) : null;
                     // Both asked of the live target before the edit: Clone() drops
                     // a revision recorded on a tag itself.
                     var targetBefore = wordLevel && tracked && !(overTextOnly && string.IsNullOrEmpty(textBefore))
@@ -119,6 +120,15 @@ namespace Supervertaler.Trados.Core
                             out var note, out var mode, out var replaced);
                         record = new TrackedWrite { RevisionMode = mode, Note = note, TagsReplaced = replaced };
                     }
+                    // A comment added, changed or removed is not a change to the translation.
+                    // With Track Changes on, Studio records any edit made here as the whole
+                    // segment replaced, so a comment edit that leaves the text as it was is
+                    // applied with tracking suspended - as Studio's own comment commands are.
+                    // If it cannot be suspended, the edit goes in tracked, as before.
+                    if (comments && tracked && suspension == null && !cancel.Cancel && view(sp.Target) != before
+                        && TrackedTargetMerge.Project(sp.Target, accept: true) == textBefore
+                        && TrackedTargetMerge.Project(sp.Target, accept: false) == rejectedBefore)
+                        suspension = TrackingSuspension.TurnOff(doc);
                     after = view(sp.Target);
                     textAfter = comments ? TrackedTargetMerge.Project(sp.Target, accept: true) : after;
                     shapeAfter = TrackedTargetMerge.Shape(sp.Target);

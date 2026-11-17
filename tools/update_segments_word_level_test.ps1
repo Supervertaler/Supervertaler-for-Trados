@@ -1166,6 +1166,59 @@ public static class WordLevelWriteTest
             "F6 Track Changes off: a plain write, no revisions");
     }
 
+    // ── G: what else 208 does with Track Changes ──────────────────────
+    static Exception CommentEdit(FakeDocument d, string on, string text)
+    {
+        var wrap = VP.GetMethod("WrapRangeInCommentMarker", Any);
+        Action<ISegmentPair, CancelEventArgs> edit = (sp, cancel) =>
+            wrap.Invoke(null, new object[] { sp.Target, on, 1, text, Severity.Medium });
+        try
+        {
+            P.GetType("Supervertaler.Trados.Core.SegmentWriteCheck", true).GetMethod("ProcessChecked", Any)
+                .Invoke(null, new object[] { d, d.Pairs[0], "Supervertaler MCP", edit, true, false, null, false });
+            return null;
+        }
+        catch (TargetInvocationException ex) { return ex.InnerException; }
+    }
+    static void Extras()
+    {
+        Console.WriteLine("=== G: the tool result names Track Changes; a comment is not a tracked change");
+        var d = One(Original);
+        var s = Write(d, First);
+        Check(s.Ok && Str(s.R, "trackChanges") == "on", "G1 update_segments with Track Changes on: the result says trackChanges 'on' (" + Str(s.R, "trackChanges") + ")");
+        d = One(Original);
+        d.Editor.TrackChanges = false;
+        s = Write(d, First);
+        Check(s.Ok && Str(s.R, "trackChanges") == "off" && Count(Tgt(d)) == 0,
+            "G2 with Track Changes off: written untracked, and the result says trackChanges 'off' (" + Str(s.R, "trackChanges") + ")");
+
+        var words = Original.Split(' ');
+        var on = words[0] + " " + words[1];
+        d = One(Original);
+        var err = CommentEdit(d, on, "Check the term.");
+        Say("G3: " + Mk(Tgt(d)));
+        Check(err == null && Comments(Tgt(d)) == 1 && Count(Tgt(d)) == 0 && Accept(Tgt(d)) == Original
+              && d.TrackingAtApply == false && TrackingRestored(d),
+            "G3 a comment on a clean segment, Track Changes on: the comment is there, NO revision, tracking back on");
+
+        d = One(Original);
+        Write(d, First);
+        int revisions = Count(Tgt(d));
+        var mk = Mk(Tgt(d));
+        var firstWords = First.Split(' ');
+        err = CommentEdit(d, firstWords[0], "A note.");
+        Say("G4: " + Mk(Tgt(d)));
+        Check(err == null && Comments(Tgt(d)) == 1 && Count(Tgt(d)) == revisions && Accept(Tgt(d)) == First && Reject(Tgt(d)) == Original
+              && TrackingRestored(d),
+            "G4 a comment on a segment that holds tracked changes: the " + revisions + " revisions as they were, none added");
+
+        d = One(Original);
+        d.Editor.TrackChanges = false;
+        err = CommentEdit(d, on, "Check the term.");
+        Check(err == null && Comments(Tgt(d)) == 1 && Count(Tgt(d)) == 0 && d.Editor.TurnOffs == 0 && !d.Editor.TrackChanges,
+            "G5 a comment with Track Changes off: added, tracking never touched");
+    }
+
     public static int Run(string pluginPath)
     {
         P = Assembly.LoadFrom(pluginPath);
@@ -1188,6 +1241,7 @@ public static class WordLevelWriteTest
         Scale();
         OtherDoors();
         Translations();
+        Extras();
         Console.WriteLine(Pass + " passed, " + Fail + " failed");
         return Fail == 0 ? 0 : 1;
     }

@@ -371,7 +371,10 @@ namespace Supervertaler.Trados.Controls
                 "It is never sent on its own. The lowest percentage worth sending is set in\r\n" +
                 "AI Settings; below that a match competes with your termbase for attention.\r\n\r\n" +
                 "Works on empty segments too, not only ones Studio pre-translated.\r\n\r\n" +
-                "Turn this off for a job whose translation memory you do not trust.");
+                "Turn this off for a job whose translation memory you do not trust.\r\n\r\n" +
+                "This box is for Batch Translate and Translate active segment (Alt+T). Chat,\r\n" +
+                "QuickLauncher and AutoPrompt have a box of their own: “Include TM matches in\r\n" +
+                "AI context” in Settings → AI Settings.");
             Controls.Add(_chkSendTmMatches);
 
             _chkTargetOnly = new CheckBox
