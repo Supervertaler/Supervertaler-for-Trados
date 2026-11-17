@@ -679,6 +679,11 @@ public static class FuzzyFixerTest
             Check(f.Text.Contains("FuzzyFixer") && f.Text.Contains("Segment 12"), "E the title names the segment (" + f.Text + ")");
             Check(!write.Enabled, "E while working, Write to target is disabled, so Enter writes nothing");
             Check(((Label)Field(f, "_note")).Visible, "E a confirmed segment is said to be confirmed");
+            {
+                var noteLabel = (Label)Field(f, "_note"); var discard = (Button)Field(f, "_discard");
+                Check(write.Top >= noteLabel.Bottom && discard.Top >= noteLabel.Bottom && write.Bottom <= f.ClientSize.Height,
+                    "E the note sits above the buttons and does not cover them (note ends at " + noteLabel.Bottom + ", buttons start at " + write.Top + ")");
+            }
             // From another thread, as the real work does.
             var t = new Thread(() => Say(f, "ShowStatus", "82% match from Acme EN-NL. Asking the AI...", MatchTarget));
             t.Start(); t.Join(); Pump(200);

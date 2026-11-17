@@ -102,7 +102,9 @@ namespace Supervertaler.Trados.Controls
                 Visible = !string.IsNullOrWhiteSpace(note)
             };
             Controls.Add(_note);
-            if (_note.Visible) y += Font.Height + 10;
+            // Not _note.Visible: before the window is shown that reads false whatever
+            // was set, so the buttons were placed on top of the note and hidden by it.
+            if (!string.IsNullOrWhiteSpace(note)) y += Font.Height + 10;
 
             _discard = new Button { Text = "Cancel", Size = new Size(110, 30), Location = new Point(margin + width - 110, y), DialogResult = DialogResult.Cancel };
             // Alt+W writes, Alt+D discards (Enter and Escape do the same).
