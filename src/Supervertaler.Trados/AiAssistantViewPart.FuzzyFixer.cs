@@ -450,7 +450,8 @@ namespace Supervertaler.Trados
                         break;
                     default:
                         done(reply);
-                        dialog.ShowResult(from + ", repaired. Red is removed, green is added. "
+                        dialog.ShowResult(from + ", repaired. Red is removed, green is added.
+"
                             + "Enter writes it to the target as a draft; Escape discards it.",
                             Core.FuzzyFixer.Changes(match.TargetText, reply.Translation));
                         break;

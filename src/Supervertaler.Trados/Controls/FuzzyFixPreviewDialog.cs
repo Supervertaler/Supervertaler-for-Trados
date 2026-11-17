@@ -63,9 +63,12 @@ namespace Supervertaler.Trados.Controls
             const int margin = 16, width = 620;
             int y = 14;
 
-            _header = new Label { Location = new Point(margin, y), Size = new Size(width, 36), Text = "Starting…" };
+            // Three lines, measured in the font: on a scaled display the text grows and a
+            // height in fixed pixels cut the second line off (the keys to press).
+            int headerHeight = Font.Height * 3 + 4;
+            _header = new Label { Location = new Point(margin, y), Size = new Size(width, headerHeight), Text = "Starting…" };
             Controls.Add(_header);
-            y += 42;
+            y += headerHeight + 6;
 
             _text = new RichTextBox
             {
@@ -85,13 +88,13 @@ namespace Supervertaler.Trados.Controls
             _note = new Label
             {
                 Location = new Point(margin, y),
-                Size = new Size(width, 20),
+                Size = new Size(width, Font.Height + 4),
                 Text = note ?? "",
                 ForeColor = Removed,
                 Visible = !string.IsNullOrWhiteSpace(note)
             };
             Controls.Add(_note);
-            if (_note.Visible) y += 26;
+            if (_note.Visible) y += Font.Height + 10;
 
             _discard = new Button { Text = "Cancel", Size = new Size(110, 30), Location = new Point(margin + width - 110, y), DialogResult = DialogResult.Cancel };
             // Alt+W writes, Alt+D discards (Enter and Escape do the same).
