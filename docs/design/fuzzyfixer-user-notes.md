@@ -36,6 +36,7 @@ status) is what the code does, to be confirmed in Studio before the Help page lo
 - **Enter** (or Alt+W) writes the repair into the target, as a **draft**. **Escape** (or Alt+D, or Discard) throws it away. Nothing is
   written before Enter.
 - You then review and confirm the segment as usual. Ctrl+Z undoes the write.
+- The **?** in the window's title bar, or **F1**, opens the FuzzyFixer help page.
 - With **Track Changes** on, a repair written over text that is already in the target (the fuzzy match you applied,
   say) is recorded word by word: only the repaired words are marked, not the whole segment.
 

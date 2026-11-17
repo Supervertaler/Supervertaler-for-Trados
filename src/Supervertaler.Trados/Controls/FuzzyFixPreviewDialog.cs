@@ -58,6 +58,14 @@ namespace Supervertaler.Trados.Controls
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
+            // The title-bar ? (shown because there is no minimise or maximise box)
+            // and F1 open the FuzzyFixer help page, as the other dialogs do.
+            HelpButton = true;
+            HelpButtonClicked += (s, e) =>
+            {
+                e.Cancel = true;   // no ? cursor
+                HelpSystem.OpenHelp(HelpSystem.Topics.FuzzyFixer);
+            };
 
             // Absolute positions, no Dock panels: those misbehave in Trados's host.
             const int margin = 16, width = 620;
@@ -144,6 +152,11 @@ namespace Supervertaler.Trados.Controls
             {
                 DialogResult = DialogResult.OK;
                 Close();
+                return true;
+            }
+            if (keyData == Keys.F1)
+            {
+                HelpSystem.OpenHelp(HelpSystem.Topics.FuzzyFixer);
                 return true;
             }
             if (keyData == Keys.Escape)

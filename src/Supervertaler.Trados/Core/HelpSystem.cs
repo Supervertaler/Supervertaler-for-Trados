@@ -76,6 +76,7 @@ namespace Supervertaler.Trados.Core
             public const string BatchOperations     = "trados/batch-operations/";
             public const string Images              = "trados/batch-operations/#figurelens-from-v1820189";   // #84
             public const string BatchTranslate      = "trados/batch-translate/";
+            public const string FuzzyFixer          = "trados/fuzzyfixer/";
             public const string AiProofreader       = "trados/ai-proofreader/";
             public const string Reports             = "trados/reports/";
             public const string ClipboardMode       = "trados/clipboard-mode/";
