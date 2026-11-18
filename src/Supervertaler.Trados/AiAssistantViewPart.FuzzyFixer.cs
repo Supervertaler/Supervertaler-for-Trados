@@ -396,7 +396,11 @@ namespace Supervertaler.Trados
                 }
 
                 var from = match.Score + "% match" + (string.IsNullOrWhiteSpace(match.TmName) ? "" : " from " + match.TmName);
-                var model = job.Ai.GetSelectedModel();
+                // The model by the name the settings show it under, the id when it has none.
+                var model = job.Ai.SelectedProvider == LlmModels.ProviderCustomOpenAi
+                    ? job.Ai.GetActiveCustomProfile()?.Model
+                    : job.Ai.GetSelectedModel();
+                model = LlmModels.FindModel(model)?.DisplayName ?? model;
                 dialog.ShowStatus(from + ". Asking the AI" + (string.IsNullOrWhiteSpace(model) ? "" : " (" + model + ")")
                     + " to repair it… This is the match's translation:", match.TargetText);
                 // Not the memory's name: bridge.log gets pasted into issues, and a memory is often named after a client.
@@ -416,7 +420,8 @@ namespace Supervertaler.Trados
 
                 BatchSegmentResultEventArgs reply = null;
                 string lastProblem = null;
-                var worker = new BatchTranslator { LogFeature = PromptLogFeature.Translate };
+                // Its own label, so the Reports card and the usage log say FuzzyFixer and not Alt+T.
+                var worker = new BatchTranslator { LogFeature = PromptLogFeature.FuzzyFixer };
                 // Not written here: kept for the preview. WriteSucceeded stays
                 // true, so the run counts the request as answered.
                 worker.SegmentTranslated += (s, e) => reply = e;
@@ -457,8 +462,10 @@ namespace Supervertaler.Trados
                         break;
                     default:
                         done(reply);
-                        dialog.ShowResult(from + ", repaired. Red is removed, green is added.\n"
-                            + "Enter writes it to the target as a draft; Escape discards it.",
+                        // The model stays in view with the result: with a model per kind of
+                        // task it is no longer simply "the model you translate with".
+                        dialog.ShowResult(from + ", repaired" + (string.IsNullOrWhiteSpace(model) ? "" : " by " + model) + ".\n"
+                            + "Red is removed, green is added. Enter writes it as a draft; Escape discards it.",
                             Core.FuzzyFixer.Changes(match.TargetText, reply.Translation));
                         break;
                 }

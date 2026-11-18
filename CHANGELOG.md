@@ -12,8 +12,11 @@
 ## [18.20.209 / 19.20.209] – Unreleased
 
 ### Added
-- ★ **A model per kind of task: Light tasks, Translation and AutoPrompt.** On the **AI Settings** tab, the **Model** list is now called **Translation**, with a list above it and one below. **Light tasks** is for small mechanical requests: FuzzyFixer, AutoTagger, Add term with abbreviation, choosing articles from a large memory bank. **AutoPrompt** is for writing your project prompt. So you can translate with a strong model, repair fuzzy matches with a cheap one, and let the strongest write the prompt. Both new lists start on “Same as Translation”, so nothing changes until you choose; they offer the models of the provider you have selected.
+- ★ **A model per kind of task: Light tasks, Translation and AutoPrompt.** On the **AI Settings** tab, the **Model** list is now called **Translation**, with a list above it and one below. **Light tasks** is for small mechanical requests: FuzzyFixer, AutoTagger, Add term with abbreviation, choosing articles from a large memory bank. **AutoPrompt** is for writing your project prompt. So you can translate with a strong model, repair fuzzy matches with a cheap one, and let the strongest write the prompt. Both new lists start on “Follow Translation”, so nothing changes until you choose; they offer the models of the provider you have selected.
 - **Claude Haiku 5.5 is in the Claude model list.** It is Anthropic’s smallest and cheapest model ($0.10 in, $0.50 out per million tokens), meant for the new **Light tasks** list. The Claude list now runs cheapest first: Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.2. A new installation still starts on Sonnet 5.5. On a prompt of more than 100,000 tokens Haiku 5.5 costs five times as much, and the cost figures do not show that yet.
+
+### Changed
+- **FuzzyFixer requests are now listed as FuzzyFixer, and its window names the model.** On the Reports tab and in the Usage & Costs report they were listed as “Translate active segment”, so a repair could not be told from a translation. The FuzzyFixer window now says which model made the repair, for example “96% match, repaired by Claude Haiku 5.5”.
 
 ## [18.20.208 / 19.20.208] – 2026-11-18
 

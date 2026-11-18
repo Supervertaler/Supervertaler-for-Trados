@@ -355,7 +355,7 @@ namespace Supervertaler.Trados.Controls
                 "The model for small, mechanical requests: FuzzyFixer, AutoTagger, Add term with\r\n" +
                 "abbreviation, choosing articles from a large memory bank, and AutoPrompt's two short\r\n" +
                 "helper questions. A small model does these as well as a large one, for less.\r\n" +
-                "\"Same as Translation\" follows the list below; pick a model to fix it.");
+                "\"Follow Translation\" uses whatever the list below is set to; pick a model to fix it.");
             Row(root, ref row, "Light tasks:", _cmbLightModel);
 
             _cmbModel = FillCombo();
@@ -409,7 +409,7 @@ namespace Supervertaler.Trados.Controls
             ttPrompt.SetToolTip(_cmbPromptModel,
                 "The model AutoPrompt writes your project prompt with. It reads the whole document\r\n" +
                 "once, and every segment is then translated with what it wrote, so a strong model\r\n" +
-                "pays here. \"Same as Translation\" follows the list above; pick a model to fix it.");
+                "pays here. \"Follow Translation\" uses whatever the list above is set to; pick a model to fix it.");
             Row(root, ref row, "AutoPrompt:", _cmbPromptModel);
 
             var lnkViewModels = new LinkLabel
@@ -1319,7 +1319,8 @@ namespace Supervertaler.Trados.Controls
             // name first ("Claude Sonnet 5.5 (same as Translation)") the entry read
             // as a choice of Sonnet, and seemed to change by itself when Translation
             // was set to another model (Michael, 18 Nov 2026).
-            return name.Length == 0 ? "Same as Translation" : "Same as Translation (" + name + ")";
+            // "Follow Translation" says what the entry does (Michael, 18 Nov 2026).
+            return name.Length == 0 ? "Follow Translation" : "Follow Translation (" + name + ")";
         }
 
         /// <summary>

@@ -5,7 +5,7 @@
 #      Translation model for every task; a choice is kept per provider; a model
 #      the provider no longer lists falls back to Translation; a local server
 #      and a custom profile have no models per task; a settings file from before
-#      209 reads as "same as Translation"; a copy made for a task leaves the
+#      209 reads as "Follow Translation"; a copy made for a task leaves the
 #      real settings as they were.
 #   B  the AI Settings tab: three lists in the order Light tasks, Translation,
 #      AutoPrompt; the first entry of the outer two names the Translation model
@@ -106,7 +106,7 @@ try {
     $ai.ClaudeModel = 'claude-opus-5-5'
     Check (($ai.GetModelFor($Translation) -eq 'claude-opus-5-5') -and ($ai.GetModelFor($Prompt) -eq 'claude-fable-5-2')) "A changing Translation (the quick pickers do) leaves a chosen task model alone"
     $ai.SetTaskModel('claude', $Prompt, '')
-    Check ($ai.GetModelFor($Prompt) -eq 'claude-opus-5-5') "A back on 'same as Translation': the task follows Translation again"
+    Check ($ai.GetModelFor($Prompt) -eq 'claude-opus-5-5') "A back on 'Follow Translation': the task follows Translation again"
     $ai.ClaudeModel = 'claude-sonnet-5-5'
 
     $ai.SelectedProvider = 'openai'
@@ -128,7 +128,7 @@ try {
         Check ($x.GetModelFor($Light) -eq $x.GetSelectedModel()) "A ${p}: one endpoint, one model - a task never gets another"
     }
     $x = NewAi; $x.TaskModels = $null
-    Check (($x.GetModelFor($Light) -eq 'claude-sonnet-5-5') -and ($x.GetTaskModelChoice('claude', $Light) -eq '')) "A no list at all (a settings object from an old file): reads as 'same as Translation'"
+    Check (($x.GetModelFor($Light) -eq 'claude-sonnet-5-5') -and ($x.GetTaskModelChoice('claude', $Light) -eq '')) "A no list at all (a settings object from an old file): reads as 'Follow Translation'"
     $x.SetTaskModel('claude', $Light, 'claude-opus-5-5')
     Check ($x.GetModelFor($Light) -eq 'claude-opus-5-5') "A and a choice can still be stored in it"
     $x.SetTaskModel('claude', $Translation, 'claude-opus-5-5'); $x.SetTaskModel('', $Light, 'claude-opus-5-5')
@@ -180,11 +180,11 @@ try {
     $ai = NewAi
     $panel.PopulateFromSettings($ai); [System.Windows.Forms.Application]::DoEvents()
     Check (($cmbLight.SelectedIndex -eq 0) -and ($cmbPrompt.SelectedIndex -eq 0)) "B nothing chosen: both lists stand on their first entry"
-    Check (($cmbLight.Items[0].ToString() -eq 'Same as Translation (Claude Sonnet 5.5)') -and ($cmbPrompt.Items[0].ToString() -eq 'Same as Translation (Claude Sonnet 5.5)')) "B that entry names the Translation model: '$($cmbLight.Items[0])'"
+    Check (($cmbLight.Items[0].ToString() -eq 'Follow Translation (Claude Sonnet 5.5)') -and ($cmbPrompt.Items[0].ToString() -eq 'Follow Translation (Claude Sonnet 5.5)')) "B that entry names the Translation model: '$($cmbLight.Items[0])'"
     Check (($cmbLight.Items.Count -eq $cmbModel.Items.Count + 1) -and $cmbLight.Enabled -and $cmbPrompt.Enabled) "B below it, the provider's models ($($cmbLight.Items.Count - 1))"
 
     [void](SelectId $cmbModel 'claude-opus-5-5'); [System.Windows.Forms.Application]::DoEvents()
-    Check (($cmbLight.Items[0].ToString() -eq 'Same as Translation (Claude Opus 5.5)') -and ($cmbLight.SelectedIndex -eq 0)) "B Translation changed: the first entry follows it, the selection stays"
+    Check (($cmbLight.Items[0].ToString() -eq 'Follow Translation (Claude Opus 5.5)') -and ($cmbLight.SelectedIndex -eq 0)) "B Translation changed: the first entry follows it, the selection stays"
     $saved = NewAi; $panel.ApplyToSettings($saved)
     Check (($saved.ClaudeModel -eq 'claude-opus-5-5') -and ($saved.GetModelFor($Light) -eq 'claude-opus-5-5') -and (($saved.TaskModels | Measure-Object).Count -eq 0)) "B saved with nothing chosen: no task model stored"
 
@@ -193,9 +193,9 @@ try {
     [void](SelectId $cmbModel 'claude-sonnet-5-5'); [System.Windows.Forms.Application]::DoEvents()
     Check (($cmbLight.SelectedItem.Id -eq 'claude-sonnet-5-5') -and ($cmbPrompt.SelectedItem.Id -eq 'claude-fable-5-2')) "B a picked model stays picked when Translation changes"
     SelectProvider 'openai'
-    Check (($cmbLight.SelectedIndex -eq 0) -and ($cmbPrompt.SelectedIndex -eq 0) -and ($cmbLight.Items[0].ToString() -like 'Same as Translation (*')) "B another provider: its own lists, nothing chosen there"
+    Check (($cmbLight.SelectedIndex -eq 0) -and ($cmbPrompt.SelectedIndex -eq 0) -and ($cmbLight.Items[0].ToString() -like 'Follow Translation (*')) "B another provider: its own lists, nothing chosen there"
     SelectProvider 'ollama'
-    Check ((-not $cmbLight.Enabled) -and (-not $cmbPrompt.Enabled) -and ($cmbLight.Items.Count -eq 1)) "B a local server: the two lists are greyed out, on 'same as Translation'"
+    Check ((-not $cmbLight.Enabled) -and (-not $cmbPrompt.Enabled) -and ($cmbLight.Items.Count -eq 1)) "B a local server: the two lists are greyed out, on 'Follow Translation'"
     SelectProvider 'claude'
     Check (($cmbLight.SelectedItem.Id -eq 'claude-sonnet-5-5') -and ($cmbPrompt.SelectedItem.Id -eq 'claude-fable-5-2') -and $cmbLight.Enabled) "B back on the first provider: both choices are still there"
     [void](SelectId $cmbModel 'claude-opus-5-5')
@@ -210,7 +210,7 @@ try {
 
     $stale = NewAi; $stale.SetTaskModel('claude', $Light, 'claude-retired-model-1')
     $panel.PopulateFromSettings($stale); [System.Windows.Forms.Application]::DoEvents()
-    Check ($cmbLight.SelectedIndex -eq 0) "B a stored model the provider no longer lists: the list shows 'same as Translation'"
+    Check ($cmbLight.SelectedIndex -eq 0) "B a stored model the provider no longer lists: the list shows 'Follow Translation'"
 
     $form.Close(); $form.Dispose()
 
@@ -222,6 +222,8 @@ try {
         $term = [IO.File]::ReadAllText((Join-Path $src 'AddTermWithAbbreviationAction.cs'))
         $bank = [IO.File]::ReadAllText((Join-Path $src 'Core\TranslationBankContext.cs'))
         Check ($ff.Contains('Ai = ai.ForTask(AiTask.Light)')) "C FuzzyFixer: Light"
+        Check ($ff.Contains('LogFeature = PromptLogFeature.FuzzyFixer') -and -not $ff.Contains('LogFeature = PromptLogFeature.Translate')) "C FuzzyFixer's requests are labelled FuzzyFixer, not Translate active segment"
+        Check ($ff.Contains('", repaired" + (string.IsNullOrWhiteSpace(model) ? "" : " by " + model)')) "C the FuzzyFixer window names the model with the result"
         Check ($term.Contains('aiSettings.GetModelFor(AiTask.Light)')) "C Add term with abbreviation: Light"
         Check ($bank.Contains('ai.GetModelFor(AiTask.Light)') -and $view.Contains('CreateLlmClient(out _, AiTask.Light)')) "C choosing articles from the bank: Light"
         Check ($view.Contains('PromptLogFeature.PromptGeneration ? AiTask.PromptWriting : AiTask.Translation')) "C the chat path: AutoPrompt's own request is PromptWriting, everything else Translation"

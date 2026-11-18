@@ -12,7 +12,7 @@ its offline tests; **not yet tried in Trados Studio**.
   - **Translation** – what **Model** was until 208: Batch Translate, Translate active segment (Alt+T), Chat,
     QuickLauncher, AI Proofreader and FigureLens.
   - **AutoPrompt** – writing your project prompt.
-- **Nothing changes until you choose.** Light tasks and AutoPrompt start on their first entry, "Same as Translation
+- **Nothing changes until you choose.** Light tasks and AutoPrompt start on their first entry, "Follow Translation
   (Claude Sonnet 5.5)", with your Translation model in the brackets. While a list stands on that entry it follows
   whatever Translation is set to: change Translation and the brackets change with it. To keep a list on one model
   whatever Translation does, pick that model from the entries below it.
@@ -28,8 +28,11 @@ its offline tests; **not yet tried in Trados Studio**.
 - **Fetch list**, **Show all models** and **Model ID** belong to Translation, as before. A model you fetched also
   appears in the other two lists when Show all models is ticked.
 - If a model you chose for Light tasks or AutoPrompt is later withdrawn by the provider, those requests use your
-  Translation model, and the list shows "Same as Translation" again.
-- The FuzzyFixer window, the Reports tab and the Usage & Costs report name the model each request really used.
+  Translation model, and the list shows "Follow Translation" again.
+- The FuzzyFixer window names the model that made the repair ("96% match from Acme EN-NL, repaired by Claude Haiku
+  5.5."). Its requests have their own cards on the Reports tab, headed **FuzzyFixer**, and their own line in the
+  Usage & Costs report; until 208 they were listed as "Translate active segment".
+- The Reports tab and the Usage & Costs report name the model each request really used.
 - **When a cheap model for Light tasks pays.** A provider's prompt cache belongs to one model. FuzzyFixer on the
   same model as Alt+T reuses the memory bank Alt+T has just cached; on another model its first repair pays for the
   bank once, the next ones are cheap. Rule of thumb from list prices (not measured in Studio): with Opus or Fable for
