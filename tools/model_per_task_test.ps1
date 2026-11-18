@@ -149,6 +149,10 @@ try {
     Check (($copy.ApiKeys.Claude -eq 'test-key-not-real') -and ($copy.BatchSize -eq $ai.BatchSize)) "A the copy carries the rest of the settings"
     Check ([object]::ReferenceEquals($ai.ForTask($Translation), $ai)) "A settings for Translation: the settings themselves"
 
+    Check (([Activator]::CreateInstance($settingsType)).ClaudeModel -eq 'claude-sonnet-5-5') "A a new installation starts on Sonnet for Claude, although Haiku heads the list"
+    $coreModels = $asm.GetType('Supervertaler.Core.LlmModels', $true).GetField('ClaudeModels').GetValue($null)
+    Check (($coreModels[0].Id -eq 'claude-haiku-5-5') -and ($coreModels.Count -eq 4)) "A Claude's short list: four models, Haiku 5.5 first ($(($coreModels | ForEach-Object { $_.Id }) -join ', '))"
+
     Write-Host "B  the AI Settings tab"
     $panelType = $asm.GetType('Supervertaler.Trados.Controls.AiSettingsPanel', $true)
     $private = [System.Reflection.BindingFlags]'Instance,NonPublic'
@@ -176,11 +180,11 @@ try {
     $ai = NewAi
     $panel.PopulateFromSettings($ai); [System.Windows.Forms.Application]::DoEvents()
     Check (($cmbLight.SelectedIndex -eq 0) -and ($cmbPrompt.SelectedIndex -eq 0)) "B nothing chosen: both lists stand on their first entry"
-    Check (($cmbLight.Items[0].ToString() -eq 'Claude Sonnet 5.5 (same as Translation)') -and ($cmbPrompt.Items[0].ToString() -eq 'Claude Sonnet 5.5 (same as Translation)')) "B that entry names the Translation model: '$($cmbLight.Items[0])'"
+    Check (($cmbLight.Items[0].ToString() -eq 'Same as Translation (Claude Sonnet 5.5)') -and ($cmbPrompt.Items[0].ToString() -eq 'Same as Translation (Claude Sonnet 5.5)')) "B that entry names the Translation model: '$($cmbLight.Items[0])'"
     Check (($cmbLight.Items.Count -eq $cmbModel.Items.Count + 1) -and $cmbLight.Enabled -and $cmbPrompt.Enabled) "B below it, the provider's models ($($cmbLight.Items.Count - 1))"
 
     [void](SelectId $cmbModel 'claude-opus-5-5'); [System.Windows.Forms.Application]::DoEvents()
-    Check (($cmbLight.Items[0].ToString() -eq 'Claude Opus 5.5 (same as Translation)') -and ($cmbLight.SelectedIndex -eq 0)) "B Translation changed: the first entry follows it, the selection stays"
+    Check (($cmbLight.Items[0].ToString() -eq 'Same as Translation (Claude Opus 5.5)') -and ($cmbLight.SelectedIndex -eq 0)) "B Translation changed: the first entry follows it, the selection stays"
     $saved = NewAi; $panel.ApplyToSettings($saved)
     Check (($saved.ClaudeModel -eq 'claude-opus-5-5') -and ($saved.GetModelFor($Light) -eq 'claude-opus-5-5') -and (($saved.TaskModels | Measure-Object).Count -eq 0)) "B saved with nothing chosen: no task model stored"
 
@@ -189,7 +193,7 @@ try {
     [void](SelectId $cmbModel 'claude-sonnet-5-5'); [System.Windows.Forms.Application]::DoEvents()
     Check (($cmbLight.SelectedItem.Id -eq 'claude-sonnet-5-5') -and ($cmbPrompt.SelectedItem.Id -eq 'claude-fable-5-2')) "B a picked model stays picked when Translation changes"
     SelectProvider 'openai'
-    Check (($cmbLight.SelectedIndex -eq 0) -and ($cmbPrompt.SelectedIndex -eq 0) -and ($cmbLight.Items[0].ToString() -like '* (same as Translation)')) "B another provider: its own lists, nothing chosen there"
+    Check (($cmbLight.SelectedIndex -eq 0) -and ($cmbPrompt.SelectedIndex -eq 0) -and ($cmbLight.Items[0].ToString() -like 'Same as Translation (*')) "B another provider: its own lists, nothing chosen there"
     SelectProvider 'ollama'
     Check ((-not $cmbLight.Enabled) -and (-not $cmbPrompt.Enabled) -and ($cmbLight.Items.Count -eq 1)) "B a local server: the two lists are greyed out, on 'same as Translation'"
     SelectProvider 'claude'

@@ -54,7 +54,8 @@ namespace Supervertaler.Trados.Settings
         public string OpenAiModel { get; set; } = LlmModels.DefaultOpenAiModelId;
 
         [DataMember(Name = "claudeModel")]
-        public string ClaudeModel { get; set; } = LlmModels.ClaudeModels[0].Id;
+        // Named, not ClaudeModels[0]: that list runs cheapest first since 20.209.
+        public string ClaudeModel { get; set; } = LlmModels.DefaultClaudeModelId;
 
         [DataMember(Name = "geminiModel")]
         public string GeminiModel { get; set; } = LlmModels.GeminiModels[0].Id;
