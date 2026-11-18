@@ -95,7 +95,7 @@ AutoPrompt:    [Claude Fable 5.2                        v]    <- writing the pro
   endpoint or key). Proposed: `AiSettings.Resolve(AiTask task)` returning provider, model, endpoint and key source,
   with `enum AiTask { Translation, Light, PromptWriting }`; every call site asks it. Stateless: it reads settings and
   returns values.
-- **Settings:** per provider, two optional model ids (empty means "Same as Model"). No migration needed: absent
+- **Settings:** per provider, two optional model ids (empty means "same as Translation"). No migration needed: absent
   means today's behaviour.
 - **A model that has gone.** A provider retires models. If the id stored for a role is no longer in that provider's
   list, the role uses the Translation model and the Settings tab shows the list back on "(same as Translation)". Never a failed request
