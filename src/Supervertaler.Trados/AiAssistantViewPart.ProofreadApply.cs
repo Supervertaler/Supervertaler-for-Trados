@@ -357,10 +357,16 @@ namespace Supervertaler.Trados
             // for a report saved by an earlier build. Idempotent.
             var text = ProofreadCorrection.KeepTargetCharacters(issue.TargetText, issue.CorrectedTarget);
 
+            // How the target's tags differ from the source's before the write
+            // (null: they match). A difference that is still exactly this one
+            // afterwards was there already and is not this write's doing (#141).
+            var tagsBefore = DescribeTagIdMismatch(pair.Source, pair.Target);
+
             SegmentTargetWrite written;
             try
             {
-                written = WriteSegmentTarget(pair, text, "Supervertaler", semanticTagNames: false);
+                written = WriteSegmentTarget(pair, text, "Supervertaler", semanticTagNames: false,
+                    keepTargetTags: true);
             }
             catch (Exception ex)
             {
@@ -383,10 +389,13 @@ namespace Supervertaler.Trados
                 }
             }
 
-            // The tags were checked before the write, so this should never be
-            // set; if it is, Studio's Tag Verifier will flag the segment and the
-            // card must not vanish as if all were well.
-            if (written.TagWarning != null)
+            // The tags were checked before the write, so a difference from the
+            // source that this write made should never be seen; if it is,
+            // Studio's Tag Verifier will flag the segment and the card must not
+            // vanish as if all were well. One the target already had, and still
+            // has unchanged, is the translator's and stays theirs: the Tag
+            // Verifier flagged it before and still does.
+            if (written.TagWarning != null && !string.Equals(written.TagWarning, tagsBefore, StringComparison.Ordinal))
                 note = (note == null ? "" : note + " ") + written.TagWarning;
 
             // With "Also add issues as Trados comments" ticked, the finding goes on

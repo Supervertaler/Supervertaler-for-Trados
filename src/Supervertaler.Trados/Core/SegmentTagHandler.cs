@@ -294,7 +294,11 @@ namespace Supervertaler.Trados.Core
         /// pass for one of them. Tags whose id is blank (locked content and the
         /// like) are matched by kind, in order.</para>
         /// </summary>
-        public static string SerializeAlignedTo(ISegment segment, Dictionary<int, TagInfo> sourceTagMap)
+        /// <param name="ownTags">When given, receives each tag the source does not
+        /// have, under the number it is shown as - so that a write which keeps
+        /// such a tag can clone it from the target (#141).</param>
+        public static string SerializeAlignedTo(ISegment segment, Dictionary<int, TagInfo> sourceTagMap,
+            Dictionary<int, TagInfo> ownTags = null)
         {
             if (segment == null) return "";
 
@@ -313,12 +317,13 @@ namespace Supervertaler.Trados.Core
             }
 
             var sb = new StringBuilder();
-            SerializeAlignedContainer(segment, sb, numbers, ref highest);
+            SerializeAlignedContainer(segment, sb, numbers, ref highest, ownTags);
             return sb.ToString();
         }
 
         private static void SerializeAlignedContainer(IAbstractMarkupDataContainer container,
-            StringBuilder sb, Dictionary<string, Queue<int>> numbers, ref int highest)
+            StringBuilder sb, Dictionary<string, Queue<int>> numbers, ref int highest,
+            Dictionary<int, TagInfo> ownTags)
         {
             // The same walk as SerializeContainer, branch for branch: what counts
             // as a tag, and what is skipped, must not differ between the two sides.
@@ -330,44 +335,47 @@ namespace Supervertaler.Trados.Core
                 }
                 else if (item is ITagPair tagPair)
                 {
-                    int n = SourceNumberFor(tagPair, numbers, ref highest);
+                    int n = SourceNumberFor(tagPair, numbers, ref highest, ownTags, TagType.Paired);
                     sb.Append("<t").Append(n).Append('>');
-                    SerializeAlignedContainer(tagPair, sb, numbers, ref highest);
+                    SerializeAlignedContainer(tagPair, sb, numbers, ref highest, ownTags);
                     sb.Append("</t").Append(n).Append('>');
                 }
                 else if (item is IPlaceholderTag placeholder)
                 {
-                    sb.Append("<t").Append(SourceNumberFor(placeholder, numbers, ref highest)).Append("/>");
+                    sb.Append("<t").Append(SourceNumberFor(placeholder, numbers, ref highest, ownTags, TagType.Standalone)).Append("/>");
                 }
                 else if (item is IRevisionMarker revision)
                 {
                     if (revision.Properties.RevisionType != RevisionType.Delete)
-                        SerializeAlignedContainer(revision, sb, numbers, ref highest);
+                        SerializeAlignedContainer(revision, sb, numbers, ref highest, ownTags);
                 }
                 else if (item is ICommentMarker comment)
                 {
-                    SerializeAlignedContainer(comment, sb, numbers, ref highest);
+                    SerializeAlignedContainer(comment, sb, numbers, ref highest, ownTags);
                 }
                 else if (item is IAbstractMarkupDataContainer nested)
                 {
-                    int n = SourceNumberFor(item, numbers, ref highest);
+                    int n = SourceNumberFor(item, numbers, ref highest, ownTags, TagType.Paired);
                     sb.Append("<t").Append(n).Append('>');
-                    SerializeAlignedContainer(nested, sb, numbers, ref highest);
+                    SerializeAlignedContainer(nested, sb, numbers, ref highest, ownTags);
                     sb.Append("</t").Append(n).Append('>');
                 }
                 else
                 {
-                    sb.Append("<t").Append(SourceNumberFor(item, numbers, ref highest)).Append("/>");
+                    sb.Append("<t").Append(SourceNumberFor(item, numbers, ref highest, ownTags, TagType.Standalone)).Append("/>");
                 }
             }
         }
 
         private static int SourceNumberFor(IAbstractMarkupData item,
-            Dictionary<string, Queue<int>> numbers, ref int highest)
+            Dictionary<string, Queue<int>> numbers, ref int highest,
+            Dictionary<int, TagInfo> ownTags, TagType kind)
         {
             if (numbers.TryGetValue(AlignKey(item), out var queue) && queue.Count > 0)
                 return queue.Dequeue();
-            return ++highest;
+            int own = ++highest;
+            if (ownTags != null) ownTags[own] = new TagInfo { TagType = kind, OriginalMarkup = item };
+            return own;
         }
 
         /// <summary>What a source tag and its target counterpart have in common:

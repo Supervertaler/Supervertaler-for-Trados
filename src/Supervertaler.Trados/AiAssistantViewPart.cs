@@ -2286,8 +2286,11 @@ namespace Supervertaler.Trados
         /// literal "&lt;b&gt;" in a translation stays text.</param>
         /// <param name="copySource">Write a copy of the source instead of
         /// <paramref name="targetText"/> (update_segments' copySource; Ctrl+Insert).</param>
+        /// <param name="keepTargetTags">The text is the target's own, corrected
+        /// (Apply on the Reports tab): tags only the target has are kept, see
+        /// <see cref="Core.TargetBuilder.FromText"/>.</param>
         private SegmentTargetWrite WriteSegmentTarget(ISegmentPair pair, string targetText,
-            string undoName, bool semanticTagNames, bool copySource = false)
+            string undoName, bool semanticTagNames, bool copySource = false, bool keepTargetTags = false)
         {
             var written = new SegmentTargetWrite();
             Core.TrackingSuspension suspension = null;
@@ -2354,7 +2357,7 @@ namespace Supervertaler.Trados
                         bool built = copySource
                             ? Core.TargetBuilder.CopySource(sp.Target, sp.Source)
                             : Core.TargetBuilder.FromText(sp.Target, sp.Source, targetText, semanticTagNames,
-                                removedMarkers);
+                                removedMarkers, keepTargetTags);
                         if (!built)
                         {
                             // Nothing could be built (a source of tags only and a

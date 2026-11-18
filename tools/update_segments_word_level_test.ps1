@@ -37,6 +37,13 @@
 #      Changes is on again afterwards.
 #   D  scale: 2,000 segments written three times each, and one long segment
 #      with hundreds of earlier revisions.
+#   H  Apply on the Reports tab when the target's tags are not the source's
+#      (#141): bold added by hand, a tag left by a fuzzy match, the source's
+#      tags never copied. The card's own check (ProofreadCorrection.Problem on
+#      the text ToProofreadText gives) and the write it then makes
+#      (WriteSegmentTarget with keepTargetTags), with Track Changes off and on;
+#      every refusal that must stay a refusal; update_segments unchanged.
+#      Not reached: ApplyCorrection itself (it needs the Reports panel).
 #   E  the other doors to the same code: find_and_replace and SuperSearch's
 #      Replace (SegmentWriteCheck.ProcessChecked with TargetTextReplace.Apply)
 #      on a segment that already carries tracked changes.
@@ -1219,6 +1226,171 @@ public static class WordLevelWriteTest
             "G5 a comment with Track Changes off: added, tracking never touched");
     }
 
+    // ── H: Apply on the Reports tab, target tags that are not the source's (#141) ──
+    static string[] Proof(FakeDocument d)
+    {
+        var pair = d.Pairs[0];
+        var args = new object[] { pair.Source, pair.Target, null, null };
+        T_("Core.SegmentTagHandler").GetMethod("ToProofreadText", Any).Invoke(null, args);
+        return new[] { (string)args[2], (string)args[3] };
+    }
+    static string Problem(string source, string target, string corrected)
+    {
+        return (string)T_("Core.ProofreadCorrection").GetMethod("Problem", Any).Invoke(null, new object[] { source, target, corrected });
+    }
+    static string TagDiff(FakeDocument d)
+    {
+        var pair = d.Pairs[0];
+        return (string)VP.GetMethod("DescribeTagIdMismatch", Any).Invoke(null, new object[] { pair.Source, pair.Target });
+    }
+    // The write Apply makes; returns its tag warning (null: the tags match the source).
+    static string ApplyWrite(FakeDocument d, string text, bool keepTargetTags = true)
+    {
+        var m = VP.GetMethod("WriteSegmentTarget", Any);
+        object written;
+        try { written = m.Invoke(Part(d), new object[] { d.Pairs[0], text, "Supervertaler", false, false, keepTargetTags }); }
+        catch (TargetInvocationException ex) { throw ex.InnerException; }
+        return (string)written.GetType().GetField("TagWarning", Any).GetValue(written);
+    }
+    // One correction, start to finish: checked as the card checks it, written, and read back.
+    static void ApplyCase(string name, bool track, Func<IAbstractMarkupData[]> source, Func<IAbstractMarkupData[]> target,
+        string expectTarget, string corrected, string expectMarkup, bool tagsMatchAfter)
+    {
+        var d = One("", target, source);
+        d.Editor.TrackChanges = track;
+        var shown = Proof(d);
+        var before = TagDiff(d);
+        var problem = Problem(shown[0], shown[1], corrected);
+        Check(shown[1] == expectTarget && problem == null,
+            name + ": shown as " + shown[1] + ", and the correction is accepted" + (problem == null ? "" : " (REFUSED: " + problem + ")"));
+        if (problem != null) return;
+        var warning = ApplyWrite(d, corrected);
+        var after = Proof(d);
+        bool tracked = Count(Tgt(d)) > 0;
+        Check(after[1] == corrected && (track ? Accept(Tgt(d)).Length > 0 : Mk(Tgt(d)) == expectMarkup),
+            name + ": written, and the segment now reads as the correction (" + Mk(Tgt(d)) + ")");
+        Check(tagsMatchAfter ? warning == null : (warning != null && warning == before),
+            name + ": " + (tagsMatchAfter ? "the tags now match the source, no warning"
+                                          : "the difference from the source is exactly the one it had before, so the card has nothing new to report"));
+        if (track)
+            Check(tracked && d.Editor.TrackChanges && Proof(d)[0] == shown[0],
+                name + ": recorded as a tracked change, Track Changes still on, source untouched");
+    }
+
+    static void ApplyTags()
+    {
+        Console.WriteLine("=== H: Apply on the Reports tab when the target's tags are not the source's (#141)");
+        // The three shapes of the report. Source tag pair 109; the translator made the words bold by hand.
+        Func<IAbstractMarkupData[]> srcPair = () => new IAbstractMarkupData[] { G("109", T("Acme pump")), T(" starts the cycle.") };
+        Func<IAbstractMarkupData[]> tgtBold = () => new IAbstractMarkupData[] { G("b1", T("Acme pomp")), T(" start de cyclus.") };
+        Func<IAbstractMarkupData[]> srcPlain = () => new IAbstractMarkupData[] { T("Mulching is avoided.") };
+        Func<IAbstractMarkupData[]> tgtLeftover = () => new IAbstractMarkupData[] { X("2240"), T("Mulchen is verboden.") };
+        Func<IAbstractMarkupData[]> srcTwo = () => new IAbstractMarkupData[] { G("1", T("Note")), T(" applies"), X("2"), T(".") };
+        Func<IAbstractMarkupData[]> tgtNone = () => new IAbstractMarkupData[] { T("Opmerking geldt.") };
+        // Both kinds at once: the source's pair kept, one stray tag inside it and one after it.
+        Func<IAbstractMarkupData[]> tgtMixed = () => new IAbstractMarkupData[] { G("109", T("Acme "), X("77"), T("pomp")), T(" start de cyclus."), G("b1", T("!")) };
+
+        foreach (var track in new[] { false, true })
+        {
+            string t = track ? "Track Changes on, " : "";
+            ApplyCase("H1 " + t + "bold added by hand", track, srcPair, tgtBold,
+                "<t2>Acme pomp</t2> start de cyclus.", "<t2>Acme-pomp</t2> start de cyclus.", "<gb1>Acme-pomp</gb1> start de cyclus.", false);
+            ApplyCase("H2 " + t + "a tag left by a fuzzy match", track, srcPlain, tgtLeftover,
+                "<t1/>Mulchen is verboden.", "<t1/>Mulchen wordt vermeden.", "<x2240/>Mulchen wordt vermeden.", false);
+            ApplyCase("H3 " + t + "the source's tags never copied", track, srcTwo, tgtNone,
+                "Opmerking geldt.", "Opmerking is van toepassing.", "Opmerking is van toepassing.", false);
+            ApplyCase("H4 " + t + "the source's pair kept, two stray tags as well", track, srcPair, tgtMixed,
+                "<t1>Acme <t2/>pomp</t1> start de cyclus.<t3>!</t3>", "<t1>Acme-<t2/>pomp</t1> begint de cyclus.<t3>!</t3>",
+                "<g109>Acme-<x77/>pomp</g109> begint de cyclus.<gb1>!</gb1>", false);
+            ApplyCase("H5 " + t + "a correction that takes the source's tags instead", track, srcPair, tgtBold,
+                "<t2>Acme pomp</t2> start de cyclus.", "<t1>Acme-pomp</t1> start de cyclus.", "<g109>Acme-pomp</g109> start de cyclus.", true);
+            ApplyCase("H6 " + t + "tags that match the source, as before", track, srcPair,
+                () => new IAbstractMarkupData[] { G("109", T("Acme pomp")), T(" start de cyclus.") },
+                "<t1>Acme pomp</t1> start de cyclus.", "<t1>Acme-pomp</t1> start de cyclus.", "<g109>Acme-pomp</g109> start de cyclus.", true);
+        }
+
+        // What must stay refused, in words for the card.
+        string S = "<t1>Acme pump</t1> starts the cycle.";
+        string Same = "<t1>Acme pomp</t1> start de cyclus.", Bold = "<t2>Acme pomp</t2> start de cyclus.";
+        var r = Problem(S, Same, "Acme-pomp start de cyclus.");
+        Check(r == "the correction is missing the source's <t1> tag.", "H7 tags match the source and the correction drops one: refused, worded as before (" + r + ")");
+        r = Problem(S, Same, "<t2>Acme-pomp</t2> start de cyclus.");
+        Check(r == "the correction has <t2>, which the source does not have.", "H8 tags match the source and the correction invents one: refused, worded as before (" + r + ")");
+        r = Problem(S, Bold, "Acme-pomp start de cyclus.");
+        Check(r == "the correction is missing the target's <t2> tag.",
+            "H9 the correction drops the translator's own tag without taking the source's: refused (" + r + ")");
+        r = Problem(S, Bold, "<t1>Acme</t1>-<t2>pomp</t2> start de cyclus.");
+        Check(r != null, "H10 a mixture of the source's tags and the target's: refused (" + r + ")");
+        r = Problem(S, Bold, "<t2>Acme</t2>-<t2>pomp</t2> start de cyclus.");
+        Check(r == "the correction has <t2> twice.", "H11 the target's own tag twice: refused (" + r + ")");
+        r = Problem(S, Bold, "<t2/>Acme-pomp start de cyclus.");
+        Check(r != null, "H12 the target's own pair written as a standalone tag: refused (" + r + ")");
+        r = Problem(S, Bold, "<t9>Acme-pomp</t9> start de cyclus.");
+        Check(r == "the correction has <t9>, which the target does not have.", "H13 a tag neither side has: refused (" + r + ")");
+        r = Problem(S, Bold, "<t2>Acme-pomp start de cyclus.");
+        Check(r != null, "H14 the target's own tag opened and never closed: refused (" + r + ")");
+        r = Problem(S, Bold, "");
+        Check(r == "the AI gave no corrected translation for it.", "H15 no correction at all: refused as before (" + r + ")");
+        r = Problem(S, "<t2>Acme pomp</t2>\nstart de cyclus.", "<t2>Acme-pomp</t2> start de cyclus.");
+        Check(r == "the correction does not keep the target's line breaks.", "H16 a lost line break is still refused when the tags are the target's own (" + r + ")");
+
+        // The other door is not opened: update_segments' markers come from the source.
+        var d = One("", tgtBold, srcPair);
+        d.Editor.TrackChanges = false;
+        ApplyWrite(d, "<t2>Acme-pomp</t2> start de cyclus.", keepTargetTags: false);
+        Check(Mk(Tgt(d)) == "Acme-pomp start de cyclus.",
+            "H17 without keepTargetTags (update_segments) a marker for a tag only the target has is still not written (" + Mk(Tgt(d)) + ")");
+
+        // A comment on the segment survives, with a stray tag inside it.
+        d = One("", () => new IAbstractMarkupData[] { Comment("Check the term.", G("b1", T("Acme pomp"))), T(" start de cyclus.") }, srcPair);
+        d.Editor.TrackChanges = false;
+        var shownC = Proof(d);
+        var pc = Problem(shownC[0], shownC[1], "<t2>Acme-pomp</t2> start de cyclus.");
+        if (pc == null) ApplyWrite(d, "<t2>Acme-pomp</t2> start de cyclus.");
+        Check(pc == null && Comments(Tgt(d)) == 1 && Proof(d)[1] == "<t2>Acme-pomp</t2> start de cyclus.",
+            "H18 a commented segment with a stray tag: corrected, comment kept (" + Mk(Tgt(d)) + ")");
+
+        // A write that cannot be built leaves the segment as it was: a source of tags only.
+        d = One("", () => new IAbstractMarkupData[] { X("5"), T("Acme") }, () => new IAbstractMarkupData[] { X("901") });
+        d.Editor.TrackChanges = false;
+        string beforeMk = Mk(Tgt(d)), thrown = null;
+        try { ApplyWrite(d, "<t2/>Acme Ltd"); } catch (Exception ex) { thrown = ex.Message; }
+        Check(thrown != null && Mk(Tgt(d)) == beforeMk,
+            "H19 a source of tags only, so new text cannot be built: the write fails, says so, and the target is untouched (" + thrown + ")");
+
+        // Scale: one segment with 300 stray tags, and 2,000 segments with one each.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        d = One("", () =>
+        {
+            var items = new List<IAbstractMarkupData>();
+            for (int i = 0; i < 300; i++) { items.Add(X("s" + i)); items.Add(T("Acme part " + i + " ")); }
+            return items.ToArray();
+        }, () => new IAbstractMarkupData[] { T("Acme parts list.") });
+        d.Editor.TrackChanges = false;
+        var big = Proof(d);
+        var bigFix = big[1].Replace("Acme part 150 ", "Acme-part 150 ");
+        var bigProblem = Problem(big[0], big[1], bigFix);
+        if (bigProblem == null) ApplyWrite(d, bigFix);
+        Check(bigProblem == null && Proof(d)[1] == bigFix && sw.Elapsed.TotalSeconds < 10,
+            "H20 one segment with 300 stray tags: corrected with every tag kept, in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s");
+        sw.Restart();
+        int good = 0;
+        for (int i = 0; i < 2000; i++)
+        {
+            int n = i;
+            var di = One("", () => new IAbstractMarkupData[] { G("b" + n, T("Acme pomp " + n)), T(" start.") },
+                             () => new IAbstractMarkupData[] { G("109", T("Acme pump " + n)), T(" starts.") });
+            di.Editor.TrackChanges = (i % 2) == 1;
+            var sh = Proof(di);
+            var fix = "<t2>Acme-pomp " + n + "</t2> start.";
+            if (Problem(sh[0], sh[1], fix) != null) continue;
+            ApplyWrite(di, fix);
+            if (Proof(di)[1] == fix) good++;
+        }
+        Check(good == 2000 && sw.Elapsed.TotalSeconds < 120,
+            "H21 2,000 segments with a stray tag each, half with Track Changes on: " + good + " corrected in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s");
+    }
+
     public static int Run(string pluginPath)
     {
         P = Assembly.LoadFrom(pluginPath);
@@ -1242,6 +1414,7 @@ public static class WordLevelWriteTest
         OtherDoors();
         Translations();
         Extras();
+        ApplyTags();
         Console.WriteLine(Pass + " passed, " + Fail + " failed");
         return Fail == 0 ? 0 : 1;
     }

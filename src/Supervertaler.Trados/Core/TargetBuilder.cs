@@ -47,8 +47,16 @@ namespace Supervertaler.Trados.Core
         /// refuse or warn. Only with <paramref name="semanticTagNames"/>: without
         /// it the text can only hold &lt;tN&gt;, and a "&lt;b&gt;" in it is text
         /// (Proofread apply) and stays text.</param>
+        /// <param name="keepTargetTags">Also read the markers of tags only the
+        /// TARGET has - numbered above the source's, as
+        /// <see cref="SegmentTagHandler.SerializeAlignedTo"/> shows them - and
+        /// clone those from the target as it stands. For Apply on the Reports tab
+        /// (#141): its text is the target's own, corrected, so a tag the
+        /// translator put there, or one a fuzzy match left, stays where it was
+        /// instead of the correction being refused. Never for update_segments,
+        /// whose markers come from the source.</param>
         public static bool FromText(ISegment target, ISegment source, string targetText, bool semanticTagNames,
-            List<string> removedMarkers = null)
+            List<string> removedMarkers = null, bool keepTargetTags = false)
         {
             if (target == null || source == null || targetText == null) return false;
 
@@ -67,6 +75,24 @@ namespace Supervertaler.Trados.Core
             // target's tag ids with the SOURCE's. See WriteSegmentTarget.
             var sourceSer = SegmentTagHandler.Serialize(source);
             var tagMap = sourceSer.TagMap ?? new Dictionary<int, TagInfo>();
+
+            if (keepTargetTags)
+            {
+                // Copies, taken now: the build below clears the target, and a tag
+                // must not be cloned from an item that has just been taken out.
+                var own = new Dictionary<int, TagInfo>();
+                SegmentTagHandler.SerializeAlignedTo(target, tagMap, own);
+                if (own.Count > 0)
+                {
+                    tagMap = new Dictionary<int, TagInfo>(tagMap);
+                    foreach (var kv in own)
+                        tagMap[kv.Key] = new TagInfo
+                        {
+                            TagType = kv.Value.TagType,
+                            OriginalMarkup = (IAbstractMarkupData)kv.Value.OriginalMarkup.Clone()
+                        };
+                }
+            }
 
             var resolved = targetText;
             if (semanticTagNames)

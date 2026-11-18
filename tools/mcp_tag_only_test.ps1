@@ -1177,7 +1177,7 @@ public static class TagOnlyTest
         var seg = Seg(d, "1");
         var gone = new List<string>();
         var fromText = T_("Core.TargetBuilder").GetMethod("FromText", Any);
-        bool built = (bool)fromText.Invoke(null, new object[] { seg.Target, seg.Source, "Gebruik het <b>-element en <br/>.", false, gone });
+        bool built = (bool)fromText.Invoke(null, new object[] { seg.Target, seg.Source, "Gebruik het <b>-element en <br/>.", false, gone, false });
         Check(built && Shape(seg.Target) == "\"Gebruik het <b>-element en <br/>.\"" && gone.Count == 0,
             "G without semantic names (Proofread apply): markers are text, nothing removed: " + Shape(seg.Target));
 

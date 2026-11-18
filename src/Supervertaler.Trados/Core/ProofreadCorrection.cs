@@ -97,15 +97,15 @@ namespace Supervertaler.Trados.Core
         /// <summary>
         /// Why <paramref name="corrected"/> cannot be written over
         /// <paramref name="target"/>, or null when it can. Both are in the
-        /// placeholders the proofreader was shown; <paramref name="source"/>
-        /// gives the tags the segment must end up with.
+        /// placeholders the proofreader was shown. The correction must carry
+        /// the tags of one of them: the source's, or the target's as it stands.
         /// </summary>
         public static string Problem(string source, string target, string corrected)
         {
             if (string.IsNullOrWhiteSpace(corrected))
                 return "the AI gave no corrected translation for it.";
 
-            var tags = TagProblem(source, corrected);
+            var tags = TagProblem(source, target, corrected);
             if (tags != null) return tags;
 
             // A soft return (LF), a hard one (CR) or an InDesign forced line break
@@ -124,21 +124,59 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>
         /// Null when <paramref name="corrected"/> carries exactly the source's
-        /// tags: every paired tag opened once and closed once, properly nested,
-        /// every standalone tag once, and no tag the source does not have.
-        /// Otherwise what is wrong, in words for the card. Stricter than the
-        /// rebuild, which makes the best of a malformed reply; a write the
-        /// translator asked for must not quietly drop a tag.
+        /// tags, or exactly the tags <paramref name="target"/> has now: every
+        /// paired tag opened once and closed once, properly nested, every
+        /// standalone tag once, and no other tag. Otherwise what is wrong, in
+        /// words for the card. Stricter than the rebuild, which makes the best of
+        /// a malformed reply; a write the translator asked for must not quietly
+        /// drop a tag.
+        ///
+        /// <para>Why the target's tags count (#141, 18 Nov 2026): until 208 only
+        /// the source's did. A target whose tags already differed from the
+        /// source's - bold added by hand, a tag left over from a fuzzy match,
+        /// the source's tags never copied - could then not be corrected at all:
+        /// a correction that changed one word and left the tags alone was
+        /// refused for tags it had not touched. The proofreader corrects the
+        /// wording; a correction that leaves the tags as the translator had them
+        /// makes nothing worse. The target is in the source's numbering
+        /// (<see cref="SegmentTagHandler.SerializeAlignedTo"/>), so a tag of its
+        /// own never shares a number with one of the source's.</para>
         /// </summary>
-        public static string TagProblem(string source, string corrected)
+        public static string TagProblem(string source, string target, string corrected)
         {
-            var expected = new Dictionary<int, bool>();   // tag number -> paired?
-            foreach (var t in SegmentTagHandler.Tokenize(source ?? ""))
+            var againstSource = TagProblemAgainst(source, corrected, "source");
+            if (againstSource == null) return null;
+
+            var sourceTags = TagsOf(source);
+            var targetTags = TagsOf(target);
+            bool targetDiffers = sourceTags.Count != targetTags.Count
+                || sourceTags.Any(kv => !targetTags.TryGetValue(kv.Key, out var paired) || paired != kv.Value);
+            if (!targetDiffers) return againstSource;
+
+            // Neither: said against the target, whose tags the correction was
+            // made from and should have kept.
+            return TagProblemAgainst(target, corrected, "target");
+        }
+
+        /// <summary>The tags of <paramref name="text"/>: number -> paired?</summary>
+        private static Dictionary<int, bool> TagsOf(string text)
+        {
+            var tags = new Dictionary<int, bool>();
+            foreach (var t in SegmentTagHandler.Tokenize(text ?? ""))
             {
-                if (t is SegmentTagHandler.TokenOpenTag o) expected[o.TagNumber] = true;
-                else if (t is SegmentTagHandler.TokenCloseTag c) expected[c.TagNumber] = true;
-                else if (t is SegmentTagHandler.TokenStandaloneTag s) expected[s.TagNumber] = false;
+                if (t is SegmentTagHandler.TokenOpenTag o) tags[o.TagNumber] = true;
+                else if (t is SegmentTagHandler.TokenCloseTag c) tags[c.TagNumber] = true;
+                else if (t is SegmentTagHandler.TokenStandaloneTag s) tags[s.TagNumber] = false;
             }
+            return tags;
+        }
+
+        /// <summary>Null when <paramref name="corrected"/> carries exactly the
+        /// tags of <paramref name="reference"/>; <paramref name="whose"/> names
+        /// it in the message ("source", "target").</summary>
+        private static string TagProblemAgainst(string reference, string corrected, string whose)
+        {
+            var expected = TagsOf(reference);
 
             var seen = new HashSet<int>();
             var open = new Stack<int>();
@@ -146,22 +184,22 @@ namespace Supervertaler.Trados.Core
             {
                 if (t is SegmentTagHandler.TokenOpenTag o)
                 {
-                    if (!expected.TryGetValue(o.TagNumber, out var paired)) return NotInSource("<t" + o.TagNumber + ">");
-                    if (!paired) return "the correction has <t" + o.TagNumber + "> where the source has the standalone tag <t" + o.TagNumber + "/>.";
+                    if (!expected.TryGetValue(o.TagNumber, out var paired)) return NotIn(whose, "<t" + o.TagNumber + ">");
+                    if (!paired) return "the correction has <t" + o.TagNumber + "> where the " + whose + " has the standalone tag <t" + o.TagNumber + "/>.";
                     if (!seen.Add(o.TagNumber)) return "the correction has <t" + o.TagNumber + "> twice.";
                     open.Push(o.TagNumber);
                 }
                 else if (t is SegmentTagHandler.TokenCloseTag c)
                 {
-                    if (!expected.ContainsKey(c.TagNumber)) return NotInSource("</t" + c.TagNumber + ">");
+                    if (!expected.ContainsKey(c.TagNumber)) return NotIn(whose, "</t" + c.TagNumber + ">");
                     if (open.Count == 0 || open.Peek() != c.TagNumber)
                         return "the correction's tags are not closed in the order they open (</t" + c.TagNumber + ">).";
                     open.Pop();
                 }
                 else if (t is SegmentTagHandler.TokenStandaloneTag s)
                 {
-                    if (!expected.TryGetValue(s.TagNumber, out var paired)) return NotInSource("<t" + s.TagNumber + "/>");
-                    if (paired) return "the correction has <t" + s.TagNumber + "/> where the source has the tag pair <t" + s.TagNumber + ">.";
+                    if (!expected.TryGetValue(s.TagNumber, out var paired)) return NotIn(whose, "<t" + s.TagNumber + "/>");
+                    if (paired) return "the correction has <t" + s.TagNumber + "/> where the " + whose + " has the tag pair <t" + s.TagNumber + ">.";
                     if (!seen.Add(s.TagNumber)) return "the correction has <t" + s.TagNumber + "/> twice.";
                 }
             }
@@ -172,7 +210,7 @@ namespace Supervertaler.Trados.Core
             var missing = expected.Keys.Where(n => !seen.Contains(n)).OrderBy(n => n)
                 .Select(n => expected[n] ? "<t" + n + ">" : "<t" + n + "/>").ToList();
             if (missing.Count > 0)
-                return "the correction is missing the source's " + string.Join(", ", missing)
+                return "the correction is missing the " + whose + "'s " + string.Join(", ", missing)
                        + (missing.Count == 1 ? " tag." : " tags.");
 
             return null;
@@ -210,8 +248,8 @@ namespace Supervertaler.Trados.Core
             return corrected;
         }
 
-        private static string NotInSource(string tag) =>
-            "the correction has " + tag + ", which the source does not have.";
+        private static string NotIn(string whose, string tag) =>
+            "the correction has " + tag + ", which the " + whose + " does not have.";
 
         private static int Count(string s, char c)
         {
