@@ -332,71 +332,9 @@ namespace Supervertaler.Trados
                 || !index.TryGetValue(KeyOf(issue.ParagraphUnitId, issue.SegmentId), out var pair) || pair == null)
                 return "the segment is not in the open document.";
 
-            if (pair.Properties?.IsLocked == true) return "the segment is locked.";
-
-            // Has the segment changed since it was checked? Compared as the
-            // proofreader was shown it - tags included - so the correction is
-            // written over exactly the text it was made from. This is also what
-            // stops a pair found under the same ids in another file of a merged
-            // document from being written: it does not read the same.
-            string sourceNow, targetNow;
-            try
-            {
-                SegmentTagHandler.ToProofreadText(pair.Source, pair.Target, out sourceNow, out targetNow);
-            }
-            catch (Exception ex)
-            {
-                return "the segment could not be read (" + ex.Message + ").";
-            }
-            if (!string.Equals(sourceNow, issue.SourceText, StringComparison.Ordinal)
-                || !string.Equals(targetNow, issue.TargetText, StringComparison.Ordinal))
-                return "the segment has changed since it was checked. Proofread it again, or fix it by hand.";
-
-            // The target's non-breaking spaces where the correction left the text
-            // alone. Normalise already does this for a new report; done again here
-            // for a report saved by an earlier build. Idempotent.
-            var text = ProofreadCorrection.KeepTargetCharacters(issue.TargetText, issue.CorrectedTarget);
-
-            // How the target's tags differ from the source's before the write
-            // (null: they match). A difference that is still exactly this one
-            // afterwards was there already and is not this write's doing (#141).
-            var tagsBefore = DescribeTagIdMismatch(pair.Source, pair.Target);
-
-            SegmentTargetWrite written;
-            try
-            {
-                written = WriteSegmentTarget(pair, text, "Supervertaler", semanticTagNames: false,
-                    keepTargetTags: true);
-            }
-            catch (Exception ex)
-            {
-                return "Studio did not accept the change (" + ex.Message + ").";
-            }
-
-            // A fixed segment is set to Draft: someone has to look at it again.
-            // Not when the write left the text as it was (a change the accepted
-            // view does not show), as update_segments does.
-            if (!written.UnchangedText)
-            {
-                try
-                {
-                    pair.Properties.ConfirmationLevel = Sdl.Core.Globalization.ConfirmationLevel.Draft;
-                    _activeDocument.UpdateSegmentPairProperties(pair, pair.Properties);
-                }
-                catch (Exception ex)
-                {
-                    note = "its status could not be set to Draft (" + ex.Message + ").";
-                }
-            }
-
-            // The tags were checked before the write, so a difference from the
-            // source that this write made should never be seen; if it is,
-            // Studio's Tag Verifier will flag the segment and the card must not
-            // vanish as if all were well. One the target already had, and still
-            // has unchanged, is the translator's and stays theirs: the Tag
-            // Verifier flagged it before and still does.
-            if (written.TagWarning != null && !string.Equals(written.TagWarning, tagsBefore, StringComparison.Ordinal))
-                note = (note == null ? "" : note + " ") + written.TagWarning;
+            var refusal = WriteCorrectedTarget(_activeDocument, pair, issue.SourceText, issue.TargetText,
+                issue.CorrectedTarget, out note);
+            if (refusal != null) return refusal;
 
             // With "Also add issues as Trados comments" ticked, the finding goes on
             // the segment with its fix, so a reviser accepting or rejecting the
@@ -415,6 +353,92 @@ namespace Supervertaler.Trados
             // run_verification reads the saved files; say the document has writes
             // of ours not saved yet, as update_segments does.
             _bridgeUnsavedWritesDoc = _activeDocument;
+            return null;
+        }
+
+        /// <summary>
+        /// Writes a corrected target over the target it was made from: the part
+        /// of Apply that needs no report and no pane, shared by Apply on the
+        /// Reports tab (<see cref="ApplyCorrection"/>) and Proofread active
+        /// segment, so a correction is written one way whichever door it comes
+        /// in by. <paramref name="sourceText"/> and <paramref name="targetText"/>
+        /// are the segment as the proofreader was shown it
+        /// (<see cref="SegmentTagHandler.ToProofreadText"/>). Returns null when
+        /// it was written, otherwise why not - and nothing has been changed.
+        /// <paramref name="note"/> is set when it was written but something
+        /// needs a look. The caller has checked the correction itself
+        /// (<see cref="ProofreadCorrection.Problem"/>). UI thread.
+        /// </summary>
+        private static string WriteCorrectedTarget(IStudioDocument doc, ISegmentPair pair,
+            string sourceText, string targetText, string corrected, out string note)
+        {
+            note = null;
+            if (pair.Properties?.IsLocked == true) return "the segment is locked.";
+
+            // Has the segment changed since it was checked? Compared as the
+            // proofreader was shown it - tags included - so the correction is
+            // written over exactly the text it was made from. This is also what
+            // stops a pair found under the same ids in another file of a merged
+            // document from being written: it does not read the same.
+            string sourceNow, targetNow;
+            try
+            {
+                SegmentTagHandler.ToProofreadText(pair.Source, pair.Target, out sourceNow, out targetNow);
+            }
+            catch (Exception ex)
+            {
+                return "the segment could not be read (" + ex.Message + ").";
+            }
+            if (!string.Equals(sourceNow, sourceText, StringComparison.Ordinal)
+                || !string.Equals(targetNow, targetText, StringComparison.Ordinal))
+                return "the segment has changed since it was checked. Proofread it again, or fix it by hand.";
+
+            // The target's non-breaking spaces where the correction left the text
+            // alone. Normalise already does this for a new report; done again here
+            // for a report saved by an earlier build. Idempotent.
+            var text = ProofreadCorrection.KeepTargetCharacters(targetText, corrected);
+
+            // How the target's tags differ from the source's before the write
+            // (null: they match). A difference that is still exactly this one
+            // afterwards was there already and is not this write's doing (#141).
+            var tagsBefore = DescribeTagIdMismatch(pair.Source, pair.Target);
+
+            SegmentTargetWrite written;
+            try
+            {
+                written = WriteSegmentTargetIn(doc, pair, text, "Supervertaler", semanticTagNames: false,
+                    keepTargetTags: true);
+            }
+            catch (Exception ex)
+            {
+                return "Studio did not accept the change (" + ex.Message + ").";
+            }
+
+            // A fixed segment is set to Draft: someone has to look at it again.
+            // Not when the write left the text as it was (a change the accepted
+            // view does not show), as update_segments does.
+            if (!written.UnchangedText)
+            {
+                try
+                {
+                    pair.Properties.ConfirmationLevel = Sdl.Core.Globalization.ConfirmationLevel.Draft;
+                    doc.UpdateSegmentPairProperties(pair, pair.Properties);
+                }
+                catch (Exception ex)
+                {
+                    note = "its status could not be set to Draft (" + ex.Message + ").";
+                }
+            }
+
+            // The tags were checked before the write, so a difference from the
+            // source that this write made should never be seen; if it is,
+            // Studio's Tag Verifier will flag the segment and the card must not
+            // vanish as if all were well. One the target already had, and still
+            // has unchanged, is the translator's and stays theirs: the Tag
+            // Verifier flagged it before and still does.
+            if (written.TagWarning != null && !string.Equals(written.TagWarning, tagsBefore, StringComparison.Ordinal))
+                note = (note == null ? "" : note + " ") + written.TagWarning;
+
             return null;
         }
 

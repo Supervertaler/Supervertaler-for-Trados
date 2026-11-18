@@ -221,6 +221,7 @@ namespace Supervertaler.Trados.Controls
                 ("Alt+T",         "Translate active segment"),
                 ("Ctrl+Alt+G",     "AutoTagger (place inline tags)"),
                 ("Ctrl+Alt+F",     "FuzzyFixer (repair fuzzy match with AI)"),
+                ("Ctrl+Alt+P",     "Proofread active segment"),
                 // Was Ctrl (tap) until the tap was retired: a bare Ctrl press
                 // is indistinguishable from any other program's Ctrl chord
                 // once the middle key is consumed elsewhere, so the popup

@@ -103,6 +103,19 @@ namespace Supervertaler.Trados.Core
             return sb.ToString().TrimEnd('\n');
         }
 
+        /// <summary>
+        /// The same segments without the heading and the sentence written for a
+        /// repair, for a request that introduces them in its own words (Proofread
+        /// active segment). Null when there are none.
+        /// </summary>
+        public static string NeighbourLines(IList<Neighbour> before, IList<Neighbour> after)
+        {
+            var sb = new StringBuilder();
+            Append(sb, "Before this segment:", before);
+            Append(sb, "After this segment:", after);
+            return sb.Length == 0 ? null : sb.ToString().TrimEnd('\n');
+        }
+
         private static void Append(StringBuilder sb, string heading, IList<Neighbour> list)
         {
             if (list == null || list.Count == 0) return;

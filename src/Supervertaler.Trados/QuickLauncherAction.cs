@@ -217,7 +217,7 @@ namespace Supervertaler.Trados
                 if (folderTree.Children.Count > 0)
                     menu.Items.Add(new ToolStripSeparator());
 
-                foreach (var p in folderTree.Prompts)
+                foreach (var p in QuickLauncherMenu.WithoutTwins(folderTree.Prompts))
                 {
                     slotPositions.TryGetValue(p.FilePath ?? "", out var slotNum);
                     menu.Items.Add(CreatePromptMenuItem(p, slotNum, hasCustomSlots, settings,
@@ -248,7 +248,7 @@ namespace Supervertaler.Trados
             string projectName, string documentName, int surroundingCount)
         {
             // Add prompts in this folder first
-            foreach (var p in folder.Prompts)
+            foreach (var p in QuickLauncherMenu.WithoutTwins(folder.Prompts))
             {
                 slotPositions.TryGetValue(p.FilePath ?? "", out var slotNum);
                 items.Add(CreatePromptMenuItem(p, slotNum, hasCustomSlots, settings,
@@ -327,7 +327,7 @@ namespace Supervertaler.Trados
                 parent.Add(new ToolStripSeparator());
 
             // Add prompts in this folder
-            foreach (var p in folder.Prompts)
+            foreach (var p in QuickLauncherMenu.WithoutTwins(folder.Prompts))
             {
                 slotPositions.TryGetValue(p.FilePath ?? "", out var slotNum);
                 parent.Add(CreatePromptMenuItem(p, slotNum, hasCustomSlots, settings,

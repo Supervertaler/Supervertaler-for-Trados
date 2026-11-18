@@ -15,6 +15,12 @@ namespace Supervertaler.Trados.Core
     {
         public int SegmentIndex { get; set; }
         public ProofreadingIssue Issue { get; set; }
+
+        /// <summary>The AI's reply held no verdict for this segment, so
+        /// <see cref="Issue"/> reads OK by default and not because the AI said
+        /// so. A run over many segments counts it as OK and says how many there
+        /// were; a check of one segment must not call that "no issues".</summary>
+        public bool NoVerdict { get; set; }
     }
 
     public class ProofreadCompletedEventArgs : EventArgs
@@ -43,6 +49,11 @@ namespace Supervertaler.Trados.Core
         /// This method is async and should be called on a background thread
         /// or via Task.Run.
         /// </summary>
+        /// <param name="requestLead">Text that opens every request's user prompt
+        /// (Proofread active segment: the terms and the segments around the one
+        /// segment it checks), so that the system prompt stays the same bytes
+        /// from one use to the next. Null for a run from the Batch tab, whose
+        /// requests read as before.</param>
         public async Task ProofreadAsync(
             List<BatchSegment> segments,
             string sourceLang,
@@ -54,7 +65,8 @@ namespace Supervertaler.Trados.Core
             string customPromptContent = null,
             List<(string source, string target)> documentSegments = null,
             string kbContext = null,
-            bool targetOnly = false)
+            bool targetOnly = false,
+            string requestLead = null)
         {
             var sw = Stopwatch.StartNew();
             int totalChecked = 0;
@@ -142,7 +154,8 @@ namespace Supervertaler.Trados.Core
                     {
                         var batchSw = Stopwatch.StartNew();
 
-                        var userPrompt = UserPromptFor(segments, startIdx, endIdx, targetOnly);
+                        var userPrompt = BatchTranslator.WithLead(requestLead,
+                            UserPromptFor(segments, startIdx, endIdx, targetOnly));
 
                         // Call LLM. enablePromptCaching: the system prompt (instructions + termbase +
                         // memory bank + bilingual document context) is byte-stable across all batches
@@ -191,6 +204,7 @@ namespace Supervertaler.Trados.Core
                                 SegmentId = segId
                             };
 
+                            bool noVerdict = false;
                             if (resultMap.TryGetValue(number, out var result))
                             {
                                 proofResult.IsOk = result.isOk;
@@ -207,13 +221,15 @@ namespace Supervertaler.Trados.Core
                             {
                                 // No result from AI – mark as OK by default
                                 proofResult.IsOk = true;
+                                noVerdict = true;
                                 batchUnread++;
                             }
 
                             SegmentProofread?.Invoke(this, new ProofreadSegmentEventArgs
                             {
                                 SegmentIndex = segments[i].Index,
-                                Issue = proofResult
+                                Issue = proofResult,
+                                NoVerdict = noVerdict
                             });
 
                             if (proofResult.IsOk)

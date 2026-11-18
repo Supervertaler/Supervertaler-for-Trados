@@ -2291,6 +2291,17 @@ namespace Supervertaler.Trados
         /// <see cref="Core.TargetBuilder.FromText"/>.</param>
         private SegmentTargetWrite WriteSegmentTarget(ISegmentPair pair, string targetText,
             string undoName, bool semanticTagNames, bool copySource = false, bool keepTargetTags = false)
+            => WriteSegmentTargetIn(_activeDocument, pair, targetText, undoName, semanticTagNames, copySource, keepTargetTags);
+
+        /// <summary>
+        /// <see cref="WriteSegmentTarget"/> for any document, with or without
+        /// this pane: the write itself, which needs nothing of the pane but the
+        /// document. Proofread active segment writes through it for the document
+        /// the EditorController gives it. Its own name, not an overload: the
+        /// test harnesses find these by name.
+        /// </summary>
+        private static SegmentTargetWrite WriteSegmentTargetIn(IStudioDocument doc, ISegmentPair pair, string targetText,
+            string undoName, bool semanticTagNames, bool copySource = false, bool keepTargetTags = false)
         {
             var written = new SegmentTargetWrite();
             Core.TrackingSuspension suspension = null;
@@ -2300,13 +2311,13 @@ namespace Supervertaler.Trados
                 // #138: with Track Changes on, write only what changed. Read
                 // per segment rather than once per call, because a batch pumps
                 // messages and the translator can toggle it mid-batch.
-                bool trackWords = Core.TrackingSuspension.IsTracking(_activeDocument) == true;
+                bool trackWords = Core.TrackingSuspension.IsTracking(doc) == true;
 
                 // Markers the build takes out instead of writing (FromText); the
                 // caller reports them, so none is lost unannounced.
                 var removedMarkers = new List<string>();
 
-                _activeDocument.ProcessSegmentPair(pair, undoName,
+                doc.ProcessSegmentPair(pair, undoName,
                     (sp, cancel) =>
                     {
                         // The target as it stands, taken before anything below
@@ -2389,7 +2400,7 @@ namespace Supervertaler.Trados
                         // its whole-segment change as it always has.
                         if (targetBefore != null)
                         {
-                            suspension = Core.TrackedWrite.Rewrite(_activeDocument, sp.Target, targetBefore, tagRevisionsBefore,
+                            suspension = Core.TrackedWrite.Rewrite(doc, sp.Target, targetBefore, tagRevisionsBefore,
                                 out var trackedNote, out var revisionMode, out var tagsReplaced);
                             written.TrackedNote = trackedNote;
                             written.RevisionMode = revisionMode;
@@ -2436,17 +2447,17 @@ namespace Supervertaler.Trados
                 // EditCapture, which is told about a proposal only once it is in
                 // the segment. It used to be told from inside the edit, so a write
                 // Studio declined was still recorded as one.
-                var live = Core.SegmentWriteCheck.ReadLivePair(_activeDocument, pair);
+                var live = Core.SegmentWriteCheck.ReadLivePair(doc, pair);
                 if (!written.UnchangedText)
                 {
-                    var declined = Core.SegmentWriteCheck.Declined(_activeDocument, live?.Target,
+                    var declined = Core.SegmentWriteCheck.Declined(doc, live?.Target,
                         written.AcceptedAfter, written.ShapeBefore, written.ShapeAfter, trackWords);
                     if (declined != null) throw new Core.SegmentWriteDeclinedException(declined);
                     // Labelled as edited by hand, and pair with it: the caller sets
                     // the status through pair's properties next.
-                    Core.SegmentOrigin.MarkEdited(_activeDocument, pair, levelBefore);
+                    Core.SegmentOrigin.MarkEdited(doc, pair, levelBefore);
                 }
-                if (live != null) Core.EditCapture.CaptureController.NoteProposal(live, _activeDocument);
+                if (live != null) Core.EditCapture.CaptureController.NoteProposal(live, doc);
             }
             finally
             {

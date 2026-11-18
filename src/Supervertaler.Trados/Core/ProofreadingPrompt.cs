@@ -96,42 +96,7 @@ namespace Supervertaler.Trados.Core
             {
                 sb.AppendLine();
                 sb.AppendLine();
-                sb.AppendLine("# TERMBASE");
-                sb.AppendLine();
-                sb.AppendLine("Check that these approved terms are used correctly in the translations:");
-                sb.AppendLine();
-                foreach (var term in terms)
-                {
-                    if (string.IsNullOrEmpty(term.SourceTerm) || string.IsNullOrEmpty(term.TargetTerm))
-                        continue;
-
-                    if (term.Forbidden)
-                        sb.AppendLine("- " + term.SourceTerm + " \u2192 \u26A0\uFE0F DO NOT USE: " + term.TargetTerm);
-                    else if (term.IsNonTranslatable)
-                        sb.AppendLine("- " + term.SourceTerm + " \u2192 " + term.TargetTerm + " (do not translate)");
-                    else
-                        sb.AppendLine("- " + term.SourceTerm + " \u2192 " + term.TargetTerm);
-
-                    // Include term metadata (domain, definition, notes)
-                    if (includeTermMetadata)
-                    {
-                        if (!string.IsNullOrWhiteSpace(term.Domain))
-                            sb.Append("  Domain: ").AppendLine(term.Domain);
-                        if (!string.IsNullOrWhiteSpace(term.Definition))
-                            sb.Append("  Definition: ").AppendLine(term.Definition);
-                        if (!string.IsNullOrWhiteSpace(term.Notes))
-                            sb.Append("  Notes: ").AppendLine(term.Notes);
-                    }
-
-                    // Pipe-separated variants are expanded rather than emitted raw \u2013
-                    // see the matching block in TranslationPrompt for the rationale.
-                    // All source spellings are listed so the proofreader recognises
-                    // each of them; one canonical target form is named as correct.
-                    var srcAbbrVariants = term.GetSourceAbbreviationVariants();
-                    var primaryTgtAbbr = term.PrimaryTargetAbbreviation;
-                    if (srcAbbrVariants.Length > 0 && !string.IsNullOrEmpty(primaryTgtAbbr))
-                        sb.AppendLine("- " + string.Join(", ", srcAbbrVariants) + " \u2192 " + primaryTgtAbbr + " (abbreviation of: " + term.SourceTerm + ")");
-                }
+                AppendTermbase(sb, terms, includeTermMetadata);
             }
 
             // Custom prompt
@@ -192,6 +157,62 @@ namespace Supervertaler.Trados.Core
             sb.Append(OutputContract.ProofreadText);
 
             return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// The # TERMBASE section on its own, for a request that carries its terms
+        /// in the user prompt (Proofread active segment: the terms differ from one
+        /// segment to the next, and in the system prompt they would change it, and
+        /// with it everything the provider's prompt cache holds after them, the
+        /// memory bank included). The same text <see cref="BuildSystemPrompt"/>
+        /// writes. Null when there are no terms.
+        /// </summary>
+        internal static string TermbaseBlock(List<TermEntry> terms, bool includeTermMetadata = true)
+        {
+            if (terms == null || terms.Count == 0) return null;
+            var sb = new StringBuilder(1024);
+            AppendTermbase(sb, terms, includeTermMetadata);
+            return sb.ToString().TrimEnd();
+        }
+
+        private static void AppendTermbase(StringBuilder sb, List<TermEntry> terms, bool includeTermMetadata)
+        {
+            sb.AppendLine("# TERMBASE");
+            sb.AppendLine();
+            sb.AppendLine("Check that these approved terms are used correctly in the translations:");
+            sb.AppendLine();
+            foreach (var term in terms)
+            {
+                if (string.IsNullOrEmpty(term.SourceTerm) || string.IsNullOrEmpty(term.TargetTerm))
+                    continue;
+
+                if (term.Forbidden)
+                    sb.AppendLine("- " + term.SourceTerm + " \u2192 \u26A0\uFE0F DO NOT USE: " + term.TargetTerm);
+                else if (term.IsNonTranslatable)
+                    sb.AppendLine("- " + term.SourceTerm + " \u2192 " + term.TargetTerm + " (do not translate)");
+                else
+                    sb.AppendLine("- " + term.SourceTerm + " \u2192 " + term.TargetTerm);
+
+                // Include term metadata (domain, definition, notes)
+                if (includeTermMetadata)
+                {
+                    if (!string.IsNullOrWhiteSpace(term.Domain))
+                        sb.Append("  Domain: ").AppendLine(term.Domain);
+                    if (!string.IsNullOrWhiteSpace(term.Definition))
+                        sb.Append("  Definition: ").AppendLine(term.Definition);
+                    if (!string.IsNullOrWhiteSpace(term.Notes))
+                        sb.Append("  Notes: ").AppendLine(term.Notes);
+                }
+
+                // Pipe-separated variants are expanded rather than emitted raw \u2013
+                // see the matching block in TranslationPrompt for the rationale.
+                // All source spellings are listed so the proofreader recognises
+                // each of them; one canonical target form is named as correct.
+                var srcAbbrVariants = term.GetSourceAbbreviationVariants();
+                var primaryTgtAbbr = term.PrimaryTargetAbbreviation;
+                if (srcAbbrVariants.Length > 0 && !string.IsNullOrEmpty(primaryTgtAbbr))
+                    sb.AppendLine("- " + string.Join(", ", srcAbbrVariants) + " \u2192 " + primaryTgtAbbr + " (abbreviation of: " + term.SourceTerm + ")");
+            }
         }
 
         /// <summary>

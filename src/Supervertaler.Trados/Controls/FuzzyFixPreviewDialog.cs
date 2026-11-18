@@ -21,6 +21,11 @@ namespace Supervertaler.Trados.Controls
     /// thread and reports through <see cref="ShowStatus"/>,
     /// <see cref="ShowResult"/> and <see cref="ShowProblem"/>, each safe from any
     /// thread and a no-op once the window has closed.</para>
+    ///
+    /// <para>Proofread active segment uses the same window under its own title
+    /// and help page, and reports through <see cref="ShowReview"/>: what the AI
+    /// found, in words, and under it the correction as the same red and green
+    /// changes.</para>
     /// </summary>
     internal sealed class FuzzyFixPreviewDialog : Form
     {
@@ -29,6 +34,8 @@ namespace Supervertaler.Trados.Controls
 
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
         private readonly Action<FuzzyFixPreviewDialog> _start;
+        private readonly string _title;
+        private readonly string _helpTopic;
         private Label _header;
         private RichTextBox _text;
         private Label _note;
@@ -46,12 +53,22 @@ namespace Supervertaler.Trados.Controls
         /// <param name="start">Called once, on the UI thread, when the window is
         /// on screen: starts the background work.</param>
         public FuzzyFixPreviewDialog(string segmentLabel, string note, Action<FuzzyFixPreviewDialog> start)
+            : this(FuzzyFixer.Title, HelpSystem.Topics.FuzzyFixer, segmentLabel, note, start)
         {
+        }
+
+        /// <summary>The same window for another feature: its name in the title
+        /// bar and in "could not start", and the help page ? and F1 open.</summary>
+        public FuzzyFixPreviewDialog(string title, string helpTopic, string segmentLabel, string note,
+            Action<FuzzyFixPreviewDialog> start)
+        {
+            _title = title;
+            _helpTopic = helpTopic;
             _start = start;
             _token = _cts.Token;
             Icon =IconHelper.AppIcon;
             AutoScaleMode = AutoScaleMode.Dpi;
-            Text = FuzzyFixer.Title + (string.IsNullOrWhiteSpace(segmentLabel) ? "" : " – " + segmentLabel);
+            Text = _title + (string.IsNullOrWhiteSpace(segmentLabel) ? "" : " – " + segmentLabel);
             Font = new Font("Segoe UI", 9f);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -59,12 +76,12 @@ namespace Supervertaler.Trados.Controls
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             // The title-bar ? (shown because there is no minimise or maximise box)
-            // and F1 open the FuzzyFixer help page, as the other dialogs do.
+            // and F1 open the feature's help page, as the other dialogs do.
             HelpButton = true;
             HelpButtonClicked += (s, e) =>
             {
                 e.Cancel = true;   // no ? cursor
-                HelpSystem.OpenHelp(HelpSystem.Topics.FuzzyFixer);
+                HelpSystem.OpenHelp(_helpTopic);
             };
 
             // Absolute positions, no Dock panels: those misbehave in Trados's host.
@@ -123,7 +140,7 @@ namespace Supervertaler.Trados.Controls
             base.OnShown(e);
             _discard.Focus();
             try { _start?.Invoke(this); }
-            catch (Exception ex) { ShowProblem("FuzzyFixer could not start: " + ex.Message); }
+            catch (Exception ex) { ShowProblem(_title + " could not start: " + ex.Message); }
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -158,7 +175,7 @@ namespace Supervertaler.Trados.Controls
             }
             if (keyData == Keys.F1)
             {
-                HelpSystem.OpenHelp(HelpSystem.Topics.FuzzyFixer);
+                HelpSystem.OpenHelp(_helpTopic);
                 return true;
             }
             if (keyData == Keys.Escape)
@@ -194,6 +211,45 @@ namespace Supervertaler.Trados.Controls
             });
         }
 
+        /// <summary>
+        /// What a check of the segment found (Proofread active segment).
+        /// <paramref name="findings"/> is plain text of any length: it goes in
+        /// the text box, which scrolls, and not in the header, which holds three
+        /// lines. With a <paramref name="correction"/> its changes follow under
+        /// the findings and Enter writes it; with none, only closing is left.
+        /// </summary>
+        public void ShowReview(string header, string findings, List<TokenDiff.Piece> correction)
+        {
+            Post(() =>
+            {
+                _header.Text = header;
+                _text.Clear();
+                if (!string.IsNullOrEmpty(findings))
+                {
+                    _text.SelectionColor = _text.ForeColor;
+                    _text.SelectionFont = _text.Font;
+                    _text.AppendText(findings.TrimEnd() + (correction != null ? "\n\n" : ""));
+                }
+                if (correction != null) Append(correction);
+                _text.SelectionStart = 0;
+                _text.SelectionLength = 0;
+                _text.ScrollToCaret();
+
+                _write.Enabled = correction != null;
+                if (correction != null)
+                {
+                    _discard.Text = "&Discard";
+                    AcceptButton = _write;
+                    _write.Focus();
+                }
+                else
+                {
+                    _discard.Text = "Close";
+                    _discard.Focus();
+                }
+            });
+        }
+
         /// <summary>Nothing to write, and why. Only closing is left.</summary>
         public void ShowProblem(string message)
         {
@@ -212,6 +268,14 @@ namespace Supervertaler.Trados.Controls
         {
             _text.Clear();
             if (pieces == null) return;
+            Append(pieces);
+            _text.SelectionStart = 0;
+            _text.SelectionLength = 0;
+        }
+
+        /// <summary>Adds the changes at the end of the text box: removed words struck through in red, added words underlined in green.</summary>
+        private void Append(List<TokenDiff.Piece> pieces)
+        {
             using (var struck = new Font(_text.Font, FontStyle.Strikeout))
             using (var underlined = new Font(_text.Font, FontStyle.Underline))
             {
@@ -237,8 +301,6 @@ namespace Supervertaler.Trados.Controls
                     _text.AppendText(p.Text);
                 }
             }
-            _text.SelectionStart = 0;
-            _text.SelectionLength = 0;
         }
 
         /// <summary>Runs <paramref name="action"/> on the UI thread if the window is still open; otherwise drops it.</summary>
