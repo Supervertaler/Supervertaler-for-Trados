@@ -9,7 +9,7 @@
 > (`17.20.199`), with the same tail; headings name only the 2024 and 2026
 > numbers, and the website's changelog page adds the 2022 one.
 
-## [18.20.208 / 19.20.208] – Unreleased
+## [18.20.208 / 19.20.208] – 2026-11-18
 
 ### Added
 - ★ **FuzzyFixer: the AI repairs a fuzzy match for you (Ctrl+Alt+F).** In the Editor, press **Ctrl+Alt+F** or right-click and choose **FuzzyFixer**. The AI changes the best match below 100% from the translation memories your project looks things up in, only where your segment differs from it, and a window shows what it changed. **Enter** writes the repair as a draft; **Escape** discards it. Each repair is one AI request.
