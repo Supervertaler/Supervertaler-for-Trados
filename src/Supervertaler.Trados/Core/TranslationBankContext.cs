@@ -203,7 +203,7 @@ namespace Supervertaler.Trados.Core
                     var chooserName = ai == null ? null
                         : (ai.SelectedProvider == LlmModels.ProviderCustomOpenAi
                             ? ai.GetActiveCustomProfile()?.Model
-                            : ai.GetSelectedModel());
+                            : ai.GetModelFor(AiTask.Light));
                     var label = (projectName ?? "this project") + ", " + (fileName ?? "this document")
                         + (reader.VaultExists
                             ? ", bank '" + bankName + "'"

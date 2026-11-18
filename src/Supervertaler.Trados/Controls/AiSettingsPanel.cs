@@ -27,6 +27,15 @@ namespace Supervertaler.Trados.Controls
         // Provider + Model
         private ComboBox _cmbProvider;
         private ComboBox _cmbModel;
+        // A model per kind of task (20.209, docs/design/model-per-task.md): the
+        // lists above and below "Translation", which is _cmbModel.
+        private ComboBox _cmbLightModel;
+        private ComboBox _cmbPromptModel;
+        private bool _fillingTaskModels;
+        // "provider|task" -> the model id chosen in this dialog ("" = same as
+        // Translation), for every provider, so switching provider and back keeps it.
+        private readonly Dictionary<string, string> _taskChoices =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private Button _btnFetchModels;   // #106: asks the provider for its current list
         private CheckBox _chkShowAllModels; // #106: advanced mode - the whole fetched list
         // The fetched lists as of this dialog session - loaded from settings, updated
@@ -337,7 +346,25 @@ namespace Supervertaler.Trados.Controls
             _cmbProvider.SelectedIndexChanged += OnProviderChanged;
             Row(root, ref row, "Provider:", _cmbProvider);
 
+            // Three lists, in order of how powerful a model the work needs
+            // (Michael's layout, 18 Nov 2026): Light tasks, Translation, AutoPrompt.
+            _cmbLightModel = FillCombo();
+            _cmbLightModel.SelectedIndexChanged += (s, e) => OnTaskModelChanged(_cmbLightModel, AiTask.Light);
+            var ttLight = new ToolTip();
+            ttLight.SetToolTip(_cmbLightModel,
+                "The model for small, mechanical requests: FuzzyFixer, AutoTagger, Add term with\r\n" +
+                "abbreviation, choosing articles from a large memory bank, and AutoPrompt's two short\r\n" +
+                "helper questions. A small model does these as well as a large one, for less.\r\n" +
+                "\"Same as Translation\" uses the model below.");
+            Row(root, ref row, "Light tasks:", _cmbLightModel);
+
             _cmbModel = FillCombo();
+            _cmbModel.SelectedIndexChanged += (s, e) => RefreshSameAsEntries();
+            var ttTranslation = new ToolTip();
+            ttTranslation.SetToolTip(_cmbModel,
+                "The model for Batch Translate, Translate active segment (Alt+T), Chat, QuickLauncher,\r\n" +
+                "AI Proofreader and FigureLens. The model menus on the Batch Operations tab and under\r\n" +
+                "the chat change this one.");
             // #106: the dropdown and a Models... button side by side. The button asks
             // the provider for its own list, so a model released after this build
             // can be picked here rather than typed into the Model ID box below.
@@ -374,7 +401,16 @@ namespace Supervertaler.Trados.Controls
             modelHost.Controls.Add(_cmbModel, 0, 0);
             modelHost.Controls.Add(_btnFetchModels, 1, 0);
             modelHost.Controls.Add(_chkShowAllModels, 2, 0);
-            Row(root, ref row, "Model:", modelHost);
+            Row(root, ref row, "Translation:", modelHost);
+
+            _cmbPromptModel = FillCombo();
+            _cmbPromptModel.SelectedIndexChanged += (s, e) => OnTaskModelChanged(_cmbPromptModel, AiTask.PromptWriting);
+            var ttPrompt = new ToolTip();
+            ttPrompt.SetToolTip(_cmbPromptModel,
+                "The model AutoPrompt writes your project prompt with. It reads the whole document\r\n" +
+                "once, and every segment is then translated with what it wrote, so a strong model\r\n" +
+                "pays here. \"Same as Translation\" uses the model above.");
+            Row(root, ref row, "AutoPrompt:", _cmbPromptModel);
 
             var lnkViewModels = new LinkLabel
             {
@@ -395,12 +431,13 @@ namespace Supervertaler.Trados.Controls
             ttCustomModel.SetToolTip(_txtCustomModelId,
                 "Enter an exact model ID to use a model that isn't in the dropdown " +
                 "(e.g. a new release, a preview model, or an OpenRouter router such " +
-                "as \"openrouter/free\"). Leave blank to use the model selected above.");
+                "as \"openrouter/free\"). Leave blank to use the model selected under Translation.");
+            _txtCustomModelId.TextChanged += (s, e) => RefreshSameAsEntries();
             Row(root, ref row, "Model ID:", _txtCustomModelId);
 
             var lblCustomModelHint = new Label
             {
-                Text = "(optional – overrides the dropdown above)",
+                Text = "(optional – overrides the Translation list above)",
                 AutoSize = true,
                 ForeColor = Color.FromArgb(140, 140, 140),
                 Font = HintFont(),
@@ -984,6 +1021,15 @@ namespace Supervertaler.Trados.Controls
             _providerApiKeys[LlmModels.ProviderCustomOpenAi] = keys.CustomOpenAi ?? "";
             _providerApiKeys[LlmModels.ProviderOllama] = ""; // Ollama doesn't use API keys
 
+            // The models chosen per task, for every provider (20.209).
+            _taskChoices.Clear();
+            foreach (var entry in settings.TaskModels ?? new List<TaskModelEntry>())
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.Provider)) continue;
+                if (entry.Task == "light") _taskChoices[ChoiceKey(entry.Provider, AiTask.Light)] = entry.Model ?? "";
+                else if (entry.Task == "autoprompt") _taskChoices[ChoiceKey(entry.Provider, AiTask.PromptWriting)] = entry.Model ?? "";
+            }
+
             // Select provider (this triggers OnProviderChanged which loads the right key)
             _lastProviderKey = null; // reset so first switch doesn't save empty string
             for (int i = 0; i < _cmbProvider.Items.Count; i++)
@@ -1066,6 +1112,17 @@ namespace Supervertaler.Trados.Controls
 
             var provider = GetSelectedProviderKey();
             settings.SelectedProvider = provider;
+
+            // The models per task, for every provider seen in this dialog. One the
+            // user never touched is written back as it was loaded.
+            foreach (var choice in _taskChoices)
+            {
+                var bar = choice.Key.LastIndexOf('|');
+                if (bar <= 0) continue;
+                AiTask task;
+                if (!Enum.TryParse(choice.Key.Substring(bar + 1), out task)) continue;
+                settings.SetTaskModel(choice.Key.Substring(0, bar), task, choice.Value);
+            }
 
             // Model — a custom model ID (if entered) overrides the curated dropdown.
             var selectedModel = _cmbModel.SelectedItem as ModelItem;
@@ -1229,7 +1286,7 @@ namespace Supervertaler.Trados.Controls
             // Auto-size the dropdown to fit the longest model description
             AutoSizeDropDown(_cmbModel);
 
-            if (_cmbModel.Items.Count == 0) return;
+            if (_cmbModel.Items.Count == 0) { PopulateTaskModels(providerKey); return; }
             int IndexOf(string id)
             {
                 if (string.IsNullOrEmpty(id)) return -1;
@@ -1241,6 +1298,97 @@ namespace Supervertaler.Trados.Controls
             var index = IndexOf(keepId);
             if (index < 0) index = IndexOf(LlmModels.DefaultModelId(providerKey));
             _cmbModel.SelectedIndex = index < 0 ? 0 : index;
+            PopulateTaskModels(providerKey);
+        }
+
+        private static string ChoiceKey(string providerKey, AiTask task) => providerKey + "|" + task;
+
+        /// <summary>The Translation model as the two task lists name it in their
+        /// first entry: the typed Model ID if there is one, else the list's.</summary>
+        private string TranslationModelName()
+        {
+            var typed = _txtCustomModelId?.Text.Trim() ?? "";
+            if (typed.Length > 0) return typed;
+            return (_cmbModel?.SelectedItem as ModelItem)?.Name ?? "";
+        }
+
+        private string SameAsText()
+        {
+            var name = TranslationModelName();
+            return name.Length == 0 ? "Same as Translation" : name + " (same as Translation)";
+        }
+
+        /// <summary>
+        /// Fills "Light tasks" and "AutoPrompt" for a provider: first the entry that
+        /// follows Translation, then the provider's models. A provider with one
+        /// model per endpoint (a local server, a custom profile) gets that first
+        /// entry only, and the lists are greyed out.
+        /// </summary>
+        private void PopulateTaskModels(string providerKey)
+        {
+            if (_cmbLightModel == null || _cmbPromptModel == null) return;
+            _fillingTaskModels = true;
+            try
+            {
+                Fill(_cmbLightModel, AiTask.Light);
+                Fill(_cmbPromptModel, AiTask.PromptWriting);
+            }
+            finally { _fillingTaskModels = false; }
+
+            void Fill(ComboBox cmb, AiTask task)
+            {
+                cmb.Items.Clear();
+                cmb.Items.Add(new TaskModelItem("", SameAsText()));
+                bool own = AiSettings.HasTaskModels(providerKey);
+                cmb.Enabled = own;
+                int select = 0;
+                if (own)
+                {
+                    string chosen;
+                    _taskChoices.TryGetValue(ChoiceKey(providerKey, task), out chosen);
+                    foreach (var m in ModelCatalog.ModelsFor(providerKey, _fetchedSource))
+                    {
+                        cmb.Items.Add(new TaskModelItem(m.Id, new ModelItem(m).ToString()));
+                        if (!string.IsNullOrEmpty(chosen) && string.Equals(m.Id, chosen, StringComparison.OrdinalIgnoreCase))
+                            select = cmb.Items.Count - 1;
+                    }
+                    // Chosen and still offered by the provider, but not in the short
+                    // list (fetched, with "Show all models" off): keep it in view.
+                    if (select == 0 && !string.IsNullOrEmpty(chosen) && _fetchedSource.IsListedModel(providerKey, chosen))
+                    {
+                        cmb.Items.Add(new TaskModelItem(chosen, chosen));
+                        select = cmb.Items.Count - 1;
+                    }
+                }
+                cmb.SelectedIndex = select;
+                AutoSizeDropDown(cmb);
+            }
+        }
+
+        /// <summary>The first entry of both task lists names the Translation model;
+        /// it is rewritten whenever that changes.</summary>
+        private void RefreshSameAsEntries()
+        {
+            if (_cmbLightModel == null || _cmbPromptModel == null) return;
+            bool was = _fillingTaskModels;
+            _fillingTaskModels = true;
+            try
+            {
+                foreach (var cmb in new[] { _cmbLightModel, _cmbPromptModel })
+                {
+                    if (cmb.Items.Count == 0) continue;
+                    int selected = cmb.SelectedIndex;
+                    cmb.Items[0] = new TaskModelItem("", SameAsText());
+                    cmb.SelectedIndex = selected;
+                }
+            }
+            finally { _fillingTaskModels = was; }
+        }
+
+        private void OnTaskModelChanged(ComboBox cmb, AiTask task)
+        {
+            if (_fillingTaskModels) return;   // the list is being filled, not chosen from
+            _taskChoices[ChoiceKey(GetSelectedProviderKey(), task)] = (cmb.SelectedItem as TaskModelItem)?.Id ?? "";
         }
 
         /// <summary>#106: ask the provider for its model list and add what is new.</summary>
@@ -1826,13 +1974,24 @@ namespace Supervertaler.Trados.Controls
             public override string ToString() => LlmModels.GetProviderDisplayName(Key);
         }
 
+        /// <summary>An entry of "Light tasks" or "AutoPrompt"; Id "" follows Translation.</summary>
+        private class TaskModelItem
+        {
+            public string Id { get; }
+            private readonly string _display;
+            public TaskModelItem(string id, string display) { Id = id ?? ""; _display = display ?? ""; }
+            public override string ToString() => _display;
+        }
+
         private class ModelItem
         {
             public string Id { get; }
+            public string Name { get; }
             private readonly string _display;
             public ModelItem(LlmModelInfo info)
             {
                 Id = info.Id;
+                Name = string.IsNullOrWhiteSpace(info.DisplayName) ? info.Id : info.DisplayName;
                 _display = string.IsNullOrWhiteSpace(info.Description)
                     ? info.DisplayName
                     : $"{info.DisplayName}  –  {info.Description}";

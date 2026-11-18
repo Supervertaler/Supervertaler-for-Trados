@@ -859,7 +859,7 @@ namespace Supervertaler.Trados
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
             string apiKey, keyProblem = null;
             string baseUrl = null;
-            string model = aiSettings.GetSelectedModel();
+            string model = aiSettings.GetModelFor(args.Feature == PromptLogFeature.PromptGeneration ? AiTask.PromptWriting : AiTask.Translation);
 
             if (provider == LlmModels.ProviderOllama)
             {
@@ -7507,7 +7507,7 @@ namespace Supervertaler.Trados
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
                 string apiKey, keyProblem = null;
                 string baseUrl = null;
-                string model = aiSettings.GetSelectedModel();
+                string model = aiSettings.GetModelFor(AiTask.PromptWriting);
 
                 if (provider == LlmModels.ProviderOllama)
                 {
@@ -7530,6 +7530,9 @@ namespace Supervertaler.Trados
                 {
                     apiKey = TradosApiKeys.For(provider, aiSettings, out keyProblem);
                 }
+                // AutoPrompt's small helper requests (the domain, the gloss register)
+                // are Light tasks. A custom profile has one model, set above.
+                string lightModel = provider == LlmModels.ProviderCustomOpenAi ? model : aiSettings.GetModelFor(AiTask.Light);
 
                 if (string.IsNullOrEmpty(apiKey))
                 {
@@ -7667,7 +7670,7 @@ namespace Supervertaler.Trados
                     if (!string.IsNullOrEmpty(sample))
                     {
                         string classifyResp = null;
-                        using (var classifyClient = new LlmClient(provider, model, apiKey, baseUrl))
+                        using (var classifyClient = new LlmClient(provider, lightModel, apiKey, baseUrl))
                         using (var busy = new Controls.AutoPromptBusyForm(
                             () => classifyClient.SendPromptAsync(
                                 DocumentContextClassifier.BuildUserPrompt(sample),
@@ -8748,7 +8751,7 @@ namespace Supervertaler.Trados
                 DocumentKeyForBank(doc), fileName,
                 () => string.Join("\n",
                     CollectDocumentSourceSegments(doc).Select(seg => SegmentTagHandler.StripTagPlaceholders(seg.Text))),
-                () => CreateLlmClient(out _));
+                () => CreateLlmClient(out _, AiTask.Light));
         }
 
         /// <summary>
@@ -12217,14 +12220,14 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
         /// AutoPrompt paths do inline; the figure pass runs on a background
         /// thread and cannot put a message box up from there.
         /// </summary>
-        private static LlmClient CreateLlmClient(out string error)
+        private static LlmClient CreateLlmClient(out string error, AiTask task = AiTask.Translation)
         {
             error = null;
             var aiSettings = _settings?.AiSettings;
             if (aiSettings == null) { error = "AI settings not configured."; return null; }
 
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-            var model = aiSettings.GetSelectedModel();
+            var model = aiSettings.GetModelFor(task);
             string apiKey, keyProblem = null;
             string baseUrl = null;
 
@@ -14532,7 +14535,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
             }
 
             var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
-            var model = aiSettings.GetSelectedModel();
+            var model = aiSettings.GetModelFor(AiTask.Light);
             string apiKey = null, baseUrl = null;
             if (provider == LlmModels.ProviderOllama)
                 baseUrl = aiSettings.OllamaEndpoint ?? "http://localhost:11434";
@@ -16149,7 +16152,7 @@ Always list the original source filename(s) in the `sources:` frontmatter field.
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
                 string apiKey, keyProblem = null;
                 string baseUrl = null;
-                string model = aiSettings.GetSelectedModel();
+                string model = aiSettings.GetModelFor(AiTask.Light);
                 if (provider == LlmModels.ProviderOllama)
                 {
                     apiKey = "ollama";

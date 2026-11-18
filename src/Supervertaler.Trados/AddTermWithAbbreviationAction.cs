@@ -226,7 +226,7 @@ namespace Supervertaler.Trados
                 var provider = aiSettings.SelectedProvider ?? LlmModels.ProviderOpenAi;
                 string apiKey, keyProblem = null;
                 string baseUrl = null;
-                string model = aiSettings.GetSelectedModel();
+                string model = aiSettings.GetModelFor(AiTask.Light);
 
                 if (provider == LlmModels.ProviderOllama)
                 {

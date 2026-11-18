@@ -335,7 +335,8 @@ namespace Supervertaler.Trados
 
             return new FuzzyFixJob
             {
-                Ai = ai,
+                // A repair is a Light task: the model chosen for those, on the same provider.
+                Ai = ai.ForTask(AiTask.Light),
                 SourceLang = sourceLang,
                 TargetLang = targetLang,
                 Segment = segments[0],

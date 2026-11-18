@@ -1,9 +1,41 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
 using Supervertaler.Trados.Core;
 
 namespace Supervertaler.Trados.Settings
 {
+    /// <summary>
+    /// The kind of work a request is, which decides the model it goes to
+    /// (docs/design/model-per-task.md). Every feature that calls the AI names one.
+    /// </summary>
+    public enum AiTask
+    {
+        /// <summary>Batch Translate, Translate active segment, Chat, QuickLauncher,
+        /// AI Proofreader, FigureLens: the model chosen as "Translation".</summary>
+        Translation,
+        /// <summary>FuzzyFixer, choosing articles from a large memory bank,
+        /// AutoPrompt's two helper requests, Add term with abbreviation, AutoTagger:
+        /// a narrow instruction to follow exactly.</summary>
+        Light,
+        /// <summary>AutoPrompt's own request: reads the whole document once and
+        /// writes the prompt every later segment is translated with.</summary>
+        PromptWriting
+    }
+
+    /// <summary>The model a provider uses for one kind of task, when the user
+    /// chose one other than the Translation model.</summary>
+    [DataContract]
+    public class TaskModelEntry
+    {
+        [DataMember(Name = "provider")] public string Provider { get; set; } = "";
+        /// <summary>"light" or "autoprompt".</summary>
+        [DataMember(Name = "task")] public string Task { get; set; } = "";
+        [DataMember(Name = "model")] public string Model { get; set; } = "";
+    }
+
     /// <summary>
     /// AI provider settings, stored as part of the plugin's settings.json.
     /// API key fallback chain: plugin-local → Supervertaler desktop app settings.
@@ -502,6 +534,111 @@ namespace Supervertaler.Trados.Settings
         /// </summary>
         [DataMember(Name = "monthlyBudgetUsd")]
         public double MonthlyBudgetUsd { get; set; }
+
+        /// <summary>
+        /// The models chosen for Light tasks and for AutoPrompt, per provider. A
+        /// provider and task with no entry uses that provider's Translation model
+        /// ("same as Translation"), which is how every settings file from before
+        /// 20.209 reads: nobody's requests change model until they choose one.
+        /// Null in a settings file written before the property existed.
+        /// </summary>
+        [DataMember(Name = "taskModels", EmitDefaultValue = false)]
+        public List<TaskModelEntry> TaskModels { get; set; } = new List<TaskModelEntry>();
+
+        private static string TaskKey(AiTask task) =>
+            task == AiTask.Light ? "light" : task == AiTask.PromptWriting ? "autoprompt" : "";
+
+        /// <summary>
+        /// Whether a provider can have its own model per task. Not a local server
+        /// or a custom profile: each is one endpoint the user set up with one
+        /// model, and there is no list of others to offer.
+        /// </summary>
+        public static bool HasTaskModels(string providerKey) =>
+            !string.IsNullOrEmpty(providerKey)
+            && providerKey != LlmModels.ProviderOllama
+            && providerKey != LlmModels.ProviderCustomOpenAi;
+
+        /// <summary>The model id stored for a provider and task, or "" for "same
+        /// as Translation". As stored: see <see cref="GetModelFor"/> for the model
+        /// a request actually uses.</summary>
+        public string GetTaskModelChoice(string providerKey, AiTask task)
+        {
+            var key = TaskKey(task);
+            if (key.Length == 0 || TaskModels == null) return "";
+            foreach (var e in TaskModels)
+                if (e != null && e.Task == key && string.Equals(e.Provider, providerKey, StringComparison.OrdinalIgnoreCase))
+                    return e.Model ?? "";
+            return "";
+        }
+
+        /// <summary>Stores the model for a provider and task; null or "" puts it
+        /// back on "same as Translation".</summary>
+        public void SetTaskModel(string providerKey, AiTask task, string modelId)
+        {
+            var key = TaskKey(task);
+            if (key.Length == 0 || string.IsNullOrEmpty(providerKey)) return;
+            if (TaskModels == null) TaskModels = new List<TaskModelEntry>();
+            TaskModels.RemoveAll(e => e == null
+                || (e.Task == key && string.Equals(e.Provider, providerKey, StringComparison.OrdinalIgnoreCase)));
+            if (!string.IsNullOrWhiteSpace(modelId))
+                TaskModels.Add(new TaskModelEntry { Provider = providerKey, Task = key, Model = modelId.Trim() });
+        }
+
+        /// <summary>True when the provider's lists - the built-in one or the one
+        /// last fetched from the provider - hold this model id.</summary>
+        public bool IsListedModel(string providerKey, string modelId)
+        {
+            if (string.IsNullOrEmpty(modelId)) return false;
+            foreach (var m in LlmModels.GetModelsForProvider(providerKey) ?? new LlmModelInfo[0])
+                if (string.Equals(m.Id, modelId, StringComparison.OrdinalIgnoreCase)) return true;
+            if (FetchedModels != null)
+                foreach (var f in FetchedModels)
+                    if (f != null && string.Equals(f.Provider, providerKey, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(f.Id, modelId, StringComparison.OrdinalIgnoreCase))
+                        return true;
+            return false;
+        }
+
+        /// <summary>
+        /// The model a request of this kind goes to, for the active provider: the
+        /// one chosen for the task, or the Translation model when none was chosen,
+        /// when the provider has no models per task, or when the chosen one is no
+        /// longer in the provider's lists. A provider retires models; a stale id
+        /// must never fail a request, nor quietly become some other cheap model.
+        /// Stateless: reads the settings, changes nothing.
+        /// </summary>
+        public string GetModelFor(AiTask task)
+        {
+            var main = GetSelectedModel();
+            if (task == AiTask.Translation) return main;
+            var provider = SelectedProvider ?? LlmModels.ProviderOpenAi;
+            if (!HasTaskModels(provider)) return main;
+            var chosen = GetTaskModelChoice(provider, task);
+            return chosen.Length > 0 && IsListedModel(provider, chosen) ? chosen : main;
+        }
+
+        /// <summary>
+        /// These settings as a request of this kind should see them: the same
+        /// object when the task uses the Translation model, otherwise a copy whose
+        /// model for the active provider is the task's. For code that takes the
+        /// whole settings object and reads the model from it (BatchTranslator).
+        /// The copy is never saved.
+        /// </summary>
+        public AiSettings ForTask(AiTask task)
+        {
+            var model = GetModelFor(task);
+            if (string.Equals(model, GetSelectedModel(), StringComparison.Ordinal)) return this;
+            var ser = new DataContractJsonSerializer(typeof(AiSettings));
+            AiSettings copy;
+            using (var ms = new MemoryStream())
+            {
+                ser.WriteObject(ms, this);
+                ms.Position = 0;
+                copy = (AiSettings)ser.ReadObject(ms);
+            }
+            copy.SetProviderAndModel(SelectedProvider ?? LlmModels.ProviderOpenAi, model);
+            return copy;
+        }
 
         /// <summary>
         /// Sets the model for the given provider and makes it the active provider.

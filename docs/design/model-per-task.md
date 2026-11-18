@@ -1,9 +1,16 @@
 # A model per kind of task
 
-**Status:** design note, nothing built. Written 18 Nov 2026 after the 208 release, on Michael's idea of 17 Nov:
-"do you really need Opus or even Sonnet on a FuzzyFixer fix? Wouldn't Haiku be just fine? ... Opus or even Fable
-for AutoPrompt ... Opus and maybe even Sonnet for translation ... Haiku for fuzzy fixing and some other more
-mechanical things." Decisions for Michael are at the end.
+**Status:** BUILT for 20.209 on Michael's word (18 Nov 2026, "Yes, build it"), on branch `claude/209-model-per-task`. Offline
+tests pass (`tools/model_per_task_test.ps1`, 49 checks); not yet tried in Trados Studio. Written 18 Nov 2026 after the
+208 release, on Michael's idea of 17 Nov. All five decisions at the end are taken.
+**Code:** `Settings/AiSettings.cs` (`AiTask`, `TaskModels`, `GetModelFor`, `ForTask`), `Controls/AiSettingsPanel.cs` (the
+three lists), and one line at each feature that calls the AI.
+**Built differently from "What changes in the code" below:** the ten copied blocks that read the provider, key and
+model were NOT merged into one resolver. Each now asks `GetModelFor(task)` for its model and is otherwise as it
+was; code that takes the whole settings object (BatchTranslator, for FuzzyFixer) is handed `ForTask(task)`, a copy on
+the task's model. Smaller change, same behaviour; the merge is still worth doing (the gloss register still ignores a
+custom profile). The built-in model lists were not given a small model: they are in Plugin Core.
+**User-facing notes:** `docs/design/model-per-task-user-notes.md`.
 
 ## What happens today
 
