@@ -60,16 +60,9 @@ namespace Supervertaler.Trados
             _library.Refresh();
             var prompts = _library.GetQuickLauncherPrompts();
 
-            if (prompts.Count == 0)
-            {
-                MessageBox.Show(
-                    "No QuickLauncher prompts are configured.\n\n" +
-                    "Set category: QuickLauncher in a prompt file's YAML frontmatter, " +
-                    "or place the file in a folder named 'QuickLauncher' inside your prompt library.",
-                    "Supervertaler \u2013 QuickLauncher",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            // No prompts is no longer a reason not to open: the menu's top
+            // section (Translate, FuzzyFixer, Proofread) needs none. What the
+            // message box used to say is a line in the menu.
 
             // Gather segment context once (before showing the menu)
             var editorController = Core.StudioEditor.Controller;
@@ -145,6 +138,27 @@ namespace Supervertaler.Trados
             };
             menu.Items.Add(header);
             menu.Items.Add(new ToolStripSeparator());
+
+            // The fixed top section: what Supervertaler does to the active segment.
+            // With the menu open, T, F and P run them. The licence was checked above.
+            QuickLauncherMenu.AddBuiltIns(menu.Items, id =>
+            {
+                if (id == "translate") AiAssistantViewPart.HandleTranslateActiveSegment();
+                else if (id == "fuzzyfixer") AiAssistantViewPart.HandleFuzzyFixActiveSegment();
+                else if (id == "proofread") AiAssistantViewPart.HandleProofreadActiveSegment();
+            });
+            menu.Items.Add(new ToolStripSeparator());
+
+            if (prompts.Count == 0)
+            {
+                var none = new ToolStripMenuItem("No prompts yet. Click the header above to add one.")
+                {
+                    Enabled = false,
+                    ToolTipText = "A prompt shows here when its file is in the QuickLauncher folder of your prompt library, " +
+                                  "or has 'category: QuickLauncher' in its front matter.",
+                };
+                menu.Items.Add(none);
+            }
 
             // Determine whether custom slot assignments exist
             var hasCustomSlots = settings?.AiSettings?.QuickLauncherSlots != null
