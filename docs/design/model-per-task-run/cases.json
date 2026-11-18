@@ -1,0 +1,272 @@
+[
+ {
+  "id": "01",
+  "kind": "word",
+  "source": "Press the green button to start the pump.",
+  "matchSource": "Press the red button to start the pump.",
+  "matchTarget": "Druk op de rode knop om de pomp te starten.",
+  "score": 88,
+  "expected": "Druk op de groene knop om de pomp te starten."
+ },
+ {
+  "id": "02",
+  "kind": "word",
+  "source": "Close the inlet valve before cleaning.",
+  "matchSource": "Close the outlet valve before cleaning.",
+  "matchTarget": "Sluit de uitlaatklep vóór het reinigen.",
+  "score": 86,
+  "expected": "Sluit de inlaatklep vóór het reinigen."
+ },
+ {
+  "id": "03",
+  "kind": "word",
+  "source": "The filter must be replaced every month.",
+  "matchSource": "The filter must be replaced every week.",
+  "matchTarget": "Het filter moet elke week worden vervangen.",
+  "score": 88,
+  "expected": "Het filter moet elke maand worden vervangen."
+ },
+ {
+  "id": "04",
+  "kind": "word",
+  "source": "Store the device in a dry place.",
+  "matchSource": "Store the device in a cool place.",
+  "matchTarget": "Bewaar het apparaat op een koele plaats.",
+  "score": 87,
+  "expected": "Bewaar het apparaat op een droge plaats."
+ },
+ {
+  "id": "05",
+  "kind": "word+agreement",
+  "source": "Remove the old gasket.",
+  "matchSource": "Remove the old filter.",
+  "matchTarget": "Verwijder het oude filter.",
+  "score": 78,
+  "expected": "Verwijder de oude pakking."
+ },
+ {
+  "id": "06",
+  "kind": "word+agreement",
+  "source": "The operator must wear safety glasses.",
+  "matchSource": "The operator must wear safety gloves.",
+  "matchTarget": "De operator moet veiligheidshandschoenen dragen.",
+  "score": 85,
+  "expected": "De operator moet een veiligheidsbril dragen."
+ },
+ {
+  "id": "07",
+  "kind": "word",
+  "source": "Switch off the machine at the main switch.",
+  "matchSource": "Switch on the machine at the main switch.",
+  "matchTarget": "Schakel de machine in met de hoofdschakelaar.",
+  "score": 90,
+  "expected": "Schakel de machine uit met de hoofdschakelaar."
+ },
+ {
+  "id": "08",
+  "kind": "word",
+  "source": "Check the oil level daily.",
+  "matchSource": "Check the water level daily.",
+  "matchTarget": "Controleer dagelijks het waterpeil.",
+  "score": 82,
+  "expected": "Controleer dagelijks het oliepeil."
+ },
+ {
+  "id": "09",
+  "kind": "number",
+  "source": "Tighten the bolts to 45 Nm.",
+  "matchSource": "Tighten the bolts to 35 Nm.",
+  "matchTarget": "Draai de bouten aan met 35 Nm.",
+  "score": 99,
+  "expected": "Draai de bouten aan met 45 Nm."
+ },
+ {
+  "id": "10",
+  "kind": "number",
+  "source": "The tank holds 120 litres.",
+  "matchSource": "The tank holds 80 litres.",
+  "matchTarget": "De tank heeft een inhoud van 80 liter.",
+  "score": 99,
+  "expected": "De tank heeft een inhoud van 120 liter."
+ },
+ {
+  "id": "11",
+  "kind": "number",
+  "source": "Wait 10 minutes before opening the cover.",
+  "matchSource": "Wait 5 minutes before opening the cover.",
+  "matchTarget": "Wacht 5 minuten voordat u het deksel opent.",
+  "score": 99,
+  "expected": "Wacht 10 minuten voordat u het deksel opent."
+ },
+ {
+  "id": "12",
+  "kind": "number",
+  "source": "Operating temperature: 5 °C to 40 °C.",
+  "matchSource": "Operating temperature: 0 °C to 35 °C.",
+  "matchTarget": "Bedrijfstemperatuur: 0 °C tot 35 °C.",
+  "score": 99,
+  "expected": "Bedrijfstemperatuur: 5 °C tot 40 °C."
+ },
+ {
+  "id": "13",
+  "kind": "structure: clause added",
+  "source": "Close the valve and wait until the pressure has dropped.",
+  "matchSource": "Close the valve.",
+  "matchTarget": "Sluit de klep.",
+  "score": 70,
+  "expected": "Sluit de klep en wacht tot de druk is gedaald."
+ },
+ {
+  "id": "14",
+  "kind": "structure: clause removed",
+  "source": "Switch off the pump.",
+  "matchSource": "Switch off the pump and disconnect the power cable.",
+  "matchTarget": "Schakel de pomp uit en koppel de voedingskabel los.",
+  "score": 72,
+  "expected": "Schakel de pomp uit."
+ },
+ {
+  "id": "15",
+  "kind": "structure: negation",
+  "source": "Do not open the cover while the machine is running.",
+  "matchSource": "Open the cover while the machine is running.",
+  "matchTarget": "Open het deksel terwijl de machine draait.",
+  "score": 84,
+  "expected": "Open het deksel niet terwijl de machine draait."
+ },
+ {
+  "id": "16",
+  "kind": "structure: plural",
+  "source": "The sensors are mounted on the frame.",
+  "matchSource": "The sensor is mounted on the frame.",
+  "matchTarget": "De sensor is op het frame gemonteerd.",
+  "score": 85,
+  "expected": "De sensoren zijn op het frame gemonteerd."
+ },
+ {
+  "id": "17",
+  "kind": "structure: tense",
+  "source": "The valve was opened by the control unit.",
+  "matchSource": "The valve is opened by the control unit.",
+  "matchTarget": "De klep wordt door de regeleenheid geopend.",
+  "score": 90,
+  "expected": "De klep werd door de regeleenheid geopend."
+ },
+ {
+  "id": "18",
+  "kind": "structure: condition added",
+  "source": "If the alarm sounds, stop the conveyor immediately.",
+  "matchSource": "Stop the conveyor immediately.",
+  "matchTarget": "Stop de transportband onmiddellijk.",
+  "score": 72,
+  "expected": "Als het alarm afgaat, stop dan de transportband onmiddellijk."
+ },
+ {
+  "id": "19",
+  "kind": "trap: same meaning, other order",
+  "source": "Before starting the machine, check the guards.",
+  "matchSource": "Check the guards before starting the machine.",
+  "matchTarget": "Controleer de afschermingen voordat u de machine start.",
+  "score": 80,
+  "expected": "Controleer de afschermingen voordat u de machine start."
+ },
+ {
+  "id": "20",
+  "kind": "structure: modal",
+  "source": "The cover may be removed by qualified personnel only.",
+  "matchSource": "The cover must be removed by qualified personnel.",
+  "matchTarget": "Het deksel moet door gekwalificeerd personeel worden verwijderd.",
+  "score": 82,
+  "expected": "Het deksel mag alleen door gekwalificeerd personeel worden verwijderd."
+ },
+ {
+  "id": "21",
+  "kind": "structure: two changes",
+  "source": "Use a longer hose for the second connection.",
+  "matchSource": "Use a shorter hose for the first connection.",
+  "matchTarget": "Gebruik een kortere slang voor de eerste aansluiting.",
+  "score": 75,
+  "expected": "Gebruik een langere slang voor de tweede aansluiting."
+ },
+ {
+  "id": "22",
+  "kind": "structure: list item added",
+  "source": "Clean the nozzle, the filter and the tray.",
+  "matchSource": "Clean the nozzle and the filter.",
+  "matchTarget": "Reinig het mondstuk en het filter.",
+  "score": 78,
+  "expected": "Reinig het mondstuk, het filter en de lade."
+ },
+ {
+  "id": "23",
+  "kind": "tags: pair added",
+  "source": "Press <t1>Start</t1> to begin.",
+  "matchSource": "Press Start to begin.",
+  "matchTarget": "Druk op Start om te beginnen.",
+  "score": 90,
+  "expected": "Druk op <t1>Start</t1> om te beginnen."
+ },
+ {
+  "id": "24",
+  "kind": "tags: pair added + words",
+  "source": "Press <t1>Stop</t1> to end the cycle.",
+  "matchSource": "Press Start to begin the cycle.",
+  "matchTarget": "Druk op Start om de cyclus te beginnen.",
+  "score": 74,
+  "expected": "Druk op <t1>Stop</t1> om de cyclus te beëindigen."
+ },
+ {
+  "id": "25",
+  "kind": "tags: standalone for a number",
+  "source": "See figure <t1/> for the wiring.",
+  "matchSource": "See figure 3 for the wiring.",
+  "matchTarget": "Zie afbeelding 3 voor de bedrading.",
+  "score": 88,
+  "expected": "Zie afbeelding <t1/> voor de bedrading."
+ },
+ {
+  "id": "26",
+  "kind": "tags: two pairs + clause added",
+  "source": "Turn knob <t1>A</t1> clockwise and knob <t2>B</t2> anticlockwise.",
+  "matchSource": "Turn knob A clockwise.",
+  "matchTarget": "Draai knop A rechtsom.",
+  "score": 70,
+  "expected": "Draai knop <t1>A</t1> rechtsom en knop <t2>B</t2> linksom."
+ },
+ {
+  "id": "27",
+  "kind": "tags: pair at the start",
+  "source": "<t1>Warning:</t1> hot surface.",
+  "matchSource": "Warning: hot surface.",
+  "matchTarget": "Waarschuwing: heet oppervlak.",
+  "score": 92,
+  "expected": "<t1>Waarschuwing:</t1> heet oppervlak."
+ },
+ {
+  "id": "28",
+  "kind": "tags: pair + number",
+  "source": "Set the timer to <t1>30</t1> seconds.",
+  "matchSource": "Set the timer to 20 seconds.",
+  "matchTarget": "Stel de timer in op 20 seconden.",
+  "score": 90,
+  "expected": "Stel de timer in op <t1>30</t1> seconden."
+ },
+ {
+  "id": "29",
+  "kind": "trap: keep the memory's term",
+  "source": "The control unit shows error E12.",
+  "matchSource": "The control unit shows error E07.",
+  "matchTarget": "De regeleenheid toont fout E07.",
+  "score": 95,
+  "expected": "De regeleenheid toont fout E12."
+ },
+ {
+  "id": "30",
+  "kind": "trap: keep the memory's wording",
+  "source": "You must lubricate the chain after every use.",
+  "matchSource": "You must clean the chain after every use.",
+  "matchTarget": "U moet de ketting na elk gebruik reinigen.",
+  "score": 88,
+  "expected": "U moet de ketting na elk gebruik smeren."
+ }
+]

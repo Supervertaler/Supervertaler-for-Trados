@@ -111,12 +111,46 @@ AutoPrompt:    [Claude Fable 5.2                        v]    <- writing the pro
   or two repairs and many Alt+T requests, "(same as Translation)" can be the cheaper choice. The Help page should say so in
   one sentence.
 
-## Evidence first
+## Evidence: the comparison run of 18 Nov 2026
 
-Not known: whether a small model repairs fuzzy matches as well as a large one when the repair is structural (a
-clause added, word order changed, tags moved), and whether it places tags as reliably for AutoTagger. Before
-recommending a light model to users, run one set of about 30 invented fuzzy repairs, with tags and without, through
-the small, middle and large model of one provider and compare. A few cents of AI use; needs Michael's go.
+Run on Michael's go. 30 invented English-Dutch repairs (`docs/design/model-per-task-run/cases.json`): 8 word swaps,
+4 number changes, 10 structural changes, 6 with tags, 2 traps. Each was sent through the plugin's own FuzzyFixer
+request (the prompts were captured from `FuzzyFixRepair` against the test's stand-in server, then sent unchanged)
+to Claude Haiku 4.5, Sonnet 5.5 and Opus 5.5: 90 requests, no errors. Every reply is in `results.json` beside the
+cases. No memory bank, no termbase, no neighbouring segments.
+
+| Model | Same as the expected repair | Input tokens | Cost of the 30 |
+|---|---|---|---|
+| Claude Haiku 4.5 | 28 of 30 | 48,537 | $0.05 |
+| Claude Sonnet 5.5 | 28 of 30 | 69,601 | $0.15 |
+| Claude Opus 5.5 | 26 of 30 | 69,601 | $0.30 |
+
+- **All six tag cases: identical and correct on all three models** (a pair added, two pairs, a standalone tag, a tag
+  at the start, a tag round a changed number).
+- **All word, number, agreement, negation, plural, tense and clause cases: identical on all three**, apart from the
+  four below.
+- **Where they differed:**
+  - Case 19 (the trap: the new source says the same thing in another order, so the memory's translation can stay).
+    Haiku left it unchanged, which is the right repair. Opus reordered it. Sonnet put its own deliberation into the
+    reply ("Hmm, must keep wording from memory ...") and gave the answer twice.
+  - Case 18 (a condition added): three wordings, all usable ("Als het alarm klinkt, stop ..." from Haiku, without
+    "dan").
+  - Case 20: Opus wrote "uitsluitend" where the others wrote "alleen". Both right.
+  - Case 22 (a new list item, "the tray", with no term to go by): "het dienblad" (Haiku), "de bak" (Sonnet),
+    "de opvangbak" (Opus). Haiku's is the weakest choice for a machine; with a termbase entry the question would not
+    arise.
+- **Cost:** Haiku was a third of Sonnet's price and a sixth of Opus's on the same requests, more than the list
+  prices suggest, because it counted the same prompts as fewer tokens.
+
+What this supports: on short technical sentences, a small model repairs fuzzy matches as well as the large ones,
+tags included, and is less inclined to restyle what it should leave alone. What it does not show: long sentences,
+other language pairs, a job with a memory bank and termbase, or AutoTagger. One run per case; a second run can
+differ. The expected repairs and the reading of the differences are the orchestrator's; Michael to look over the
+Dutch of cases 18, 19 and 22.
+
+To look at separately: what the plugin does with a reply like Sonnet's in case 19 (commentary and a second
+numbered answer). The output check should refuse it; not verified here, because the replies were not fed back
+through the plugin.
 
 ## Tests when built
 
@@ -147,4 +181,4 @@ the small, middle and large model of one provider and compare. A few cents of AI
 3. The split: AI Proofreader on "Translation", AutoTagger on "Light tasks", the rest as in the table above. **DECIDED 18 Nov 2026 (Michael): yes, that split.**
 4. The names and layout. **DECIDED 18 Nov 2026 (Michael): three lists under Provider, in this order: "Light tasks",
    "Translation" (today's "Model"), "AutoPrompt"; the first and last start on "(same as Translation)".**
-5. Go for the small comparison run (about 30 invented repairs, three models, a few cents)?
+5. The comparison run. **DONE 18 Nov 2026 on Michael's go; see "Evidence". It cost $0.50, not the few cents estimated.**
