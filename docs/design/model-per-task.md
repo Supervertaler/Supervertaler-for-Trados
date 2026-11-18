@@ -137,7 +137,7 @@ the small, middle and large model of one provider and compare. A few cents of AI
 
 1. Two extra lists on the AI Settings tab, both defaulting to "Same as Model", or automatic choice with no
    setting? **DECIDED 18 Nov 2026 (Michael): two lists.**
-2. Same provider only (proposed), or any provider per role?
+2. Same provider only, or any provider per role? **DECIDED 18 Nov 2026 (Michael): same provider only.**
 3. The split: is AI Proofreader "Translation" (proposed) and AutoTagger "Light tasks" (proposed)?
 4. The names on the tab: "Light tasks" and "Prompt writing"?
 5. Go for the small comparison run (about 30 invented repairs, three models, a few cents)?
