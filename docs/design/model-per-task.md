@@ -57,27 +57,34 @@ Three roles. Each feature belongs to one.
 |---|---|---|
 | **Translation** (the model chosen today) | Batch Translate, Alt+T, Chat, QuickLauncher, AI Proofreader, FigureLens | quality on the text itself |
 | **Light tasks** | FuzzyFixer, choosing articles from the bank, AutoPrompt's two helpers, Add term with abbreviation, AutoTagger | to follow a narrow instruction exactly; speed and price |
-| **Prompt writing** | AutoPrompt's main request | the strongest reasoning; runs once per project |
+| **Prompt writing** (on the tab: "AutoPrompt") | AutoPrompt's main request | the strongest reasoning; runs once per project |
 
-What the user sees, on the AI Settings tab only:
+What the user sees, on the AI Settings tab only (Michael's layout, 18 Nov 2026: three named lists, in order of
+how powerful a model the work needs):
 
 ```
-Provider:        [Claude            v]
-Model:           [Claude Sonnet 5.5 v]      <- as today; used for translation and everything not listed below
-Light tasks:     [Same as Model     v]      <- FuzzyFixer and other small mechanical requests
-Prompt writing:  [Same as Model     v]      <- AutoPrompt
+Provider:      [Claude                                  v]
+
+Light tasks:   [Claude Haiku 4.5                        v]    <- FuzzyFixer and other small mechanical requests
+Translation:   [Claude Opus 5.5                         v]    <- today's "Model", renamed
+AutoPrompt:    [Claude Fable 5.2                        v]    <- writing the project prompt
 ```
 
-- **Both new lists default to "Same as Model".** Nobody's requests change model until they choose one. No new tick
-  box, nothing new on the Batch Operations or Chat tabs. The two quick pickers keep changing "Model".
+- **"Translation" is today's "Model" list, renamed.** The quick pickers on the Batch Operations tab and in the Chat
+  status bar keep changing it.
+- **Nobody's requests change model on their own.** After the update, "Light tasks" and "AutoPrompt" start on a first
+  entry that follows Translation and shows the real model name: "Claude Sonnet 5.5 (same as Translation)". While a
+  list is on that entry it follows whatever Translation is set to; once the user picks a model there, it stays on
+  that model. Stored as an empty id, so no migration is needed.
+- No new tick box, nothing new on the Batch Operations or Chat tabs.
 - **Same provider.** The two lists offer the models of the provider chosen above. One API key, one data-processing
   position for the client's text, and no way to send a segment to a second company by mistake. The choices are kept
   per provider, as the model already is, so switching provider and back keeps them.
 - **Where it shows.** The FuzzyFixer window already names the model it used. Reports cards and the usage log record
   the model of each request, so cost per model is right without further work (`UsageRecord.model`,
   `UsageDimension.Model`). AutoPrompt's "this is a long document" question must quote the price of the prompt-writing
-  model, not of "Model".
-- **Custom OpenAI-compatible profiles and Ollama:** "Same as Model" only, in the first version. A profile is one
+  model, not of the Translation model.
+- **Custom OpenAI-compatible profiles and Ollama:** "same as Translation" only, in the first version. A profile is one
   endpoint with one model.
 
 ## What changes in the code
@@ -91,7 +98,7 @@ Prompt writing:  [Same as Model     v]      <- AutoPrompt
 - **Settings:** per provider, two optional model ids (empty means "Same as Model"). No migration needed: absent
   means today's behaviour.
 - **A model that has gone.** A provider retires models. If the id stored for a role is no longer in that provider's
-  list, the role uses "Model" and the Settings tab shows the list back on "Same as Model". Never a failed request
+  list, the role uses the Translation model and the Settings tab shows the list back on "(same as Translation)". Never a failed request
   because of a stale id, and never silently a different cheap model.
 - **The curated model lists need a light model per provider.** Claude's has Sonnet 5.5, Opus 5.5 and Fable 5.2 and
   no Haiku; Haiku is reachable only through "Show all". Add the provider's current small model to each list, with a
@@ -101,7 +108,7 @@ Prompt writing:  [Same as Model     v]      <- AutoPrompt
 - **Prompt cache.** A provider's cache belongs to one model. FuzzyFixer today reuses the bank Alt+T has just
   cached, because both send the same system prompt to the same model. On a different model it builds its own cache:
   the first repair pays full price for the bank, the following ones are cheap, as measured above. On a job with one
-  or two repairs and many Alt+T requests, "Same as Model" can be the cheaper choice. The Help page should say so in
+  or two repairs and many Alt+T requests, "(same as Translation)" can be the cheaper choice. The Help page should say so in
   one sentence.
 
 ## Evidence first
@@ -113,7 +120,7 @@ the small, middle and large model of one provider and compare. A few cents of AI
 
 ## Tests when built
 
-- The resolver: each role, "Same as Model", a role's id that is no longer listed (falls back, says so), a custom
+- The resolver: each role, "(same as Translation)", a role's id that is no longer listed (falls back, says so), a custom
   profile, an unknown provider.
 - Each call site asks for the right role (read from the source, as `altt_no_front_test` does for log labels), so a
   new feature cannot quietly fall back to the wrong one.
@@ -135,9 +142,9 @@ the small, middle and large model of one provider and compare. A few cents of AI
 
 ## Decisions for Michael
 
-1. Two extra lists on the AI Settings tab, both defaulting to "Same as Model", or automatic choice with no
-   setting? **DECIDED 18 Nov 2026 (Michael): two lists.**
+1. Lists on the AI Settings tab, or automatic choice with no setting? **DECIDED 18 Nov 2026 (Michael): lists.**
 2. Same provider only, or any provider per role? **DECIDED 18 Nov 2026 (Michael): same provider only.**
 3. The split: AI Proofreader on "Translation", AutoTagger on "Light tasks", the rest as in the table above. **DECIDED 18 Nov 2026 (Michael): yes, that split.**
-4. The names on the tab: "Light tasks" and "Prompt writing"?
+4. The names and layout. **DECIDED 18 Nov 2026 (Michael): three lists under Provider, in this order: "Light tasks",
+   "Translation" (today's "Model"), "AutoPrompt"; the first and last start on "(same as Translation)".**
 5. Go for the small comparison run (about 30 invented repairs, three models, a few cents)?
