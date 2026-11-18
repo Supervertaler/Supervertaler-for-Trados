@@ -17,8 +17,18 @@ Paste everything between the two rules into the Changelog tab, as it is.
 
 ---
 
+New:
 - FuzzyFixer: the AI repairs a fuzzy match for you (Ctrl+Alt+F).
-- Also: 2 more additions, 4 changes and 19 fixes.
+- “Include full document content in AI context” is now two tick boxes, one on the Chat tab and one on the Batch Operations tab.
+- AutoPrompt asks before it sends a very long document.
+
+Changed:
+- With Claude, Translate active segment (Alt+T) and Chat now keep the cached part of the request for an hour instead of five minutes.
+- The Reports tab now lists AI requests oldest first, with the newest at the bottom, like the chat.
+- The licence is now checked at licence.supervertaler.com.
+- Requests made with Translate active segment (Alt+T) are now labelled as such.
+
+Fixed: 19 fixes.
 
 Full changelog: https://supervertaler.com/changelog/trados/#v18.20.208
 
