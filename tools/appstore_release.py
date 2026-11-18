@@ -4,10 +4,10 @@ Produces a single Markdown file with the fields needed for the App Store Manager
 form, covering every build (Studio 2022 = major 17 where there is one,
 Studio 2024 = major 18, Studio 2026 = major 19):
 version numbers, min/max studio versions, checksums, and a short changelog: the
-starred highlights, a count of everything else, and a link to the full changelog
-on supervertaler.com. RWS asked for that in October 2026 - a long, formatted
-Changelog tab is what made the App Store platform slow for this app - and the
-website always has the full text.
+headline of each addition and change, a count of the fixes, and a link to the
+full changelog on supervertaler.com, which always has the full text. Plain
+lines only: a long, formatted Changelog tab is what made the App Store platform
+slow for this app in October 2026.
 
 Usage:
     python tools/appstore_release.py                    # all entries since last release
@@ -197,40 +197,59 @@ def collect_sections(entries):
 
 
 CHANGELOG_PAGE = "https://supervertaler.com/changelog/trados/"
-FALLBACK_HIGHLIGHTS = 3  # headlines shown when a release has no starred bullet
+# Headlines listed per section before the rest is counted. One release rarely
+# reaches it; notes that cover several releases (a skipped App Store upload) do,
+# and the tab must stay a short read then too.
+MAX_LISTED = 8
 
 
 def short_changelog(added, changed, fixed, highlights, newest, since):
-    """The App Store's Changelog tab: a few plain lines and a link.
+    """The App Store's Changelog tab: headlines, a count of the fixes, a link.
 
-    One line per highlight, then one line counting everything else, then the
-    link. A release with no starred bullet shows its first few headlines
-    instead, so the tab is never just a count. With since=None the link goes to
-    the newest release's own entry on the changelog page (#v<version>, the
-    page's anchor for a release headed "## [<version> / ...]"); with a version,
-    to ?since=<version>, which makes the page show every release after it.
+    What is new and what changed are listed by headline, one line each, starred
+    ones first. Fixes are counted, and only a starred fix is named: a release
+    has many, and each is of interest to the few users who met the fault.
+    (Until November 2026 only the starred headlines were shown and everything
+    else was counted, because RWS had asked for a short tab; it turned out it
+    need not be that short, and one line said too little about a release.)
+
+    With since=None the link goes to the newest release's own entry on the
+    changelog page (#v<version>, the page's anchor for a release headed
+    "## [<version> / ...]"); with a version, to ?since=<version>, which makes
+    the page show every release after it.
     """
-    if not highlights:
-        highlights = [extract_headline(b) for b in added + changed + fixed][:FALLBACK_HIGHLIGHTS]
-    shown = {h.lower().strip() for h in highlights}
+    starred = {h.lower().strip() for h in highlights}
 
-    def rest(items, one, many):
-        n = sum(1 for b in items if extract_headline(b).lower().strip() not in shown)
-        more = n < len(items)  # a highlight came from this section
-        noun = one if n == 1 else many
-        return f"{n} more {noun}" if more else f"{n} {noun}"
+    def headlines(items):
+        heads = [extract_headline(b) for b in items]
+        # Starred first, otherwise changelog order.
+        return ([h for h in heads if h.lower().strip() in starred]
+                + [h for h in heads if h.lower().strip() not in starred])
 
-    counts = [rest(items, one, many) for items, one, many in (
-        (added, "addition", "additions"),
-        (changed, "change", "changes"),
-        (fixed, "fix", "fixes"),
-    ) if any(extract_headline(b).lower().strip() not in shown for b in items)]
+    def listed(title, items):
+        heads = headlines(items)
+        if not heads:
+            return []
+        out = [title + ":"] + [f"- {h}" for h in heads[:MAX_LISTED]]
+        more = len(heads) - MAX_LISTED
+        if more > 0:
+            out.append(f"- And {more} more.")
+        return out + [""]
 
-    lines = [f"- {h}" for h in highlights]
-    if counts:
-        also = counts[0] if len(counts) == 1 else ", ".join(counts[:-1]) + " and " + counts[-1]
-        lines.append(f"- Also: {also}.")
-    lines.append("")
+    lines = listed("New", added) + listed("Changed", changed)
+
+    fixes = headlines(fixed)
+    named = [h for h in fixes if h.lower().strip() in starred][:MAX_LISTED]
+    if fixes:
+        rest = len(fixes) - len(named)
+        if named:
+            lines += ["Fixed:"] + [f"- {h}" for h in named]
+            if rest:
+                lines.append(f"- And {rest} more {'fix' if rest == 1 else 'fixes'}.")
+        else:
+            lines.append(f"Fixed: {rest} {'fix' if rest == 1 else 'fixes'}.")
+        lines.append("")
+
     if since:
         lines.append(f"Full changelog: {CHANGELOG_PAGE}?since={since}")
     else:
