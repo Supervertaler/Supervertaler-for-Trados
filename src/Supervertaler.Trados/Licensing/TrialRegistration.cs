@@ -49,12 +49,37 @@ namespace Supervertaler.Trados.Licensing
         /// background task on startup when no licence key is present. Never
         /// throws; never blocks the UI.
         /// </summary>
-        public static async Task RegisterAsync(DateTime trialStartedAtUtc, bool trialActive)
+        /// <param name="afterFirstAiRequest">This check-in is the one sent after
+        /// the session's first successful AI request (see
+        /// <see cref="LicenseManager.NoteAiRequest"/>), not the one at startup.
+        /// The server does not count it as another start of Studio.</param>
+        public static async Task RegisterAsync(DateTime trialStartedAtUtc, bool trialActive, bool afterFirstAiRequest = false)
         {
             try
             {
+                // Whether the AI has been used is analytics, not part of how the
+                // trial works, so it goes only with the anonymous usage statistics
+                // switched on (Settings > General). Off: nothing about it is sent.
+                var settings = Settings.SettingsService.Current;
+                int? aiRequests = null;
+                string firstAiDay = null;
+                if (settings?.UsageStatisticsEnabled == true)
+                {
+                    aiRequests = TrialAiUse.Count(Settings.UserDataPath.UsageDir,
+                        settings.AiSettings?.IsUsageLogEnabled ?? true, out firstAiDay);
+                    // Sent straight after a successful request whose ledger line may
+                    // not be written yet (the ledger has its own handler): at least one.
+                    if (afterFirstAiRequest && aiRequests < 1)
+                    {
+                        aiRequests = 1;
+                        firstAiDay = firstAiDay ?? DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    }
+                }
                 var payload = new TrialRegisterPayload
                 {
+                    AiRequests = aiRequests,
+                    FirstAiDay = firstAiDay,
+                    Event = afterFirstAiRequest ? "ai" : null,
                     Fingerprint = MachineId.GetFingerprint(),
                     PluginVersion = GetPluginVersion(),
                     StudioVersion = GetStudioVersion(),
@@ -139,6 +164,20 @@ namespace Supervertaler.Trados.Licensing
 
             [DataMember(Name = "status")]
             public string Status { get; set; }
+
+            /// <summary>Successful AI requests in the usage ledger, up to 100;
+            /// -1 when unknown (ledger switched off). Null, and not sent, with the
+            /// usage statistics switched off. See <see cref="TrialAiUse"/>.</summary>
+            [DataMember(Name = "ai_requests", EmitDefaultValue = false)]
+            public int? AiRequests { get; set; }
+
+            /// <summary>The UTC day of the first one (yyyy-MM-dd), if any.</summary>
+            [DataMember(Name = "first_ai_day", EmitDefaultValue = false)]
+            public string FirstAiDay { get; set; }
+
+            /// <summary>"ai" for the check-in after the session's first AI request.</summary>
+            [DataMember(Name = "event", EmitDefaultValue = false)]
+            public string Event { get; set; }
         }
     }
 }

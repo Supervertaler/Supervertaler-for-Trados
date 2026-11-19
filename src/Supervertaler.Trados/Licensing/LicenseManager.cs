@@ -174,6 +174,34 @@ namespace Supervertaler.Trados.Licensing
             }
         }
 
+        private int _aiReported;   // 1 once this session's first AI request has been reported
+
+        /// <summary>
+        /// Called for every finished AI request (AppInitializer subscribes it to
+        /// LlmClient.PromptCompleted). On a trial installation, the first
+        /// successful one of a Studio session sends one more trial check-in,
+        /// so the dashboard learns that the AI was used even when Studio is never
+        /// started again: the check-in at startup comes before any request, and
+        /// 41% of trials never start Studio with the plugin a second time. Once
+        /// per session (no file, no setting); a licensed computer, or one with the
+        /// anonymous usage statistics switched off, sends nothing. Never throws.
+        /// </summary>
+        internal void NoteAiRequest(PromptLogEntry entry)
+        {
+            try
+            {
+                if (entry == null || entry.IsError || entry.Feature == PromptLogFeature.ConnectionTest) return;
+                if (_licence.IsActivated) return;
+                // Analytics: only with the anonymous usage statistics switched on.
+                if (Settings.SettingsService.Current?.UsageStatisticsEnabled != true) return;
+                if (System.Threading.Interlocked.Exchange(ref _aiReported, 1) == 1) return;
+                var trialStart = _licence.TrialStartedUtc;
+                var trialActive = _licence.State == LicenceState.Trial;
+                Task.Run(() => TrialRegistration.RegisterAsync(trialStart, trialActive, afterFirstAiRequest: true));
+            }
+            catch { /* never let this disturb a request */ }
+        }
+
         // ─── Activation, deactivation, validation ───────────────────
 
         /// <summary>Activates a license key on this machine. Returns (success, message).</summary>

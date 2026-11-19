@@ -9,6 +9,11 @@
 > (`17.20.199`), with the same tail; headings name only the 2024 and 2026
 > numbers, and the website's changelog page adds the 2022 one.
 
+## [18.20.210 / 19.20.210] – Unreleased
+
+### Changed
+- **During the trial, with the anonymous usage statistics on, the trial check-in also says how many AI requests have been made.** It sends a number (up to 100) and the day of the first request, and checks in once more after the first request of a Studio session. This shows whether new users get as far as using the AI. Nothing else is sent: no text, project, file or model. With the usage statistics switched off, or with a licence, nothing about it is sent.
+
 ## [18.20.209 / 19.20.209] – 2026-11-21
 
 ### Added
