@@ -60,22 +60,30 @@ open in Studio: the one in the Editor, else the one selected in Projects.
 - What is applied:
   - **Supervertaler's set-up** from the template (memory bank, prompts, client, termbase choices). Anything the
     template leaves empty stays as the project has it. The project also records the job profile's name.
-  - **Studio's termbases**: the project's termbase list becomes the template's. A termbase file that is not
-    there is left out and named. Server termbases are not set: add them in Studio's Project Settings.
-    Language indexes: the template's, plus the project's own for languages the template does not map.
-    Recognition options: the template's, if it has any.
-  - **Studio's TMs** (and the other translation providers in the list, such as MT): the list for all language
-    pairs and each language pair's own list become the template's. A TM file that is not there is left out and
-    named. A language pair of the project that the template does not have uses the template's list for all
-    pairs. Server TMs are set, and Studio asks you to sign in when it needs to; if Studio refuses them, the rest
-    is set without them and the summary says so.
+  - **Studio's termbases: keep, add** (Michael, 19 Nov). The project keeps all its termbases, in their order, with
+    its default termbase, language indexes and recognition options. The template's termbases that the project
+    does not have yet are added at the end; one it already has (same file) is left as it is and listed as
+    "already in the project". A termbase file that is not there is left out and named. Server termbases are not
+    added: add them in Studio's Project Settings. Language indexes: the template's are added only for languages
+    the project does not map yet.
+  - **Studio's TMs: keep, add** (and the other translation providers in the list, such as MT). Every TM list of
+    the project (the one for all language pairs, and each language pair's own) keeps its TMs, in their order and
+    with their switches (lookup, update, penalty). The template's TMs a list does not have yet are added at the end,
+    with the template's switches; a TM in both (same file, or same address) keeps the project's switches and is
+    listed as "already in the project". A language pair with a list of its own gets the template's TMs for that
+    pair (or, if the template has none for it, the template's TMs for all pairs). A language pair without a list of
+    its own, where the template's pair has one, gets one: the project's TMs for all pairs plus the template pair's,
+    so nothing it used stops applying. A TM file that is not there is left out and named. Server TMs are added,
+    and Studio asks you to sign in when it needs to; if Studio refuses them, the rest is added without them and
+    the summary says so.
   - **The project's Studio customer**: the one the template names. If Studio's customer list does not have it,
     you are asked whether to add it; say no and the project's customer is left as it is.
 - **Say plainly: the open document keeps its old TMs until you close it and open it again.** Studio does not
   tell the Editor. Termbases change at once.
-- A part the template does not have is left alone: a template with no TMs never empties a project's TM list;
-  the same for termbases and the customer.
-- Nothing is deleted from any TM or termbase; only the project's lists change.
+- **Nothing is ever removed** from the project's TM or termbase lists, and nothing is deleted from any TM or
+  termbase. A template with no TMs, termbases or customer leaves those as they are. Applying the same profile
+  twice adds nothing the second time.
+- The preview and the summary show both: what the project keeps (its own) and what is added.
 - Afterwards a short summary says what changed, what was left as it was, and what could not be done.
 - A template that cannot be read (moved, deleted, on a NAS that is offline, damaged) changes nothing; the
   window names the file and says why.

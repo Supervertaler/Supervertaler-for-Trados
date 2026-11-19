@@ -14,8 +14,9 @@ namespace Supervertaler.Trados.Core
     /// only reads files.
     ///
     /// <para><b>Order and failures.</b> Supervertaler's set-up, then termbases, TMs and the customer, then one save. Each
-    /// part is done or reported on its own: one that fails never stops the others, and none is hidden. A TM list Studio
-    /// refuses is put back as it was; when the refusal is over a server TM, the list is written again without the server
+    /// part is done or reported on its own: one that fails never stops the others, and none is hidden. TMs and
+    /// termbases: keep, add (Michael, 19 Nov) - the project's stay as they are, the template's it lacks are added;
+    /// nothing is removed. A TM list Studio refuses is put back as it was; when the refusal is over a server TM, the list is written again without the server
     /// TMs. A project from a package or GroupShare gets Supervertaler's part in Supervertaler's own record only, and its
     /// Studio TMs, termbases and customer are left alone (they are the agency's).</para>
     /// </summary>
@@ -43,6 +44,7 @@ namespace Supervertaler.Trados.Core
                     .Select(i => new KeyValuePair<string, string>(i.ProjectLanguage.IsoAbbreviation, i.TermbaseIndex)).ToList();
             }
             catch (Exception ex) { DiagnosticLog.Log(Log, "could not read the project's termbase indexes: " + ex.Message); }
+            ReadLists(project, f);
             f.CustomerName = StudioCustomers.ProjectCustomer(project, out _) ?? "";
             f.CustomerNames = StudioCustomers.List(project, out _)?.Select(c => c.Name).ToList();
             return f;
@@ -100,41 +102,77 @@ namespace Supervertaler.Trados.Core
             return summary;
         }
 
+        static TemplateProvider Provider(TranslationProviderReference r) =>
+            new TemplateProvider { Uri = r?.Uri?.OriginalString ?? "", State = r?.State, Enabled = r?.Enabled ?? true };
+
+        static TmListFacts ListFacts(TranslationProviderConfiguration c) => new TmListFacts
+        {
+            Override = c?.OverrideParent ?? false,
+            Providers = (c?.Entries ?? new List<TranslationProviderCascadeEntry>())
+                .Where(e => e?.MainTranslationProvider != null).Select(e => Provider(e.MainTranslationProvider)).ToList(),
+        };
+
+        static string TermbaseKeyOf(Termbase tb) =>
+            tb is LocalTermbase l ? JobProfile.TermbaseKey(true, l.FilePath) : JobProfile.TermbaseKey(false, tb?.Name);
+
+        /// <summary>The project's TM lists and termbases now, for the plan. UI thread.</summary>
+        static void ReadLists(FileBasedProject project, ProjectFacts f)
+        {
+            try
+            {
+                f.TmsAllPairs = ListFacts(project.GetTranslationProviderConfiguration());
+                foreach (var lang in project.GetProjectInfo().TargetLanguages ?? new Language[0])
+                    f.TmsPerTarget[lang.IsoAbbreviation] = ListFacts(project.GetTranslationProviderConfiguration(lang));
+            }
+            catch (Exception ex) { DiagnosticLog.Log(Log, "could not read the project's TMs: " + ex.Message); }
+            try
+            {
+                var tbc = project.GetTermbaseConfiguration();
+                f.Termbases = (tbc?.Termbases ?? new List<Termbase>()).Where(tb => tb != null)
+                    .Select(tb => new KeyValuePair<string, string>(
+                        !string.IsNullOrEmpty(tb.Name) ? tb.Name : Path.GetFileNameWithoutExtension((tb as LocalTermbase)?.FilePath ?? ""),
+                        TermbaseKeyOf(tb))).ToList();
+            }
+            catch (Exception ex) { DiagnosticLog.Log(Log, "could not read the project's termbases: " + ex.Message); }
+        }
+
+        /// <summary>Keep, add: the project's termbases, its default, indexes and options stay; the template's it lacks are added.</summary>
         static ApplyStep ApplyTermbases(FileBasedProject project, TermbasePlan plan)
         {
             const string what = JobProfile.StepTermbases;
             if (plan.LeaveAlone) return new ApplyStep(what, StepOutcome.Unchanged, plan.Notes.LastOrDefault() ?? "");
+            TermbaseConfiguration current = null;
             try
             {
-                var current = project.GetTermbaseConfiguration();
-                var options = current?.TermRecognitionOptions ?? new TermRecognitionOptions { MinimumMatchValue = 70, SearchDepth = 200 };
-                if (plan.Recognition != null)
+                current = project.GetTermbaseConfiguration();
+                var termbases = (current?.Termbases ?? new List<Termbase>()).Where(tb => tb != null).ToList();
+                var have = new HashSet<string>(termbases.Select(TermbaseKeyOf), StringComparer.Ordinal);
+                var added = new List<string>();
+                foreach (var tb in plan.Add)
                 {
-                    options = new TermRecognitionOptions
-                    {
-                        MinimumMatchValue = plan.Recognition.MinimumMatchValue,
-                        SearchDepth = plan.Recognition.SearchDepth,
-                        ShowWithNoAvailableTranslation = plan.Recognition.ShowWithNoAvailableTranslation,
-                        SearchOrder = Enum.TryParse(plan.Recognition.SearchOrder, true, out TermbaseSearchOrder order) ? order : options.SearchOrder,
-                    };
+                    if (!have.Add(JobProfile.TermbaseKey(true, tb.Path))) continue;   // there since the preview
+                    termbases.Add(new LocalTermbase(tb.Path, tb.Name.Length > 0 ? tb.Name : null, tb.SettingsXml.Length > 0 ? tb.SettingsXml : null, tb.FilterName, tb.Enabled));
+                    added.Add(tb.Name.Length > 0 ? tb.Name : Path.GetFileNameWithoutExtension(tb.Path));
                 }
-                var config = new TermbaseConfiguration
-                {
-                    Termbases = plan.Termbases.Select(tb => (Termbase)new LocalTermbase(tb.Path,
-                        tb.Name.Length > 0 ? tb.Name : null, tb.SettingsXml.Length > 0 ? tb.SettingsXml : null, tb.FilterName, tb.Enabled)).ToList(),
-                    LanguageIndexes = new List<TermbaseLanguageIndex>(),
-                    TermRecognitionOptions = options,
-                };
+                if (added.Count == 0) return new ApplyStep(what, StepOutcome.Unchanged, "the project already has the template's termbases");
+                var indexes = (current?.LanguageIndexes ?? new List<TermbaseLanguageIndex>()).Where(i => i != null).ToList();
                 var skipped = new List<string>();
-                foreach (var m in plan.Indexes)
+                foreach (var m in plan.AddIndexes)
                 {
+                    if (indexes.Any(i => string.Equals(i.ProjectLanguage?.IsoAbbreviation, m.Key, StringComparison.OrdinalIgnoreCase))) continue;
                     Language lang = null;
                     try { lang = new Language(m.Key); } catch { }
                     if (lang == null || !lang.IsValid) { skipped.Add(m.Key); continue; }
-                    config.LanguageIndexes.Add(new TermbaseLanguageIndex(lang, m.Value));
+                    indexes.Add(new TermbaseLanguageIndex(lang, m.Value));
                 }
-                project.UpdateTermbaseConfiguration(config);
-                var detail = string.Join(", ", plan.Termbases.Select(tb => tb.Name.Length > 0 ? tb.Name : Path.GetFileNameWithoutExtension(tb.Path)));
+                project.UpdateTermbaseConfiguration(new TermbaseConfiguration
+                {
+                    Termbases = termbases,
+                    LanguageIndexes = indexes,
+                    TermRecognitionOptions = current?.TermRecognitionOptions ?? new TermRecognitionOptions { MinimumMatchValue = 70, SearchDepth = 200 },
+                });
+                var detail = "kept the project's (" + (plan.Kept.Count == 0 ? "none" : string.Join(", ", plan.Kept)) + "); added " + string.Join(", ", added);
+                if (plan.AlreadyIn.Count > 0) detail += "; already in the project: " + string.Join(", ", plan.AlreadyIn);
                 var notes = plan.Notes.ToList();
                 if (skipped.Count > 0) notes.Add("language(s) Studio does not know left out of the termbase indexes: " + string.Join(", ", skipped));
                 if (notes.Count > 0) detail += " (" + string.Join(" ", notes) + ")";
@@ -142,66 +180,106 @@ namespace Supervertaler.Trados.Core
             }
             catch (Exception ex)
             {
-                DiagnosticLog.WriteAlways(Log, "setting the project's termbases failed: " + ex.Message);
-                return new ApplyStep(what, StepOutcome.Failed, "Studio did not accept them (" + ex.Message + "); the project's termbases are as they were");
+                DiagnosticLog.WriteAlways(Log, "adding termbases to the project failed: " + ex.Message);
+                // Studio checks every local termbase in the list, the project's own too.
+                var gone = (current?.Termbases ?? new List<Termbase>()).OfType<LocalTermbase>()
+                    .Where(l => !string.IsNullOrEmpty(l.FilePath) && !File.Exists(l.FilePath)).Select(l => l.FilePath).ToList();
+                return new ApplyStep(what, StepOutcome.Failed, "Studio did not accept them (" + ex.Message + ")"
+                    + (gone.Count > 0 ? "; a termbase already in the project is not there: " + string.Join(", ", gone) : "")
+                    + "; the project's termbases are as they were");
             }
         }
 
+        /// <summary>Keep, add: every list keeps its TMs, order and switches; the template's it lacks go at the end.</summary>
         static ApplyStep ApplyTms(FileBasedProject project, TmPlan plan, ProjectFacts facts)
         {
             const string what = JobProfile.StepTms;
             if (plan.LeaveAlone) return new ApplyStep(what, StepOutcome.Unchanged, plan.Notes.LastOrDefault() ?? "");
 
-            var info = project.GetProjectInfo();
-            var languages = plan.PerTarget
-                .Select(kv => (kv, lang: (info.TargetLanguages ?? new Language[0]).FirstOrDefault(l => string.Equals(l.IsoAbbreviation, kv.Key, StringComparison.OrdinalIgnoreCase))))
-                .Where(x => x.lang != null).ToList();
+            var targets = project.GetProjectInfo().TargetLanguages ?? new Language[0];
+            Language LanguageOf(string code) => targets.FirstOrDefault(l => string.Equals(l.IsoAbbreviation, code, StringComparison.OrdinalIgnoreCase));
 
-            // What the project has now, to put back if Studio refuses part of the new lists.
+            // What the project has now: the base of every new list, and what is put back if Studio refuses one.
             TranslationProviderConfiguration before;
             var beforePerLanguage = new List<(Language lang, TranslationProviderConfiguration config)>();
             try
             {
                 before = project.GetTranslationProviderConfiguration();
-                foreach (var x in languages) beforePerLanguage.Add((x.lang, project.GetTranslationProviderConfiguration(x.lang)));
+                foreach (var s in plan.PerTarget)
+                {
+                    var lang = LanguageOf(s.Target);
+                    if (lang != null) beforePerLanguage.Add((lang, project.GetTranslationProviderConfiguration(lang)));
+                }
             }
             catch (Exception ex)
             {
                 DiagnosticLog.WriteAlways(Log, "reading the project's TMs failed: " + ex.Message);
-                return new ApplyStep(what, StepOutcome.Failed, "the project's current TMs could not be read (" + ex.Message + "), so they were left alone");
+                return new ApplyStep(what, StepOutcome.Failed, "the project's current TMs could not be read (" + ex.Message + "), so nothing was added");
             }
 
+            var addedNames = new List<string>();
             void Write(bool withServerTms)
             {
-                project.UpdateTranslationProviderConfiguration(ToConfig(plan.AllPairs, withServerTms));
-                foreach (var x in languages) project.UpdateTranslationProviderConfiguration(x.lang, ToConfig(x.kv.Value, withServerTms));
+                addedNames.Clear();
+                var allPairs = Extend(before.Entries, plan.AllPairs.Add, withServerTms, addedNames);
+                project.UpdateTranslationProviderConfiguration(new TranslationProviderConfiguration(allPairs, before.StopSearchingWhenResultsFound, before.OverrideParent));
+                foreach (var s in plan.PerTarget)
+                {
+                    var b = beforePerLanguage.FirstOrDefault(x => string.Equals(x.lang.IsoAbbreviation, s.Target, StringComparison.OrdinalIgnoreCase));
+                    if (b.lang == null) continue;
+                    if (s.MakeOwnList)
+                        project.UpdateTranslationProviderConfiguration(b.lang, new TranslationProviderConfiguration(
+                            Extend(allPairs, s.Add, withServerTms, addedNames), before.StopSearchingWhenResultsFound, true));
+                    else
+                        project.UpdateTranslationProviderConfiguration(b.lang, new TranslationProviderConfiguration(
+                            Extend(b.config.Entries, s.Add, withServerTms, addedNames), b.config.StopSearchingWhenResultsFound, b.config.OverrideParent));
+                }
             }
 
-            string Describe()
+            string Detail()
             {
-                var names = plan.AllPairs.Entries.Concat(plan.PerTarget.SelectMany(kv => kv.Value.Entries))
-                    .Select(e => e.Main.DisplayName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                return names.Count > 0 ? string.Join(", ", names) : "none";
+                var kept = plan.AllPairs.Kept.Concat(plan.PerTarget.SelectMany(s => s.Kept)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var already = plan.AllPairs.AlreadyIn.Concat(plan.PerTarget.SelectMany(s => s.AlreadyIn)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return "kept the project's (" + (kept.Count == 0 ? "none" : string.Join(", ", kept)) + "); added "
+                    + (addedNames.Count == 0 ? "none" : string.Join(", ", addedNames.Distinct(StringComparer.OrdinalIgnoreCase)))
+                    + (already.Count > 0 ? "; already in the project: " + string.Join(", ", already) : "");
             }
 
             var notes = plan.Notes.Where(n => !n.Contains("sign in")).ToList();
             try
             {
                 Write(true);
-                return new ApplyStep(what, StepOutcome.Done, Describe() + (notes.Count > 0 ? " (" + string.Join(" ", notes) + ")" : ""));
+                return new ApplyStep(what, StepOutcome.Done, Detail() + (notes.Count > 0 ? " (" + string.Join(" ", notes) + ")" : ""));
             }
             catch (Exception first) when (plan.HasServerTms)
             {
-                DiagnosticLog.WriteAlways(Log, "the TM lists with server TMs were refused, trying without them: " + first.Message);
+                DiagnosticLog.WriteAlways(Log, "adding TMs with server TMs was refused, trying without them: " + first.Message);
                 try
                 {
                     Write(false);
                     notes.Add("Studio refused the server TMs (" + first.Message + "); add them in Studio's Project Settings once you can sign in.");
-                    return new ApplyStep(what, StepOutcome.Done, Describe() + " without the server TMs (" + string.Join(" ", notes) + ")");
+                    return new ApplyStep(what, StepOutcome.Done, Detail() + " (" + string.Join(" ", notes) + ")");
                 }
                 catch (Exception second) { return PutBack(project, before, beforePerLanguage, second); }
             }
             catch (Exception ex) { return PutBack(project, before, beforePerLanguage, ex); }
+        }
+
+        /// <summary>The list as it is, plus the template's entries it does not have yet, at the end.</summary>
+        static List<TranslationProviderCascadeEntry> Extend(IEnumerable<TranslationProviderCascadeEntry> existing, List<TemplateTmEntry> add,
+            bool withServerTms, List<string> addedNames)
+        {
+            var list = (existing ?? Enumerable.Empty<TranslationProviderCascadeEntry>()).Where(e => e != null).ToList();
+            var have = new HashSet<string>(list.Where(e => e.MainTranslationProvider != null).Select(e => JobProfile.TmKey(Provider(e.MainTranslationProvider))), StringComparer.Ordinal);
+            TranslationProviderReference Ref(TemplateProvider p) => new TranslationProviderReference(new Uri(p.Uri), p.State, p.Enabled);
+            foreach (var e in add.Where(e => withServerTms || !e.Main.IsServerTm))
+            {
+                if (!have.Add(JobProfile.TmKey(e.Main))) continue;   // there since the preview
+                list.Add(new TranslationProviderCascadeEntry(Ref(e.Main),
+                    e.ProjectTms.Where(x => withServerTms || !x.IsServerTm).Select(Ref).ToList(), e.Update, e.Lookup, e.Concordance, e.Penalty));
+                addedNames.Add(e.Main.DisplayName);
+            }
+            return list;
         }
 
         /// <summary>Studio refused the new lists: the old ones go back, so a half-written list never stays behind.</summary>
@@ -221,15 +299,6 @@ namespace Supervertaler.Trados.Core
                 return new ApplyStep(JobProfile.StepTms, StepOutcome.Failed, "Studio did not accept the template's TMs (" + why.Message
                     + ") and the old list could not be put back (" + ex.Message + "); check them in Studio's Project Settings > Translation Memory and Automated Translation");
             }
-        }
-
-        static TranslationProviderConfiguration ToConfig(TemplateTmList list, bool withServerTms)
-        {
-            TranslationProviderReference Ref(TemplateProvider p) => new TranslationProviderReference(new Uri(p.Uri), p.State, p.Enabled);
-            var entries = list.Entries.Where(e => withServerTms || !e.Main.IsServerTm).Select(e => new TranslationProviderCascadeEntry(
-                Ref(e.Main), e.ProjectTms.Where(x => withServerTms || !x.IsServerTm).Select(Ref).ToList(),
-                e.Update, e.Lookup, e.Concordance, e.Penalty)).ToList();
-            return new TranslationProviderConfiguration(entries, list.StopWhenFound, list.OverrideParent);
         }
 
         static ApplyStep ApplyCustomer(FileBasedProject project, CustomerDecision d, bool addCustomer)

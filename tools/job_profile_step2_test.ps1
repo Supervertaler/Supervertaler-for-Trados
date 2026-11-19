@@ -12,11 +12,11 @@
 #      bundle, its TM lists (all pairs and per pair), termbases, indexes, recognition options
 #   E  a template that cannot be read (gone, folder gone, locked, not XML, not a template,
 #      settings unreadable) gives a message naming the file, and nothing
-#   F  TMs: a missing file TM, a bad address and a second line for the same TM are left out
-#      and said; server TMs are said; each project language gets its pair's list or none;
-#      a template with no TMs leaves the project's alone; Studio's own rules are kept
-#   G  termbases: missing and server termbases left out and said; indexes are the template's
-#      plus the project's own for other languages; none usable leaves the project's alone
+#   F  TMs, keep and add: the project's lists stay as they are, in order; the template's TMs
+#      a list lacks are added at the end; one in both is "already in the project"; a missing
+#      file TM, a bad address and a second line are left out and said; applying twice adds nothing
+#   G  termbases, keep and add: the project's stay; the template's it lacks are added; missing
+#      and server termbases left out and said; only indexes for unmapped languages are added
 #   H  the customer: none named, already set, set (list's spelling), ask to add, list unreadable
 #   I  Supervertaler's values: the template's wherever it has one, the project's otherwise
 #   J  the words: the preview and the summary, with the TM reopen notice exactly when TMs changed
@@ -247,7 +247,7 @@ public static class JobProfileStep2Test {
                 + Entry("not a uri", false, true, 0, null)
                 + Entry(TmUri(general), true, false, -3, null);         // update without lookup, negative penalty
         var perPair = "<LanguageDirection Guid=\"" + Guid.NewGuid() + "\" SettingsBundleGuid=\"" + Guid.NewGuid() + "\" TargetLanguageCode=\"nl-NL\" SourceLanguageCode=\"en-GB\">"
-                    + "<CascadeItem OverrideParent=\"true\" StopSearchingWhenResultsFound=\"true\">" + Entry(TmUri(general), false, true, 2, null) + "</CascadeItem></LanguageDirection>"
+                    + "<CascadeItem OverrideParent=\"true\" StopSearchingWhenResultsFound=\"true\">" + Entry(TmUri(general), false, true, 2, null) + Entry(TmUri(FileTm("Acme NL")), true, true, 0, null) + "</CascadeItem></LanguageDirection>"
                     + "<LanguageDirection Guid=\"" + Guid.NewGuid() + "\" SettingsBundleGuid=\"" + Guid.NewGuid() + "\" TargetLanguageCode=\"fr-FR\" SourceLanguageCode=\"de-DE\">"
                     + "<CascadeItem OverrideParent=\"true\" StopSearchingWhenResultsFound=\"false\">" + Entry(TmUri(acme), false, true, 0, null) + "</CascadeItem></LanguageDirection>";
         var tbs = "<TermbaseConfiguration>"
@@ -267,6 +267,14 @@ public static class JobProfileStep2Test {
             Targets = new List<string> { "nl-NL", "de-DE", "fr-FR" },
             TermbaseIndexes = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>("de-DE", "German"), new KeyValuePair<string, string>("nl-NL", "Nederlands") },
             CustomerName = "", CustomerNames = new List<string> { "acme", "Other client" },
+            TmsAllPairs = new TmListFacts { Providers = new List<TemplateProvider> {
+                new TemplateProvider { Uri = TmUri(FileTm("Own TM")) },
+                new TemplateProvider { Uri = TmUri(FileTm("General").Replace("TMs", "tms")) } } },
+            TmsPerTarget = new Dictionary<string, TmListFacts>(StringComparer.OrdinalIgnoreCase) {
+                { "nl-NL", new TmListFacts() },
+                { "de-DE", new TmListFacts { Override = true, Providers = new List<TemplateProvider> { new TemplateProvider { Uri = TmUri(FileTm("Own DE")) } } } },
+                { "fr-FR", new TmListFacts() } },
+            Termbases = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>("Own terms", JobProfile.TermbaseKey(true, Termbase("Own terms"))) },
         };
     }
 
@@ -286,7 +294,7 @@ public static class JobProfileStep2Test {
         Check(t.ProfileName == "Acme patents", "the profile name is the one the template's Supervertaler group carries");
         Check(t.AllPairs.Entries.Count == 7 && t.PerPair.Count == 2, "the list for all pairs (7 lines) and two pairs' own lists are read");
         var nl = t.PerPair.First(p => p.Target == "nl-NL");
-        Check(nl.OverrideParent && nl.StopWhenFound && nl.Source == "en-GB" && nl.Entries.Count == 1, "a pair's own list keeps its switches");
+        Check(nl.OverrideParent && nl.StopWhenFound && nl.Source == "en-GB" && nl.Entries.Count == 2, "a pair's own list keeps its switches");
         var first = t.AllPairs.Entries[0];
         Check(first.Main.IsFileTm && first.Update && first.Lookup && first.Main.FilePath.EndsWith("Acme (en-GB-nl-NL).sdltm"), "a file TM, its path from the sdltm.file address, update and lookup");
         Check(t.AllPairs.Entries[2].Main.IsServerTm && t.AllPairs.Entries[2].Main.State == "", "a server TM is recognised, its State kept as stored");
@@ -338,53 +346,66 @@ public static class JobProfileStep2Test {
     static void Tms() {
         var t = Read(FullTemplate());
         var plan = JobProfile.PlanTms(t, Facts(), File.Exists);
-        var names = plan.AllPairs.Entries.Select(e => e.Main.DisplayName).ToList();
-        Check(!plan.LeaveAlone && names.Count == 4, "for all pairs: 4 of 7 lines kept (" + string.Join(", ", names) + ")");
+        Check(!plan.LeaveAlone, "there is something to add");
+        Check(string.Join(",", plan.AllPairs.Kept) == "Own TM,General", "all pairs: the project's own TMs are kept, in their order (" + string.Join(", ", plan.AllPairs.Kept) + ")");
+        var added = plan.AllPairs.Add.Select(e => e.Main.DisplayName).ToList();
+        Check(added.Count == 3 && added[0] == "Acme (en-GB-nl-NL)" && added.Contains("Acme server (server TM)") && added.Contains("googletranslationprovider (provider)"),
+            "all pairs: the template's TMs the project lacks are added, in the template's order (" + string.Join(", ", added) + ")");
+        Check(plan.AllPairs.AlreadyIn.SequenceEqual(new[] { "General" }), "a TM in both (path in other capitals) is not added again: \"already in the project\"");
         Check(plan.Notes.Any(n => n.Contains("Gone.sdltm") && n.Contains("not there")), "a missing file TM is left out and said");
         Check(plan.Notes.Any(n => n.Contains("cannot be read")), "a provider whose address cannot be read is left out and said");
-        Check(plan.Notes.Any(n => n.Contains("twice")), "the same TM twice: kept once, said");
-        Check(plan.Notes.Any(n => n.Contains("server") && n.Contains("sign in")), "a server TM is kept and said (Studio asks for the sign-in)");
-        Check(plan.HasServerTms, "the plan knows it has server TMs (so a refusal can be retried without them)");
-        var general = plan.AllPairs.Entries.First(e => e.Main.DisplayName == "General");
-        Check(general.Update && general.Lookup && general.Penalty == 0, "Studio's rules kept: update means lookup too; no negative penalty");
-        var nl = plan.PerTarget.First(kv => kv.Key == "nl-NL").Value;
-        Check(nl.OverrideParent && nl.Entries.Count == 1 && nl.Entries[0].Main.DisplayName == "General", "nl-NL gets its pair's own list");
-        var de = plan.PerTarget.First(kv => kv.Key == "de-DE").Value;
-        Check(!de.OverrideParent && de.Entries.Count == 0, "de-DE, not in the template, gets no list of its own (the list for all pairs applies)");
-        Check(plan.Notes.Any(n => n.Contains("de-DE") && n.Contains("not one of the template's language pairs")), "and that is said");
-        var fr = plan.PerTarget.First(kv => kv.Key == "fr-FR").Value;
-        Check(fr.OverrideParent && fr.Entries.Count == 1 && plan.Notes.Any(n => n.Contains("fr-FR") && n.Contains("de-DE")),
-            "fr-FR: the template's only pair into fr-FR is used although its source differs, and that is said");
-        Check(plan.PerTarget.Count == 3, "every project language is decided");
+        Check(plan.Notes.Any(n => n.Contains("twice")), "the same TM twice in the template: added once, said");
+        Check(plan.Notes.Any(n => n.Contains("server") && n.Contains("sign in")), "a server TM is added and said (Studio asks for the sign-in)");
+        Check(plan.HasServerTms, "the plan knows it adds server TMs (so a refusal can be retried without them)");
+        var acme = plan.AllPairs.Add[0];
+        Check(acme.Update && acme.Lookup, "an added TM keeps the template's switches");
+
+        var nl = plan.PerTarget.First(s => s.Target == "nl-NL");
+        Check(nl.MakeOwnList && nl.Add.Count == 1 && nl.Add[0].Main.DisplayName == "Acme NL" && nl.AlreadyIn.Contains("General"),
+            "nl-NL had no list of its own, the template's pair has one: it gets one (the project's list for all pairs plus Acme NL); General is there already");
+        Check(plan.Notes.Any(n => n.Contains("nl-NL gets a TM list of its own")), "and that is said");
+        var de = plan.PerTarget.First(s => s.Target == "de-DE");
+        Check(!de.MakeOwnList && de.Kept.SequenceEqual(new[] { "Own DE" }) && de.Add.Count == 4,
+            "de-DE has its own list: kept as it is, and the template's TMs for all pairs it lacks are added to it");
+        Check(!plan.PerTarget.Any(s => s.Target == "fr-FR"), "fr-FR uses the list for all pairs, which has the template pair's TM: nothing of its own");
+        Check(plan.Notes.Any(n => n.Contains("fr-FR") && n.Contains("de-DE")), "the template's pair with another source is said when used");
+
+        var f2 = Facts();
+        foreach (var e in plan.AllPairs.Add) f2.TmsAllPairs.Providers.Add(e.Main);
+        f2.TmsAllPairs.Providers.Add(new TemplateProvider { Uri = TmUri(FileTm("Acme NL")) });
+        f2.TmsPerTarget["de-DE"].Providers.AddRange(plan.PerTarget.First(s => s.Target == "de-DE").Add.Select(e => e.Main));
+        var again = JobProfile.PlanTms(t, f2, File.Exists);
+        Check(again.LeaveAlone && again.Notes.Last().Contains("already has all"), "applying the same profile twice adds nothing the second time");
 
         var none = JobProfile.PlanTms(Read(Template("No TMs", null, null, null, null)), Facts(), File.Exists);
-        Check(none.LeaveAlone && none.Notes[0].Contains("left as they are"), "a template with no TMs leaves the project's TMs alone (never an empty list)");
-        var onlyPair = JobProfile.PlanTms(Read(Template("Pair only", null,
-            "<LanguageDirection TargetLanguageCode=\"nl-NL\" SourceLanguageCode=\"en-GB\"><CascadeItem OverrideParent=\"true\">" + Entry(TmUri(FileTm("General")), false, true, 0, null) + "</CascadeItem></LanguageDirection>",
-            null, null)), Facts(), File.Exists);
-        Check(!onlyPair.LeaveAlone && onlyPair.AllPairs.Entries.Count == 0 && onlyPair.PerTarget.First(kv => kv.Key == "nl-NL").Value.Entries.Count == 1,
-            "a template with TMs for one pair only: that pair gets them, the list for all pairs is empty");
+        Check(none.LeaveAlone && none.Notes[0].Contains("left as they are"), "a template with no TMs leaves the project's TMs alone");
+        var empty = Facts(); empty.TmsAllPairs = new TmListFacts();
+        var fresh = JobProfile.PlanTms(t, empty, File.Exists);
+        Check(fresh.AllPairs.Kept.Count == 0 && fresh.AllPairs.Add.Count == 4, "a project with no TMs gets all the template's");
     }
 
     // ─── G ──────────────────────────────────────────────────────────
     static void Termbases() {
         var t = Read(FullTemplate());
         var plan = JobProfile.PlanTermbases(t, Facts(), File.Exists);
-        Check(!plan.LeaveAlone && plan.Termbases.Count == 1 && plan.Termbases[0].Name == "Acme terms", "only the termbase that is there is set");
+        Check(!plan.LeaveAlone && plan.Kept.SequenceEqual(new[] { "Own terms" }) && plan.Add.Count == 1 && plan.Add[0].Name == "Acme terms",
+            "the project's termbase is kept; the template's that is there and the project lacks is added");
         Check(plan.Notes.Any(n => n.Contains("Gone.sdltb") && n.Contains("not there")), "a missing termbase is left out and said");
-        Check(plan.Notes.Any(n => n.Contains("server termbase") && n.Contains("Server terms")), "a server termbase is not set, and that is said");
-        var idx = string.Join(",", plan.Indexes.Select(kv => kv.Key + "=" + kv.Value));
-        Check(idx == "en-GB=English,nl-NL=Dutch,de-DE=German", "indexes: the template's, then the project's own for languages the template does not map (" + idx + ")");
-        Check(plan.Recognition != null && plan.Recognition.SearchDepth == 150, "the template's recognition options");
+        Check(plan.Notes.Any(n => n.Contains("server termbase") && n.Contains("Server terms")), "a server termbase is not added, and that is said");
+        var idx = string.Join(",", plan.AddIndexes.Select(kv => kv.Key + "=" + kv.Value));
+        Check(idx == "en-GB=English", "indexes: only the template's for languages the project does not map (" + idx + ")");
+
+        var f = Facts();
+        f.Termbases.Add(new KeyValuePair<string, string>("Acme terms", JobProfile.TermbaseKey(true, Termbase("Acme terms").ToUpperInvariant())));
+        var again = JobProfile.PlanTermbases(t, f, File.Exists);
+        Check(again.LeaveAlone && again.AlreadyIn.Contains("Acme terms") && again.Notes.Last().Contains("already has"),
+            "a termbase the project has (path in other capitals): not added again, nothing to do");
 
         var none = JobProfile.PlanTermbases(Read(Template("No termbases", null, null, null, null)), Facts(), File.Exists);
         Check(none.LeaveAlone, "a template with no termbases leaves the project's alone");
         var allGone = JobProfile.PlanTermbases(Read(Template("All gone", null, null,
             "<TermbaseConfiguration>" + TermbaseXml("Gone", Path.Combine(_temp, "nothing.sdltb"), true) + "</TermbaseConfiguration>", null)), Facts(), File.Exists);
         Check(allGone.LeaveAlone && allGone.Notes.Any(n => n.StartsWith("None of")), "none of them there: the project's are left alone, and that is said");
-        var noOptions = JobProfile.PlanTermbases(Read(Template("No options", null, null,
-            "<TermbaseConfiguration>" + TermbaseXml("Acme terms", Termbase("Acme terms"), true) + "</TermbaseConfiguration>", null)), Facts(), File.Exists);
-        Check(noOptions.Recognition == null && noOptions.Indexes.Count == 2, "no recognition options in the template: the project keeps its own; its own indexes stay");
     }
 
     // ─── H ──────────────────────────────────────────────────────────
@@ -420,9 +441,11 @@ public static class JobProfileStep2Test {
         var lines = JobProfile.Describe(p, f);
         var all = string.Join("\n", lines);
         Check(all.Contains("memory bank \"Acme bank\"") && all.Contains("stays as the project has it"), "preview: Supervertaler's part, and that the rest stays");
-        Check(all.Contains("TMs for all language pairs:") && all.Contains("TMs for en-GB \u2192 nl-NL"), "preview: the TM lists");
+        Check(all.Contains("TMs for all language pairs: keeps Own TM, General; adds Acme (en-GB-nl-NL) (lookup, update)") && all.Contains("already in the project: General"),
+            "preview: what stays (the project's own), what is added, what is there already");
+        Check(all.Contains("TMs for en-GB \u2192 nl-NL: a list of its own") && all.Contains("Nothing is removed"), "preview: a pair's new list, and that nothing is removed");
         Check(all.Contains("close it and open it again"), "preview: the open document needs reopening for the TMs");
-        Check(all.Contains("Termbases: Acme terms") && all.Contains("Customer: \"acme\""), "preview: termbases and customer");
+        Check(all.Contains("Termbases: keeps Own terms; adds Acme terms") && all.Contains("Customer: \"acme\""), "preview: termbases (kept and added) and customer");
         f.FromElsewhere = true;
         var pkg = string.Join("\n", JobProfile.Describe(p, f));
         Check(pkg.Contains("own record only") && pkg.Contains("left as they are (the project came from a package or GroupShare)") && !pkg.Contains("TMs for all"),
@@ -430,12 +453,13 @@ public static class JobProfileStep2Test {
 
         var done = JobProfile.Summary("Acme patents", "PROJ-001", new List<ApplyStep> {
             new ApplyStep(JobProfile.StepSupervertaler, StepOutcome.Done, "written into the project"),
-            new ApplyStep(JobProfile.StepTms, StepOutcome.Done, "Acme, General"),
+            new ApplyStep(JobProfile.StepTms, StepOutcome.Done, "kept the project's (Own TM); added Acme; already in the project: General"),
             new ApplyStep(JobProfile.StepCustomer, StepOutcome.Unchanged, "the template names none"),
         });
         Check(done.StartsWith("Job profile \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("Left as it was:") && !done.Contains("Not done:"),
             "summary: what changed and what was left, nothing failed");
         Check(done.Contains("open document keeps its old TMs until you close it and open it again"), "summary: the TM reopen notice when the TMs changed");
+        Check(done.Contains("kept the project's (Own TM); added Acme; already in the project: General"), "summary: kept, added and already there, together");
         var partial = JobProfile.Summary("Acme patents", "PROJ-001", new List<ApplyStep> {
             new ApplyStep(JobProfile.StepTms, StepOutcome.Failed, "Studio did not accept the template's TMs (x); the project's TMs are as they were"),
             new ApplyStep(JobProfile.StepTermbases, StepOutcome.Done, "Acme terms"),
@@ -483,7 +507,7 @@ public static class JobProfileStep2Test {
         sw.Restart();
         PreparedProfile prepared;
         var error = JobProfile.Prepare(bigPath, Facts(), File.Exists, JobProfile.ReadBundleWithStudio, out prepared);
-        Check(error == null && prepared.Tms.AllPairs.Entries.Count == 300 && sw.ElapsedMilliseconds < 1000, "a template with 300 TMs read and planned in " + sw.ElapsedMilliseconds + " ms");
+        Check(error == null && prepared.Tms.AllPairs.Add.Count == 300 && sw.ElapsedMilliseconds < 1000, "a template with 300 TMs read and planned in " + sw.ElapsedMilliseconds + " ms");
     }
 
     // ─── L ──────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ namespace Supervertaler.Trados.Settings
 {
     /// <summary>
     /// "Apply a job profile" (step 2): pick a Studio project template and apply it to the project open in Studio -
-    /// Supervertaler's set-up, Studio's termbases and TMs, and the project's Studio customer. Shows what applying would do
+    /// Supervertaler's set-up, the template's Studio termbases and TMs (added to the project's own, never replacing them), and the project's Studio customer. Shows what applying would do
     /// before anything changes, asks before applying (and before adding a customer to Studio's list), and shows a short
     /// summary afterwards. The template is read fresh from disk each time, off the UI thread (it may be on a NAS); Studio
     /// is written on the UI thread only (<see cref="JobProfileStudio"/>).
@@ -209,7 +209,7 @@ namespace Supervertaler.Trados.Settings
         {
             var question = "Apply the job profile \"" + prepared.Template.ProfileName + "\" to the project \"" + facts.Name + "\"?\r\n\r\n"
                            + string.Join("\r\n", JobProfile.Describe(prepared, facts))
-                           + (facts.FromElsewhere ? "" : "\r\n\r\nThe project's TM and termbase lists are replaced by the template's. Nothing is deleted from any TM or termbase.");
+                           + (facts.FromElsewhere ? "" : "\r\n\r\nThe project keeps all its TMs and termbases, as they are; the template's that it lacks are added. Nothing is removed.");
             if (MessageBox.Show(this, question, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
 
             bool addCustomer = false;

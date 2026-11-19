@@ -99,27 +99,62 @@ namespace Supervertaler.Trados.Core
         public List<string> CustomerNames;
         /// <summary>From a package or GroupShare: only Supervertaler's own record is changed.</summary>
         public bool FromElsewhere;
+        /// <summary>The project's TM list for all language pairs now.</summary>
+        public TmListFacts TmsAllPairs = new TmListFacts();
+        /// <summary>Each target language's own TM list now (Override false: it uses the list for all pairs).</summary>
+        public Dictionary<string, TmListFacts> TmsPerTarget = new Dictionary<string, TmListFacts>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>The project's Studio termbases now: name → identity (<see cref="JobProfile.TermbaseKey"/>).</summary>
+        public List<KeyValuePair<string, string>> Termbases = new List<KeyValuePair<string, string>>();
+    }
+
+    /// <summary>A project's TM list as it is now: whether it is a language pair's own, and its TMs in order.</summary>
+    public sealed class TmListFacts
+    {
+        public bool Override;
+        public List<TemplateProvider> Providers = new List<TemplateProvider>();
+    }
+
+    /// <summary>
+    /// One of the project's TM lists after applying: the project's own TMs stay as they are, in their order and with
+    /// their switches; the template's that are not in it yet are added at the end.
+    /// </summary>
+    public sealed class TmScopePlan
+    {
+        /// <summary>"" for the list for all language pairs, else the target language.</summary>
+        public string Target = "";
+        /// <summary>The project's TMs in this list now: kept, unchanged.</summary>
+        public List<string> Kept = new List<string>();
+        public List<TemplateTmEntry> Add = new List<TemplateTmEntry>();
+        /// <summary>The template's TMs this list has already: left as the project has them.</summary>
+        public List<string> AlreadyIn = new List<string>();
+        /// <summary>
+        /// The pair has no list of its own yet but the template's pair has: it gets one, made of the project's list for
+        /// all pairs (with what is added there) plus <see cref="Add"/>, so no TM stops applying to it.
+        /// </summary>
+        public bool MakeOwnList;
     }
 
     public sealed class TmPlan
     {
-        /// <summary>The template has no TMs: the project's are left as they are.</summary>
+        /// <summary>The template has no TMs, or none the project lacks: the project's are left as they are.</summary>
         public bool LeaveAlone;
-        public TemplateTmList AllPairs = new TemplateTmList();
-        /// <summary>Per project target language: the list it gets (empty and not overriding = the list for all pairs).</summary>
-        public List<KeyValuePair<string, TemplateTmList>> PerTarget = new List<KeyValuePair<string, TemplateTmList>>();
+        public TmScopePlan AllPairs = new TmScopePlan();
+        public List<TmScopePlan> PerTarget = new List<TmScopePlan>();
         public List<string> Notes = new List<string>();
-        public bool HasServerTms => AllPairs.Entries.Concat(PerTarget.SelectMany(p => p.Value.Entries)).Any(e => e.Main.IsServerTm);
+        public IEnumerable<TemplateTmEntry> Added => AllPairs.Add.Concat(PerTarget.SelectMany(s => s.Add));
+        public bool HasServerTms => Added.Any(e => e.Main.IsServerTm);
     }
 
     public sealed class TermbasePlan
     {
-        /// <summary>The template has no usable termbases: the project's are left as they are.</summary>
+        /// <summary>Nothing to add: the project's termbases are left as they are.</summary>
         public bool LeaveAlone;
-        public List<TemplateTermbase> Termbases = new List<TemplateTermbase>();
-        public List<KeyValuePair<string, string>> Indexes = new List<KeyValuePair<string, string>>();
-        /// <summary>Null: keep the project's own recognition options.</summary>
-        public TemplateTermRecognition Recognition;
+        /// <summary>The project's termbases now: kept, unchanged.</summary>
+        public List<string> Kept = new List<string>();
+        public List<TemplateTermbase> Add = new List<TemplateTermbase>();
+        public List<string> AlreadyIn = new List<string>();
+        /// <summary>The template's language indexes for languages the project does not map yet.</summary>
+        public List<KeyValuePair<string, string>> AddIndexes = new List<KeyValuePair<string, string>>();
         public List<string> Notes = new List<string>();
     }
 
@@ -163,9 +198,10 @@ namespace Supervertaler.Trados.Core
     /// then written through the public API (<c>UpdateTranslationProviderConfiguration</c>, <c>UpdateTermbaseConfiguration</c>).
     /// A template that cannot be read in full changes nothing.</para>
     ///
-    /// <para><b>Rules.</b> A part the template does not have leaves the project's own as it is (a template with no TMs
-    /// never empties a project's TM list). A file TM or termbase the template names but that is not there is left out
-    /// and reported. Server termbases are reported, not set (Studio 2022/2024 and 2026 differ in how one is given).</para>
+    /// <para><b>Rules.</b> Keep, add (Michael, 19 Nov): the project's TMs and termbases all stay, in their order and with
+    /// their settings; the template's that the project lacks are added. Nothing is ever removed. A file TM or termbase the
+    /// template names but that is not there is left out and reported. Server termbases are reported, not added (Studio
+    /// 2022/2024 and 2026 differ in how one is given).</para>
     /// </summary>
     public static class JobProfile
     {
@@ -453,14 +489,50 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// The TM lists the project gets. Each project target language gets the template's list for that pair when it has
-        /// one (same source and target; else the only one with that target), otherwise none of its own, so the list for all
-        /// language pairs applies. Left out, with a note: a file TM that is not there, a provider whose address cannot be
-        /// read, and a second line for the same provider (Studio refuses the whole list over either).
+        /// A TM's identity, to tell whether the project has it already: a file TM by its full path (ignoring case), any
+        /// other provider by its address (ignoring case).
+        /// </summary>
+        public static string TmKey(TemplateProvider p)
+        {
+            if (p == null) return "";
+            if (p.IsFileTm && !string.IsNullOrEmpty(p.FilePath))
+            {
+                string full = p.FilePath;
+                try { full = System.IO.Path.GetFullPath(full); } catch { }
+                return "file|" + full.ToLowerInvariant();
+            }
+            return "uri|" + (p.Uri ?? "").Trim().ToLowerInvariant();
+        }
+
+        /// <summary>A termbase's identity: a local one by its full path, a server one by its name (both ignoring case).</summary>
+        public static string TermbaseKey(bool local, string pathOrName)
+        {
+            var v = (pathOrName ?? "").Trim();
+            if (local)
+            {
+                try { v = System.IO.Path.GetFullPath(v); } catch { }
+                return "file|" + v.ToLowerInvariant();
+            }
+            return "server|" + v.ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// The TMs to add (Michael, 19 Nov: "Keep, add template's"). Every list the project has stays as it is, in its
+        /// order and with its switches; nothing is removed. Added to each list: the template's TMs for it that the list
+        /// does not have yet, at the end. A TM in both keeps the project's switches and is reported as already there.
+        /// <list type="bullet">
+        /// <item>The list for all language pairs gets the template's list for all pairs.</item>
+        /// <item>A language pair with its own list gets the template's list for that pair (same source and target; else the
+        /// only one with that target), or, when the template has none, its list for all pairs.</item>
+        /// <item>A language pair without a list of its own, where the template's pair has one, gets one: the project's list
+        /// for all pairs plus the template pair's TMs, so nothing it used stops applying.</item>
+        /// </list>
+        /// Left out, with a note: a file TM that is not there, an address that cannot be read, a second line for the same TM.
         /// </summary>
         public static TmPlan PlanTms(TemplateProfile t, ProjectFacts facts, Func<string, bool> fileExists)
         {
             var plan = new TmPlan();
+            facts = facts ?? new ProjectFacts();
             if (t == null || !t.HasAnyTm)
             {
                 plan.LeaveAlone = true;
@@ -468,26 +540,55 @@ namespace Supervertaler.Trados.Core
                 return plan;
             }
             var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            plan.AllPairs = Usable(t.AllPairs, fileExists, plan.Notes, reported);
-            foreach (var target in facts?.Targets ?? new List<string>())
+            var all = Usable(t.AllPairs, fileExists, plan.Notes, reported);
+            plan.AllPairs = Scope("", facts.TmsAllPairs.Providers, all.Entries);
+            var allPairsAfter = facts.TmsAllPairs.Providers.Select(TmKey).Concat(plan.AllPairs.Add.Select(e => TmKey(e.Main))).ToList();
+
+            foreach (var target in facts.Targets ?? new List<string>())
             {
-                var candidates = t.PerPair.Where(p => string.Equals(p.Target, target, StringComparison.OrdinalIgnoreCase)).ToList();
+                var candidates = t.PerPair.Where(p => string.Equals(p.Target, target, StringComparison.OrdinalIgnoreCase)
+                                                      && p.OverrideParent && p.Entries.Count > 0).ToList();
                 var match = candidates.FirstOrDefault(p => string.Equals(p.Source, facts.Source, StringComparison.OrdinalIgnoreCase))
                             ?? (candidates.Count == 1 ? candidates[0] : null);
-                if (match != null)
+                if (match != null && !string.Equals(match.Source, facts.Source, StringComparison.OrdinalIgnoreCase))
+                    plan.Notes.Add("For " + target + " the template's pair " + match.Source + " → " + match.Target + " is used (the project's source language is " + facts.Source + ").");
+                var pair = match == null ? null : Usable(match, fileExists, plan.Notes, reported);
+                facts.TmsPerTarget.TryGetValue(target, out var own);
+
+                TmScopePlan scope;
+                if (own != null && own.Override)
+                    scope = Scope(target, own.Providers, (pair ?? all).Entries);
+                else if (pair != null)
                 {
-                    plan.PerTarget.Add(new KeyValuePair<string, TemplateTmList>(target, Usable(match, fileExists, plan.Notes, reported)));
-                    if (!string.Equals(match.Source, facts.Source, StringComparison.OrdinalIgnoreCase))
-                        plan.Notes.Add("For " + target + " the template's pair " + match.Source + " → " + match.Target + " is used (the project's source language is " + facts.Source + ").");
+                    scope = Scope(target, new List<TemplateProvider>(), pair.Entries, allPairsAfter);
+                    scope.MakeOwnList = scope.Add.Count > 0;
+                    if (!scope.MakeOwnList) continue;   // the list for all pairs has them all: nothing of its own needed
+                    plan.Notes.Add(target + " gets a TM list of its own: the project's TMs for all language pairs, plus " +
+                                       string.Join(", ", scope.Add.Select(e => e.Main.DisplayName)) + ".");
                 }
-                else
-                {
-                    plan.PerTarget.Add(new KeyValuePair<string, TemplateTmList>(target, new TemplateTmList { Source = facts.Source, Target = target }));
-                    if (t.PerPair.Count > 0)
-                        plan.Notes.Add(facts.Source + " → " + target + " is not one of the template's language pairs: it uses the template's TMs for all language pairs.");
-                }
+                else continue;   // it uses the list for all pairs, which has what it needs
+                plan.PerTarget.Add(scope);
+            }
+
+            if (!plan.Added.Any())
+            {
+                plan.LeaveAlone = true;
+                plan.Notes.Add("The project already has all of the template's TMs: its TMs are left as they are.");
             }
             return plan;
+        }
+
+        /// <summary>One list: the project's TMs kept, the template's it lacks added, the ones it has reported.</summary>
+        static TmScopePlan Scope(string target, List<TemplateProvider> project, List<TemplateTmEntry> template, IEnumerable<string> alsoHave = null)
+        {
+            var scope = new TmScopePlan { Target = target, Kept = project.Select(p => p.DisplayName).ToList() };
+            var have = new HashSet<string>(project.Select(TmKey).Concat(alsoHave ?? Enumerable.Empty<string>()), StringComparer.Ordinal);
+            foreach (var e in template)
+            {
+                if (have.Add(TmKey(e.Main))) scope.Add.Add(e);
+                else if (!scope.AlreadyIn.Contains(e.Main.DisplayName)) scope.AlreadyIn.Add(e.Main.DisplayName);
+            }
+            return scope;
         }
 
         static TemplateTmList Usable(TemplateTmList list, Func<string, bool> fileExists, List<string> notes, HashSet<string> reported)
@@ -507,7 +608,7 @@ namespace Supervertaler.Trados.Core
                     if (reported.Add("missing|" + e.Main.Uri)) notes.Add("Left out: the TM \"" + (e.Main.FilePath ?? e.Main.Uri) + "\" is not there.");
                     continue;
                 }
-                if (!seen.Add(e.Main.Uri + "|" + (e.Main.State ?? "")))
+                if (!seen.Add(TmKey(e.Main)))
                 {
                     if (reported.Add("twice|" + e.Main.Uri)) notes.Add("Left out: " + name + " was in the template's list twice; once is kept.");
                     continue;
@@ -529,24 +630,30 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
-        /// The termbases the project gets: the template's local termbases that are there, in its order (the first is the
-        /// default). Language indexes: the template's, plus the project's own for languages the template does not map.
-        /// Recognition options: the template's when it has them. With no usable termbase the project's are left alone.
+        /// The termbases to add (keep, add): the project's stay as they are, in their order, its default and its
+        /// recognition options too; the template's local termbases that are there and that the project lacks are added
+        /// at the end. Language indexes: the template's are added for languages the project does not map yet.
         /// </summary>
         public static TermbasePlan PlanTermbases(TemplateProfile t, ProjectFacts facts, Func<string, bool> fileExists)
         {
             var plan = new TermbasePlan();
+            facts = facts ?? new ProjectFacts();
+            plan.Kept = facts.Termbases.Select(kv => kv.Key).ToList();
             if (t == null || t.Termbases.Count == 0)
             {
                 plan.LeaveAlone = true;
                 plan.Notes.Add("The template has no termbases: the project's termbases are left as they are.");
                 return plan;
             }
+            var have = new HashSet<string>(facts.Termbases.Select(kv => kv.Value), StringComparer.Ordinal);
             foreach (var tb in t.Termbases)
             {
+                var name = tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path);
                 if (!tb.Local)
                 {
-                    plan.Notes.Add("Not set: the server termbase \"" + tb.Name + "\". Add it in Studio's Project Settings > Termbases.");
+                    var serverName = tb.Path.Contains("\\%\\") ? tb.Path.Substring(tb.Path.IndexOf("\\%\\", StringComparison.Ordinal) + 3) : tb.Name;
+                    if (have.Contains(TermbaseKey(false, serverName))) { plan.AlreadyIn.Add(name); continue; }
+                    plan.Notes.Add("Not added: the server termbase \"" + tb.Name + "\". Add it in Studio's Project Settings > Termbases.");
                     continue;
                 }
                 if (tb.Path.Length == 0)
@@ -554,25 +661,25 @@ namespace Supervertaler.Trados.Core
                     plan.Notes.Add("Left out: the termbase \"" + tb.Name + "\" (its settings in the template cannot be read).");
                     continue;
                 }
+                if (have.Contains(TermbaseKey(true, tb.Path))) { if (!plan.AlreadyIn.Contains(name)) plan.AlreadyIn.Add(name); continue; }
                 if (!(fileExists?.Invoke(tb.Path) ?? true))
                 {
                     plan.Notes.Add("Left out: the termbase \"" + tb.Path + "\" is not there.");
                     continue;
                 }
-                if (plan.Termbases.Any(x => string.Equals(x.Path, tb.Path, StringComparison.OrdinalIgnoreCase))) continue;
-                plan.Termbases.Add(tb);
+                have.Add(TermbaseKey(true, tb.Path));
+                plan.Add.Add(tb);
             }
-            if (plan.Termbases.Count == 0)
+            foreach (var m in t.TermbaseIndexes)
+                if (!facts.TermbaseIndexes.Concat(plan.AddIndexes).Any(o => string.Equals(o.Key, m.Key, StringComparison.OrdinalIgnoreCase)))
+                    plan.AddIndexes.Add(m);
+            if (plan.Add.Count == 0)
             {
                 plan.LeaveAlone = true;
-                plan.Notes.Add("None of the template's termbases can be used here: the project's termbases are left as they are.");
-                return plan;
+                plan.Notes.Add(plan.AlreadyIn.Count > 0
+                    ? "The project already has the template's termbases: its termbases are left as they are."
+                    : "None of the template's termbases can be added here: the project's termbases are left as they are.");
             }
-            plan.Indexes.AddRange(t.TermbaseIndexes.GroupBy(m => m.Key, StringComparer.OrdinalIgnoreCase).Select(g => g.First()));
-            foreach (var own in facts?.TermbaseIndexes ?? new List<KeyValuePair<string, string>>())
-                if (!plan.Indexes.Any(m => string.Equals(m.Key, own.Key, StringComparison.OrdinalIgnoreCase)))
-                    plan.Indexes.Add(own);
-            plan.Recognition = t.Recognition;
             return plan;
         }
 
@@ -648,18 +755,17 @@ namespace Supervertaler.Trados.Core
                 return lines;
             }
 
-            if (p.Tms.LeaveAlone) lines.Add("TMs: the template has none; the project's are left as they are.");
+            if (p.Tms.LeaveAlone) lines.Add("TMs: " + (p.Tms.Notes.LastOrDefault() ?? "the project's are left as they are."));
             else
             {
-                lines.Add("TMs for all language pairs: " + ListTms(p.Tms.AllPairs));
-                foreach (var kv in p.Tms.PerTarget.Where(kv => kv.Value.OverrideParent || kv.Value.Entries.Count > 0))
-                    lines.Add("TMs for " + (facts?.Source ?? "") + " → " + kv.Key + ": " + ListTms(kv.Value)
-                        + (kv.Value.OverrideParent ? " (instead of the list for all pairs)" : ""));
-                lines.Add("   The open document keeps its old TMs until you close it and open it again.");
+                foreach (var s in new[] { p.Tms.AllPairs }.Concat(p.Tms.PerTarget))
+                    lines.Add((s.Target.Length == 0 ? "TMs for all language pairs: " : "TMs for " + (facts?.Source ?? "") + " → " + s.Target + ": ") + DescribeScope(s));
+                lines.Add("   Nothing is removed. The open document keeps its old TMs until you close it and open it again.");
             }
 
-            if (p.Termbases.LeaveAlone) lines.Add("Termbases: the project's are left as they are.");
-            else lines.Add("Termbases: " + string.Join(", ", p.Termbases.Termbases.Select(tb => tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path))) + ".");
+            if (p.Termbases.LeaveAlone) lines.Add("Termbases: " + (p.Termbases.Notes.LastOrDefault() ?? "the project's are left as they are."));
+            else lines.Add("Termbases: " + Keeps(p.Termbases.Kept) + "; adds " + string.Join(", ", p.Termbases.Add.Select(tb => tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path)))
+                           + (p.Termbases.AlreadyIn.Count > 0 ? "; already in the project: " + string.Join(", ", p.Termbases.AlreadyIn) : "") + ". Nothing is removed.");
 
             switch (p.Customer.Choice)
             {
@@ -672,20 +778,28 @@ namespace Supervertaler.Trados.Core
 
             // The notes behind those lines; "the template has none" is said above already.
             if (!p.Tms.LeaveAlone) foreach (var n in p.Tms.Notes) lines.Add("   " + n);
-            if (t.Termbases.Count > 0) foreach (var n in p.Termbases.Notes) lines.Add("   " + n);
+            if (!p.Termbases.LeaveAlone) foreach (var n in p.Termbases.Notes) lines.Add("   " + n);
+            else foreach (var n in p.Termbases.Notes.Take(p.Termbases.Notes.Count - 1)) lines.Add("   " + n);
             return lines;
         }
 
-        static string ListTms(TemplateTmList list)
+        static string Keeps(List<string> kept) =>
+            kept.Count == 0 ? "the project has none now" : "keeps " + string.Join(", ", kept);
+
+        static string DescribeScope(TmScopePlan s)
         {
-            if (list.Entries.Count == 0) return "none.";
-            return string.Join(", ", list.Entries.Select(e =>
+            var parts = new List<string>();
+            parts.Add(s.MakeOwnList ? "a list of its own: the project's TMs for all language pairs" : Keeps(s.Kept));
+            if (s.Add.Count > 0) parts.Add("adds " + string.Join(", ", s.Add.Select(e =>
             {
                 var flags = new List<string>();
                 if (e.Lookup) flags.Add("lookup");
                 if (e.Update) flags.Add("update");
                 return e.Main.DisplayName + (flags.Count > 0 ? " (" + string.Join(", ", flags) + ")" : " (off)");
-            })) + ".";
+            })));
+            else parts.Add("adds nothing");
+            if (s.AlreadyIn.Count > 0) parts.Add("already in the project: " + string.Join(", ", s.AlreadyIn));
+            return string.Join("; ", parts) + ".";
         }
 
         /// <summary>
