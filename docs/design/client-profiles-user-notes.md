@@ -35,6 +35,10 @@ Running notes on what the Help will have to say. Not user-facing yet; the design
     so if you add that prompt later it is used;
   - a termbase you do not have is switched off for you, noted in the diagnostic log, and kept in the project,
     so the owner gets it back when the project returns.
+- **Supervertaler never writes your set-up into a project from a package or GroupShare.** Such a project is the
+  agency's, and its settings can travel back to them; your memory bank, prompt names and client name stay in
+  Supervertaler's own record on your computer. (The same rule as TM field stamping.) Values the agency's project
+  already carries are still used, as above.
 - **Termbases are matched by name.** A template made on one computer finds termbases of the same name on
   another. A termbase renamed on the same computer is still recognised. A termbase with a different name on
   the other computer is not found (it counts as missing, above).

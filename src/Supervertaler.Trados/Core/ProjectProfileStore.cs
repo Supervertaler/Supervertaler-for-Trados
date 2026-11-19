@@ -238,6 +238,18 @@ namespace Supervertaler.Trados.Core
                     return false;
                 }
 
+                // A project from a package or GroupShare is the agency's: its settings can travel back
+                // to their server, and the translator's bank, prompt names and client must not go with
+                // them unasked (the same rule as TM field stamping, Michael 11 Nov). Supervertaler's own
+                // record keeps the set-up; nothing is written into the project, and nothing is pending.
+                if (FromElsewhere(project))
+                {
+                    if (ReportedFromElsewhere(projectPath))
+                        DiagnosticLog.Log(Log, Path.GetFileName(projectPath) + " came from a package or GroupShare: "
+                            + "Supervertaler's set-up is kept in its own record only, not written into the project");
+                    return true;
+                }
+
                 var bundle = project.GetSettings();
                 if (ProjectBundleSettings.WriteValues(bundle, desired))
                 {
@@ -272,6 +284,19 @@ namespace Supervertaler.Trados.Core
                 catch { }
             }
             return null;
+        }
+
+        /// <summary>True for a project from a package or GroupShare (TmFieldStamping's own test). False when unknown.</summary>
+        static bool FromElsewhere(FileBasedProject project)
+        {
+            try { return TmFieldStamping.IsFromElsewhere(project.GetProjectInfo().ProjectType); }
+            catch { return false; }
+        }
+
+        /// <summary>True the first time for a path in this session, so the log says it once.</summary>
+        static bool ReportedFromElsewhere(string projectPath)
+        {
+            lock (_lock) return _reported.Add(projectPath + "|from elsewhere");
         }
 
         static string GuidOf(FileBasedProject project)
