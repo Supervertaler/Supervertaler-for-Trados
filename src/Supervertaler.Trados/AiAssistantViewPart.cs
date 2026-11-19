@@ -147,6 +147,7 @@ namespace Supervertaler.Trados
 
             BridgeLog.Write("AiAssistantViewPart.Initialize() ENTERED");
             _currentInstance = this;
+            ProjectProfileStore.AttachUiThread();
 
             // Regression guard for the v4.19.52 silent-data-loss bug. If the
             // DataContractJsonSerializer can't round-trip a default
@@ -8784,7 +8785,9 @@ namespace Supervertaler.Trados
                 return _settings?.AiSettings?.ActiveMemoryBankName;
 
             string recorded = null;
-            try { recorded = TermLensEditorViewPart.LoadOrAdoptProjectSettings(projectPath, projectName)?.MemoryBankName; }
+            // LoadOrCreate, not LoadOrAdopt: a project made from a template has the
+            // template's bank before it has a settings file of its own.
+            try { recorded = TermLensEditorViewPart.LoadOrCreateProjectSettings(projectPath, projectName)?.MemoryBankName; }
             catch { /* settings that cannot be read record no bank */ }
 
             var bank = TranslationBankContext.BankForProject(recorded, projectName, out var matchedByName);
@@ -9513,7 +9516,10 @@ namespace Supervertaler.Trados
                 string wanted = null;
                 // Through the adoption: a project Studio has renamed keeps the bank
                 // recorded under its old path, whichever view part sees it first.
-                try { wanted = TermLensEditorViewPart.LoadOrAdoptProjectSettings(projectPath, CurrentProjectNameFromDocument())?.MemoryBankName; }
+                // LoadOrCreate: a project made from a client's template brings that
+                // template's bank (its settings bundle) before it has a settings file,
+                // and must not be matched by name over it. Saves nothing.
+                try { wanted = TermLensEditorViewPart.LoadOrCreateProjectSettings(projectPath, CurrentProjectNameFromDocument())?.MemoryBankName; }
                 catch { }
 
                 // #135: a project with no recorded bank gets the one named after it,

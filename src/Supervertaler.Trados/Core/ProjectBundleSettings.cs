@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using Sdl.Core.Settings;
 using Sdl.ProjectAutomation.FileBased;
-using Sdl.TranslationStudioAutomation.IntegrationApi;
 
 namespace Supervertaler.Trados.Core
 {
@@ -22,6 +20,12 @@ namespace Supervertaler.Trados.Core
     /// already carried a "MemoQ v 1.0.0.0" group). So a value written here is set
     /// once on the template and inherited by every project spun up from it, which is
     /// what issue #36 (Marco's CLI-automation workflow) asks for.
+    ///
+    /// <para>Since 20.209 (client profiles, step 1) the project's whole Supervertaler
+    /// set-up lives here as well as in the sidecar: memory bank, prompts, client,
+    /// termbase choices and a profile name. <see cref="ProjectProfileStore"/> reads and
+    /// writes it; <see cref="ProjectProfile"/> holds the rules. An empty value means
+    /// "nothing here": the sidecar decides, as before.</para>
     /// </summary>
     public class SupervertalerProjectSettingsGroup : SettingsGroup
     {
@@ -42,6 +46,35 @@ namespace Supervertaler.Trados.Core
         /// a private project name must not reach them unasked. Kept in the project, so it goes with it.
         /// </summary>
         public Setting<bool> StampStudioTmsInImportedProject => GetSetting<bool>("StampStudioTmsInImportedProject");
+
+        /// <summary>The project's SuperMemory bank, by name (banks are folders in the shared data folder).</summary>
+        public Setting<string> MemoryBankName => GetSetting<string>("MemoryBankName");
+
+        /// <summary>The translate prompt, as its path inside the prompt library (as the sidecar stores it).</summary>
+        public Setting<string> TranslatePromptPath => GetSetting<string>("TranslatePromptPath");
+
+        /// <summary>The proofread prompt, as its path inside the prompt library.</summary>
+        public Setting<string> ProofreadPromptPath => GetSetting<string>("ProofreadPromptPath");
+
+        /// <summary>The client (end customer) recorded for the project, for the usage ledger.</summary>
+        public Setting<string> ClientName => GetSetting<string>("ClientName");
+
+        /// <summary>
+        /// The client profile this set-up came from. Empty until a later step writes it; kept here now so that it
+        /// already travels template → project → template.
+        /// </summary>
+        public Setting<string> ProfileName => GetSetting<string>("ProfileName");
+
+        /// <summary>
+        /// Supervertaler (SQLite) termbases with at least one choice switched on, one per line:
+        /// <c>flags TAB name TAB id TAB created</c>. Flags: R read, W write, P project, A sent to the AI. The name is
+        /// the identity (unique in a termbase database); id and creation time only recognise a termbase renamed in
+        /// the same database. A termbase not listed is off. See <see cref="ProjectProfile"/>.
+        /// </summary>
+        public Setting<string> SupervertalerTermbases => GetSetting<string>("SupervertalerTermbases");
+
+        /// <summary>MultiTerm termbases switched off in Supervertaler for this project: paths (or legacy synthetic ids), one per line.</summary>
+        public Setting<string> DisabledMultiTermPaths => GetSetting<string>("DisabledMultiTermPaths");
     }
 
     /// <summary>
@@ -51,8 +84,6 @@ namespace Supervertaler.Trados.Core
     /// </summary>
     public static class ProjectBundleSettings
     {
-        private static readonly char[] Separators = { '\n', '\r' };
-
         /// <summary>
         /// Reads the AI-enabled MultiTerm termbases stored in the project's settings bundle
         /// (inherited from its template, if it was created from one) and returns them as
@@ -62,112 +93,78 @@ namespace Supervertaler.Trados.Core
         /// </summary>
         public static List<long> ReadEnabledMultiTermIds(FileBasedProject project)
         {
-            var ids = new List<long>();
             try
             {
-                if (project == null) return ids;
-                var bundle = project.GetSettings();
-                if (bundle == null) return ids;
-                var group = bundle.GetSettingsGroup<SupervertalerProjectSettingsGroup>();
-                var raw = group?.AiEnabledMultiTermIds?.Value ?? "";
-                foreach (var part in raw.Split(Separators, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    var entry = part.Trim();
-                    if (entry.Length == 0) continue;
-                    // A bare integer is a legacy synthetic ID; anything else is a path.
-                    long id = long.TryParse(entry, out var parsed)
-                        ? parsed
-                        : MultiTermProjectDetector.MakeStableSyntheticId(entry);
-                    if (!ids.Contains(id)) ids.Add(id);
-                }
+                if (project == null) return new List<long>();
+                var ids = ProjectProfile.ParseMultiTermIds(ReadValues(project.GetSettings())?.AiEnabledMultiTerm);
                 if (ids.Count > 0)
                     DiagnosticLog.Log("ProjectBundle",
                         $"Read {ids.Count} AI-enabled MultiTerm termbase(s) from the project settings bundle (template-inherited).");
+                return ids;
             }
             catch (Exception ex)
             {
                 DiagnosticLog.Log("ProjectBundle", "ReadEnabledMultiTermIds failed: " + ex.Message);
-            }
-            return ids;
-        }
-
-        /// <summary>
-        /// Mirrors the AI-enabled MultiTerm termbase paths into the project's settings
-        /// bundle and persists it, so the choice can be baked into a project template and
-        /// inherited by future projects. Stores absolute paths (readable in template XML);
-        /// the synthetic ID used elsewhere is a hash of the same path. Writes (and dirties
-        /// the .sdlproj) only when the value actually changes. Never throws.
-        /// </summary>
-        public static void WriteEnabledMultiTermPaths(FileBasedProject project, IEnumerable<string> paths)
-        {
-            try
-            {
-                if (project == null) return;
-                var list = (paths ?? Enumerable.Empty<string>())
-                    .Where(p => !string.IsNullOrWhiteSpace(p))
-                    .Select(p => p.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                var newValue = string.Join("\n", list);
-
-                var bundle = project.GetSettings();
-                if (bundle == null) return;
-                var group = bundle.GetSettingsGroup<SupervertalerProjectSettingsGroup>();
-                var setting = group.AiEnabledMultiTermIds;
-                var current = setting.Value ?? "";
-                if (string.Equals(current, newValue, StringComparison.Ordinal))
-                {
-                    DiagnosticLog.Log("ProjectBundle",
-                        $"Project bundle already holds {list.Count} AI-enabled MultiTerm termbase(s) — no change written.");
-                    return; // no change — don't churn the .sdlproj
-                }
-
-                setting.Value = newValue;
-                project.UpdateSettings(bundle);
-                DiagnosticLog.Log("ProjectBundle",
-                    $"Wrote {list.Count} AI-enabled MultiTerm termbase path(s) to the project settings bundle.");
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Log("ProjectBundle", "WriteEnabledMultiTermPaths failed: " + ex.Message);
+                return new List<long>();
             }
         }
 
         /// <summary>
-        /// Writes the AI-enabled MultiTerm termbase paths to the bundle of the project
-        /// currently open in Trados. Call this at the moment the user changes the "AI"
-        /// ticks — the value is then freshest and the right project is unambiguous.
-        /// Best-effort; never throws.
+        /// Supervertaler's values in <paramref name="bundle"/>, as stored ("" where there is none). Null only when
+        /// the bundle itself is null or cannot be read. Works on any settings bundle, a project's or a template's,
+        /// in Studio or outside it.
         /// </summary>
-        public static void WriteForCurrentProject(IEnumerable<string> paths)
+        public static ProjectProfileValues ReadValues(ISettingsBundle bundle)
         {
-            try
+            if (bundle == null) return null;
+            var g = bundle.GetSettingsGroup<SupervertalerProjectSettingsGroup>();
+            if (g == null) return null;
+            return new ProjectProfileValues
             {
-                var list = (paths ?? Enumerable.Empty<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
-                var project = ResolveCurrentProject();
-                if (project == null)
-                {
-                    DiagnosticLog.Log("ProjectBundle",
-                        $"WriteForCurrentProject: no project open in Trados — {list.Count} AI termbase(s) not mirrored to a bundle.");
-                    return;
-                }
-                string name = "";
-                try { name = project.GetProjectInfo()?.Name ?? ""; } catch { }
-                DiagnosticLog.Log("ProjectBundle",
-                    $"WriteForCurrentProject: project='{name}', {list.Count} AI-enabled MultiTerm termbase(s) to mirror.");
-                WriteEnabledMultiTermPaths(project, list);
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Log("ProjectBundle", "WriteForCurrentProject failed: " + ex.Message);
-            }
+                MemoryBankName = Str(g.MemoryBankName),
+                TranslatePromptPath = Str(g.TranslatePromptPath),
+                ProofreadPromptPath = Str(g.ProofreadPromptPath),
+                ClientName = Str(g.ClientName),
+                ProfileName = Str(g.ProfileName),
+                Termbases = Str(g.SupervertalerTermbases),
+                DisabledMultiTerm = Str(g.DisabledMultiTermPaths),
+                AiEnabledMultiTerm = Str(g.AiEnabledMultiTermIds),
+            };
         }
 
-        private static FileBasedProject ResolveCurrentProject()
+        /// <summary>
+        /// Writes <paramref name="values"/> into <paramref name="bundle"/>, touching only the settings whose value
+        /// differs. True when anything changed (the caller then hands the bundle back to Studio and saves the
+        /// project); false when the bundle already held these values.
+        /// </summary>
+        public static bool WriteValues(ISettingsBundle bundle, ProjectProfileValues values)
         {
-            try { return SdlTradosStudio.Application?.GetController<ProjectsController>()?.CurrentProject; }
-            catch { return null; }
+            if (bundle == null || values == null) return false;
+            var g = bundle.GetSettingsGroup<SupervertalerProjectSettingsGroup>();
+            bool changed = false;
+            changed |= Set(g.MemoryBankName, values.MemoryBankName);
+            changed |= Set(g.TranslatePromptPath, values.TranslatePromptPath);
+            changed |= Set(g.ProofreadPromptPath, values.ProofreadPromptPath);
+            changed |= Set(g.ClientName, values.ClientName);
+            changed |= Set(g.ProfileName, values.ProfileName);
+            changed |= Set(g.SupervertalerTermbases, values.Termbases);
+            changed |= Set(g.DisabledMultiTermPaths, values.DisabledMultiTerm);
+            changed |= Set(g.AiEnabledMultiTermIds, values.AiEnabledMultiTerm);
+            return changed;
+        }
+
+        private static string Str(Setting<string> s)
+        {
+            try { return s?.Value ?? ""; }
+            catch { return ""; }
+        }
+
+        private static bool Set(Setting<string> s, string value)
+        {
+            value = value ?? "";
+            if (string.Equals(s.Value ?? "", value, StringComparison.Ordinal)) return false;
+            s.Value = value;
+            return true;
         }
     }
 }

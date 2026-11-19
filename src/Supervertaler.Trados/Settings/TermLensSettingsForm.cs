@@ -2405,7 +2405,6 @@ namespace Supervertaler.Trados.Settings
             _settings.DisabledMultiTermIds = new List<long>();
             var disabledAiIds = new List<long>();        // .db termbases unticked for AI (opt-out)
             var enabledAiMtIds = new List<long>();       // MultiTerm termbases ticked for AI (opt-in)
-            var enabledAiMtPaths = new List<string>();   // ...their paths, for the project-template bundle (#36)
             foreach (DataGridViewRow row in _dgvTermbases.Rows)
             {
                 if (row.Tag is TermbaseInfo tb)
@@ -2437,11 +2436,7 @@ namespace Supervertaler.Trados.Settings
                     // MultiTerm is opt-in for AI: only record termbases the user ticked.
                     var aiChecked = row.Cells["colAi"].Value as bool? ?? false;
                     if (aiChecked)
-                    {
                         enabledAiMtIds.Add(mtInfo.SyntheticId);
-                        if (!string.IsNullOrEmpty(mtInfo.FilePath))
-                            enabledAiMtPaths.Add(mtInfo.FilePath);
-                    }
                 }
             }
 
@@ -2456,10 +2451,9 @@ namespace Supervertaler.Trados.Settings
                 _settings.AiSettings.AiTermbaseIdsInitialized = true;
             }
 
-            // Mirror the MultiTerm "AI" opt-in into the Trados project settings bundle
-            // right here, while the value is fresh — so "Create Template from Project"
-            // captures it and new projects from that template inherit it (issue #36).
-            Supervertaler.Trados.Core.ProjectBundleSettings.WriteForCurrentProject(enabledAiMtPaths);
+            // The MultiTerm "AI" opt-in reaches the Trados project settings bundle (issue
+            // #36) with the rest of the project's set-up, through ProjectSettings.Save
+            // below (ProjectProfileStore): one writer for the bundle, not two.
 
             // AI settings
             _aiSettingsPanel.ApplyToSettings(_settings.AiSettings);

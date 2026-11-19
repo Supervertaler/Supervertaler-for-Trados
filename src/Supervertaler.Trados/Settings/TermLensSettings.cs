@@ -854,10 +854,12 @@ namespace Supervertaler.Trados.Settings
         /// file knows about has an id at or below this; anything above it was created
         /// after the file was last saved. MultiTerm synthetic ids are negative and
         /// excluded, as is the -1 "none" sentinel. -1 when the file mentions nothing.
+        /// When the choices came from the project's settings bundle, which decides every
+        /// local termbase, <see cref="ProjectSettings.KnownTermbaseCeiling"/> says so.
         /// </summary>
-        private static long HighestKnownTermbaseId(ProjectSettings ps)
+        internal static long HighestKnownTermbaseId(ProjectSettings ps)
         {
-            long max = -1;
+            long max = ps.KnownTermbaseCeiling > 0 ? ps.KnownTermbaseCeiling : -1;
             void Consider(IEnumerable<long> ids)
             {
                 if (ids == null) return;
@@ -956,6 +958,11 @@ namespace Supervertaler.Trados.Settings
                 // between the two actions.
                 ReferenceImagesFolder = existing?.ReferenceImagesFolder ?? "",
                 MemoryBankName = existing?.MemoryBankName ?? "",
+                // The third: the client has no global counterpart either, and
+                // since 20.209 it travels in the project's settings bundle, so a
+                // blank here would be written there too (and into every template
+                // made from the project).
+                Client = existing?.Client ?? "",
                 // Not a setting but the project's identity, which is how its
                 // settings follow it through a rename in Studio. Blanked here, a
                 // renamed project would arrive as a stranger again.

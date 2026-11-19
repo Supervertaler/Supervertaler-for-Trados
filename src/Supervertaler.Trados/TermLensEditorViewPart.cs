@@ -196,6 +196,7 @@ namespace Supervertaler.Trados
 
             _currentInstance = this;
             _uiThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            ProjectProfileStore.AttachUiThread();
 
             // Startup notices are marshalled onto this context when the TermLens
             // pane has no window handle to BeginInvoke through — which is the
@@ -1273,6 +1274,10 @@ namespace Supervertaler.Trados
 
                 System.Diagnostics.Debug.WriteLine($"[TermLens] Project detection: path={projectPath ?? "(null)"}, name={projectName ?? "(null)"}, current={_currentProjectPath ?? "(null)"}");
 
+                // What was read from a project's settings bundle is never served for a
+                // different project that now has the same path.
+                ProjectProfileStore.ProjectInEditor(projectPath, ProjectIdOf(project));
+
                 // Same project (or no project) – nothing to do
                 if (string.Equals(projectPath, _currentProjectPath, StringComparison.OrdinalIgnoreCase))
                     return;
@@ -1281,6 +1286,9 @@ namespace Supervertaler.Trados
 
                 // Save outgoing project settings (if we had a project active)
                 SaveCurrentProjectSettings();
+
+                // The incoming project's settings bundle is read afresh, once, below.
+                ProjectProfileStore.Invalidate(projectPath);
 
                 // Update tracking
                 _currentProjectPath = projectPath;
@@ -1459,7 +1467,7 @@ namespace Supervertaler.Trados
                 DiagnosticLog.Log("ProjectBundle",
                     $"New project '{projectName}': inherited {inheritedAiMtIds.Count} AI-enabled MultiTerm termbase(s) from its template.");
 
-            return new ProjectSettings
+            var ps = new ProjectSettings
             {
                 ProjectPath = projectPath ?? "",
                 ProjectName = projectName ?? "",
@@ -1473,6 +1481,13 @@ namespace Supervertaler.Trados
                 EnabledAiMultiTermIds = inheritedAiMtIds,
                 AiTermbaseIdsInitialized = true,
             };
+
+            // Client profiles: a project made from a template carries the template's
+            // Supervertaler set-up (bank, prompts, client, termbase choices) in its
+            // settings bundle. Those are its settings from the start.
+            if (!string.IsNullOrEmpty(projectPath))
+                ProjectProfileStore.ApplyTo(projectPath, ps);
+            return ps;
         }
 
         /// <summary>

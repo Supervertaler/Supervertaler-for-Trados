@@ -164,6 +164,32 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "referenceImagesFolder")]
         public string ReferenceImagesFolder { get; set; } = "";
 
+        // ─── The project's settings bundle (client profiles, 20.209) ─
+
+        /// <summary>
+        /// True when this file holds a change the project's own settings bundle
+        /// has not received yet: it was saved when the project could not be
+        /// written (not open in Studio, or saved from a background thread), or
+        /// writing it failed. While true this file wins over the bundle, and the
+        /// next time the project is open its values are written to the bundle
+        /// (<see cref="Core.ProjectProfileStore"/>). Without it, a change made
+        /// while the bundle was out of reach would be undone by the bundle's older
+        /// value at the next read, since the bundle otherwise wins.
+        /// </summary>
+        [DataMember(Name = "profileSyncPending")]
+        public bool ProfileSyncPending { get; set; }
+
+        /// <summary>
+        /// Not stored. Set when the termbase choices were taken from the project's
+        /// settings bundle, which decides every termbase in this computer's
+        /// database: the highest id among them, so that
+        /// <see cref="TermLensSettings.ApplyProjectOverlay"/> does not take the
+        /// highest-numbered one, if it is on and in no list, for a termbase
+        /// created after the file was written (#103). 0 otherwise.
+        /// </summary>
+        [IgnoreDataMember]
+        public long KnownTermbaseCeiling { get; set; }
+
         // ─── Static helpers ─────────────────────────────────────────
 
         /// <summary>
@@ -305,8 +331,27 @@ namespace Supervertaler.Trados.Settings
         /// <summary>
         /// Loads project-specific settings for the given .sdlproj path.
         /// Returns null if no project settings file exists.
+        ///
+        /// <para>Since 20.209 what is returned is the EFFECTIVE settings: the file,
+        /// with the values the project's Studio settings bundle holds put over it
+        /// (memory bank, prompts, client, termbase choices; see
+        /// <see cref="Core.ProjectProfile"/>). The bundle is read once per project
+        /// and kept (<see cref="Core.ProjectProfileStore"/>), so this costs no more
+        /// than before.</para>
         /// </summary>
         public static ProjectSettings Load(string projectFilePath)
+        {
+            var ps = LoadFile(projectFilePath);
+            if (ps != null)
+            {
+                try { Supervertaler.Trados.Core.ProjectProfileStore.ApplyTo(projectFilePath, ps); }
+                catch { /* the file's own values, as before */ }
+            }
+            return ps;
+        }
+
+        /// <summary>The settings file alone, without the project's settings bundle.</summary>
+        internal static ProjectSettings LoadFile(string projectFilePath)
         {
             try
             {
@@ -446,6 +491,9 @@ namespace Supervertaler.Trados.Settings
             var previousPath = found.ProjectPath;
             found.ProjectPath = projectFilePath;
             if (!string.IsNullOrEmpty(projectName)) found.ProjectName = projectName;
+            // The project's settings bundle over the old file, as for any read: saved
+            // as it was found, the file's values would be written over the bundle's.
+            try { Supervertaler.Trados.Core.ProjectProfileStore.ApplyTo(projectFilePath, found); } catch { }
             Save(projectFilePath, found, via);
 
             var moved = Load(projectFilePath);
@@ -491,6 +539,21 @@ namespace Supervertaler.Trados.Settings
         public static void Save(string projectFilePath, ProjectSettings ps,
             [System.Runtime.CompilerServices.CallerMemberName] string via = "")
         {
+            if (GetProjectKey(projectFilePath) == null || ps == null) return;
+
+            // Since 20.209 also into the project's Studio settings bundle, so that a
+            // project template made from the project carries them (client profiles).
+            // First, so the file records whether the bundle got them.
+            try { Supervertaler.Trados.Core.ProjectProfileStore.BeforeSave(projectFilePath, ps); }
+            catch { ps.ProfileSyncPending = true; }
+
+            SaveFile(projectFilePath, ps, via);
+        }
+
+        /// <summary>Writes the settings file alone, without the project's settings bundle.</summary>
+        internal static void SaveFile(string projectFilePath, ProjectSettings ps,
+            [System.Runtime.CompilerServices.CallerMemberName] string via = "")
+        {
             try
             {
                 var key = GetProjectKey(projectFilePath);
@@ -502,7 +565,8 @@ namespace Supervertaler.Trados.Settings
                 {
                     Supervertaler.Trados.Core.DiagnosticLog.Log("Overlay", "write " + key + " (" + (ps?.ProjectName ?? "") + ") via " + via
                         + ": bank='" + (ps?.MemoryBankName ?? "") + "' prompt='" + (ps?.ActivePromptPath ?? "")
-                        + "' proofread='" + (ps?.ActiveProofreadPromptPath ?? "") + "'");
+                        + "' proofread='" + (ps?.ActiveProofreadPromptPath ?? "") + "'"
+                        + (ps.ProfileSyncPending ? " (project settings bundle not written yet)" : ""));
                 }
                 catch { }
 

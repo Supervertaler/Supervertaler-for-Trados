@@ -80,6 +80,30 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Every termbase's id, name and creation time - what a project's settings
+        /// bundle names a termbase by (<see cref="ProjectProfile"/>). One small
+        /// query on the termbases table; no term counts.
+        /// </summary>
+        public List<TermbaseIdentity> GetTermbaseIdentities()
+        {
+            var result = new List<TermbaseIdentity>();
+            if (_connection == null) return result;
+            var created = HasColumn(_connection, "termbases", "created_date") ? "created_date" : "''";
+            using (var cmd = new SqliteCommand("SELECT id, name, " + created + " FROM termbases ORDER BY id", _connection))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    result.Add(new TermbaseIdentity(
+                        reader.GetInt64(0),
+                        reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        reader.IsDBNull(2) ? "" : Convert.ToString(reader.GetValue(2), System.Globalization.CultureInfo.InvariantCulture)));
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Gets all available termbases in the database.
         /// </summary>
         public List<TermbaseInfo> GetTermbases()
