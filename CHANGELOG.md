@@ -19,6 +19,7 @@
 
 ### Changed
 - **FuzzyFixer requests are now listed as FuzzyFixer, and its window names the model.** On the Reports tab and in the Usage & Costs report they were listed as “Translate active segment”, so a repair could not be told from a translation. The FuzzyFixer window now says which model made the repair, for example “96% match, repaired by Claude Haiku 5.5”.
+- **Prompts written by AutoPrompt now put your termbase before translation memory matches.** They used to rank TM matches first, which contradicted the instructions Supervertaler sends with every translation. Now the termbase and the document come first, and a TM match is an earlier translation to check, not approved wording.
 
 ### Fixed
 - **A built-in prompt is no longer listed twice in the QuickLauncher menu.** When another Supervertaler product had written its own copy of a prompt such as **Define** into the same folder of the shared prompt library, the Alt+Q menu showed both under one name. The menu now lists only the copy made for Trados. No file is deleted or renamed.
