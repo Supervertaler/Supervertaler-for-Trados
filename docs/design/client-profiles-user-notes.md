@@ -1,9 +1,11 @@
-# Client profiles: notes for the Help (step 1, 20.209)
+# Job profiles: notes for the Help (steps 1 and 2, 20.209)
 
 Running notes on what the Help will have to say. Not user-facing yet; the design is in
-`docs/design/client-profiles.md` (branch `claude/client-profiles-design`; Order of work, step 1).
+`docs/design/client-profiles.md` (branch `claude/client-profiles-design`; Order of work, steps 1 and 2).
+The feature is called **job profile** in all UI and Help text (Michael, 19 Nov): a profile can stand for a
+client, a client plus end client, or a kind of job. A job profile is a Studio project template.
 
-## What a translator gets
+## Step 1: what a template carries
 
 - Supervertaler's per-project set-up now travels with Studio project templates:
   - the memory bank (by name),
@@ -47,9 +49,70 @@ Running notes on what the Help will have to say. Not user-facing yet; the design
   itself, as always).
 - A termbase created after a project was set up is off in that project until switched on, as before.
 
+## Step 2: applying a job profile to a project that already exists
+
+Where: Supervertaler Settings > General > **Job profiles** > **Apply a job profile...** It works on the project
+open in Studio: the one in the Editor, else the one selected in Projects.
+
+- Pick a template from the list (every template Studio offers under New Project, plus any in Studio's
+  Project Templates folders; there is a filter box). The window shows what applying it would change before
+  anything changes, and asks once more before applying.
+- What is applied:
+  - **Supervertaler's set-up** from the template (memory bank, prompts, client, termbase choices). Anything the
+    template leaves empty stays as the project has it. The project also records the job profile's name.
+  - **Studio's termbases**: the project's termbase list becomes the template's. A termbase file that is not
+    there is left out and named. Server termbases are not set: add them in Studio's Project Settings.
+    Language indexes: the template's, plus the project's own for languages the template does not map.
+    Recognition options: the template's, if it has any.
+  - **Studio's TMs** (and the other translation providers in the list, such as MT): the list for all language
+    pairs and each language pair's own list become the template's. A TM file that is not there is left out and
+    named. A language pair of the project that the template does not have uses the template's list for all
+    pairs. Server TMs are set, and Studio asks you to sign in when it needs to; if Studio refuses them, the rest
+    is set without them and the summary says so.
+  - **The project's Studio customer**: the one the template names. If Studio's customer list does not have it,
+    you are asked whether to add it; say no and the project's customer is left as it is.
+- **Say plainly: the open document keeps its old TMs until you close it and open it again.** Studio does not
+  tell the Editor. Termbases change at once.
+- A part the template does not have is left alone: a template with no TMs never empties a project's TM list;
+  the same for termbases and the customer.
+- Nothing is deleted from any TM or termbase; only the project's lists change.
+- Afterwards a short summary says what changed, what was left as it was, and what could not be done.
+- A template that cannot be read (moved, deleted, on a NAS that is offline, damaged) changes nothing; the
+  window names the file and says why.
+- **Projects from a package or GroupShare**: only Supervertaler's own record is changed. Their Studio TMs,
+  termbases and customer are left alone: they are the agency's.
+- Not carried by "apply": Studio's other settings in the template (file types, QA, task sequence, analysis
+  bands, users). Those still come only when a project is made from the template.
+
+## Step 2: Studio's customer list, edited in Supervertaler
+
+Where: Supervertaler Settings > General > Job profiles > **Studio customers...**, and the same button in the
+Apply a job profile window.
+
+- Shows Studio's customer list in alphabetical order (by your Windows language, ignoring capitals), with
+  **Add**, **Rename**, **Change email** and **Remove**.
+- Changes go straight into Studio's own list while Studio runs (the list Studio's Project Settings and New
+  Project offer). Supervertaler never edits projects.xml behind Studio's back.
+- Studio's own list is kept alphabetical too: after every add or rename in Supervertaler, and once each time
+  Studio starts with Supervertaler. A customer added in Studio itself goes to the end of Studio's list until the
+  next start (or the next change made in Supervertaler).
+- A name already in the list is refused, also when it differs only in capitals (Studio matches a template's
+  customer ignoring capitals, so two such names could not be told apart).
+- **Rename keeps the customer**: projects that use it still point at it. Studio may go on showing the old name
+  for those projects until their customer is set again (Studio keeps a copy of the name in each project).
+- **Remove**: if projects in Studio's project list use the customer, the window says how many and asks first.
+  Those projects keep it as their customer; Studio just stops offering it for others.
+
+## Confidentiality (say it in the Help, near "Create project template")
+
+- **A template carries the customer's name** (Studio puts it there) and, since step 1, the client, memory bank
+  and prompt names. Check before sending a template to anyone else. The job profile window says this too.
+
 ## Open for later steps
 
-- The profile name is stored but nothing sets or shows it yet (step 2 onwards).
+- The profile name is now set when a job profile is applied, but nothing shows it yet.
 - Renaming a memory bank renames it in every project's Supervertaler record at once, but in a Studio project
   only the next time that project is open; a template keeps the old name until it is made again.
-- Templates themselves are not edited by Supervertaler yet (step 3/4: the client profile window).
+- Templates themselves are not edited by Supervertaler yet (step 3/4: the job profile window).
+- Not yet tried inside Studio (step 2): whether Studio's open Projects view and Project Settings show a changed
+  customer at once, and whether Studio keeps the sorted customer order when it saves.

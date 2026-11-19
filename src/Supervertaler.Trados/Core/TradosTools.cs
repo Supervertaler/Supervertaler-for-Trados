@@ -575,6 +575,37 @@ namespace Supervertaler.Trados.Core
         /// so .dev/list-templates-test.ps1 can run it on fixture folders.</summary>
         internal static string ListProjectTemplates(IList<string> studioFolders)
         {
+            var ordered = FindProjectTemplates(studioFolders);
+            var sb = new StringBuilder();
+            sb.Append("{\"projectTemplates\":[");
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                var t = ordered[i];
+                bool registered = t.RegisteredIn.Count > 0;
+                if (i > 0) sb.Append(",");
+                sb.Append("{\"name\":").Append(JsonStr(Path.GetFileNameWithoutExtension(t.Path)));
+                sb.Append(",\"path\":").Append(JsonStr(t.Path));
+                sb.Append(",\"studio\":").Append(JsonStr(string.Join(", ", registered ? t.RegisteredIn : t.FoundIn)));
+                sb.Append(",\"registered\":").Append(registered ? "true" : "false");
+                if (t.Description != null)
+                    sb.Append(",\"description\":").Append(JsonStr(t.Description));
+                if (!File.Exists(t.Path))
+                    sb.Append(",\"missing\":true");
+                sb.Append("}");
+            }
+            sb.Append("],\"total\":").Append(ordered.Count).Append("}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Every project template Studio offers, plus any .sdltpl in the default folders (see
+        /// <see cref="ListProjectTemplates()"/>), in discovery order. Also the template list of "Apply job profile".
+        /// Reads each Studio's projects.xml once and lists folders; never opens a template.
+        /// </summary>
+        internal static List<TemplateListing> FindProjectTemplates() => FindProjectTemplates(GetStudioDocumentFolders());
+
+        internal static List<TemplateListing> FindProjectTemplates(IList<string> studioFolders)
+        {
             // One entry per file, in discovery order: registered templates, newest
             // Studio first, then unregistered ones found by the folder scan.
             var byPath = new Dictionary<string, TemplateListing>(StringComparer.OrdinalIgnoreCase);
@@ -632,30 +663,12 @@ namespace Supervertaler.Trados.Core
                 }
             }
 
-            var sb = new StringBuilder();
-            sb.Append("{\"projectTemplates\":[");
-            for (int i = 0; i < ordered.Count; i++)
-            {
-                var t = ordered[i];
-                bool registered = t.RegisteredIn.Count > 0;
-                if (i > 0) sb.Append(",");
-                sb.Append("{\"name\":").Append(JsonStr(Path.GetFileNameWithoutExtension(t.Path)));
-                sb.Append(",\"path\":").Append(JsonStr(t.Path));
-                sb.Append(",\"studio\":").Append(JsonStr(string.Join(", ", registered ? t.RegisteredIn : t.FoundIn)));
-                sb.Append(",\"registered\":").Append(registered ? "true" : "false");
-                if (t.Description != null)
-                    sb.Append(",\"description\":").Append(JsonStr(t.Description));
-                if (!File.Exists(t.Path))
-                    sb.Append(",\"missing\":true");
-                sb.Append("}");
-            }
-            sb.Append("],\"total\":").Append(ordered.Count).Append("}");
-            return sb.ToString();
+            return ordered;
         }
 
         /// <summary>One template file for <see cref="ListProjectTemplates"/>: the
         /// Studio versions that register it, and those whose folder holds it.</summary>
-        private sealed class TemplateListing
+        internal sealed class TemplateListing
         {
             public TemplateListing(string path) { Path = path; }
             public string Path { get; }

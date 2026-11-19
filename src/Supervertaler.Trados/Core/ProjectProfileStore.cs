@@ -64,6 +64,14 @@ namespace Supervertaler.Trados.Core
 
         static bool OnUiThread => _uiThread != 0 && Thread.CurrentThread.ManagedThreadId == _uiThread;
 
+        /// <summary>
+        /// Studio's UI thread, for job profiles and the customer list: the attached one, or - should no panel have
+        /// attached it yet - a thread that is not a pool thread and has a synchronisation context (WinForms or WPF).
+        /// </summary>
+        internal static bool IsUiThread => _uiThread != 0
+            ? OnUiThread
+            : !Thread.CurrentThread.IsThreadPoolThread && SynchronizationContext.Current != null;
+
         /// <summary>Forget what was read for <paramref name="projectPath"/>: the next read takes it from the project again.</summary>
         public static void Invalidate(string projectPath)
         {
@@ -179,6 +187,55 @@ namespace Supervertaler.Trados.Core
             {
                 Invalidate(projectPath);
                 DiagnosticLog.Log(Log, "another project at " + projectPath + " than the one read before: read again");
+            }
+        }
+
+        /// <summary>
+        /// Job profiles (step 2): puts a template's Supervertaler values into <paramref name="project"/>, the template's
+        /// wherever it has one (<see cref="JobProfile.MergeForApply"/>), with the job profile's name. Written into the
+        /// project's bundle (the caller saves the project) and into <paramref name="ps"/>, the project's settings file,
+        /// which is then saved the usual way. A project from a package or GroupShare gets them in Supervertaler's own
+        /// record only, as in <see cref="Write"/>. UI thread.
+        /// </summary>
+        internal static ApplyStep ApplyProfile(FileBasedProject project, ProjectSettings ps, ProjectProfileValues template, string profileName)
+        {
+            const string what = JobProfile.StepSupervertaler;
+            if (!IsUiThread || project == null || ps == null)
+                return new ApplyStep(what, StepOutcome.Failed, "not available here (no project, or not Studio's window thread)");
+            try
+            {
+                string path = project.FilePath;
+                var current = ProjectBundleSettings.ReadValues(project.GetSettings()) ?? new ProjectProfileValues();
+                var merged = JobProfile.MergeForApply(current, template, profileName);
+                var catalog = ReadCatalog(ps);
+                bool elsewhere = FromElsewhere(project);
+                if (!elsewhere)
+                {
+                    var bundle = project.GetSettings();
+                    if (ProjectBundleSettings.WriteValues(bundle, merged)) project.UpdateSettings(bundle);
+                }
+                // What the project's bundle now holds: the next read is served from here.
+                Prime(path, GuidOf(project), elsewhere ? current : merged, catalog, MultiTermPathsOf(project));
+
+                var notes = new List<string>();
+                ps.ProfileSyncPending = false;   // the profile is newer than anything the file was waiting to hand on
+                ProjectProfile.Overlay(ps, merged, catalog, m => notes.Add(m));
+                if (catalog.Count == 0 && ProjectProfile.Lines(template?.Termbases).Count > 0)
+                    notes.Add("its Supervertaler termbase choices are kept in the project but not used here: this computer's termbase database could not be read");
+                ProjectSettings.Save(path, ps, "job profile");
+                DiagnosticLog.Log(Log, "job profile '" + profileName + "' applied to " + Path.GetFileName(path) + ": " + merged.Describe()
+                    + (elsewhere ? " (own record only)" : ""));
+
+                var detail = elsewhere
+                    ? "kept in Supervertaler's own record only (the project came from a package or GroupShare)"
+                    : "written into the project";
+                if (notes.Count > 0) detail += "; " + string.Join("; ", notes);
+                return new ApplyStep(what, StepOutcome.Done, detail);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.WriteAlways(Log, "applying a job profile's Supervertaler set-up failed: " + ex.Message);
+                return new ApplyStep(what, StepOutcome.Failed, ex.Message);
             }
         }
 

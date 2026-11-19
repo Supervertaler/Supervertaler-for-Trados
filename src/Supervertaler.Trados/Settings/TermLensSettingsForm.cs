@@ -460,6 +460,21 @@ namespace Supervertaler.Trados.Settings
             };
             SpanG(root, ref row, FlowG(btnProjectTms));
 
+            // ─── Job profiles (step 2): apply a Studio project template to the open project; Studio's customer list ───
+            SpanG(root, ref row, SeparatorG());
+            SpanG(root, ref row, HeaderG("Job profiles"));
+            var jobNote = NoteG(
+                "A job profile is a Studio project template. Applying one to the open project sets Supervertaler's set-up, " +
+                "Studio's TMs and termbases and the project's customer from it. You see what changes before anything does.");
+            jobNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
+            SpanG(root, ref row, jobNote);
+            var btnJobProfile = mkSmallButton("Apply a job profile...");
+            btnJobProfile.Click += (s, e) => { using (var dlg = new JobProfileDialog()) dlg.ShowDialog(this); };
+            var btnCustomers = mkSmallButton("Studio customers...");
+            tips.SetToolTip(btnCustomers, "Add, rename, change or remove Studio's customers, kept in alphabetical order.");
+            btnCustomers.Click += (s, e) => { using (var dlg = new StudioCustomersDialog()) dlg.ShowDialog(this); };
+            SpanG(root, ref row, FlowG(btnJobProfile, btnCustomers));
+
             // ─── Data folder ───
             // Chosen by the first-run SetupDialog; Move… copies it elsewhere (on OK).
             SpanG(root, ref row, SeparatorG());

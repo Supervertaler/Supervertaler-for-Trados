@@ -316,6 +316,9 @@ namespace Supervertaler.Trados
                 // Fills the project's TM field values (Project, Client) when switched on, so Studio stamps them.
                 TmFieldStampMonitor.Attach(_editorController);
 
+                // Job profiles: Studio's customer list in alphabetical order, once per session (logged if it can't be).
+                StudioCustomers.SortOnceThisSession();
+
                 StartEditCapture();
 
                 // If a document is already open, wire up to it immediately
