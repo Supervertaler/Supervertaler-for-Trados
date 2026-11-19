@@ -30,7 +30,8 @@ namespace Supervertaler.Trados.Core
     internal static class BatchPromptChoice
     {
         /// <summary>
-        /// Stored when the translator chooses "(Built-in instructions only)". A
+        /// Stored when the translator chooses the list's first item, "(System
+        /// Prompt only)" in Translate, "(Built-in checks only)" in Proofread. A
         /// '*' cannot appear in a file name, so this can never name a prompt; a
         /// build that predates it finds no such prompt and sends none, which is
         /// what it means.

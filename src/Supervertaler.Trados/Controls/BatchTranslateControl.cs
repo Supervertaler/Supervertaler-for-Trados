@@ -561,7 +561,7 @@ namespace Supervertaler.Trados.Controls
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = bodyFont,
             };
-            _cmbPrompt.Items.Add(BuiltInItem);
+            _cmbPrompt.Items.Add(_builtInItem);
             _cmbPrompt.SelectedIndex = 0;
             _cmbPrompt.SelectedIndexChanged += (s, ev) =>
             {
@@ -570,7 +570,7 @@ namespace Supervertaler.Trados.Controls
             };
             // Type to filter: the prompt library grows per client and per task.
             ComboFilter.Attach(_cmbPrompt, "Type to filter prompts",
-                item => item as string == BuiltInItem);
+                IsBuiltInItem);
             _promptTip = new ToolTip { AutoPopDelay = 20000, InitialDelay = 300 };
             UpdatePromptTip();
             Controls.Add(_lblPromptLabel);
@@ -1280,9 +1280,23 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// The dropdown's first item: no library prompt, the built-in instructions
         /// alone. It said "(None \u2013 default)", which read as the Default
-        /// prompt and was not (see Core/BatchPromptChoice).
+        /// prompt and was not (see Core/BatchPromptChoice). Then "(Built-in
+        /// instructions only)" in both modes, while Settings > Library called the
+        /// same text "System Prompt" (Michael, 19 Nov 2026). Translate now uses the
+        /// Library's name. Proofread keeps its own: the System Prompt is a
+        /// translation prompt, and proofreading's instructions are fixed in code.
         /// </summary>
-        private const string BuiltInItem = "(Built-in instructions only)";
+        internal const string BuiltInItemTranslate = "(System Prompt only)";
+        internal const string BuiltInItemProofread = "(Built-in checks only)";
+
+        /// <summary>The first item for the list as last filled.</summary>
+        private string _builtInItem = BuiltInItemTranslate;
+
+        private static bool IsBuiltInItem(object item)
+        {
+            var text = item as string;
+            return text == BuiltInItemTranslate || text == BuiltInItemProofread;
+        }
 
         private ToolTip _promptTip;
 
@@ -1308,7 +1322,7 @@ namespace Supervertaler.Trados.Controls
             _promptTip.SetToolTip(_cmbPrompt, proofread
                 ? "The prompt from your Library that is sent with Supervertaler's own proofreading\r\n" +
                   "instructions.\r\n\r\n" +
-                  "\u2022 (Built-in instructions only) \u2013 no Library prompt: the built-in checks alone\r\n" +
+                  "\u2022 " + BuiltInItemProofread + " \u2013 no Library prompt: the built-in checks alone\r\n" +
                   "   (accuracy, completeness, terminology, grammar, number formatting).\r\n" +
                   "\u2022 Default Proofreading Prompt \u2013 used until you choose another prompt: it\r\n" +
                   "   reports only errors it can point to, cites the segments behind a consistency\r\n" +
@@ -1317,9 +1331,10 @@ namespace Supervertaler.Trados.Controls
                   "   project in the Prompt Manager."
                 : "The prompt from your Library that is sent with Supervertaler's own translation\r\n" +
                   "instructions.\r\n\r\n" +
-                  "\u2022 (Built-in instructions only) \u2013 no Library prompt: the built-in instructions\r\n" +
-                  "   alone (inline tags, numbers, the output rules), with your termbase, translation\r\n" +
-                  "   memory matches and memory bank as set in AI Settings.\r\n" +
+                  "\u2022 " + BuiltInItemTranslate + " \u2013 no Library prompt: the System Prompt from\r\n" +
+                  "   Settings > Library (inline tags, numbers) and the fixed output rules shown\r\n" +
+                  "   under it, with your termbase, translation memory matches and memory bank\r\n" +
+                  "   as set in AI Settings.\r\n" +
                   "\u2022 Default Translation Prompt \u2013 used until you choose another prompt: a\r\n" +
                   "   general-purpose prompt (fluent, faithful, consistent terminology, matching\r\n" +
                   "   register).\r\n" +
@@ -1362,8 +1377,12 @@ namespace Supervertaler.Trados.Controls
             string categoryFilter, string projectName, string activePromptPath,
             string fallbackPath, bool builtInChosen)
         {
+            // The list is filled for one mode at a time (categoryFilter), so its
+            // first item is named for that mode.
+            _builtInItem = CategoryBelongsTo(categoryFilter ?? "", "Proofread")
+                ? BuiltInItemProofread : BuiltInItemTranslate;
             _cmbPrompt.Items.Clear();
-            _cmbPrompt.Items.Add(BuiltInItem);
+            _cmbPrompt.Items.Add(_builtInItem);
             _promptList.Clear();
 
             int selectedIdx = 0;

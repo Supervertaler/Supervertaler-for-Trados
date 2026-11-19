@@ -13,7 +13,9 @@
 #   D  Translate -> Proofread -> Translate: each mode keeps its own pick
 #   E  another document of the same project (rebuild from disk): still shown
 #   F  reopening the project after another project changed the global choice: still shown
-#   G  "(Built-in instructions only)" picked on purpose: kept, no default guessed in
+#   G  the first item picked on purpose: kept, no default guessed in. It is named
+#      "(System Prompt only)" in Translate (the Library's name for the same text) and
+#      "(Built-in checks only)" in Proofread, which has no System Prompt (19 Nov 2026)
 #   H  failure: the picked prompt's file is deleted -> the list shows the default, says
 #      nothing was picked, and the stored choice is NOT overwritten by that fallback
 #      (so the prompt comes back if the file does)
@@ -213,7 +215,12 @@ public static class BatchPromptPickTest {
         global = restarted;
 
         Console.WriteLine("G  built-in instructions only");
-        Pick("(Built-in");
+        Check((string)_combo.Items[0] == "(System Prompt only)", "Translate: the first item is named as in the Library (" + _combo.Items[0] + ")");
+        Rebuild(global, prompts, true);
+        Check((string)_combo.Items[0] == "(Built-in checks only)", "Proofread: the first item is named for proofreading (" + _combo.Items[0] + ")");
+        Rebuild(global, prompts, false);
+        Check((string)_combo.Items[0] == "(System Prompt only)", "back in Translate: the Translate name again");
+        Pick("(System Prompt only)");
         Check(_lastPick == BuiltInOnly, "the first item is stored as 'built-in only', not as nothing");
         Store(global, false, _lastPick);
         Rebuild(global, prompts, false);

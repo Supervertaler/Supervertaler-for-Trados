@@ -42,6 +42,13 @@ namespace Supervertaler.Trados.Controls
         // System prompt detail panel
         private Panel _panelSystemPrompt;
         private TextBox _txtSystemPrompt;
+
+        /// <summary>The output rules Batch Translate always adds after
+        /// everything else (core OutputContract.Text), shown read-only under the
+        /// System Prompt so the translator can see the whole of what is fixed
+        /// (Michael, 19 Nov 2026: "(Built-in instructions only)" in the Batch
+        /// list is more than the System Prompt shown here).</summary>
+        private TextBox _txtOutputContract;
         private Button _btnEditSystem;
         private Button _btnResetSystem;
         private Label _lblSystemStatus;
@@ -828,7 +835,8 @@ namespace Supervertaler.Trados.Controls
 
             var lblSysInfo = new Label
             {
-                Text = "Base instructions for AI translation. Always included before custom prompts.",
+                Text = "Base instructions for AI translation. Sent first; the prompt you choose from the Library " +
+                       "is added after them. The output rules below always come last.",
                 Location = new Point(6, 30),
                 Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
                 ForeColor = Color.FromArgb(130, 130, 130),
@@ -920,13 +928,61 @@ namespace Supervertaler.Trados.Controls
                 WordWrap = true
             };
 
+            // Under it, read-only: the output rules Batch Translate adds at the
+            // very end of every request, after the Library prompt, the memory
+            // bank, the terms and the document. Not part of the System Prompt and
+            // not editable, so shown apart, on a tinted background.
+            var lblContract = new Label
+            {
+                Text = "Always added at the end of every Batch Translate request (fixed, cannot be edited):",
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
+                ForeColor = Color.FromArgb(130, 130, 130),
+                Padding = new Padding(0, 6, 0, 3)
+            };
+            _txtOutputContract = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 7.5f),
+                BackColor = Color.FromArgb(255, 250, 230),
+                ForeColor = Color.FromArgb(90, 90, 90),
+                WordWrap = true,
+                TabStop = false,
+                Text = global::Supervertaler.Core.OutputContract.Text
+            };
+            var contractPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
+            contractPanel.Controls.Add(_txtOutputContract);   // Fill
+            contractPanel.Controls.Add(lblContract);          // Top
+
+            // Two rows by percentage, so both stay visible at any DPI and size.
+            var textGrid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                BackColor = Color.White
+            };
+            textGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            textGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 62f));
+            textGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 38f));
+            _txtSystemPrompt.Margin = Padding.Empty;
+            contractPanel.Margin = Padding.Empty;
+            textGrid.Controls.Add(_txtSystemPrompt, 0, 0);
+            textGrid.Controls.Add(contractPanel, 0, 1);
+
             var textPanel = new Panel
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(6, 0, 6, 0),
                 BackColor = Color.White
             };
-            textPanel.Controls.Add(_txtSystemPrompt);
+            textPanel.Controls.Add(textGrid);
 
             // Add in reverse order for correct Dock layout
             _panelSystemPrompt.Controls.Add(textPanel);      // Fill

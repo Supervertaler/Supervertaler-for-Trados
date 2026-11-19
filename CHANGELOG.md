@@ -20,6 +20,7 @@
 ### Changed
 - **FuzzyFixer requests are now listed as FuzzyFixer, and its window names the model.** On the Reports tab and in the Usage & Costs report they were listed as “Translate active segment”, so a repair could not be told from a translation. The FuzzyFixer window now says which model made the repair, for example “96% match, repaired by Claude Haiku 5.5”.
 - **Prompts written by AutoPrompt now put your termbase before translation memory matches.** They used to rank TM matches first, which contradicted the instructions Supervertaler sends with every translation. Now the termbase and the document come first, and a TM match is an earlier translation to check, not approved wording.
+- **The prompt list's first entry is named after what it sends.** On the Batch Operations tab, “(Built-in instructions only)” is now **(System Prompt only)** in Translate, the name the same text has in Settings → Library, and **(Built-in checks only)** in Proofread, which does not use the System Prompt. Under the System Prompt in the Library you can now also see the output rules Batch Translate always adds at the end of a request; they are fixed and cannot be edited.
 
 ### Fixed
 - **A built-in prompt is no longer listed twice in the QuickLauncher menu.** When another Supervertaler product had written its own copy of a prompt such as **Define** into the same folder of the shared prompt library, the Alt+Q menu showed both under one name. The menu now lists only the copy made for Trados. No file is deleted or renamed.
