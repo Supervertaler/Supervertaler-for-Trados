@@ -77,9 +77,12 @@ namespace Supervertaler.Trados.Core
         /// <summary>Null when the template has none: the project's own are kept.</summary>
         public TemplateTermRecognition Recognition;
 
-        /// <summary>The job profile's name: what the template's Supervertaler group calls it, else the file name.</summary>
-        public string ProfileName =>
-            ProjectProfileValues.Has(Supervertaler?.ProfileName) ? Supervertaler.ProfileName.Trim() : Name;
+        /// <summary>
+        /// The template's name: its file name, always. (Its Supervertaler group can hold a ProfileName, but that is a
+        /// project's record of the template it was applied from, which Studio's Create Project Template copies along;
+        /// a template called "wkwkwk" was shown as "IMPALA_HBM Machines", Michael, 20 Nov.)
+        /// </summary>
+        public string ProfileName => Name;
 
         public bool HasAnyTm => AllPairs.Entries.Count > 0 || PerPair.Any(p => p.Entries.Count > 0);
     }
@@ -905,7 +908,8 @@ namespace Supervertaler.Trados.Core
             var c = p.Customer;
             switch (c.Choice)
             {
-                case CustomerChoice.LeaveAlone: Row(GroupCustomer, ProjectProfileValues.Has(facts?.CustomerName) ? facts.CustomerName : "(none)", "No change: the template names no customer"); break;
+                // The row names the project's customer, so it says so: shown alone it read as the template's (Michael, 20 Nov).
+                case CustomerChoice.LeaveAlone: Row(GroupCustomer, ProjectProfileValues.Has(facts?.CustomerName) ? facts.CustomerName + " (this project's customer)" : "(none in the project either)", "No change: the template names no customer"); break;
                 case CustomerChoice.AlreadySet: Row(GroupCustomer, c.Name, "No change: already this project's customer"); break;
                 case CustomerChoice.Change: Row(GroupCustomer, c.Name, ProjectProfileValues.Has(facts?.CustomerName) ? "Set (now \"" + facts.CustomerName + "\")" : "Set", true); break;
                 case CustomerChoice.AskToAdd: Row(GroupCustomer, c.Name, "Not in Studio's customer list: you will be asked whether to add it", true); break;

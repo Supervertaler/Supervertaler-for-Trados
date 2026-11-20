@@ -124,15 +124,46 @@ namespace Supervertaler.Trados.Core
                 var template = FindTemplate(provider, path);
                 if (template == null) return NotRegistered(path);
                 var internalProject = StudioCustomers.Get(project, "InternalProject");
+                // Studio's UpdateFromProject replaces the template's settings with the project's, and a project keeps its
+                // customer elsewhere: the template lost its customer and its created-by details (Michael, 20 Nov; Studio's
+                // wizard does the same). So the template's details are kept and the customer becomes the project's.
+                var info = ReadInfo(template);
+                var customer = StudioCustomers.ProjectCustomer(project, out var customerError);
+                if (customerError != null) customer = info.Customer;   // the project's could not be read: keep the template's
                 WithBackup(path, template, () =>
                 {
                     StudioCustomers.Call(template, "UpdateFromProject", internalProject);
-                    WriteSupervertaler(template, supervertaler, null, false);
+                    WriteSupervertaler(template, supervertaler, customer ?? "", true, info);
                     StudioCustomers.Call(template, "Save");
                 });
-                DiagnosticLog.Log(Log, "template " + path + " updated from " + Path.GetFileName(project.FilePath) + ": " + supervertaler?.Describe());
+                DiagnosticLog.Log(Log, "template " + path + " updated from " + Path.GetFileName(project.FilePath) + ": " + supervertaler?.Describe()
+                    + "; customer '" + (customer ?? "") + "'");
                 return null;
             });
+
+        /// <summary>The template's own details in Studio's GeneralProjectInfoSettings, kept across an update.</summary>
+        sealed class TemplateInfo
+        {
+            public string Customer, CreatedBy, Description;
+            public DateTime? CreatedAt;
+        }
+
+        static TemplateInfo ReadInfo(object template)
+        {
+            var info = new TemplateInfo();
+            try
+            {
+                var bundle = StudioCustomers.Get(template, "Settings") as ISettingsBundle;
+                if (bundle == null || !bundle.ContainsSettingsGroup("GeneralProjectInfoSettings")) return info;
+                var g = bundle.GetSettingsGroup("GeneralProjectInfoSettings");
+                if (g.ContainsSetting("CustomerId") && g.GetSetting<string>("CustomerId", out string c)) info.Customer = c;
+                if (g.ContainsSetting("CreatedBy") && g.GetSetting<string>("CreatedBy", out string by)) info.CreatedBy = by;
+                if (g.ContainsSetting("Description") && g.GetSetting<string>("Description", out string d)) info.Description = d;
+                if (g.ContainsSetting("CreatedAt") && g.GetSetting<DateTime>("CreatedAt", out DateTime at)) info.CreatedAt = at;
+            }
+            catch (Exception ex) { DiagnosticLog.Log(Log, "could not read the template's details: " + ex.Message); }
+            return info;
+        }
 
         /// <summary>
         /// Writes <paramref name="supervertaler"/> and, unless null, the Studio customer <paramref name="customer"/>
@@ -158,7 +189,7 @@ namespace Supervertaler.Trados.Core
             "here without Studio overwriting the change later. Add it to this Studio first (Projects view > Project Templates > Import), then try again. Nothing was changed.";
 
         /// <summary>Supervertaler's group and, when asked, the customer, into the template's settings, handed back to Studio.</summary>
-        static void WriteSupervertaler(object template, ProjectProfileValues values, string customer, bool setCustomer)
+        static void WriteSupervertaler(object template, ProjectProfileValues values, string customer, bool setCustomer, TemplateInfo keep = null)
         {
             var bundle = StudioCustomers.Get(template, "Settings") as ISettingsBundle
                          ?? throw new StudioCustomers.BridgeException("the template's Settings is not a settings bundle");
@@ -176,6 +207,13 @@ namespace Supervertaler.Trados.Core
             {
                 var g = bundle.GetSettingsGroup("GeneralProjectInfoSettings");
                 g.GetSetting<string>("CustomerId", "").Value = customer ?? "";
+            }
+            if (keep != null)
+            {
+                var g = bundle.GetSettingsGroup("GeneralProjectInfoSettings");
+                if (keep.CreatedBy != null) g.GetSetting<string>("CreatedBy", "").Value = keep.CreatedBy;
+                if (keep.Description != null) g.GetSetting<string>("Description", "").Value = keep.Description;
+                if (keep.CreatedAt != null) g.GetSetting<DateTime>("CreatedAt", DateTime.MinValue).Value = keep.CreatedAt.Value;
             }
             // Studio's own way: the bundle is set back (ImportSettingsBundle + save to its list), then the template is saved.
             StudioCustomers.Set(template, "Settings", bundle);

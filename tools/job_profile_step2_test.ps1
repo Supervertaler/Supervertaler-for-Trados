@@ -473,7 +473,7 @@ public static class JobProfileStep2Test {
         Check(t.Supervertaler != null && t.Supervertaler.MemoryBankName == "Acme bank" && t.Supervertaler.TranslatePromptPath == "Translate/Acme.md",
             "Supervertaler's set-up is read from the template's settings bundle (Studio's own deserialiser)");
         Check(t.CustomerName == "Acme", "Studio's customer is read by name (GeneralProjectInfoSettings.CustomerId)");
-        Check(t.ProfileName == "Acme patents", "the profile name is the one the template's Supervertaler group carries");
+        Check(t.ProfileName == "Acme patents EN-NL" && t.Supervertaler.ProfileName == "Acme patents", "a template is known by its file name, not by a profile name copied into its Supervertaler group");
         Check(t.AllPairs.Entries.Count == 7 && t.PerPair.Count == 2, "the list for all pairs (7 lines) and two pairs' own lists are read");
         var nl = t.PerPair.First(p => p.Target == "nl-NL");
         Check(nl.OverrideParent && nl.StopWhenFound && nl.Source == "en-GB" && nl.Entries.Count == 2, "a pair's own list keeps its switches");
