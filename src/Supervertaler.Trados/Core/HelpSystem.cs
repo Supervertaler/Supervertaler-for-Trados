@@ -92,8 +92,10 @@ namespace Supervertaler.Trados.Core
             public const string SettingsPrompts     = "trados/settings/prompts/";
             public const string SettingsBackup      = "trados/settings/backup/";
             public const string SettingsUsageStats  = "trados/settings/usage-statistics/";
-            public const string SettingsGeneral     = "trados/settings/usage-statistics/";
+            public const string SettingsGeneral     = "trados/settings/general/";
             public const string ProjectSettings     = "trados/settings/project-settings/";
+            public const string ProjectTemplates    = "trados/settings/project-templates/";
+            public const string StudioCustomers     = "trados/settings/project-templates/#studio-customers";
 
             public const string KeyboardShortcuts   = "trados/keyboard-shortcuts/";
             public const string Troubleshooting     = "trados/troubleshooting/";

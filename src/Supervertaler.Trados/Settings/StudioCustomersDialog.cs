@@ -22,6 +22,24 @@ namespace Supervertaler.Trados.Settings
         readonly Button _edit = new Button { Text = "Edit...", AutoSize = true };
         readonly Button _remove = new Button { Text = "Remove...", AutoSize = true };
         List<StudioCustomer> _customers = new List<StudioCustomer>();
+
+        /// <summary>
+        /// "? Help": the docs page for a window, as SuperBench has (a link, since the title-bar ? only shows on a window
+        /// that cannot be maximised). F1 does the same (<see cref="ProcessCmdKey"/>). Shared with the Project templates window.
+        /// </summary>
+        internal static LinkLabel HelpLink(string topic, string pageName)
+        {
+            var link = new LinkLabel { Text = "? Help", AutoSize = true, Margin = new Padding(8, 7, 0, 0), LinkBehavior = LinkBehavior.HoverUnderline };
+            link.LinkClicked += (s, e) => HelpSystem.OpenHelp(topic);
+            new ToolTip().SetToolTip(link, "Open the " + pageName + " page in the online documentation (F1)");
+            return link;
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.F1) { HelpSystem.OpenHelp(HelpSystem.Topics.StudioCustomers); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
         bool _readable;
 
         public StudioCustomersDialog()
@@ -42,7 +60,7 @@ namespace Supervertaler.Trados.Settings
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
             var close = new Button { Text = "Close", DialogResult = DialogResult.OK, AutoSize = true };
-            buttons.Controls.AddRange(new Control[] { _add, _edit, _remove, close });
+            buttons.Controls.AddRange(new Control[] { _add, _edit, _remove, close, HelpLink(HelpSystem.Topics.StudioCustomers, "Studio customers") });
             AcceptButton = close;
             CancelButton = close;
             _add.Click += (s, e) => AddCustomer();

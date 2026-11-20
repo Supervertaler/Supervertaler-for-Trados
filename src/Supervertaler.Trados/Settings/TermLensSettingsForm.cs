@@ -483,7 +483,7 @@ namespace Supervertaler.Trados.Settings
             var btnCustomers = mkSmallButton("Studio customers...");
             tips.SetToolTip(btnCustomers, "Add, edit or remove Studio's customers, kept in alphabetical order.");
             btnCustomers.Click += (s, e) => { using (var dlg = new StudioCustomersDialog()) dlg.ShowDialog(this); };
-            SpanG(root, ref row, FlowG(btnJobProfile, btnCustomers));
+            SpanG(root, ref row, FlowG(btnJobProfile, btnCustomers, StudioCustomersDialog.HelpLink(HelpSystem.Topics.ProjectTemplates, "Project templates")));
 
             // ─── Data folder ───
             // Chosen by the first-run SetupDialog; Move… copies it elsewhere (on OK).

@@ -58,7 +58,7 @@ namespace Supervertaler.Trados.Settings
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
             var close = new Button { Text = "Close", DialogResult = DialogResult.Cancel, AutoSize = true };
-            buttons.Controls.AddRange(new Control[] { _apply, _customers, close });
+            buttons.Controls.AddRange(new Control[] { _apply, _customers, close, StudioCustomersDialog.HelpLink(HelpSystem.Topics.ProjectTemplates, "Project templates") });
             CancelButton = close;
             _apply.Click += (s, e) => ApplySelected();
             _customers.Click += (s, e) =>
@@ -210,6 +210,12 @@ namespace Supervertaler.Trados.Settings
             all.AddRange(notes);
             all.Add("A template sent to someone else carries these names too (customer, client, bank and prompt names).");
             _notes.Text = string.Join("\r\n", all);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.F1) { HelpSystem.OpenHelp(HelpSystem.Topics.ProjectTemplates); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         /// <summary>"Template file: path", the path a link; hidden when no template is shown.</summary>
