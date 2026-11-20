@@ -241,6 +241,37 @@ namespace Supervertaler.Trados.Core
             }
         }
 
+        /// <summary>
+        /// Project templates (step 4): the open project's Supervertaler project settings as they are now, for a template
+        /// made or updated from it - the same values <see cref="BeforeSave"/> would write into the project, worked out
+        /// from Supervertaler's own record. Used for every project, also one from a package or GroupShare, whose Studio
+        /// bundle holds the agency's values rather than yours. Null when the project's settings cannot be read. UI thread.
+        /// </summary>
+        internal static ProjectProfileValues CurrentValues(FileBasedProject project, string projectName)
+        {
+            if (project == null || !OnUiThread) return null;
+            try
+            {
+                var path = project.FilePath;
+                var ps = TermLensEditorViewPart.LoadOrCreateProjectSettings(path, projectName, "project template");
+                if (ps == null) return null;
+                var e = Cached(path) ?? Fill(path, null);
+                if (e == null) return null;
+                var catalog = ReadCatalog(ps);
+                if (catalog.Count == 0) catalog = e.Catalog;
+                var mtPaths = MultiTermPathsNow(path) ?? e.MultiTermPaths;
+                return ProjectProfile.FromSidecar(ps, e.Group, catalog, ProjectProfile.MultiTermPaths(mtPaths, e.Group));
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.WriteAlways(Log, "reading the project's settings for a project template failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>This computer's Supervertaler termbases (the global database), for the template editor. Never throws.</summary>
+        internal static List<TermbaseIdentity> LocalTermbases() => ReadCatalog(null);
+
         // ─── Studio (UI thread only) ────────────────────────────────
 
         [MethodImpl(MethodImplOptions.NoInlining)]

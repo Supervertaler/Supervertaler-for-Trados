@@ -142,6 +142,22 @@ Project templates window.
 - A language pair's TM list that Studio ignores (in the template but not switched on for that pair) is not shown.
 - Read only, for now. Editing a template comes next (through Studio's own template object; see the step 3 findings).
 
+## Step 4 (second part): saving, updating and editing templates
+
+- **Save project as template...**: Studio's CreateNewProjectTemplate(description, path, project) + Save, as Studio's
+  Create Project Template does, then Supervertaler's values from its own record (also for a package project, whose
+  bundle holds the agency's values), then the provider's Save (projects.xml). Never replaces a file. A failure removes
+  the half-made template and file.
+- **Update from project...**: Studio's UpdateFromProject + Save (what the New Project wizard's "update the template"
+  does), then Supervertaler's values. Asks first; everything in the template becomes the project's.
+- **Edit...**: Supervertaler's project settings (bank, prompts, client, termbase ticks) and the Studio customer. MultiTerm
+  choices kept. Termbases the computer lacks, and unreadable lines, kept unchanged. One Project termbase.
+- Only templates registered in the running Studio are changed, through Studio's live template object (Settings set back,
+  then Save), so Studio's cache and the file agree. Others: the window says to import them first.
+- Backup of the file in %TEMP% before any change; put back (and Studio's copy discarded) on failure; deleted after.
+- A template's profile name is cleared when written, so a template is known by its file name.
+- Not tried inside Studio yet (needs Michael): the three Studio calls on a test template in each version.
+
 ## Open for later steps
 
 - The profile name is now set when a project template is applied, but nothing shows it yet.

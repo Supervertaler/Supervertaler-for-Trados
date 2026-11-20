@@ -26,6 +26,9 @@
 #   M  TMs used in reverse
 #   N  step 4, what a job profile holds: every part, TM switches, missing files, pair lists
 #      (ignored ones hidden, empty ones shown), a file check that throws, and 1,000 TMs in well under a second
+#   O  step 4, editing a template: termbase rows (this computer's, alphabetical; renamed ones found;
+#      others and unreadable lines kept as they are), one Project termbase, the prompt and bank lists
+#      (with a stored one this computer lacks), the edited values, new template names, and 2,000 termbases
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\job_profile_step2_test.ps1
 #   ... -Dll <path to Supervertaler.Trados.dll>   (default: this repo's build)
@@ -138,6 +141,8 @@ public static class JobProfileStep2Test {
         Guard(Reversed);
         Console.WriteLine("N  what a project template holds (step 4)");
         Guard(Contents);
+        Console.WriteLine("O  editing a project template (step 4)");
+        Guard(Editing);
     }
 
     // --- M: TMs Studio uses in reverse (Michael, 20 Nov: an en-GB -> nl-NL TM in a nl-NL -> en-GB project) ---
@@ -395,6 +400,64 @@ public static class JobProfileStep2Test {
         watch.Stop();
         Check(bigRows.Count(r => r.Group == JobProfile.GroupTms) == 1000 && bigRows.Count(r => r.Group == JobProfile.GroupTermbases) == 200 && watch.ElapsedMilliseconds < 1000,
             "1,000 TMs and 200 termbases listed in " + watch.ElapsedMilliseconds + " ms");
+    }
+
+    // O: editing a project template
+    static void Editing() {
+        var local = new List<TermbaseIdentity> { new TermbaseIdentity(3, "Zeta terms", "2026-01-03"), new TermbaseIdentity(1, "Acme terms", "2026-01-01"), new TermbaseIdentity(2, "Beta terms", "2026-01-02") };
+        var stored = "RWPA\tAcme terms\t1\t2026-01-01\nR\tOld name\t3\t2026-01-03\nRA\tElsewhere terms\t99\t2020-01-01\nnot a line";
+        var rows = ProjectTemplateEdit.TermbaseRows(stored, local);
+        Check(string.Join("|", rows.Select(r => r.Name)) == "Acme terms|Beta terms|Zeta terms|Elsewhere terms|not a line", "rows: this computer's alphabetical, then the others: " + string.Join("|", rows.Select(r => r.Name)));
+        Check(rows[0].Read && rows[0].Write && rows[0].Project && rows[0].Ai && !rows[1].Any && rows[2].Read && !rows[2].Write, "ticks from the template; a renamed termbase is found by id and creation time");
+        Check(rows[3].Missing && rows[3].Read && rows[3].Ai && rows[4].Missing && !rows[0].Missing, "a termbase this computer lacks, and an unreadable line, are kept as missing rows");
+        var text = ProjectTemplateEdit.TermbaseText(rows);
+        var lines = text.Split('\n');
+        Check(lines.Length == 4 && lines[0] == "RWPA\tAcme terms\t1\t2026-01-01" && lines[1] == "R\tZeta terms\t3\t2026-01-03"
+              && lines[2] == "RA\tElsewhere terms\t99\t2020-01-01" && lines[3] == "not a line", "saved: ticked ones in the stored form (renamed one under its name now), the others unchanged");
+        rows[1].Project = true;
+        Check(ProjectTemplateEdit.TermbaseText(rows).Split('\n').Count(l => l.StartsWith("RWPA") || l.Split('\t')[0].Contains("P")) == 1, "only one Project termbase: the first ticked keeps it");
+        var none = ProjectTemplateEdit.TermbaseRows("", local);
+        Check(none.Count == 3 && none.All(r => !r.Any) && ProjectTemplateEdit.TermbaseText(none) == "", "nothing ticked: empty, so a project keeps its own choices");
+        Check(ProjectTemplateEdit.TermbaseRows(null, null).Count == 0 && ProjectTemplateEdit.TermbaseText(null) == "", "no list and no termbases: nothing, no throw");
+
+        var prompts = new List<KeyValuePair<string, string>> {
+            new KeyValuePair<string, string>("Translate/Acme.md", "Translate"), new KeyValuePair<string, string>("Proofread/Check.md", "Proofread"),
+            new KeyValuePair<string, string>("Translate/acme.md", "Translate"), new KeyValuePair<string, string>("", "Translate") };
+        Func<string, string, bool> belongs = (c, f) => c == f;
+        var tr = ProjectTemplateEdit.PromptItems(prompts, false, belongs, "Translate/Old.md");
+        Check(string.Join("|", tr.Select(i => i.Label)) == ProjectTemplateEdit.NotSet + "|(System Prompt only)|Translate/Acme|Translate/Old (not on this computer)",
+            "translate list: not set, System Prompt only, the mode's prompts once each, and the stored one this computer lacks: " + string.Join("|", tr.Select(i => i.Label)));
+        Check(tr[1].Value == "*built-in*" && tr[0].Value == "" && tr[3].Value == "Translate/Old.md", "each entry stores what the project would store");
+        var pr = ProjectTemplateEdit.PromptItems(prompts, true, belongs, "*built-in*");
+        Check(string.Join("|", pr.Select(i => i.Label)) == ProjectTemplateEdit.NotSet + "|(Built-in checks only)|Proofread/Check", "proofread list; a stored built-in-only adds nothing");
+        var banks = ProjectTemplateEdit.BankItems(new[] { "b", "A", "", "A" }, "Gone");
+        Check(string.Join("|", banks.Select(i => i.Label)) == ProjectTemplateEdit.NotSet + "|A|b|Gone (not on this computer)", "bank list: alphabetical, once each, and the stored one this computer lacks");
+
+        var before = new ProjectProfileValues { MemoryBankName = "Old", ProfileName = "Acme patents", DisabledMultiTerm = "C:\\mt.sdltb", AiEnabledMultiTerm = "x" };
+        var ed = ProjectTemplateEdit.Edited(before, " Acme bank ", "Translate/Acme.md", "", " Acme ", rows);
+        Check(ed.MemoryBankName == "Acme bank" && ed.TranslatePromptPath == "Translate/Acme.md" && ed.ProofreadPromptPath == "" && ed.ClientName == "Acme",
+            "edited values, trimmed");
+        Check(ed.ProfileName == "" && ed.DisabledMultiTerm == before.DisabledMultiTerm && ed.AiEnabledMultiTerm == "x" && ed.Termbases.Length > 0,
+            "MultiTerm choices kept as they were; the profile name cleared (a template is known by its file name)");
+
+        var tpl = Path.Combine(_temp, "Templates", "New one.sdltpl");
+        Check(ProjectTemplateEdit.CheckNewTemplatePath(tpl, File.Exists) == null, "a new name is accepted");
+        Check(ProjectTemplateEdit.CheckNewTemplatePath("", File.Exists) != null && ProjectTemplateEdit.CheckNewTemplatePath(Path.Combine(_temp, "x.txt"), File.Exists) != null,
+            "no name, or not .sdltpl: refused");
+        var taken = ProjectTemplateEdit.CheckNewTemplatePath(FullTemplate(), File.Exists);
+        Check(taken != null && taken.Contains("Update from project"), "an existing file is never replaced, and the message says what to use instead");
+        Check(ProjectTemplateEdit.CheckNewTemplatePath(tpl, x => { throw new IOException("offline"); }) == null, "a file check that throws: no throw");
+
+        // Scale: 2,000 termbases on this computer, 2,000 lines in the template.
+        var many = new List<TermbaseIdentity>();
+        var sb = new StringBuilder();
+        for (int i = 0; i < 2000; i++) { many.Add(new TermbaseIdentity(i + 1, "Terms " + i, "c" + i)); if (i % 2 == 0) sb.Append("RW\tTerms " + i + "\t" + (i + 1) + "\tc" + i + "\n"); }
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var manyRows = ProjectTemplateEdit.TermbaseRows(sb.ToString(), many);
+        var manyText = ProjectTemplateEdit.TermbaseText(manyRows);
+        watch.Stop();
+        Check(manyRows.Count == 2000 && manyText.Split('\n').Length == 1000 && watch.ElapsedMilliseconds < 2000,
+            "2,000 termbases read and written back in " + watch.ElapsedMilliseconds + " ms");
     }
 
     static TemplateProfile Read(string path) {

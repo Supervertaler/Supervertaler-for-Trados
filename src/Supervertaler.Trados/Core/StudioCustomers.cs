@@ -44,7 +44,7 @@ namespace Supervertaler.Trados.Core
         const string Unreachable = "Studio's customer list could not be reached from Supervertaler (this Studio version may keep it differently). Nothing was changed.";
 
         /// <summary>Something on the reflection path was not where Studio used to keep it.</summary>
-        sealed class BridgeException : Exception { public BridgeException(string m) : base(m) { } }
+        internal sealed class BridgeException : Exception { public BridgeException(string m) : base(m) { } }
 
         // ─── reaching Studio ────────────────────────────────────────
 
@@ -61,14 +61,14 @@ namespace Supervertaler.Trados.Core
             try { return pc?.GetAllProjects()?.FirstOrDefault(); } catch { return null; }
         }
 
-        static object Get(object o, string name)
+        internal static object Get(object o, string name)
         {
             if (o == null) throw new BridgeException("no object for '" + name + "'");
             var p = FindProperty(o.GetType(), name) ?? throw new BridgeException(o.GetType().FullName + " has no '" + name + "'");
             return p.GetValue(o, null);
         }
 
-        static void Set(object o, string name, object value)
+        internal static void Set(object o, string name, object value)
         {
             var p = FindProperty(o.GetType(), name);
             if (p == null || !p.CanWrite) throw new BridgeException(o.GetType().FullName + " has no settable '" + name + "'");
@@ -98,7 +98,7 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>Calls a method by name and argument count, on the type's interfaces first (where Studio's public members are).</summary>
-        static object Call(object o, string name, params object[] args)
+        internal static object Call(object o, string name, params object[] args)
         {
             if (o == null) throw new BridgeException("no object for '" + name + "()'");
             var t = o.GetType();

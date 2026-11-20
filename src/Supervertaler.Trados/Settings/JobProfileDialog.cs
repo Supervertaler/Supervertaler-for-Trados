@@ -28,6 +28,13 @@ namespace Supervertaler.Trados.Settings
         Font _bold;
         readonly Button _apply = new Button { Text = "Apply to this project...", AutoSize = true, Enabled = false };
         readonly Button _customers = new Button { Text = "Studio customers...", AutoSize = true };
+        // Step 4: make a template from the open project, update one from it, edit Supervertaler's part of one.
+        readonly Button _saveNew = new Button { Text = "Save project as template...", AutoSize = true, Enabled = false };
+        readonly Button _update = new Button { Text = "Update from project...", AutoSize = true, Enabled = false };
+        readonly Button _edit = new Button { Text = "Edit...", AutoSize = true, Enabled = false };
+        /// <summary>The templates this Studio has in its list (only those can be changed); null when unknown.</summary>
+        HashSet<string> _registered;
+        string _selectAfterLoad;
         // Step 4: the same table shows either what the project template holds or what applying it would change.
         readonly RadioButton _showHolds = new RadioButton { Text = "What it holds", AutoSize = true };
         readonly RadioButton _showApply = new RadioButton { Text = "What applying it to the open project would change", AutoSize = true };
@@ -58,9 +65,16 @@ namespace Supervertaler.Trados.Settings
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
             var close = new Button { Text = "Close", DialogResult = DialogResult.Cancel, AutoSize = true };
-            buttons.Controls.AddRange(new Control[] { _apply, _customers, close, StudioCustomersDialog.HelpLink(HelpSystem.Topics.ProjectTemplates, "Project templates") });
+            buttons.Controls.AddRange(new Control[] { _apply, _saveNew, _update, _edit, _customers, close, StudioCustomersDialog.HelpLink(HelpSystem.Topics.ProjectTemplates, "Project templates") });
             CancelButton = close;
             _apply.Click += (s, e) => ApplySelected();
+            _saveNew.Click += (s, e) => SaveProjectAsTemplate();
+            _update.Click += (s, e) => UpdateFromProject();
+            _edit.Click += (s, e) => EditSelected();
+            var tips = new ToolTip();
+            tips.SetToolTip(_saveNew, "Make a new project template from the open project: Studio's settings and Supervertaler's project settings.");
+            tips.SetToolTip(_update, "Replace everything in the selected template with the open project's settings, as Studio's own update does.");
+            tips.SetToolTip(_edit, "Change the Supervertaler project settings and the customer stored in the selected template.");
             _customers.Click += (s, e) =>
             {
                 using (var d = new StudioCustomersDialog()) d.ShowDialog(this);
@@ -282,8 +296,19 @@ namespace Supervertaler.Trados.Settings
                     return;
                 }
                 _templates = JobProfile.SortByName(t.Result, x => Path.GetFileNameWithoutExtension(x.Path));
+                _registered = StudioTemplates.RegisteredPaths();
                 Fill();
                 ShowMessage(_templates.Count == 0 ? "No Studio project templates were found. Make one in Studio (Projects view > Create Project Template), then come back here." : "Pick a project template to see what it holds and what applying it would change.");
+                var select = _selectAfterLoad;
+                _selectAfterLoad = null;
+                if (select != null)
+                    foreach (ListViewItem item in _list.Items)
+                        if (string.Equals(((TradosTools.TemplateListing)item.Tag).Path, select, StringComparison.OrdinalIgnoreCase))
+                        {
+                            item.Selected = true;
+                            item.EnsureVisible();
+                            break;
+                        }
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
@@ -305,8 +330,120 @@ namespace Supervertaler.Trados.Settings
 
         string SelectedPath => _list.SelectedItems.Count == 1 ? ((TradosTools.TemplateListing)_list.SelectedItems[0].Tag).Path : null;
 
-        void UpdateButtons() => _apply.Enabled = !_busy && _facts != null && _prepared != null && SelectedPath != null
-                                                && string.Equals(_prepared.Template.Path, SelectedPath, StringComparison.OrdinalIgnoreCase);
+        void UpdateButtons()
+        {
+            bool read = !_busy && _prepared != null && SelectedPath != null
+                        && string.Equals(_prepared.Template.Path, SelectedPath, StringComparison.OrdinalIgnoreCase);
+            _apply.Enabled = read && _facts != null;
+            _saveNew.Enabled = !_busy && _facts != null;
+            // Changing a template needs it in this Studio's list (else Studio would overwrite the change); the click says so.
+            _edit.Enabled = read;
+            _update.Enabled = read && _facts != null;
+        }
+
+        bool Registered(string path)
+        {
+            if (_registered == null) return true;   // unknown: StudioTemplates checks again and says so
+            try { return _registered.Contains(Path.GetFullPath(path)); } catch { return _registered.Contains(path); }
+        }
+
+        string NotInThisStudio(string path) =>
+            "\"" + Path.GetFileNameWithoutExtension(path) + "\" is not in this Studio's list of project templates (it is " +
+            (_list.SelectedItems.Count == 1 ? "listed for " + _list.SelectedItems[0].SubItems[1].Text : "elsewhere") + "). " +
+            "Supervertaler changes a template only through the Studio that has it in its list, or Studio would overwrite the change. " +
+            "Add it to this Studio first (Projects view > Project Templates > Import), or change it from the Studio that lists it.";
+
+        /// <summary>Makes a new template from the open project: Studio's settings, and Supervertaler's from its own record.</summary>
+        void SaveProjectAsTemplate()
+        {
+            if (_project == null || _facts == null) return;
+            string folder = null;
+            try
+            {
+                folder = SelectedPath != null ? Path.GetDirectoryName(SelectedPath)
+                    : _templates.Where(t => Registered(t.Path)).Select(t => Path.GetDirectoryName(t.Path))
+                        .GroupBy(d => d, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+            }
+            catch { }
+            string path;
+            using (var dlg = new SaveFileDialog
+            {
+                Title = "Save the open project as a project template",
+                Filter = "Studio project templates (*.sdltpl)|*.sdltpl",
+                DefaultExt = "sdltpl", AddExtension = true, OverwritePrompt = false,
+                FileName = string.Join("_", _facts.Name.Split(Path.GetInvalidFileNameChars())),
+            })
+            {
+                if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder)) dlg.InitialDirectory = folder;
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                path = dlg.FileName;
+            }
+            var why = ProjectTemplateEdit.CheckNewTemplatePath(path, File.Exists);
+            if (why != null) { MessageBox.Show(this, why, Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            if (!Ready(out var values)) return;
+            string error;
+            try { Cursor = Cursors.WaitCursor; error = StudioTemplates.SaveAsNew(_project, path, values); }
+            finally { Cursor = Cursors.Default; }
+            if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            MessageBox.Show(this, "Saved \"" + _facts.Name + "\" as the project template \"" + Path.GetFileNameWithoutExtension(path) + "\":\r\n" + path +
+                "\r\n\r\nIt holds Studio's settings and Supervertaler's project settings, and Studio now offers it under New Project.",
+                Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _selectAfterLoad = path;
+            LoadTemplates();
+        }
+
+        /// <summary>Replaces everything in the selected template with the open project's settings, after asking.</summary>
+        void UpdateFromProject()
+        {
+            var path = SelectedPath;
+            if (path == null || _project == null || _facts == null) return;
+            if (!Registered(path)) { MessageBox.Show(this, NotInThisStudio(path), Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            var name = Path.GetFileNameWithoutExtension(path);
+            var question = "Replace everything in the project template \"" + name + "\" with the settings of the open project \"" + _facts.Name + "\"?\r\n\r\n" +
+                           "This is what Studio does when it updates a template from a project: the template's TMs, termbases, customer, " +
+                           "file types, QA and other Studio settings, and Supervertaler's project settings, all become the project's. " +
+                           "Projects already made from the template do not change.";
+            if (MessageBox.Show(this, question, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (!Ready(out var values)) return;
+            string error;
+            try { Cursor = Cursors.WaitCursor; error = StudioTemplates.UpdateFromProject(_project, path, values); }
+            finally { Cursor = Cursors.Default; }
+            if (error != null) { MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            MessageBox.Show(this, "The project template \"" + name + "\" now holds the settings of \"" + _facts.Name + "\".", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ReadSelected();
+        }
+
+        /// <summary>Edits the Supervertaler project settings and the customer stored in the selected template.</summary>
+        void EditSelected()
+        {
+            var path = SelectedPath;
+            if (path == null || _prepared == null) return;
+            if (!Registered(path)) { MessageBox.Show(this, NotInThisStudio(path), Text, MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            bool saved;
+            using (var d = new ProjectTemplateEditDialog(_prepared.Template)) { d.ShowDialog(this); saved = d.Saved; }
+            if (saved) ReadSelected();
+        }
+
+        /// <summary>The open project is still the one this window is for, and Supervertaler's settings for it could be read.</summary>
+        bool Ready(out ProjectProfileValues values)
+        {
+            values = null;
+            var now = TmFieldStampMonitor.Project;
+            if (now == null || !string.Equals(now.FilePath, _project.FilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "The project open in Studio is not the one this window was opened for. Close this window and open it again.",
+                    Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+            values = ProjectProfileStore.CurrentValues(_project, _facts.Name);
+            if (values == null)
+            {
+                MessageBox.Show(this, "Supervertaler's project settings for this project could not be read, so nothing was saved. " +
+                    "The diagnostic log says why.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            return true;
+        }
 
         /// <summary>Reads the chosen template off the UI thread and shows what applying it would do.</summary>
         void ReadSelected()
