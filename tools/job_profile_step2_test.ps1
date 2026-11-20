@@ -19,7 +19,7 @@
 #      and server termbases left out and said; only indexes for unmapped languages are added
 #   H  the customer: none named, already set, set (list's spelling), ask to add, list unreadable
 #   I  Supervertaler's values: the template's wherever it has one, the project's otherwise
-#   J  the words: the preview and the summary, with the TM reopen notice exactly when TMs changed
+#   J  the words: the preview table, the question before applying, and the summary, with the TM reopen hint exactly when TMs changed
 #   K  the template list (Studio's registry plus folders), and scale: 400 templates listed,
 #      500 customers sorted, a template with 300 TMs read and planned, all well under a second
 #   L  failure paths outside Studio: applying with no project returns a failed step, never throws
@@ -438,28 +438,43 @@ public static class JobProfileStep2Test {
         PreparedProfile p;
         var f = Facts();
         Check(JobProfile.Prepare(FullTemplate(), f, File.Exists, JobProfile.ReadBundleWithStudio, out p) == null, "prepared");
-        var lines = JobProfile.Describe(p, f);
-        var all = string.Join("\n", lines);
-        Check(all.Contains("memory bank \"Acme bank\"") && all.Contains("stays as the project has it"), "preview: Supervertaler's part, and that the rest stays");
-        Check(all.Contains("TMs for all language pairs: keeps Own TM, General; adds Acme (en-GB-nl-NL) (lookup, update)") && all.Contains("already in the project: General"),
-            "preview: what stays (the project's own), what is added, what is there already");
-        Check(all.Contains("TMs for en-GB \u2192 nl-NL: a list of its own") && all.Contains("Nothing is removed"), "preview: a pair's new list, and that nothing is removed");
-        Check(all.Contains("close it and open it again"), "preview: the open document needs reopening for the TMs");
-        Check(all.Contains("Termbases: keeps Own terms; adds Acme terms") && all.Contains("Customer: \"acme\""), "preview: termbases (kept and added) and customer");
+        List<string> notes;
+        var rows = JobProfile.Rows(p, f, out notes);
+        Func<string, string, PreviewRow> R = (g, item) => rows.FirstOrDefault(r => r.Group == g && r.Item == item);
+        var bank = R(JobProfile.GroupSupervertaler, "Memory bank: Acme bank");
+        Check(bank != null && bank.Action == "Set" && bank.Changes && notes.Any(n => n.Contains("stay as the project has them")),
+            "table: Supervertaler's settings, one row each, and that the rest stays");
+        var own = R(JobProfile.GroupTms, "Own TM");
+        var general = R(JobProfile.GroupTms, "General");
+        var acme = rows.FirstOrDefault(r => r.Group == JobProfile.GroupTms && r.Item.StartsWith("Acme (en-GB-nl-NL)"));
+        Check(own != null && own.Action == "Kept" && !own.Changes, "table: the project's own TM is kept, and does not count as a change");
+        Check(general != null && general.Action == "Kept (the template has it too)" && rows.Count(r => r.Item == "General") == 1,
+            "table: a TM both have is one row, kept, not listed twice");
+        Check(acme != null && acme.Action == "Added (lookup, update)" && acme.Changes, "table: the template's TM is added, with its switches");
+        Check(rows.Any(r => r.Group == JobProfile.GroupTms && r.Action.StartsWith("New list of its own") && r.Item.Contains("en-GB \u2192 nl-NL")),
+            "table: a pair's new list of its own");
+        Check(R(JobProfile.GroupTermbases, "Own terms") != null && R(JobProfile.GroupTermbases, "Own terms").Action == "Kept" && R(JobProfile.GroupTermbases, "Acme terms") != null && R(JobProfile.GroupTermbases, "Acme terms").Action == "Added",
+            "table: termbases kept and added");
+        Check(R(JobProfile.GroupCustomer, "acme") != null && R(JobProfile.GroupCustomer, "acme").Changes, "table: the customer is set");
+        var q = JobProfile.ConfirmQuestion("Acme patents", "PROJ-001", rows);
+        Check(q != null && q.StartsWith("Apply the job profile \"Acme patents\" to \"PROJ-001\"?") && q.Contains("This will set Supervertaler's settings from the template, add 5 TMs, give a language pair a TM list of its own") && q.Contains("add 1 termbase")
+              && q.Contains(" and set the customer") && q.Contains("Nothing is removed"), "question: short, counts what changes, says nothing is removed");
+        Check(JobProfile.ConfirmQuestion("X", "Y", rows.Where(r => !r.Changes).ToList()) == null, "question: none when nothing would change");
         f.FromElsewhere = true;
-        var pkg = string.Join("\n", JobProfile.Describe(p, f));
-        Check(pkg.Contains("own record only") && pkg.Contains("left as they are (the project came from a package or GroupShare)") && !pkg.Contains("TMs for all"),
+        List<string> pkgNotes;
+        var pkg = JobProfile.Rows(p, f, out pkgNotes);
+        Check(pkgNotes.Any(n => n.Contains("own record only")) && pkg.Where(r => r.Group != JobProfile.GroupSupervertaler).All(r => r.Action.Contains("package or GroupShare") && !r.Changes),
             "a project from a package or GroupShare: Supervertaler's own record only; Studio's parts left alone");
 
         var done = JobProfile.Summary("Acme patents", "PROJ-001", new List<ApplyStep> {
             new ApplyStep(JobProfile.StepSupervertaler, StepOutcome.Done, "written into the project"),
-            new ApplyStep(JobProfile.StepTms, StepOutcome.Done, "kept the project's (Own TM); added Acme; already in the project: General"),
+            new ApplyStep(JobProfile.StepTms, StepOutcome.Done, "added Acme"),
             new ApplyStep(JobProfile.StepCustomer, StepOutcome.Unchanged, "the template names none"),
         });
-        Check(done.StartsWith("Job profile \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("Left as it was:") && !done.Contains("Not done:"),
+        Check(done.StartsWith("Job profile \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("No change: Customer.") && !done.Contains("Not done:"),
             "summary: what changed and what was left, nothing failed");
-        Check(done.Contains("open document keeps its old TMs until you close it and open it again"), "summary: the TM reopen notice when the TMs changed");
-        Check(done.Contains("kept the project's (Own TM); added Acme; already in the project: General"), "summary: kept, added and already there, together");
+        Check(done.Contains("close it and open it again") && done.Contains("Nothing was removed"), "summary: the TM reopen hint when the TMs changed, and that nothing was removed");
+        Check(done.Contains("\u2022 TMs: added Acme\r\n"), "summary: one short line per change");
         var partial = JobProfile.Summary("Acme patents", "PROJ-001", new List<ApplyStep> {
             new ApplyStep(JobProfile.StepTms, StepOutcome.Failed, "Studio did not accept the template's TMs (x); the project's TMs are as they were"),
             new ApplyStep(JobProfile.StepTermbases, StepOutcome.Done, "Acme terms"),

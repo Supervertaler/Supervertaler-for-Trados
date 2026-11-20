@@ -171,8 +171,7 @@ namespace Supervertaler.Trados.Core
                     LanguageIndexes = indexes,
                     TermRecognitionOptions = current?.TermRecognitionOptions ?? new TermRecognitionOptions { MinimumMatchValue = 70, SearchDepth = 200 },
                 });
-                var detail = "kept the project's (" + (plan.Kept.Count == 0 ? "none" : string.Join(", ", plan.Kept)) + "); added " + string.Join(", ", added);
-                if (plan.AlreadyIn.Count > 0) detail += "; already in the project: " + string.Join(", ", plan.AlreadyIn);
+                var detail = "added " + string.Join(", ", added);
                 var notes = plan.Notes.ToList();
                 if (skipped.Count > 0) notes.Add("language(s) Studio does not know left out of the termbase indexes: " + string.Join(", ", skipped));
                 if (notes.Count > 0) detail += " (" + string.Join(" ", notes) + ")";
@@ -236,14 +235,7 @@ namespace Supervertaler.Trados.Core
                 }
             }
 
-            string Detail()
-            {
-                var kept = plan.AllPairs.Kept.Concat(plan.PerTarget.SelectMany(s => s.Kept)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                var already = plan.AllPairs.AlreadyIn.Concat(plan.PerTarget.SelectMany(s => s.AlreadyIn)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                return "kept the project's (" + (kept.Count == 0 ? "none" : string.Join(", ", kept)) + "); added "
-                    + (addedNames.Count == 0 ? "none" : string.Join(", ", addedNames.Distinct(StringComparer.OrdinalIgnoreCase)))
-                    + (already.Count > 0 ? "; already in the project: " + string.Join(", ", already) : "");
-            }
+            string Detail() => "added " + (addedNames.Count == 0 ? "none" : string.Join(", ", addedNames.Distinct(StringComparer.OrdinalIgnoreCase)));
 
             var notes = plan.Notes.Where(n => !n.Contains("sign in")).ToList();
             try

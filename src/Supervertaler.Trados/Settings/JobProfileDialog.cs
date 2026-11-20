@@ -22,7 +22,10 @@ namespace Supervertaler.Trados.Settings
         readonly ListView _list = new ListView { View = View.Details, FullRowSelect = true, MultiSelect = false, HideSelection = false, Dock = DockStyle.Fill };
         readonly TextBox _filter = new TextBox { Dock = DockStyle.Top };
         readonly Label _intro = new Label { Dock = DockStyle.Top, AutoSize = false, Height = 44 };
-        readonly TextBox _preview = new TextBox { Dock = DockStyle.Bottom, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 210, BackColor = SystemColors.Window };
+        readonly ListView _plan = new ListView { View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Dock = DockStyle.Fill };
+        readonly TextBox _notes = new TextBox { Dock = DockStyle.Bottom, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 64, BorderStyle = BorderStyle.None, BackColor = SystemColors.Control };
+        readonly Label _planTitle = new Label { Dock = DockStyle.Top, AutoSize = false, Height = 24, TextAlign = ContentAlignment.BottomLeft, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+        Font _bold;
         readonly Button _apply = new Button { Text = "Apply to this project...", AutoSize = true, Enabled = false };
         readonly Button _customers = new Button { Text = "Studio customers...", AutoSize = true };
         readonly FileBasedProject _project;
@@ -39,7 +42,7 @@ namespace Supervertaler.Trados.Settings
             Icon = IconHelper.AppIcon;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
-            ClientSize = new Size(820, 580);
+            ClientSize = new Size(860, 680);
 
             _list.Columns.Add("Job profile (Studio project template)", 300);
             _list.Columns.Add("Studio", 130);
@@ -59,13 +62,22 @@ namespace Supervertaler.Trados.Settings
                 ReadSelected();
             };
 
+            _plan.Columns.Add("Item", 420);
+            _plan.Columns.Add("What applying does", 380);
+            _bold = new Font(_plan.Font, FontStyle.Bold);
+            Disposed += (s, e) => _bold.Dispose();
+            var planPanel = new Panel { Dock = DockStyle.Bottom, Height = 290, Padding = new Padding(0, 6, 0, 4) };
+            planPanel.Controls.Add(_plan);
+            planPanel.Controls.Add(_notes);
+            planPanel.Controls.Add(_planTitle);
+
             var filterLabel = new Label { Text = "Filter:", Dock = DockStyle.Top, AutoSize = false, Height = 18 };
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
             body.Controls.Add(_list);
             body.Controls.Add(_filter);
             body.Controls.Add(filterLabel);
             body.Controls.Add(_intro);
-            body.Controls.Add(_preview);
+            body.Controls.Add(planPanel);
             body.Controls.Add(buttons);
             Controls.Add(body);
 
@@ -96,6 +108,41 @@ namespace Supervertaler.Trados.Settings
             }
         }
 
+        /// <summary>A message in place of the table: reading, an error, nothing chosen.</summary>
+        void ShowMessage(string text)
+        {
+            _plan.Items.Clear();
+            _plan.Groups.Clear();
+            _planTitle.Text = "";
+            _notes.Text = text ?? "";
+        }
+
+        /// <summary>The table: every TM, termbase, customer and Supervertaler setting, grouped, and what applying does to it.</summary>
+        void ShowPlan(PreparedProfile prepared)
+        {
+            var rows = JobProfile.Rows(prepared, _facts, out var notes);
+            _planTitle.Text = _facts == null
+                ? "What job profile \"" + prepared.Template.ProfileName + "\" holds (no project is open)"
+                : "Applying \"" + prepared.Template.ProfileName + "\" to this project";
+            _plan.BeginUpdate();
+            _plan.Items.Clear();
+            _plan.Groups.Clear();
+            var groups = new Dictionary<string, ListViewGroup>();
+            foreach (var r in rows)
+            {
+                if (!groups.TryGetValue(r.Group, out var g)) { g = new ListViewGroup(r.Group, r.Group); groups[r.Group] = g; _plan.Groups.Add(g); }
+                var item = new ListViewItem(new[] { r.Item, r.Action }, g) { UseItemStyleForSubItems = false };
+                if (r.Changes) item.SubItems[1].Font = _bold;
+                _plan.Items.Add(item);
+            }
+            _plan.EndUpdate();
+            var all = new List<string>();
+            if (_facts != null && !_facts.FromElsewhere) all.Add("Nothing is removed: the project keeps all its TMs and termbases. What applying changes is in bold.");
+            all.AddRange(notes);
+            all.Add("A template sent to someone else carries these names too (customer, client, bank and prompt names).");
+            _notes.Text = string.Join("\r\n", all);
+        }
+
         /// <summary>Studio's registered templates and the ones in its template folders: projects.xml and folder listings only.</summary>
         void LoadTemplates()
         {
@@ -106,12 +153,12 @@ namespace Supervertaler.Trados.Settings
                 UseWaitCursor = false;
                 if (t.Exception != null)
                 {
-                    _preview.Text = "Studio's project templates could not be listed: " + t.Exception.GetBaseException().Message;
+                    ShowMessage("Studio's project templates could not be listed: " + t.Exception.GetBaseException().Message);
                     return;
                 }
                 _templates = JobProfile.SortByName(t.Result, x => Path.GetFileNameWithoutExtension(x.Path));
                 Fill();
-                if (_templates.Count == 0) _preview.Text = "No Studio project templates were found. Make one in Studio (Projects view > Create Project Template), then come back here.";
+                ShowMessage(_templates.Count == 0 ? "No Studio project templates were found. Make one in Studio (Projects view > Create Project Template), then come back here." : "Pick a job profile to see what it holds and what applying it would change.");
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
@@ -142,9 +189,9 @@ namespace Supervertaler.Trados.Settings
             _prepared = null;
             UpdateButtons();
             var path = SelectedPath;
-            if (path == null) { _preview.Text = ""; return; }
+            if (path == null) { ShowMessage("Pick a job profile to see what it holds and what applying it would change."); return; }
             int read = ++_read;
-            _preview.Text = "Reading " + path + " ...";
+            ShowMessage("Reading " + path + " ...");
             var facts = _facts ?? new ProjectFacts();
             Task.Run(() =>
             {
@@ -153,16 +200,11 @@ namespace Supervertaler.Trados.Settings
             }).ContinueWith(t =>
             {
                 if (IsDisposed || read != _read) return;
-                if (t.Exception != null) { _preview.Text = "The template could not be read: " + t.Exception.GetBaseException().Message; return; }
+                if (t.Exception != null) { ShowMessage("The template could not be read: " + t.Exception.GetBaseException().Message); return; }
                 var (error, prepared) = t.Result;
-                if (error != null) { _preview.Text = error; return; }
+                if (error != null) { ShowMessage(error); return; }
                 _prepared = prepared;
-                var lines = new List<string> { "Job profile \"" + prepared.Template.ProfileName + "\"", "" };
-                if (_facts == null) lines.Add("(No project is open: this is what the template holds.)");
-                lines.AddRange(JobProfile.Describe(prepared, _facts));
-                lines.Add("");
-                lines.Add("A template sent to someone else carries these names too (customer, client, bank and prompt names).");
-                _preview.Text = string.Join("\r\n", lines);
+                ShowPlan(prepared);
                 UpdateButtons();
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
@@ -196,9 +238,9 @@ namespace Supervertaler.Trados.Settings
                 _busy = false;
                 try
                 {
-                    if (t.Exception != null) { _preview.Text = "The template could not be read: " + t.Exception.GetBaseException().Message; return; }
+                    if (t.Exception != null) { ShowMessage("The template could not be read: " + t.Exception.GetBaseException().Message); return; }
                     var (error, prepared) = t.Result;
-                    if (error != null) { _preview.Text = error; MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                    if (error != null) { ShowMessage(error); MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
                     Confirm(prepared, facts);
                 }
                 finally { UpdateButtons(); }
@@ -207,9 +249,15 @@ namespace Supervertaler.Trados.Settings
 
         void Confirm(PreparedProfile prepared, ProjectFacts facts)
         {
-            var question = "Apply the job profile \"" + prepared.Template.ProfileName + "\" to the project \"" + facts.Name + "\"?\r\n\r\n"
-                           + string.Join("\r\n", JobProfile.Describe(prepared, facts))
-                           + (facts.FromElsewhere ? "" : "\r\n\r\nThe project keeps all its TMs and termbases, as they are; the template's that it lacks are added. Nothing is removed.");
+            // The table may be from before the template or the project changed: show what is true now.
+            _prepared = prepared;
+            ShowPlan(prepared);
+            var question = JobProfile.ConfirmQuestion(prepared.Template.ProfileName, facts.Name, JobProfile.Rows(prepared, facts, out _));
+            if (question == null)
+            {
+                MessageBox.Show(this, "The project already has everything in this job profile: applying it would change nothing.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             if (MessageBox.Show(this, question, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
 
             bool addCustomer = false;
@@ -235,9 +283,10 @@ namespace Supervertaler.Trados.Settings
                 DiagnosticLog.WriteAlways("JobProfile", "apply stopped: " + ex);
             }
             finally { Cursor = Cursors.Default; }
-            _preview.Text = summary;
             RefreshFacts();
-            MessageBox.Show(this, summary, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, summary, Text, MessageBoxButtons.OK,
+                summary.Contains("Not done:") ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            ReadSelected();   // the table now shows the project as it is after applying
         }
     }
 }

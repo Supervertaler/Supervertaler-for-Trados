@@ -178,6 +178,16 @@ namespace Supervertaler.Trados.Core
 
     public enum StepOutcome { Done, Unchanged, Failed }
 
+    /// <summary>One line of the preview table: a TM, termbase, customer or Supervertaler setting, and what applying does to it.</summary>
+    public sealed class PreviewRow
+    {
+        public string Group = "", Item = "", Action = "";
+        /// <summary>The TM, termbase or customer itself, without the language pair the row is for.</summary>
+        public string Name = "";
+        /// <summary>Applying changes this (adds, sets, or asks to add).</summary>
+        public bool Changes;
+    }
+
     /// <summary>One part of an apply, for the summary.</summary>
     public sealed class ApplyStep
     {
@@ -723,84 +733,120 @@ namespace Supervertaler.Trados.Core
 
         // ─── words for people ───────────────────────────────────────
 
-        /// <summary>What applying would do, line by line: the preview and the confirmation question.</summary>
-        public static List<string> Describe(PreparedProfile p, ProjectFacts facts)
+        public const string GroupSupervertaler = "Supervertaler", GroupTms = "Translation memories", GroupTermbases = "Termbases", GroupCustomer = "Studio customer";
+
+        /// <summary>
+        /// What applying would do, as a table: one row per TM, termbase, customer and Supervertaler setting, saying whether
+        /// it is kept, added, set or left alone. <paramref name="notes"/> gets the remarks that belong under the table.
+        /// </summary>
+        public static List<PreviewRow> Rows(PreparedProfile p, ProjectFacts facts, out List<string> notes)
         {
-            var lines = new List<string>();
-            if (p?.Template == null) return lines;
-            var t = p.Template;
-            var sv = t.Supervertaler;
-            if (sv == null)
-                lines.Add("Supervertaler: the template has no Supervertaler set-up; the project keeps its own.");
+            var rows = new List<PreviewRow>();
+            notes = new List<string>();
+            if (p?.Template == null) return rows;
+            void Row(string group, string item, string action, bool changes = false, string name = null) =>
+                rows.Add(new PreviewRow { Group = group, Item = item, Action = action, Changes = changes, Name = name ?? item });
+
+            var sv = p.Template.Supervertaler;
+            bool elsewhere = facts != null && facts.FromElsewhere;
+            if (sv == null) Row(GroupSupervertaler, "(none in the template)", "No change: the project keeps its own");
             else
             {
-                var parts = new List<string>();
-                if (ProjectProfileValues.Has(sv.MemoryBankName)) parts.Add("memory bank \"" + sv.MemoryBankName.Trim() + "\"");
-                if (ProjectProfileValues.Has(sv.TranslatePromptPath)) parts.Add("translate prompt \"" + sv.TranslatePromptPath.Trim() + "\"");
-                if (ProjectProfileValues.Has(sv.ProofreadPromptPath)) parts.Add("proofread prompt \"" + sv.ProofreadPromptPath.Trim() + "\"");
-                if (ProjectProfileValues.Has(sv.ClientName)) parts.Add("client \"" + sv.ClientName.Trim() + "\"");
+                int before = rows.Count;
+                if (ProjectProfileValues.Has(sv.MemoryBankName)) Row(GroupSupervertaler, "Memory bank: " + sv.MemoryBankName.Trim(), "Set", true);
+                if (ProjectProfileValues.Has(sv.TranslatePromptPath)) Row(GroupSupervertaler, "Translate prompt: " + sv.TranslatePromptPath.Trim(), "Set", true);
+                if (ProjectProfileValues.Has(sv.ProofreadPromptPath)) Row(GroupSupervertaler, "Proofread prompt: " + sv.ProofreadPromptPath.Trim(), "Set", true);
+                if (ProjectProfileValues.Has(sv.ClientName)) Row(GroupSupervertaler, "Client: " + sv.ClientName.Trim(), "Set", true);
                 int tbs = ProjectProfile.Lines(sv.Termbases).Count;
-                if (tbs > 0) parts.Add(tbs == 1 ? "1 Supervertaler termbase choice" : tbs + " Supervertaler termbase choices");
-                if (ProjectProfileValues.Has(sv.DisabledMultiTerm) || ProjectProfileValues.Has(sv.AiEnabledMultiTerm)) parts.Add("MultiTerm termbase choices");
-                lines.Add(parts.Count == 0
-                    ? "Supervertaler: the template's Supervertaler set-up is empty; the project keeps its own."
-                    : "Supervertaler: " + string.Join(", ", parts) + ". Anything the template leaves empty stays as the project has it.");
-                if (facts != null && facts.FromElsewhere)
-                    lines.Add("   This project came from a package or GroupShare: this goes into Supervertaler's own record only, not into the project.");
+                if (tbs > 0) Row(GroupSupervertaler, tbs == 1 ? "1 Supervertaler termbase choice" : tbs + " Supervertaler termbase choices", "Set", true);
+                if (ProjectProfileValues.Has(sv.DisabledMultiTerm) || ProjectProfileValues.Has(sv.AiEnabledMultiTerm)) Row(GroupSupervertaler, "MultiTerm termbase choices", "Set", true);
+                if (rows.Count == before) Row(GroupSupervertaler, "(empty in the template)", "No change: the project keeps its own");
+                else notes.Add("Supervertaler settings the template leaves empty stay as the project has them.");
+                if (elsewhere) notes.Add("This project came from a package or GroupShare: Supervertaler's settings go into Supervertaler's own record only, and Studio's TMs, termbases and customer are left alone.");
             }
 
-            if (facts != null && facts.FromElsewhere)
+            if (elsewhere)
             {
-                lines.Add("Studio's TMs, termbases and customer: left as they are (the project came from a package or GroupShare).");
-                return lines;
+                foreach (var g in new[] { GroupTms, GroupTermbases, GroupCustomer })
+                    Row(g, "(the project's own)", "No change: the project came from a package or GroupShare");
+                return rows;
             }
 
-            if (p.Tms.LeaveAlone) lines.Add("TMs: " + (p.Tms.Notes.LastOrDefault() ?? "the project's are left as they are."));
+            if (p.Tms.LeaveAlone)
+            {
+                Row(GroupTms, "(the project's own)", "No change");
+                if (p.Tms.Notes.Count > 0) notes.Add(p.Tms.Notes.Last());
+            }
             else
             {
                 foreach (var s in new[] { p.Tms.AllPairs }.Concat(p.Tms.PerTarget))
-                    lines.Add((s.Target.Length == 0 ? "TMs for all language pairs: " : "TMs for " + (facts?.Source ?? "") + " → " + s.Target + ": ") + DescribeScope(s));
-                lines.Add("   Nothing is removed. The open document keeps its old TMs until you close it and open it again.");
+                {
+                    var only = s.Target.Length == 0 ? "" : "   [" + (facts?.Source ?? "") + " → " + s.Target + " only]";
+                    if (s.MakeOwnList) Row(GroupTms, "TM list for " + (facts?.Source ?? "") + " → " + s.Target, "New list of its own, starting from the project's TMs for all language pairs", true);
+                    else foreach (var k in s.Kept)
+                            Row(GroupTms, k + only, s.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (the template has it too)" : "Kept");
+                    foreach (var e in s.Add)
+                    {
+                        var flags = new List<string>();
+                        if (e.Lookup) flags.Add("lookup");
+                        if (e.Update) flags.Add("update");
+                        Row(GroupTms, e.Main.DisplayName + only, "Added (" + (flags.Count > 0 ? string.Join(", ", flags) : "switched off") + ")", true, e.Main.DisplayName);
+                    }
+                    foreach (var a in s.AlreadyIn.Where(a => !s.Kept.Contains(a, StringComparer.OrdinalIgnoreCase)))
+                        Row(GroupTms, a + only, "Already in the project");
+                }
+                notes.AddRange(p.Tms.Notes);
             }
 
-            if (p.Termbases.LeaveAlone) lines.Add("Termbases: " + (p.Termbases.Notes.LastOrDefault() ?? "the project's are left as they are."));
-            else lines.Add("Termbases: " + Keeps(p.Termbases.Kept) + "; adds " + string.Join(", ", p.Termbases.Add.Select(tb => tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path)))
-                           + (p.Termbases.AlreadyIn.Count > 0 ? "; already in the project: " + string.Join(", ", p.Termbases.AlreadyIn) : "") + ". Nothing is removed.");
-
-            switch (p.Customer.Choice)
+            if (p.Termbases.LeaveAlone)
             {
-                case CustomerChoice.LeaveAlone: lines.Add("Customer: the template names none; the project's is left as it is."); break;
-                case CustomerChoice.AlreadySet: lines.Add("Customer: \"" + p.Customer.Name + "\" already."); break;
-                case CustomerChoice.Change: lines.Add("Customer: \"" + p.Customer.Name + "\"" + (ProjectProfileValues.Has(facts?.CustomerName) ? " (now \"" + facts.CustomerName + "\")" : "") + "."); break;
-                case CustomerChoice.AskToAdd: lines.Add("Customer: \"" + p.Customer.Name + "\" is not in Studio's customer list; you will be asked whether to add it."); break;
-                case CustomerChoice.CannotRead: lines.Add("Customer: Studio's customer list cannot be read here, so the customer is left as it is."); break;
+                Row(GroupTermbases, "(the project's own)", "No change");
+                notes.AddRange(p.Termbases.Notes);
+            }
+            else
+            {
+                foreach (var k in p.Termbases.Kept)
+                    Row(GroupTermbases, k, p.Termbases.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (the template has it too)" : "Kept");
+                foreach (var tb in p.Termbases.Add)
+                    Row(GroupTermbases, tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path), "Added", true);
+                foreach (var a in p.Termbases.AlreadyIn.Where(a => !p.Termbases.Kept.Contains(a, StringComparer.OrdinalIgnoreCase)))
+                    Row(GroupTermbases, a, "Already in the project");
+                notes.AddRange(p.Termbases.Notes);
             }
 
-            // The notes behind those lines; "the template has none" is said above already.
-            if (!p.Tms.LeaveAlone) foreach (var n in p.Tms.Notes) lines.Add("   " + n);
-            if (!p.Termbases.LeaveAlone) foreach (var n in p.Termbases.Notes) lines.Add("   " + n);
-            else foreach (var n in p.Termbases.Notes.Take(p.Termbases.Notes.Count - 1)) lines.Add("   " + n);
-            return lines;
+            var c = p.Customer;
+            switch (c.Choice)
+            {
+                case CustomerChoice.LeaveAlone: Row(GroupCustomer, ProjectProfileValues.Has(facts?.CustomerName) ? facts.CustomerName : "(none)", "No change: the template names no customer"); break;
+                case CustomerChoice.AlreadySet: Row(GroupCustomer, c.Name, "No change: already this project's customer"); break;
+                case CustomerChoice.Change: Row(GroupCustomer, c.Name, ProjectProfileValues.Has(facts?.CustomerName) ? "Set (now \"" + facts.CustomerName + "\")" : "Set", true); break;
+                case CustomerChoice.AskToAdd: Row(GroupCustomer, c.Name, "Not in Studio's customer list: you will be asked whether to add it", true); break;
+                case CustomerChoice.CannotRead: Row(GroupCustomer, c.Name, "No change: Studio's customer list cannot be read here"); break;
+            }
+            return rows;
         }
 
-        static string Keeps(List<string> kept) =>
-            kept.Count == 0 ? "the project has none now" : "keeps " + string.Join(", ", kept);
-
-        static string DescribeScope(TmScopePlan s)
+        /// <summary>The question before applying: the table is on screen already, so this only counts what changes.</summary>
+        public static string ConfirmQuestion(string profileName, string projectName, IList<PreviewRow> rows)
         {
+            var changes = (rows ?? new List<PreviewRow>()).Where(r => r.Changes).ToList();
             var parts = new List<string>();
-            parts.Add(s.MakeOwnList ? "a list of its own: the project's TMs for all language pairs" : Keeps(s.Kept));
-            if (s.Add.Count > 0) parts.Add("adds " + string.Join(", ", s.Add.Select(e =>
-            {
-                var flags = new List<string>();
-                if (e.Lookup) flags.Add("lookup");
-                if (e.Update) flags.Add("update");
-                return e.Main.DisplayName + (flags.Count > 0 ? " (" + string.Join(", ", flags) + ")" : " (off)");
-            })));
-            else parts.Add("adds nothing");
-            if (s.AlreadyIn.Count > 0) parts.Add("already in the project: " + string.Join(", ", s.AlreadyIn));
-            return string.Join("; ", parts) + ".";
+            int Count(string g) => changes.Count(r => r.Group == g);
+            if (Count(GroupSupervertaler) > 0) parts.Add("set Supervertaler's " + (Count(GroupSupervertaler) == 1 ? "setting" : "settings") + " from the template");
+            // A TM added to several lists is one TM: count names, not rows.
+            int tms = changes.Where(r => r.Group == GroupTms && r.Action.StartsWith("Added", StringComparison.Ordinal))
+                             .Select(r => r.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            if (tms > 0) parts.Add("add " + (tms == 1 ? "1 TM" : tms + " TMs"));
+            if (changes.Any(r => r.Group == GroupTms && r.Action.StartsWith("New list", StringComparison.Ordinal))) parts.Add("give a language pair a TM list of its own");
+            int tbs = Count(GroupTermbases);
+            if (tbs > 0) parts.Add("add " + (tbs == 1 ? "1 termbase" : tbs + " termbases"));
+            if (Count(GroupCustomer) > 0) parts.Add("set the customer");
+            if (parts.Count == 0) return null;
+            return "Apply the job profile \"" + profileName + "\" to \"" + projectName + "\"?\r\n\r\nThis will " + JoinAnd(parts) + ".\r\nNothing is removed.";
         }
+
+        static string JoinAnd(List<string> parts) =>
+            parts.Count == 1 ? parts[0] : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts.Last();
 
         /// <summary>
         /// The summary after applying. Says plainly what changed, what was left as it was and what failed, and - when the
@@ -818,13 +864,15 @@ namespace Supervertaler.Trados.Core
                 var these = steps.Where(s => s.Outcome == o).ToList();
                 if (these.Count == 0) return;
                 sb.Append("\r\n").Append(title).Append("\r\n");
-                foreach (var s in these) sb.Append("- ").Append(s.What).Append(s.Detail.Length > 0 ? ": " + s.Detail : "").Append("\r\n");
+                foreach (var s in these) sb.Append("  \u2022 ").Append(s.What).Append(s.Detail.Length > 0 ? ": " + s.Detail : "").Append("\r\n");
             }
             Section("Changed:", StepOutcome.Done);
-            Section("Left as it was:", StepOutcome.Unchanged);
             Section("Not done:", StepOutcome.Failed);
+            var unchanged = steps.Where(s => s.Outcome == StepOutcome.Unchanged).Select(s => s.What).ToList();
+            if (unchanged.Count > 0) sb.Append("\r\nNo change: ").Append(string.Join(", ", unchanged)).Append(".\r\n");
+            sb.Append("\r\nNothing was removed.");
             if (steps.Any(s => s.Outcome == StepOutcome.Done && s.What == StepTms))
-                sb.Append("\r\nThe open document keeps its old TMs until you close it and open it again.\r\n");
+                sb.Append(" If the open document finds nothing in the added TMs, close it and open it again.");
             return sb.ToString().TrimEnd();
         }
 

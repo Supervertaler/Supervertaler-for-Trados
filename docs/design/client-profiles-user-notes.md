@@ -78,13 +78,19 @@ open in Studio: the one in the Editor, else the one selected in Projects.
     the summary says so.
   - **The project's Studio customer**: the one the template names. If Studio's customer list does not have it,
     you are asked whether to add it; say no and the project's customer is left as it is.
-- **Say plainly: the open document keeps its old TMs until you close it and open it again.** Studio does not
-  tell the Editor. Termbases change at once.
+- **The open document and new TMs (unconfirmed).** Project Settings shows an added TM straight away (Michael,
+  20 Nov). Whether the open document already searches it is not yet checked; until it is, the summary only says:
+  if the open document finds nothing in the added TMs, close it and open it again.
 - **Nothing is ever removed** from the project's TM or termbase lists, and nothing is deleted from any TM or
   termbase. A template with no TMs, termbases or customer leaves those as they are. Applying the same profile
   twice adds nothing the second time.
-- The preview and the summary show both: what the project keeps (its own) and what is added.
-- Afterwards a short summary says what changed, what was left as it was, and what could not be done.
+- The preview is a table, grouped into Supervertaler, Translation memories, Termbases and Studio customer: one
+  row per TM, termbase, customer or setting, saying Kept, Added, Set or No change. What applying changes is in
+  bold. With no project open, the same table shows what the template holds.
+- The question before applying is short (the table is on screen): "This will add 1 TM and set the customer.
+  Nothing is removed." When nothing would change, it says so and does not ask.
+- Afterwards a short summary: one line per change, what could not be done, and the parts with no change in one line.
+  The table then shows the project as it is after applying.
 - A template that cannot be read (moved, deleted, on a NAS that is offline, damaged) changes nothing; the
   window names the file and says why.
 - **Projects from a package or GroupShare**: only Supervertaler's own record is changed. Their Studio TMs,
@@ -98,7 +104,7 @@ Where: Supervertaler Settings > General > Job profiles > **Studio customers...**
 Apply a job profile window.
 
 - Shows Studio's customer list in alphabetical order (by your Windows language, ignoring capitals), with
-  **Add**, **Rename**, **Change email** and **Remove**.
+  **Add**, **Edit** (name and email in one window; double-click a customer opens it too) and **Remove**.
 - Changes go straight into Studio's own list while Studio runs (the list Studio's Project Settings and New
   Project offer). Supervertaler never edits projects.xml behind Studio's back.
 - Studio's own list is kept alphabetical too: after every add or rename in Supervertaler, and once each time
