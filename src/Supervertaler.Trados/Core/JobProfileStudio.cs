@@ -54,7 +54,11 @@ namespace Supervertaler.Trados.Core
         internal static string Prepare(string templatePath, ProjectFacts facts, out PreparedProfile prepared)
         {
             var error = JobProfile.Prepare(templatePath, facts, File.Exists, JobProfile.ReadBundleWithStudio, out prepared);
-            if (error == null) JobProfile.FindReversed(prepared, facts, TmFieldStamping.DirectionOf);
+            if (error == null)
+            {
+                JobProfile.FindReversed(prepared, facts, TmFieldStamping.DirectionOf);
+                prepared.Contents = JobProfile.ContentRows(prepared.Template, File.Exists, out prepared.ContentNotes);
+            }
             return error;
         }
 

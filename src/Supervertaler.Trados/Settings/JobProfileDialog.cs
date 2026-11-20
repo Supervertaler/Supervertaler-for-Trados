@@ -28,6 +28,9 @@ namespace Supervertaler.Trados.Settings
         Font _bold;
         readonly Button _apply = new Button { Text = "Apply to this project...", AutoSize = true, Enabled = false };
         readonly Button _customers = new Button { Text = "Studio customers...", AutoSize = true };
+        // Step 4: the same table shows either what the job profile holds or what applying it would change.
+        readonly RadioButton _showHolds = new RadioButton { Text = "What it holds", AutoSize = true };
+        readonly RadioButton _showApply = new RadioButton { Text = "What applying it to the open project would change", AutoSize = true };
         readonly FileBasedProject _project;
         ProjectFacts _facts;
         List<TradosTools.TemplateListing> _templates = new List<TradosTools.TemplateListing>();
@@ -37,7 +40,7 @@ namespace Supervertaler.Trados.Settings
 
         public JobProfileDialog()
         {
-            Text = "Apply a job profile";
+            Text = "Job profiles";
             Font = new Font("Segoe UI", 9F);
             Icon = IconHelper.AppIcon;
             StartPosition = FormStartPosition.CenterParent;
@@ -80,6 +83,11 @@ namespace Supervertaler.Trados.Settings
             split.Panel2.Controls.Add(_plan);
             split.Panel2.Controls.Add(_notes);
             split.Panel2.Controls.Add(_planTitle);
+            var show = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 28, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 4, 0, 0) };
+            show.Controls.AddRange(new Control[] { new Label { Text = "Show:", AutoSize = true, Margin = new Padding(0, 5, 6, 0) }, _showHolds, _showApply });
+            split.Panel2.Controls.Add(show);
+            _showHolds.CheckedChanged += (s, e) => { if (_showHolds.Checked && _prepared != null) ShowPlan(_prepared); };
+            _showApply.CheckedChanged += (s, e) => { if (_showApply.Checked && _prepared != null) ShowPlan(_prepared); };
 
             var filterLabel = new Label { Text = "Filter:", Dock = DockStyle.Top, AutoSize = false, Height = 18 };
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
@@ -100,6 +108,9 @@ namespace Supervertaler.Trados.Settings
 
             _project = TmFieldStampMonitor.Project;
             RefreshFacts();
+            // With a project open, the window is mostly for applying; without one, it can only show what a profile holds.
+            if (_facts != null) _showApply.Checked = true; else _showHolds.Checked = true;
+            _showApply.Enabled = _facts != null;
             Shown += (s, e) => LoadTemplates();
         }
 
@@ -115,15 +126,15 @@ namespace Supervertaler.Trados.Settings
             if (_project == null)
             {
                 _facts = null;
-                _intro.Text = "No project is open. Open a project (or one of its documents) in Studio, then come back here. " +
-                              "You can still look at what a job profile holds.";
+                _intro.Text = "No project is open, so this window shows what each job profile holds. To apply one, open a project " +
+                              "(or one of its documents) in Studio, then come back here.";
                 return;
             }
             try
             {
                 _facts = JobProfileStudio.Facts(_project);
                 _intro.Text = "The open project is \"" + _facts.Name + "\" (" + _facts.Source + " → " + string.Join(", ", _facts.Targets) + "). " +
-                              "Pick a job profile (a Studio project template, with Supervertaler's project settings stored inside it) to see what applying it would change.";
+                              "Pick a job profile (a Studio project template, with Supervertaler's project settings stored inside it) to see what it holds, or what applying it would change.";
             }
             catch (Exception ex)
             {
@@ -144,10 +155,20 @@ namespace Supervertaler.Trados.Settings
         /// <summary>The table: every TM, termbase, customer and Supervertaler setting, grouped, and what applying does to it.</summary>
         void ShowPlan(PreparedProfile prepared)
         {
-            var rows = JobProfile.Rows(prepared, _facts, out var notes);
-            _planTitle.Text = _facts == null
-                ? "What job profile \"" + prepared.Template.ProfileName + "\" holds (no project is open)"
+            bool holds = _facts == null || !_showApply.Checked;
+            List<string> notes;
+            List<PreviewRow> rows;
+            if (holds)
+            {
+                // Worked out off the UI thread when the template was read; never here, where a NAS could freeze the window.
+                rows = prepared.Contents ?? new List<PreviewRow>();
+                notes = new List<string>(prepared.ContentNotes ?? new List<string>());
+            }
+            else rows = JobProfile.Rows(prepared, _facts, out notes);
+            _planTitle.Text = holds
+                ? "What job profile \"" + prepared.Template.ProfileName + "\" holds"
                 : "Applying \"" + prepared.Template.ProfileName + "\" to this project";
+            _plan.Columns[1].Text = holds ? "How it is set" : "What applying does";
             _plan.BeginUpdate();
             _plan.Items.Clear();
             _plan.Groups.Clear();
@@ -179,7 +200,8 @@ namespace Supervertaler.Trados.Settings
             _plan.EndUpdate();
             FitPlanColumns();
             var all = new List<string>();
-            if (_facts != null && !_facts.FromElsewhere) all.Add("Nothing is removed: the project keeps all its Studio TMs and termbases. What applying changes is in bold.");
+            if (holds) all.Add("The template's file: " + prepared.Template.Path);
+            else if (!_facts.FromElsewhere) all.Add("Nothing is removed: the project keeps all its Studio TMs and termbases. What applying changes is in bold.");
             all.AddRange(notes);
             all.Add("A template sent to someone else carries these names too (customer, client, bank and prompt names).");
             _notes.Text = string.Join("\r\n", all);
@@ -311,6 +333,7 @@ namespace Supervertaler.Trados.Settings
         {
             // The table may be from before the template or the project changed: show what is true now.
             _prepared = prepared;
+            _showApply.Checked = true;   // the question refers to this table
             ShowPlan(prepared);
             var question = JobProfile.ConfirmQuestion(prepared.Template.ProfileName, facts.Name, JobProfile.Rows(prepared, facts, out _));
             if (question == null)

@@ -23,6 +23,9 @@
 #   K  the template list (Studio's registry plus folders), and scale: 400 templates listed,
 #      500 customers sorted, a template with 300 TMs read and planned, all well under a second
 #   L  failure paths outside Studio: applying with no project returns a failed step, never throws
+#   M  TMs used in reverse
+#   N  step 4, what a job profile holds: every part, TM switches, missing files, pair lists
+#      (ignored ones hidden, empty ones shown), a file check that throws, and 1,000 TMs in well under a second
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\job_profile_step2_test.ps1
 #   ... -Dll <path to Supervertaler.Trados.dll>   (default: this repo's build)
@@ -133,6 +136,8 @@ public static class JobProfileStep2Test {
         Guard(OutsideStudio);
         Console.WriteLine("M  TMs used in reverse");
         Guard(Reversed);
+        Console.WriteLine("N  what a job profile holds (step 4)");
+        Guard(Contents);
     }
 
     // --- M: TMs Studio uses in reverse (Michael, 20 Nov: an en-GB -> nl-NL TM in a nl-NL -> en-GB project) ---
@@ -320,6 +325,76 @@ public static class JobProfileStep2Test {
                 { "fr-FR", new TmListFacts() } },
             Termbases = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>("Own terms", JobProfile.TermbaseKey(true, Termbase("Own terms"))) },
         };
+    }
+
+    // N: what a job profile holds, with no project to compare it with
+    static PreviewRow One(List<PreviewRow> rows, string group, string itemStart) {
+        return rows.FirstOrDefault(r => r.Group == group && r.Item.StartsWith(itemStart, StringComparison.Ordinal));
+    }
+    static void Contents() {
+        List<string> notes;
+        var rows = JobProfile.ContentRows(Read(FullTemplate()), File.Exists, out notes);
+        var sv = rows.Where(r => r.Group == JobProfile.GroupSupervertaler).ToList();
+        Check(sv.Any(r => r.Item == "Acme bank" && r.Sub == "Memory bank") && sv.Any(r => r.Item == "Translate: Acme" && r.Sub == "Prompts")
+              && sv.Any(r => r.Item == "Acme" && r.Sub == "Client"), "Supervertaler's project settings, each under its part");
+        var tms = rows.Where(r => r.Group == JobProfile.GroupTms).ToList();
+        Check(tms.Count == 10, "every TM line: 7 for all language pairs, 2 for en-GB -> nl-NL, 1 for de-DE -> fr-FR (" + tms.Count + ")");
+        Check(tms[0].Item == "Acme (en-GB-nl-NL)" && tms[0].Action == "Lookup, concordance, update", "a TM with its switches: " + tms[0].Action);
+        var gone = One(tms, JobProfile.GroupTms, "Gone");
+        Check(gone != null && gone.Action.StartsWith("File not there (") && gone.Action.Contains(Path.Combine(_temp, "TMs")), "a TM whose file is not there says so, with its folder: " + (gone == null ? "" : gone.Action));
+        Check(tms[6].Item == "General" && tms[6].Action == "Concordance, update; penalty -3", "no lookup, and a penalty: " + tms[6].Action);
+        Check(tms.Any(r => r.Item.Contains("(server TM)") && r.Action.EndsWith("penalty 1")) && tms.Any(r => r.Item.Contains("(provider)")),
+            "server TMs and other providers (MT) are listed too");
+        Check(tms.Count(r => r.Item.EndsWith("[en-GB \u2192 nl-NL only]")) == 2 && tms.Count(r => r.Item.EndsWith("[de-DE \u2192 fr-FR only]")) == 1,
+            "a pair's own list is marked with its pair: " + string.Join(" | ", tms.Select(r => r.Item)));
+        Check(notes.Count(n => n.Contains("[... only]")) == 1, "and one note says what that means");
+        Check(One(rows, JobProfile.GroupTermbases, "Acme terms").Action == "" && One(rows, JobProfile.GroupTermbases, "Gone terms").Action.StartsWith("File not there (")
+              && One(rows, JobProfile.GroupTermbases, "Server terms").Action == "Server termbase", "termbases: found, not there, server");
+        Check(One(rows, JobProfile.GroupRecognition, "Termbase index for nl-NL").Action == "Dutch" && One(rows, JobProfile.GroupRecognition, "Minimum match value").Action == "80%"
+              && One(rows, JobProfile.GroupRecognition, "Search order").Action == "Parallel" && One(rows, JobProfile.GroupRecognition, "Show terms").Action == "Yes",
+            "term recognition: indexes and options");
+        Check(One(rows, JobProfile.GroupCustomer, "Acme") != null, "the customer");
+        Check(!notes.Any(n => n.Contains("no Supervertaler project settings")) && rows.All(r => !r.Changes), "no 'none yet' note, and nothing marked as a change");
+        var order = rows.Select(r => r.Group).Distinct().ToList();
+        Check(string.Join("|", order) == string.Join("|", new[] { JobProfile.GroupSupervertaler, JobProfile.GroupTms, JobProfile.GroupTermbases, JobProfile.GroupRecognition, JobProfile.GroupCustomer }),
+            "parts in order: Supervertaler, TMs, termbases, term recognition, customer");
+
+        List<string> n2;
+        var bare = JobProfile.ContentRows(Read(Template("Plain holds", null, null, null, BundleXml(false, null))), File.Exists, out n2);
+        Check(One(bare, JobProfile.GroupSupervertaler, "(none in this template)") != null && n2.Any(n => n.Contains("Create Project Template")),
+            "a template without Supervertaler's settings: said, with how to give it some");
+        Check(One(bare, JobProfile.GroupTms, "(none)") != null && One(bare, JobProfile.GroupTermbases, "(none)") != null && One(bare, JobProfile.GroupCustomer, "(none)") != null
+              && !bare.Any(r => r.Group == JobProfile.GroupRecognition), "no TMs, termbases or customer: (none); no recognition options: no rows");
+
+        var ignored = "<LanguageDirection Guid=\"" + Guid.NewGuid() + "\" SettingsBundleGuid=\"" + Guid.NewGuid() + "\" TargetLanguageCode=\"nl-NL\" SourceLanguageCode=\"en-GB\">"
+                    + "<CascadeItem OverrideParent=\"false\">" + Entry(TmUri(FileTm("Unused")), true, true, 0, null) + "</CascadeItem></LanguageDirection>"
+                    + "<LanguageDirection Guid=\"" + Guid.NewGuid() + "\" SettingsBundleGuid=\"" + Guid.NewGuid() + "\" TargetLanguageCode=\"de-DE\" SourceLanguageCode=\"en-GB\">"
+                    + "<CascadeItem OverrideParent=\"true\"></CascadeItem></LanguageDirection>";
+        List<string> n3;
+        var pairs = JobProfile.ContentRows(Read(Template("Pairs holds", Entry(TmUri(FileTm("Main")), true, true, 0, null), ignored, null, null)), File.Exists, out n3);
+        var pairTms = pairs.Where(r => r.Group == JobProfile.GroupTms).ToList();
+        Check(!pairTms.Any(r => r.Item.StartsWith("Unused")), "a pair's list Studio ignores (OverrideParent off) is not shown");
+        Check(pairTms.Count == 2 && pairTms[1].Item == "(no TMs)   [en-GB \u2192 de-DE only]" && pairTms[1].Action.Contains("empty"), "a pair's own empty list is shown as empty: " + string.Join(" | ", pairTms.Select(r => r.Item + " = " + r.Action)));
+
+        List<string> n4;
+        var thrown = JobProfile.ContentRows(Read(FullTemplate()), p => { throw new IOException("offline"); }, out n4);
+        Check(thrown.All(r => !r.Action.Contains("not there")), "a file check that throws (offline drive) counts as there, no throw");
+        List<string> n5;
+        Check(JobProfile.ContentRows(null, File.Exists, out n5).Count == 0 && n5.Count == 0, "no template: nothing, no throw");
+
+        // Scale: a template with 1,000 TM lines and 200 termbases, every file looked for.
+        var sb = new StringBuilder();
+        for (int i = 0; i < 1000; i++) sb.Append(Entry(TmUri(Path.Combine(_temp, "Many", "TM " + i + ".sdltm")), i % 2 == 0, true, 0, null));
+        var tbs = new StringBuilder("<TermbaseConfiguration>");
+        for (int i = 0; i < 200; i++) tbs.Append(TermbaseXml("Terms " + i, Path.Combine(_temp, "Many", "Terms " + i + ".sdltb"), true));
+        tbs.Append("</TermbaseConfiguration>");
+        var big = Read(Template("Big holds", sb.ToString(), null, tbs.ToString(), BundleXml(true, "Acme")));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        List<string> n6;
+        var bigRows = JobProfile.ContentRows(big, File.Exists, out n6);
+        watch.Stop();
+        Check(bigRows.Count(r => r.Group == JobProfile.GroupTms) == 1000 && bigRows.Count(r => r.Group == JobProfile.GroupTermbases) == 200 && watch.ElapsedMilliseconds < 1000,
+            "1,000 TMs and 200 termbases listed in " + watch.ElapsedMilliseconds + " ms");
     }
 
     static TemplateProfile Read(string path) {

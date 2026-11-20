@@ -52,8 +52,8 @@ customer, and Supervertaler stores its project settings inside it (memory bank, 
 
 ## Step 2: applying a job profile to a project that already exists
 
-Where: Supervertaler Settings > General > **Job profiles** > **Apply a job profile...** It works on the project
-open in Studio: the one in the Editor, else the one selected in Projects.
+Where: Supervertaler Settings > General > **Job profiles** > **Job profiles...** (the window was called "Apply a job
+profile" until step 4). It works on the project open in Studio: the one in the Editor, else the one selected in Projects.
 
 - Pick a template from the list (every template Studio offers under New Project, plus any in Studio's
   Project Templates folders; there is a filter box). The window shows what applying it would change before
@@ -124,6 +124,20 @@ Apply a job profile window.
 
 - **A template carries the customer's name** (Studio puts it there) and, since step 1, the client, memory bank
   and prompt names. Check before sending a template to anyone else. The job profile window says this too.
+
+## Step 4 (first part): seeing what a job profile holds
+
+- In the Job profiles window, **Show: What it holds** lists everything the chosen template carries, with no project
+  to compare it with: Supervertaler's project settings (each part under its own subheading), Studio's TMs with
+  their switches (lookup, concordance, update, penalty), each language pair's own TM list marked "[en-GB → nl-NL
+  only]", Studio's termbases, term recognition (termbase indexes, minimum match value, search depth, search order,
+  terms without a translation), and the customer. A TM or termbase whose file is not there says so, with its folder.
+- **Show: What applying it to the open project would change** is the step 2 table. With no project open, only
+  "What it holds" is offered. Clicking **Apply to this project...** always switches to the applying table first.
+- A template with no Supervertaler project settings says so, and how to give it some: set them up in a project
+  (Settings, then OK), then **Create Project Template** from that project in Studio.
+- A language pair's TM list that Studio ignores (in the template but not switched on for that pair) is not shown.
+- Read only, for now. Editing a template comes next (through Studio's own template object; see the step 3 findings).
 
 ## Open for later steps
 

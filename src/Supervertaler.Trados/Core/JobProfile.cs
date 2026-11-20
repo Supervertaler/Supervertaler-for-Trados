@@ -197,6 +197,12 @@ namespace Supervertaler.Trados.Core
         /// <see cref="JobProfile.FindReversed"/>; empty when not looked for or none.
         /// </summary>
         public Dictionary<string, string> Reversed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// "What it holds" (<see cref="JobProfile.ContentRows"/>), worked out with the plan, off the UI thread: it looks
+        /// for TM and termbase files, which may be on a NAS. Null when not worked out.
+        /// </summary>
+        public List<PreviewRow> Contents;
+        public List<string> ContentNotes;
     }
 
     public enum StepOutcome { Done, Unchanged, Failed }
@@ -804,7 +810,7 @@ namespace Supervertaler.Trados.Core
         // ─── words for people ───────────────────────────────────────
 
         // Supervertaler's own part and Trados Studio's, told apart in the group names (Michael, 20 Nov).
-        public const string GroupSupervertaler = "Supervertaler project settings", GroupTms = "Trados Studio: translation memories", GroupTermbases = "Trados Studio: termbases", GroupCustomer = "Trados Studio: customer";
+        public const string GroupSupervertaler = "Supervertaler project settings", GroupTms = "Trados Studio: translation memories", GroupTermbases = "Trados Studio: termbases", GroupCustomer = "Trados Studio: customer", GroupRecognition = "Trados Studio: term recognition";
 
         /// <summary>
         /// What applying would do, as a table: one row per TM, termbase, customer and Supervertaler setting, saying whether
@@ -905,6 +911,98 @@ namespace Supervertaler.Trados.Core
                 case CustomerChoice.AskToAdd: Row(GroupCustomer, c.Name, "Not in Studio's customer list: you will be asked whether to add it", true); break;
                 case CustomerChoice.CannotRead: Row(GroupCustomer, c.Name, "No change: Studio's customer list cannot be read here"); break;
             }
+            return rows;
+        }
+
+        /// <summary>
+        /// Step 4, "What it holds": everything a job profile carries, with no project to compare it with - Supervertaler's
+        /// project settings, Studio's TMs (each list, with its switches), termbases, term recognition and customer. Same
+        /// groups as <see cref="Rows"/>, so the window shows both the same way; the second column says how each item is
+        /// set. <paramref name="fileExists"/> marks TMs and termbases whose file is not there; one that throws counts as
+        /// there (a slow or offline drive must not make the list look broken). Throws nothing.
+        /// </summary>
+        public static List<PreviewRow> ContentRows(TemplateProfile t, Func<string, bool> fileExists, out List<string> notes)
+        {
+            var rows = new List<PreviewRow>();
+            notes = new List<string>();
+            if (t == null) return rows;
+            void Row(string group, string item, string detail, string sub = null) =>
+                rows.Add(new PreviewRow { Group = group, Item = item, Action = detail ?? "", Name = item, Sub = sub });
+            bool Missing(string path)
+            {
+                if (string.IsNullOrWhiteSpace(path) || fileExists == null) return false;
+                try { return !fileExists(path); } catch { return false; }
+            }
+            string Folder(string path)
+            {
+                try { return System.IO.Path.GetDirectoryName(path) ?? ""; } catch { return ""; }
+            }
+            string Capital(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s.Substring(1);
+
+            // Supervertaler's project settings
+            var sv = t.Supervertaler;
+            int before = rows.Count;
+            if (sv != null) foreach (var kv in SetupRows(sv)) Row(GroupSupervertaler, kv.Value, "", kv.Key);
+            if (rows.Count == before)
+            {
+                Row(GroupSupervertaler, sv == null ? "(none in this template)" : "(empty in this template)", "");
+                notes.Add("This template has no Supervertaler project settings yet. To give it some: set them up in a project " +
+                          "(Supervertaler Settings, then OK), then in Studio's Projects view use Create Project Template on that project.");
+            }
+
+            // Studio's TMs: the list for all language pairs, then each pair's own list. A pair's list Studio ignores
+            // (OverrideParent off) is not shown: a project would use the list for all pairs.
+            var lists = new List<TemplateTmList> { t.AllPairs };
+            lists.AddRange(t.PerPair.Where(l => l.OverrideParent));
+            foreach (var list in lists)
+            {
+                var only = list.Target.Length == 0 ? "" : "   [" + list.Source + " → " + list.Target + " only]";
+                foreach (var e in list.Entries)
+                {
+                    var what = new List<string>();
+                    var path = e.Main.FilePath;
+                    if (e.Main.IsFileTm && Missing(path)) what.Add("file not there (" + Folder(path) + ")");
+                    if (!e.Main.Enabled) what.Add("switched off");
+                    var flags = new List<string>();
+                    if (e.Lookup) flags.Add("lookup");
+                    if (e.Concordance) flags.Add("concordance");
+                    if (e.Update) flags.Add("update");
+                    what.Add(flags.Count > 0 ? string.Join(", ", flags) : "no lookup or update");
+                    if (e.Penalty != 0) what.Add("penalty " + e.Penalty);
+                    Row(GroupTms, e.Main.DisplayName + only, Capital(string.Join("; ", what)));
+                }
+                if (list.Target.Length > 0 && list.Entries.Count == 0)
+                    Row(GroupTms, "(no TMs)" + only, "This language pair has its own list, and it is empty");
+            }
+            if (lists.Count == 1 && t.AllPairs.Entries.Count == 0) Row(GroupTms, "(none)", "");
+            if (lists.Count > 1)
+                notes.Add("TMs marked [... only] are in a language pair's own list: for that pair, a project made from this template " +
+                          "uses that list instead of the one for all language pairs.");
+
+            // Studio's termbases, then how terms are recognised
+            foreach (var tb in t.Termbases)
+            {
+                var name = tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path ?? "");
+                var what = new List<string>();
+                if (!tb.Local) what.Add("server termbase");
+                else if (Missing(tb.Path)) what.Add("file not there (" + Folder(tb.Path) + ")");
+                if (!tb.Enabled) what.Add("switched off");
+                if (tb.FilterName != null) what.Add("filter: " + tb.FilterName);
+                Row(GroupTermbases, name, Capital(string.Join("; ", what)));
+            }
+            if (t.Termbases.Count == 0) Row(GroupTermbases, "(none)", "");
+            foreach (var kv in t.TermbaseIndexes)
+                Row(GroupRecognition, "Termbase index for " + kv.Key, kv.Value);
+            if (t.Recognition != null)
+            {
+                Row(GroupRecognition, "Minimum match value", t.Recognition.MinimumMatchValue + "%");
+                Row(GroupRecognition, "Search depth", t.Recognition.SearchDepth.ToString(CultureInfo.InvariantCulture));
+                if (t.Recognition.SearchOrder.Length > 0) Row(GroupRecognition, "Search order", t.Recognition.SearchOrder);
+                Row(GroupRecognition, "Show terms without a translation", t.Recognition.ShowWithNoAvailableTranslation ? "Yes" : "No");
+            }
+
+            // Studio's customer
+            Row(GroupCustomer, t.CustomerName.Length > 0 ? t.CustomerName : "(none)", "");
             return rows;
         }
 
