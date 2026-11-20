@@ -444,6 +444,16 @@ public static class JobProfileStep2Test {
         var bank = R(JobProfile.GroupSupervertaler, "Memory bank: Acme bank");
         Check(bank != null && bank.Action == "Set" && bank.Changes && notes.Any(n => n.Contains("stay as the project has them")),
             "table: Supervertaler's settings, one row each, and that the rest stays");
+        var items = JobProfile.SetupItems(new ProjectProfileValues { MemoryBankName = "acme-bank", TranslatePromptPath = "Translate/Acme patents.md", ClientName = "Acme",
+            Termbases = "RW\tZeta terms\t13\t2025-11-29" + "\n" + "RWPA\tAcme terms\t70\t2026-07-22" });
+        Check(items.Contains("Memory bank: acme-bank") && items.Contains("Translate prompt: Acme patents") && items.Contains("Client: Acme"),
+            "set-up items: memory bank, prompt by its name, client");
+        Check(items.IndexOf("Supervertaler termbase: Acme terms (read, write, project termbase, AI)") >= 0
+              && items.IndexOf("Supervertaler termbase: Zeta terms (read, write)") > items.IndexOf("Supervertaler termbase: Acme terms (read, write, project termbase, AI)")
+              && items.Contains("Other Supervertaler termbases: off for this project"),
+            "set-up items: each termbase by name with its ticks, alphabetical, and that the others go off");
+        Check(JobProfile.SetupItems(new ProjectProfileValues { MemoryBankName = "x" }).Count == 1, "set-up items: only what the template has");
+        Check(rows.Any(r => r.Group == JobProfile.GroupSupervertaler && r.Item.StartsWith("Translate prompt: ")), "table: the set-up items are its Supervertaler rows");
         var own = R(JobProfile.GroupTms, "Own TM");
         var general = R(JobProfile.GroupTms, "General");
         var acme = rows.FirstOrDefault(r => r.Group == JobProfile.GroupTms && r.Item.StartsWith("Acme (en-GB-nl-NL)"));

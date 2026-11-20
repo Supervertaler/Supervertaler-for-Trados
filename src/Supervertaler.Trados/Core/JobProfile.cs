@@ -753,13 +753,7 @@ namespace Supervertaler.Trados.Core
             else
             {
                 int before = rows.Count;
-                if (ProjectProfileValues.Has(sv.MemoryBankName)) Row(GroupSupervertaler, "Memory bank: " + sv.MemoryBankName.Trim(), "Set", true);
-                if (ProjectProfileValues.Has(sv.TranslatePromptPath)) Row(GroupSupervertaler, "Translate prompt: " + sv.TranslatePromptPath.Trim(), "Set", true);
-                if (ProjectProfileValues.Has(sv.ProofreadPromptPath)) Row(GroupSupervertaler, "Proofread prompt: " + sv.ProofreadPromptPath.Trim(), "Set", true);
-                if (ProjectProfileValues.Has(sv.ClientName)) Row(GroupSupervertaler, "Client: " + sv.ClientName.Trim(), "Set", true);
-                int tbs = ProjectProfile.Lines(sv.Termbases).Count;
-                if (tbs > 0) Row(GroupSupervertaler, tbs == 1 ? "1 Supervertaler termbase choice" : tbs + " Supervertaler termbase choices", "Set", true);
-                if (ProjectProfileValues.Has(sv.DisabledMultiTerm) || ProjectProfileValues.Has(sv.AiEnabledMultiTerm)) Row(GroupSupervertaler, "MultiTerm termbase choices", "Set", true);
+                foreach (var item in SetupItems(sv)) Row(GroupSupervertaler, item, "Set", true);
                 if (rows.Count == before) Row(GroupSupervertaler, "(empty in the template)", "No change: the project keeps its own");
                 else notes.Add("Supervertaler settings the template leaves empty stay as the project has them.");
                 if (elsewhere) notes.Add("This project came from a package or GroupShare: Supervertaler's settings go into Supervertaler's own record only, and Studio's TMs, termbases and customer are left alone.");
@@ -849,8 +843,37 @@ namespace Supervertaler.Trados.Core
             parts.Count == 1 ? parts[0] : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts.Last();
 
         /// <summary>
-        /// The summary after applying. Says plainly what changed, what was left as it was and what failed, and - when the
-        /// TMs changed - that the open document picks them up only after it is closed and reopened.
+        /// What a template's Supervertaler set-up holds, one item each, as the preview table and the summary show it:
+        /// the memory bank, the prompts, the client, each Supervertaler termbase with its ticks, and MultiTerm choices.
+        /// Only what the template has a value for; the project keeps its own for the rest. Applying termbase choices also
+        /// switches off, for this project, every Supervertaler termbase the template does not name: said in its own item.
+        /// </summary>
+        public static List<string> SetupItems(ProjectProfileValues sv)
+        {
+            var items = new List<string>();
+            if (sv == null) return items;
+            string Prompt(string path) => System.IO.Path.GetFileNameWithoutExtension(path.Trim().Replace('/', '\\'));
+            if (ProjectProfileValues.Has(sv.MemoryBankName)) items.Add("Memory bank: " + sv.MemoryBankName.Trim());
+            if (ProjectProfileValues.Has(sv.TranslatePromptPath)) items.Add("Translate prompt: " + Prompt(sv.TranslatePromptPath));
+            if (ProjectProfileValues.Has(sv.ProofreadPromptPath)) items.Add("Proofread prompt: " + Prompt(sv.ProofreadPromptPath));
+            if (ProjectProfileValues.Has(sv.ClientName)) items.Add("Client: " + sv.ClientName.Trim());
+            var choices = ProjectProfile.ParseTermbases(sv.Termbases);
+            foreach (var c in choices.Where(c => c.Parsed).OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                var ticks = new List<string>();
+                if (c.Read) ticks.Add("read");
+                if (c.Write) ticks.Add("write");
+                if (c.Project) ticks.Add("project termbase");
+                if (c.Ai) ticks.Add("AI");
+                items.Add("Supervertaler termbase: " + c.Name + " (" + (ticks.Count > 0 ? string.Join(", ", ticks) : "off") + ")");
+            }
+            if (choices.Any(c => c.Parsed)) items.Add("Other Supervertaler termbases: off for this project");
+            if (ProjectProfileValues.Has(sv.DisabledMultiTerm) || ProjectProfileValues.Has(sv.AiEnabledMultiTerm)) items.Add("MultiTerm termbase choices");
+            return items;
+        }
+
+        /// <summary>
+        /// The summary after applying. Says plainly what changed, what was left as it was and what failed.
         /// </summary>
         public static string Summary(string profileName, string projectName, IList<ApplyStep> steps)
         {

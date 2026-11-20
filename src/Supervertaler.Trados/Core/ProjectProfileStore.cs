@@ -230,6 +230,8 @@ namespace Supervertaler.Trados.Core
                     ? "kept in Supervertaler's own record only (the project came from a package or GroupShare)"
                     : "written into the project";
                 if (notes.Count > 0) detail += "; " + string.Join("; ", notes);
+                // What it held, one line each under the bullet (Michael, 20 Nov: "written into the project" said too little).
+                foreach (var item in JobProfile.SetupItems(template)) detail += "\r\n      \u2013 " + item;
                 return new ApplyStep(what, StepOutcome.Done, detail);
             }
             catch (Exception ex)
