@@ -464,8 +464,9 @@ namespace Supervertaler.Trados.Settings
             SpanG(root, ref row, SeparatorG());
             SpanG(root, ref row, HeaderG("Job profiles"));
             var jobNote = NoteG(
-                "A job profile is a Studio project template. Applying one to the open project sets Supervertaler's set-up and " +
-                "the project's customer from it, and adds its Studio TMs and termbases to the project's own. You see what changes first.");
+                "Any Studio project template can serve as a job profile: it holds Studio's TMs, termbases and customer, and Supervertaler " +
+                "saves its own set-up inside it (memory bank, prompts, termbases). Applying one to the open project sets Supervertaler's " +
+                "set-up and the project's customer, and adds the template's Studio TMs and termbases to the project's own. You see what changes first.");
             jobNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
             SpanG(root, ref row, jobNote);
             var btnJobProfile = mkSmallButton("Apply a job profile...");

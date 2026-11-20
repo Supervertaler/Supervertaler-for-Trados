@@ -123,7 +123,7 @@ namespace Supervertaler.Trados.Settings
             {
                 _facts = JobProfileStudio.Facts(_project);
                 _intro.Text = "The open project is \"" + _facts.Name + "\" (" + _facts.Source + " → " + string.Join(", ", _facts.Targets) + "). " +
-                              "A job profile is a Studio project template: pick one to see what applying it would change.";
+                              "Pick a job profile (a Studio project template, with Supervertaler's set-up stored inside it) to see what applying it would change.";
             }
             catch (Exception ex)
             {
@@ -161,7 +161,7 @@ namespace Supervertaler.Trados.Settings
             {
                 int colon = r.Group.IndexOf(": ", StringComparison.Ordinal);
                 string top = colon < 0 ? (r.Group == JobProfile.GroupSupervertaler ? "Supervertaler" : r.Group) : r.Group.Substring(0, colon);
-                string sub = colon < 0 ? null : r.Group.Substring(colon + 2);
+                string sub = colon < 0 ? r.Sub : r.Group.Substring(colon + 2);
                 if (top != lastTop)
                 {
                     if (lastTop != null) _plan.Items.Add(new ListViewItem(new[] { "", "" }));

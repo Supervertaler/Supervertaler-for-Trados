@@ -485,8 +485,8 @@ public static class JobProfileStep2Test {
         List<string> notes;
         var rows = JobProfile.Rows(p, f, out notes);
         Func<string, string, PreviewRow> R = (g, item) => rows.FirstOrDefault(r => r.Group == g && r.Item == item);
-        var bank = R(JobProfile.GroupSupervertaler, "Memory bank: Acme bank");
-        Check(bank != null && bank.Action == "Set" && bank.Changes && notes.Any(n => n.Contains("stay as the project has them")),
+        var bank = R(JobProfile.GroupSupervertaler, "Acme bank");
+        Check(bank != null && bank.Sub == "Memory bank" && bank.Action == "Set" && bank.Changes && notes.Any(n => n.Contains("stay as the project has them")),
             "table: Supervertaler's settings, one row each, and that the rest stays");
         var items = JobProfile.SetupItems(new ProjectProfileValues { MemoryBankName = "acme-bank", TranslatePromptPath = "Translate/Acme patents.md", ClientName = "Acme",
             Termbases = "RW\tZeta terms\t13\t2025-11-29" + "\n" + "RWPA\tAcme terms\t70\t2026-07-22" });
@@ -497,18 +497,49 @@ public static class JobProfileStep2Test {
               && items.Contains("Other Supervertaler termbases: off for this project"),
             "set-up items: each termbase by name with its ticks, alphabetical, and that the others go off");
         Check(JobProfile.SetupItems(new ProjectProfileValues { MemoryBankName = "x" }).Count == 1, "set-up items: only what the template has");
-        Check(rows.Any(r => r.Group == JobProfile.GroupSupervertaler && r.Item.StartsWith("Translate prompt: ")), "table: the set-up items are its Supervertaler rows");
+        Check(rows.Any(r => r.Group == JobProfile.GroupSupervertaler && r.Sub == "Prompts" && r.Item.StartsWith("Translate: ")), "table: the set-up items are its Supervertaler rows, each under its part");
+        var parts = JobProfile.SetupRows(new ProjectProfileValues { MemoryBankName = "acme-bank", ClientName = "Acme",
+            Termbases = "RW\tZeta terms\t13\t2025-11-29" + "\n" + "RWPA\tAcme terms\t70\t2026-07-22" + "\n" + "R\tBeta terms\t14\t2026-01-01" });
+        var tbs = parts.Where(kv => kv.Key == "Termbases").Select(kv => kv.Value).ToList();
+        Check(tbs.Count == 4 && tbs[0] == "Acme terms (read, write, project termbase, AI)" && tbs[1] == "Beta terms (read)" && tbs[3] == "All others: off for this project",
+            "table: termbases are names under one Termbases heading, alphabetical, the others last (" + string.Join(" | ", tbs) + ")");
+        Check(string.Join(",", parts.Select(kv => kv.Key).Distinct()) == "Memory bank,Client,Termbases", "table: the parts in a fixed order");
         var own = R(JobProfile.GroupTms, "Own TM");
         var general = R(JobProfile.GroupTms, "General");
         var acme = rows.FirstOrDefault(r => r.Group == JobProfile.GroupTms && r.Item.StartsWith("Acme (en-GB-nl-NL)"));
-        Check(own != null && own.Action == "Kept" && !own.Changes, "table: the project's own TM is kept, and does not count as a change");
-        Check(general != null && general.Action == "Kept (the template has it too)" && rows.Count(r => r.Item == "General") == 1,
+        Check(own != null && own.Action == "Kept (only in the project)" && !own.Changes, "table: the project's own TM is kept, and does not count as a change");
+        Check(general != null && general.Action == "Kept (in both project and job profile)" && rows.Count(r => r.Item == "General") == 1,
             "table: a TM both have is one row, kept, not listed twice");
         Check(acme != null && acme.Action == "Added (lookup, update)" && acme.Changes, "table: the template's TM is added, with its switches");
         Check(rows.Any(r => r.Group == JobProfile.GroupTms && r.Action.StartsWith("New list of its own") && r.Item.Contains("en-GB \u2192 nl-NL")),
             "table: a pair's new list of its own");
-        Check(R(JobProfile.GroupTermbases, "Own terms") != null && R(JobProfile.GroupTermbases, "Own terms").Action == "Kept" && R(JobProfile.GroupTermbases, "Acme terms") != null && R(JobProfile.GroupTermbases, "Acme terms").Action == "Added",
+        Check(R(JobProfile.GroupTermbases, "Own terms") != null && R(JobProfile.GroupTermbases, "Own terms").Action == "Kept (only in the project)" && R(JobProfile.GroupTermbases, "Acme terms") != null && R(JobProfile.GroupTermbases, "Acme terms").Action == "Added",
             "table: termbases kept and added");
+
+        // Two TMs with the same name, one an old path whose file is gone, one switched off (Michael, 20 Nov: two
+        // "BEIJER (en-GB->nl-NL)" rows, the first pointing at an old Google Drive folder).
+        var f3 = Facts();
+        var oldPath = Path.Combine(Path.Combine(_temp, "old drive"), "Own TM.sdltm");
+        f3.TmsAllPairs.Providers.Insert(0, new TemplateProvider { Uri = TmUri(oldPath), Enabled = false });
+        PreparedProfile p3;
+        JobProfile.Prepare(FullTemplate(), f3, File.Exists, JobProfile.ReadBundleWithStudio, out p3);
+        List<string> notes3;
+        var rows3 = JobProfile.Rows(p3, f3, out notes3);
+        var same = rows3.Where(r => r.Group == JobProfile.GroupTms && r.Item.StartsWith("Own TM")).ToList();
+        Check(same.Count == 2 && same.All(r => r.Item.Contains("(in ")) && same[0].Item != same[1].Item,
+            "two TMs with the same name: each shows its folder (" + string.Join(" | ", same.Select(r => r.Item)) + ")");
+        Check(same[0].Action == "Kept, but its file is not there; switched off" && !same[0].Changes && same[1].Action == "Kept (only in the project)",
+            "the one whose file is gone says so; the other is kept as usual");
+        Check(notes3.Count(n => n.Contains("its file is not there") && n.Contains("Project Settings")) == 1, "a note says what to do about it, once");
+        var off = Facts();
+        off.TmsAllPairs.Providers[0].Enabled = false;
+        PreparedProfile p4;
+        JobProfile.Prepare(FullTemplate(), off, File.Exists, JobProfile.ReadBundleWithStudio, out p4);
+        List<string> notes4;
+        var offRow = JobProfile.Rows(p4, off, out notes4).First(r => r.Group == JobProfile.GroupTms && r.Item == "Own TM");
+        Check(offRow.Action == "Kept (only in the project); switched off", "a TM switched off in the project says so");
+        Check(JobProfile.PlanTms(Read(FullTemplate()), f3, path => { if (path == oldPath) throw new IOException("locked"); return File.Exists(path); }).AllPairs.KeptDetail.All(k => !k.Missing),
+            "a file check that fails does not call a TM missing, and nothing throws");
         Check(R(JobProfile.GroupCustomer, "acme") != null && R(JobProfile.GroupCustomer, "acme").Changes, "table: the customer is set");
         var q = JobProfile.ConfirmQuestion("Acme patents", "PROJ-001", rows);
         Check(q != null && q.StartsWith("Apply the job profile \"Acme patents\" to \"PROJ-001\"?") && q.Contains("This will set Supervertaler's settings from the template, add 5 TMs, give a language pair a TM list of its own") && q.Contains("add 1 termbase")

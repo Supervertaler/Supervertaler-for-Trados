@@ -3,7 +3,8 @@
 Running notes on what the Help will have to say. Not user-facing yet; the design is in
 `docs/design/client-profiles.md` (branch `claude/client-profiles-design`; Order of work, steps 1 and 2).
 The feature is called **job profile** in all UI and Help text (Michael, 19 Nov): a profile can stand for a
-client, a client plus end client, or a kind of job. A job profile is a Studio project template.
+client, a client plus end client, or a kind of job. Any Studio project template can serve as a job profile: it holds Studio's TMs, termbases and
+customer, and Supervertaler stores its own set-up inside it (memory bank, prompts, termbases, client).
 
 ## Step 1: what a template carries
 

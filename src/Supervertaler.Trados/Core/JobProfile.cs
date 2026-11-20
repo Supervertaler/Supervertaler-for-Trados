@@ -118,12 +118,30 @@ namespace Supervertaler.Trados.Core
     /// One of the project's TM lists after applying: the project's own TMs stay as they are, in their order and with
     /// their switches; the template's that are not in it yet are added at the end.
     /// </summary>
+    /// <summary>One of the project's TMs that applying keeps, as the Apply table shows it.</summary>
+    public sealed class KeptTm
+    {
+        public string Label;
+        /// <summary>The job profile has this TM as well.</summary>
+        public bool InTemplate;
+        /// <summary>A file TM whose file is not there.</summary>
+        public bool Missing;
+        /// <summary>Switched off in the project (Enabled unticked in Studio's Project Settings).</summary>
+        public bool Off;
+    }
+
     public sealed class TmScopePlan
     {
         /// <summary>"" for the list for all language pairs, else the target language.</summary>
         public string Target = "";
         /// <summary>The project's TMs in this list now: kept, unchanged.</summary>
         public List<string> Kept = new List<string>();
+        /// <summary>
+        /// The same TMs, in the same order, as the table shows them. Two TMs with the same name, or a TM whose file is
+        /// not there, carry its folder (Michael, 20 Nov: two "BEIJER (en-GB→nl-NL)" rows, one of them an old Google Drive
+        /// path whose file was gone).
+        /// </summary>
+        public List<KeptTm> KeptDetail = new List<KeptTm>();
         public List<TemplateTmEntry> Add = new List<TemplateTmEntry>();
         /// <summary>The template's TMs this list has already: left as the project has them.</summary>
         public List<string> AlreadyIn = new List<string>();
@@ -187,6 +205,11 @@ namespace Supervertaler.Trados.Core
     public sealed class PreviewRow
     {
         public string Group = "", Item = "", Action = "";
+        /// <summary>
+        /// The part of Supervertaler's set-up a row belongs to ("Termbases", "Prompts"), shown as a subheading so nine
+        /// termbases are nine names under one heading (Michael, 20 Nov); null for the rest.
+        /// </summary>
+        public string Sub;
         /// <summary>The TM, termbase or customer itself, without the language pair the row is for.</summary>
         public string Name = "";
         /// <summary>Applying changes this (adds, sets, or asks to add).</summary>
@@ -578,7 +601,7 @@ namespace Supervertaler.Trados.Core
             }
             var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var all = Usable(t.AllPairs, fileExists, plan.Notes, reported);
-            plan.AllPairs = Scope("", facts.TmsAllPairs.Providers, all.Entries);
+            plan.AllPairs = Scope("", facts.TmsAllPairs.Providers, all.Entries, fileExists);
             var allPairsAfter = facts.TmsAllPairs.Providers.Select(TmKey).Concat(plan.AllPairs.Add.Select(e => TmKey(e.Main))).ToList();
 
             foreach (var target in facts.Targets ?? new List<string>())
@@ -594,10 +617,10 @@ namespace Supervertaler.Trados.Core
 
                 TmScopePlan scope;
                 if (own != null && own.Override)
-                    scope = Scope(target, own.Providers, (pair ?? all).Entries);
+                    scope = Scope(target, own.Providers, (pair ?? all).Entries, fileExists);
                 else if (pair != null)
                 {
-                    scope = Scope(target, new List<TemplateProvider>(), pair.Entries, allPairsAfter);
+                    scope = Scope(target, new List<TemplateProvider>(), pair.Entries, fileExists, allPairsAfter);
                     scope.MakeOwnList = scope.Add.Count > 0;
                     if (!scope.MakeOwnList) continue;   // the list for all pairs has them all: nothing of its own needed
                     plan.Notes.Add(target + " gets a TM list of its own: the project's TMs for all language pairs, plus " +
@@ -616,9 +639,29 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>One list: the project's TMs kept, the template's it lacks added, the ones it has reported.</summary>
-        static TmScopePlan Scope(string target, List<TemplateProvider> project, List<TemplateTmEntry> template, IEnumerable<string> alsoHave = null)
+        static TmScopePlan Scope(string target, List<TemplateProvider> project, List<TemplateTmEntry> template, Func<string, bool> fileExists, IEnumerable<string> alsoHave = null)
         {
             var scope = new TmScopePlan { Target = target, Kept = project.Select(p => p.DisplayName).ToList() };
+            var templateKeys = new HashSet<string>(template.Select(e => TmKey(e.Main)), StringComparer.Ordinal);
+            foreach (var p in project)
+            {
+                var name = p.DisplayName;
+                var path = p.IsFileTm ? p.FilePath : null;
+                bool missing = false;
+                if (!string.IsNullOrEmpty(path) && fileExists != null)
+                    try { missing = !fileExists(path); } catch { missing = false; }
+                bool clash = scope.Kept.Count(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) > 1;
+                string folder = null;
+                if ((clash || missing) && !string.IsNullOrEmpty(path))
+                    try { folder = System.IO.Path.GetDirectoryName(path); } catch { folder = null; }
+                scope.KeptDetail.Add(new KeptTm
+                {
+                    Label = folder != null ? name + "   (in " + folder + ")" : name,
+                    InTemplate = templateKeys.Contains(TmKey(p)),
+                    Missing = missing,
+                    Off = !p.Enabled,
+                });
+            }
             var have = new HashSet<string>(project.Select(TmKey).Concat(alsoHave ?? Enumerable.Empty<string>()), StringComparer.Ordinal);
             foreach (var e in template)
             {
@@ -772,8 +815,8 @@ namespace Supervertaler.Trados.Core
             var rows = new List<PreviewRow>();
             notes = new List<string>();
             if (p?.Template == null) return rows;
-            void Row(string group, string item, string action, bool changes = false, string name = null) =>
-                rows.Add(new PreviewRow { Group = group, Item = item, Action = action, Changes = changes, Name = name ?? item });
+            void Row(string group, string item, string action, bool changes = false, string name = null, string sub = null) =>
+                rows.Add(new PreviewRow { Group = group, Item = item, Action = action, Changes = changes, Name = name ?? item, Sub = sub });
 
             var sv = p.Template.Supervertaler;
             bool elsewhere = facts != null && facts.FromElsewhere;
@@ -781,7 +824,7 @@ namespace Supervertaler.Trados.Core
             else
             {
                 int before = rows.Count;
-                foreach (var item in SetupItems(sv)) Row(GroupSupervertaler, item, "Set", true);
+                foreach (var kv in SetupRows(sv)) Row(GroupSupervertaler, kv.Value, "Set", true, null, kv.Key);
                 if (rows.Count == before) Row(GroupSupervertaler, "(empty in the template)", "No change: the project keeps its own");
                 else notes.Add("Supervertaler settings the template leaves empty stay as the project has them.");
                 if (elsewhere) notes.Add("This project came from a package or GroupShare: Supervertaler's settings go into Supervertaler's own record only, and Studio's TMs, termbases and customer are left alone.");
@@ -805,8 +848,17 @@ namespace Supervertaler.Trados.Core
                 {
                     var only = s.Target.Length == 0 ? "" : "   [" + (facts?.Source ?? "") + " → " + s.Target + " only]";
                     if (s.MakeOwnList) Row(GroupTms, "TM list for " + (facts?.Source ?? "") + " → " + s.Target, "New list of its own, starting from the project's TMs for all language pairs", true);
-                    else foreach (var k in s.Kept)
-                            Row(GroupTms, k + only, s.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (the template has it too)" : "Kept");
+                    else foreach (var k in s.KeptDetail)
+                        {
+                            Row(GroupTms, k.Label + only,
+                                (k.Missing ? "Kept, but its file is not there"
+                                 : k.InTemplate ? "Kept (in both project and job profile)" : "Kept (only in the project)") + (k.Off ? "; switched off" : ""));
+                            if (k.Missing)
+                            {
+                                var note = k.Label + ": the project lists this TM, but its file is not there, so Studio cannot use it. Applying leaves it in the list; remove it in Studio's Project Settings if it is no longer needed.";
+                                if (!notes.Contains(note)) notes.Add(note);
+                            }
+                        }
                     foreach (var e in s.Add)
                     {
                         var flags = new List<string>();
@@ -836,7 +888,7 @@ namespace Supervertaler.Trados.Core
             else
             {
                 foreach (var k in p.Termbases.Kept)
-                    Row(GroupTermbases, k, p.Termbases.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (the template has it too)" : "Kept");
+                    Row(GroupTermbases, k, p.Termbases.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (in both project and job profile)" : "Kept (only in the project)");
                 foreach (var tb in p.Termbases.Add)
                     Row(GroupTermbases, tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path), "Added", true);
                 foreach (var a in p.Termbases.AlreadyIn.Where(a => !p.Termbases.Kept.Contains(a, StringComparer.OrdinalIgnoreCase)))
@@ -884,6 +936,39 @@ namespace Supervertaler.Trados.Core
         /// Only what the template has a value for; the project keeps its own for the rest. Applying termbase choices also
         /// switches off, for this project, every Supervertaler termbase the template does not name: said in its own item.
         /// </summary>
+        /// <summary>
+        /// The same set-up for the Apply table: each item under the part it belongs to (key: "Memory bank", "Prompts",
+        /// "Client", "Termbases", "MultiTerm termbases"), the parts in that order.
+        /// </summary>
+        public static List<KeyValuePair<string, string>> SetupRows(ProjectProfileValues sv)
+        {
+            var rows = new List<KeyValuePair<string, string>>();
+            if (sv == null) return rows;
+            void Add(string sub, string item) => rows.Add(new KeyValuePair<string, string>(sub, item));
+            string Prompt(string path) => System.IO.Path.GetFileNameWithoutExtension(path.Trim().Replace('/', '\\'));
+            if (ProjectProfileValues.Has(sv.MemoryBankName)) Add("Memory bank", sv.MemoryBankName.Trim());
+            if (ProjectProfileValues.Has(sv.TranslatePromptPath)) Add("Prompts", "Translate: " + Prompt(sv.TranslatePromptPath));
+            if (ProjectProfileValues.Has(sv.ProofreadPromptPath)) Add("Prompts", "Proofread: " + Prompt(sv.ProofreadPromptPath));
+            if (ProjectProfileValues.Has(sv.ClientName)) Add("Client", sv.ClientName.Trim());
+            var choices = ProjectProfile.ParseTermbases(sv.Termbases);
+            foreach (var c in choices.Where(c => c.Parsed).OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase))
+                Add("Termbases", c.Name + " (" + Ticks(c) + ")");
+            if (choices.Any(c => c.Parsed)) Add("Termbases", "All others: off for this project");
+            if (ProjectProfileValues.Has(sv.DisabledMultiTerm) || ProjectProfileValues.Has(sv.AiEnabledMultiTerm))
+                Add("MultiTerm termbases", "Which are off, and which the AI uses");
+            return rows;
+        }
+
+        static string Ticks(ProjectProfile.TermbaseChoice c)
+        {
+            var ticks = new List<string>();
+            if (c.Read) ticks.Add("read");
+            if (c.Write) ticks.Add("write");
+            if (c.Project) ticks.Add("project termbase");
+            if (c.Ai) ticks.Add("AI");
+            return ticks.Count > 0 ? string.Join(", ", ticks) : "off";
+        }
+
         public static List<string> SetupItems(ProjectProfileValues sv)
         {
             var items = new List<string>();
