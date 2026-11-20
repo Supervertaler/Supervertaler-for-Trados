@@ -573,7 +573,7 @@ namespace Supervertaler.Trados.Core
             if (t == null || !t.HasAnyTm)
             {
                 plan.LeaveAlone = true;
-                plan.Notes.Add("The template has no TMs: the project's TMs are left as they are.");
+                plan.Notes.Add("The template has no Studio TMs: the project's Studio TMs are left as they are.");
                 return plan;
             }
             var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -610,7 +610,7 @@ namespace Supervertaler.Trados.Core
             if (!plan.Added.Any())
             {
                 plan.LeaveAlone = true;
-                plan.Notes.Add("The project already has all of the template's TMs: its TMs are left as they are.");
+                plan.Notes.Add("The project already has all of the template's Studio TMs: its Studio TMs are left as they are.");
             }
             return plan;
         }
@@ -679,7 +679,7 @@ namespace Supervertaler.Trados.Core
             if (t == null || t.Termbases.Count == 0)
             {
                 plan.LeaveAlone = true;
-                plan.Notes.Add("The template has no termbases: the project's termbases are left as they are.");
+                plan.Notes.Add("The template has no Studio termbases: the project's Studio termbases are left as they are.");
                 return plan;
             }
             var have = new HashSet<string>(facts.Termbases.Select(kv => kv.Value), StringComparer.Ordinal);
@@ -714,8 +714,8 @@ namespace Supervertaler.Trados.Core
             {
                 plan.LeaveAlone = true;
                 plan.Notes.Add(plan.AlreadyIn.Count > 0
-                    ? "The project already has the template's termbases: its termbases are left as they are."
-                    : "None of the template's termbases can be added here: the project's termbases are left as they are.");
+                    ? "The project already has the template's Studio termbases: its Studio termbases are left as they are."
+                    : "None of the template's Studio termbases can be added here: the project's Studio termbases are left as they are.");
             }
             return plan;
         }
@@ -760,7 +760,8 @@ namespace Supervertaler.Trados.Core
 
         // ─── words for people ───────────────────────────────────────
 
-        public const string GroupSupervertaler = "Supervertaler", GroupTms = "Translation memories", GroupTermbases = "Termbases", GroupCustomer = "Studio customer";
+        // Supervertaler's own part and Trados Studio's, told apart in the group names (Michael, 20 Nov).
+        public const string GroupSupervertaler = "Supervertaler set-up", GroupTms = "Trados Studio: translation memories", GroupTermbases = "Trados Studio: termbases", GroupCustomer = "Trados Studio: customer";
 
         /// <summary>
         /// What applying would do, as a table: one row per TM, termbase, customer and Supervertaler setting, saying whether
@@ -933,6 +934,6 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>The step names, shared with the summary's TM notice.</summary>
-        public const string StepSupervertaler = "Supervertaler set-up", StepTms = "TMs", StepTermbases = "Termbases", StepCustomer = "Customer", StepSave = "Saving the project";
+        public const string StepSupervertaler = "Supervertaler set-up", StepTms = "Studio TMs", StepTermbases = "Studio termbases", StepCustomer = "Studio customer", StepSave = "Saving the project";
     }
 }

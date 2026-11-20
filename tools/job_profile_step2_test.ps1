@@ -525,10 +525,10 @@ public static class JobProfileStep2Test {
             new ApplyStep(JobProfile.StepTms, StepOutcome.Done, "added Acme"),
             new ApplyStep(JobProfile.StepCustomer, StepOutcome.Unchanged, "the template names none"),
         });
-        Check(done.StartsWith("Job profile \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("No change: Customer.") && !done.Contains("Not done:"),
+        Check(done.StartsWith("Job profile \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("No change: Studio customer.") && !done.Contains("Not done:"),
             "summary: what changed and what was left, nothing failed");
         Check(!done.Contains("close it and open it again") && done.Contains("Nothing was removed"), "summary: says nothing was removed, and no reopen hint (the open document searches an added TM at once)");
-        Check(done.Contains("\u2022 TMs: added Acme\r\n"), "summary: one short line per change");
+        Check(done.Contains("\u2022 Studio TMs: added Acme\r\n"), "summary: one short line per change");
         var partial = JobProfile.Summary("Acme patents", "PROJ-001", new List<ApplyStep> {
             new ApplyStep(JobProfile.StepTms, StepOutcome.Failed, "Studio did not accept the template's TMs (x); the project's TMs are as they were"),
             new ApplyStep(JobProfile.StepTermbases, StepOutcome.Done, "Acme terms"),

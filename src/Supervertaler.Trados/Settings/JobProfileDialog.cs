@@ -160,7 +160,7 @@ namespace Supervertaler.Trados.Settings
             }
             _plan.EndUpdate();
             var all = new List<string>();
-            if (_facts != null && !_facts.FromElsewhere) all.Add("Nothing is removed: the project keeps all its TMs and termbases. What applying changes is in bold.");
+            if (_facts != null && !_facts.FromElsewhere) all.Add("Nothing is removed: the project keeps all its Studio TMs and termbases. What applying changes is in bold.");
             all.AddRange(notes);
             all.Add("A template sent to someone else carries these names too (customer, client, bank and prompt names).");
             _notes.Text = string.Join("\r\n", all);
