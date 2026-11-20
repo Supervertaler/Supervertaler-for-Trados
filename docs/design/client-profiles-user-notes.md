@@ -78,9 +78,11 @@ open in Studio: the one in the Editor, else the one selected in Projects.
     the summary says so.
   - **The project's Studio customer**: the one the template names. If Studio's customer list does not have it,
     you are asked whether to add it; say no and the project's customer is left as it is.
-- **The open document and new TMs (unconfirmed).** Project Settings shows an added TM straight away (Michael,
-  20 Nov). Whether the open document already searches it is not yet checked; until it is, the summary only says:
-  if the open document finds nothing in the added TMs, close it and open it again.
+- **The open document and new TMs.** An added TM is used straight away: Project Settings shows it, and a
+  Concordance search (F3) in the open document finds it (Michael, 20 Nov). No need to close and reopen anything.
+- **Applying from the Settings window.** After a job profile is applied, the Settings window shows the project's
+  new termbase and prompt choices, so pressing OK there keeps them. (Before 20 Nov, OK wrote back the choices the
+  window had shown before applying, which switched the job profile's termbases off again.)
 - **Nothing is ever removed** from the project's TM or termbase lists, and nothing is deleted from any TM or
   termbase. A template with no TMs, termbases or customer leaves those as they are. Applying the same profile
   twice adds nothing the second time.

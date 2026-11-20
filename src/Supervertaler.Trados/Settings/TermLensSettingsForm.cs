@@ -469,9 +469,17 @@ namespace Supervertaler.Trados.Settings
             jobNote.MaximumSize = new Size(UiScale.Pixels(520), 0);
             SpanG(root, ref row, jobNote);
             var btnJobProfile = mkSmallButton("Apply a job profile...");
-            btnJobProfile.Click += (s, e) => { using (var dlg = new JobProfileDialog()) dlg.ShowDialog(this); };
+            btnJobProfile.Click += (s, e) =>
+            {
+                bool applied;
+                using (var dlg = new JobProfileDialog()) { dlg.ShowDialog(this); applied = dlg.Applied; }
+                // Applying wrote the project's termbase and prompt choices. This window still shows the ones from
+                // before it was applied, and OK would write those back over them (Michael, 20 Nov: the IMPALA
+                // termbase was switched on by the job profile, then off again by OK). So show the new ones.
+                if (applied) PopulateProjectChoices();
+            };
             var btnCustomers = mkSmallButton("Studio customers...");
-            tips.SetToolTip(btnCustomers, "Add, rename, change or remove Studio's customers, kept in alphabetical order.");
+            tips.SetToolTip(btnCustomers, "Add, edit or remove Studio's customers, kept in alphabetical order.");
             btnCustomers.Click += (s, e) => { using (var dlg = new StudioCustomersDialog()) dlg.ShowDialog(this); };
             SpanG(root, ref row, FlowG(btnJobProfile, btnCustomers));
 
@@ -1449,6 +1457,21 @@ namespace Supervertaler.Trados.Settings
             _aiSettingsPanel.PopulateFromSettings(_settings.AiSettings);
             _groupShareSettingsPanel.PopulateFromSettings(_settings);
 
+            PopulatePrompts();
+        }
+
+        /// <summary>
+        /// The parts of this window that belong to the open project, read again: the termbase list and the active
+        /// prompts. Used after a job profile was applied from this window.
+        /// </summary>
+        private void PopulateProjectChoices()
+        {
+            PopulateTermbaseList(_txtTermbasePath.Text);
+            PopulatePrompts();
+        }
+
+        private void PopulatePrompts()
+        {
             // Prompts – pass per-project active prompt if available
             string projectActivePrompt = null;
             string projectActiveProofreadPrompt = null;

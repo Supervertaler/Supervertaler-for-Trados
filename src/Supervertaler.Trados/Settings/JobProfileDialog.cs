@@ -102,6 +102,13 @@ namespace Supervertaler.Trados.Settings
             Shown += (s, e) => LoadTemplates();
         }
 
+        /// <summary>
+        /// True once a job profile has been applied (in full or in part) while this window was open. The Settings window
+        /// that opened it then re-reads the project's termbase and prompt choices: it still shows the ones from before,
+        /// and its OK would write those back over what was just applied.
+        /// </summary>
+        public bool Applied { get; private set; }
+
         void RefreshFacts()
         {
             if (_project == null)
@@ -299,6 +306,7 @@ namespace Supervertaler.Trados.Settings
                 DiagnosticLog.WriteAlways("JobProfile", "apply stopped: " + ex);
             }
             finally { Cursor = Cursors.Default; }
+            Applied = true;
             RefreshFacts();
             MessageBox.Show(this, summary, Text, MessageBoxButtons.OK,
                 summary.Contains("Not done:") ? MessageBoxIcon.Warning : MessageBoxIcon.Information);

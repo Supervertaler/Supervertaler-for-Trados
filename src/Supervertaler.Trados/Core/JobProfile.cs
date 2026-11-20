@@ -871,8 +871,6 @@ namespace Supervertaler.Trados.Core
             var unchanged = steps.Where(s => s.Outcome == StepOutcome.Unchanged).Select(s => s.What).ToList();
             if (unchanged.Count > 0) sb.Append("\r\nNo change: ").Append(string.Join(", ", unchanged)).Append(".\r\n");
             sb.Append("\r\nNothing was removed.");
-            if (steps.Any(s => s.Outcome == StepOutcome.Done && s.What == StepTms))
-                sb.Append(" If the open document finds nothing in the added TMs, close it and open it again.");
             return sb.ToString().TrimEnd();
         }
 
