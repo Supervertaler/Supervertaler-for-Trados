@@ -23,7 +23,7 @@ namespace Supervertaler.Trados.Settings
         readonly TextBox _filter = new TextBox { Dock = DockStyle.Top };
         readonly Label _intro = new Label { Dock = DockStyle.Top, AutoSize = false, Height = 44 };
         readonly ListView _plan = new ListView { View = View.Details, FullRowSelect = true, HeaderStyle = ColumnHeaderStyle.Nonclickable, Dock = DockStyle.Fill };
-        readonly TextBox _notes = new TextBox { Dock = DockStyle.Bottom, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 64, BorderStyle = BorderStyle.None, BackColor = SystemColors.Control };
+        readonly TextBox _notes = new TextBox { Dock = DockStyle.Bottom, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 84, BorderStyle = BorderStyle.None, BackColor = SystemColors.Control };
         readonly Label _planTitle = new Label { Dock = DockStyle.Top, AutoSize = false, Height = 24, TextAlign = ContentAlignment.BottomLeft, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
         Font _bold;
         readonly Button _apply = new Button { Text = "Apply to this project...", AutoSize = true, Enabled = false };
@@ -42,7 +42,8 @@ namespace Supervertaler.Trados.Settings
             Icon = IconHelper.AppIcon;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
-            ClientSize = new Size(860, 680);
+            ClientSize = new Size(900, 780);
+            MinimumSize = new Size(640, 520);
 
             _list.Columns.Add("Job profile (Studio project template)", 300);
             _list.Columns.Add("Studio", 130);
@@ -66,20 +67,35 @@ namespace Supervertaler.Trados.Settings
             _plan.Columns.Add("What applying does", 380);
             _bold = new Font(_plan.Font, FontStyle.Bold);
             Disposed += (s, e) => _bold.Dispose();
-            var planPanel = new Panel { Dock = DockStyle.Bottom, Height = 290, Padding = new Padding(0, 6, 0, 4) };
-            planPanel.Controls.Add(_plan);
-            planPanel.Controls.Add(_notes);
-            planPanel.Controls.Add(_planTitle);
+            // The list of job profiles above, what the chosen one holds below; drag the bar between them to give either more room.
+            var split = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Horizontal,
+                SplitterWidth = 6,
+            };
+            split.Panel1.Controls.Add(_list);
+            split.Panel2.Padding = new Padding(0, 2, 0, 4);
+            split.Panel2.Controls.Add(_plan);
+            split.Panel2.Controls.Add(_notes);
+            split.Panel2.Controls.Add(_planTitle);
 
             var filterLabel = new Label { Text = "Filter:", Dock = DockStyle.Top, AutoSize = false, Height = 18 };
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
-            body.Controls.Add(_list);
+            body.Controls.Add(split);
             body.Controls.Add(_filter);
             body.Controls.Add(filterLabel);
             body.Controls.Add(_intro);
-            body.Controls.Add(planPanel);
             body.Controls.Add(buttons);
             Controls.Add(body);
+            // Most of the room goes to what the job profile holds; a third to the list.
+            // The minimum sizes are set only now: on a SplitContainer that is still at its small default size they throw.
+            Shown += (s, e) =>
+            {
+                split.Panel1MinSize = 80;
+                split.Panel2MinSize = 140;
+                split.SplitterDistance = System.Math.Max(80, split.Height / 3);
+            };
 
             _project = TmFieldStampMonitor.Project;
             RefreshFacts();
