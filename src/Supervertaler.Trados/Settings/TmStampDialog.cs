@@ -91,7 +91,7 @@ namespace Supervertaler.Trados.Settings
             }
             var info = _project.GetProjectInfo();
             _fromElsewhere = TmFieldStamping.IsFromElsewhere(info.ProjectType);
-            _intro.Text = "Project \"" + info.Name + "\". Studio stores a stamped value only in a TM that has a field of that name. " +
+            _intro.Text = "These are the translation memories of the open project, \"" + info.Name + "\". Studio stores a stamped value only in a TM that has a field of that name. " +
                           "Adding a field changes the TM, so it is done only when you say so, one TM at a time.";
             _intro.Height = 44;
             if (_fromElsewhere)

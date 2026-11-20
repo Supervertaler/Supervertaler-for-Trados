@@ -66,6 +66,7 @@ namespace Supervertaler.Trados.Settings
             _plan.Columns.Add("Item", 420);
             _plan.Columns.Add("What applying does", 380);
             _bold = new Font(_plan.Font, FontStyle.Bold);
+            _plan.ClientSizeChanged += (s, e) => FitPlanColumns();
             Disposed += (s, e) => _bold.Dispose();
             // The list of job profiles above, what the chosen one holds below; drag the bar between them to give either more room.
             var split = new SplitContainer
@@ -121,7 +122,7 @@ namespace Supervertaler.Trados.Settings
             try
             {
                 _facts = JobProfileStudio.Facts(_project);
-                _intro.Text = "Project \"" + _facts.Name + "\" (" + _facts.Source + " → " + string.Join(", ", _facts.Targets) + "). " +
+                _intro.Text = "The open project is \"" + _facts.Name + "\" (" + _facts.Source + " → " + string.Join(", ", _facts.Targets) + "). " +
                               "A job profile is a Studio project template: pick one to see what applying it would change.";
             }
             catch (Exception ex)
@@ -151,32 +152,55 @@ namespace Supervertaler.Trados.Settings
             _plan.Items.Clear();
             _plan.Groups.Clear();
             // Two headings, Supervertaler and Trados Studio; Studio's parts ("Trados Studio: termbases") are subheadings
-            // under the second (Michael, 20 Nov). A ListView's groups do not nest, so a subheading is a bold row of its
-            // own and its items are indented under it.
-            var groups = new Dictionary<string, ListViewGroup>();
-            string lastSub = null;
+            // under the second (Michael, 20 Nov). A ListView's groups neither nest nor take a bold font, so every heading
+            // is a row of its own: a heading in bold blue, a subheading in bold, indented one step, and each item one step
+            // further in than its heading.
+            const string Step = "      ";
+            string lastTop = null, lastSub = null;
             foreach (var r in rows)
             {
                 int colon = r.Group.IndexOf(": ", StringComparison.Ordinal);
                 string top = colon < 0 ? (r.Group == JobProfile.GroupSupervertaler ? "Supervertaler" : r.Group) : r.Group.Substring(0, colon);
                 string sub = colon < 0 ? null : r.Group.Substring(colon + 2);
-                if (!groups.TryGetValue(top, out var g)) { g = new ListViewGroup(top, top); groups[top] = g; _plan.Groups.Add(g); }
-                if (sub != null && sub != lastSub)
+                if (top != lastTop)
                 {
-                    var heading = new ListViewItem(new[] { char.ToUpper(sub[0]) + sub.Substring(1), "" }, g) { Font = _bold, ForeColor = SystemColors.HotTrack };
-                    _plan.Items.Add(heading);
+                    if (lastTop != null) _plan.Items.Add(new ListViewItem(new[] { "", "" }));
+                    _plan.Items.Add(new ListViewItem(new[] { top, "" }) { Font = _bold, ForeColor = SystemColors.HotTrack });
+                    lastSub = null;
                 }
+                if (sub != null && sub != lastSub)
+                    _plan.Items.Add(new ListViewItem(new[] { Step + char.ToUpper(sub[0]) + sub.Substring(1), "" }) { Font = _bold });
+                lastTop = top;
                 lastSub = sub;
-                var item = new ListViewItem(new[] { (sub != null ? "      " : "") + r.Item, r.Action }, g) { UseItemStyleForSubItems = false };
+                var item = new ListViewItem(new[] { (sub != null ? Step + Step : Step) + r.Item, r.Action }) { UseItemStyleForSubItems = false };
                 if (r.Changes) item.SubItems[1].Font = _bold;
                 _plan.Items.Add(item);
             }
             _plan.EndUpdate();
+            FitPlanColumns();
             var all = new List<string>();
             if (_facts != null && !_facts.FromElsewhere) all.Add("Nothing is removed: the project keeps all its Studio TMs and termbases. What applying changes is in bold.");
             all.AddRange(notes);
             all.Add("A template sent to someone else carries these names too (customer, client, bank and prompt names).");
             _notes.Text = string.Join("\r\n", all);
+        }
+
+        /// <summary>
+        /// The Item column as wide as its longest entry (but at most three fifths of the table), and the second column
+        /// filling the rest, so the header has one dividing line, over the boundary between the two columns, and no stub
+        /// column after them (Michael, 20 Nov).
+        /// </summary>
+        void FitPlanColumns()
+        {
+            int width = _plan.ClientSize.Width;
+            if (width <= 0 || _plan.Columns.Count < 2) return;
+            int item = 200;
+            if (_plan.Items.Count > 0)
+                foreach (ListViewItem i in _plan.Items)
+                    item = System.Math.Max(item, TextRenderer.MeasureText(i.Text, i.Font ?? _plan.Font).Width + 16);
+            item = System.Math.Min(item, width * 3 / 5);
+            _plan.Columns[0].Width = item;
+            _plan.Columns[1].Width = System.Math.Max(120, width - item);
         }
 
         /// <summary>Studio's registered templates and the ones in its template folders: projects.xml and folder listings only.</summary>
