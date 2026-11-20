@@ -123,7 +123,7 @@ namespace Supervertaler.Trados.Settings
             {
                 _facts = JobProfileStudio.Facts(_project);
                 _intro.Text = "The open project is \"" + _facts.Name + "\" (" + _facts.Source + " → " + string.Join(", ", _facts.Targets) + "). " +
-                              "Pick a job profile (a Studio project template, with Supervertaler's set-up stored inside it) to see what applying it would change.";
+                              "Pick a job profile (a Studio project template, with Supervertaler's project settings stored inside it) to see what applying it would change.";
             }
             catch (Exception ex)
             {

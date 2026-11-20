@@ -4,11 +4,11 @@ Running notes on what the Help will have to say. Not user-facing yet; the design
 `docs/design/client-profiles.md` (branch `claude/client-profiles-design`; Order of work, steps 1 and 2).
 The feature is called **job profile** in all UI and Help text (Michael, 19 Nov): a profile can stand for a
 client, a client plus end client, or a kind of job. Any Studio project template can serve as a job profile: it holds Studio's TMs, termbases and
-customer, and Supervertaler stores its own set-up inside it (memory bank, prompts, termbases, client).
+customer, and Supervertaler stores its project settings inside it (memory bank, prompts, termbases, client).
 
 ## Step 1: what a template carries
 
-- Supervertaler's per-project set-up now travels with Studio project templates:
+- Supervertaler's project settings now travel with Studio project templates:
   - the memory bank (by name),
   - the translate prompt and the proofread prompt (by their place in the prompt library),
   - the client name,
@@ -16,12 +16,12 @@ customer, and Supervertaler stores its own set-up inside it (memory bank, prompt
     "Project" termbase, and which are sent to the AI; for MultiTerm termbases, which are switched off in
     Supervertaler and which are sent to the AI.
 - How to use it: set up one project for a client as you want it, then in Studio **Create project template**
-  from that project. Every new project made from the template starts with the same Supervertaler set-up.
+  from that project. Every new project made from the template starts with the same Supervertaler project settings.
   Nothing to do in Supervertaler.
 - A project made from the template takes a copy. Changing the template later does not change projects
   already made from it (that is how Studio's own settings in a template work too). Changing a project does
   not change the template.
-- Existing projects: their set-up reaches the Studio project the next time a Supervertaler setting is changed
+- Existing projects: their project settings reach the Studio project the next time a Supervertaler setting is changed
   in them (Settings OK, picking a prompt or a memory bank), or after the project has been switched away from
   and opened again. Before that, a template made from an existing project does not carry it yet. Tip for the
   Help: "open the project, open Supervertaler Settings and click OK, then create the template".
@@ -38,7 +38,7 @@ customer, and Supervertaler stores its own set-up inside it (memory bank, prompt
     so if you add that prompt later it is used;
   - a termbase you do not have is switched off for you, noted in the diagnostic log, and kept in the project,
     so the owner gets it back when the project returns.
-- **Supervertaler never writes your set-up into a project from a package or GroupShare.** Such a project is the
+- **Supervertaler never writes your project settings into a project from a package or GroupShare.** Such a project is the
   agency's, and its settings can travel back to them; your memory bank, prompt names and client name stay in
   Supervertaler's own record on your computer. (The same rule as TM field stamping.) Values the agency's project
   already carries are still used, as above.
@@ -59,7 +59,7 @@ open in Studio: the one in the Editor, else the one selected in Projects.
   Project Templates folders; there is a filter box). The window shows what applying it would change before
   anything changes, and asks once more before applying.
 - What is applied:
-  - **Supervertaler's set-up** from the template (memory bank, prompts, client, termbase choices). Anything the
+  - **Supervertaler's project settings** from the template (memory bank, prompts, client, termbase choices). Anything the
     template leaves empty stays as the project has it. The project also records the job profile's name.
   - **Studio's termbases: keep, add** (Michael, 19 Nov). The project keeps all its termbases, in their order, with
     its default termbase, language indexes and recognition options. The template's termbases that the project

@@ -542,7 +542,7 @@ public static class JobProfileStep2Test {
             "a file check that fails does not call a TM missing, and nothing throws");
         Check(R(JobProfile.GroupCustomer, "acme") != null && R(JobProfile.GroupCustomer, "acme").Changes, "table: the customer is set");
         var q = JobProfile.ConfirmQuestion("Acme patents", "PROJ-001", rows);
-        Check(q != null && q.StartsWith("Apply the job profile \"Acme patents\" to \"PROJ-001\"?") && q.Contains("This will set Supervertaler's settings from the template, add 5 TMs, give a language pair a TM list of its own") && q.Contains("add 1 termbase")
+        Check(q != null && q.StartsWith("Apply the job profile \"Acme patents\" to \"PROJ-001\"?") && q.Contains("This will set Supervertaler's project settings from the template, add 5 TMs, give a language pair a TM list of its own") && q.Contains("add 1 termbase")
               && q.Contains(" and set the customer") && q.Contains("Nothing is removed"), "question: short, counts what changes, says nothing is removed");
         Check(JobProfile.ConfirmQuestion("X", "Y", rows.Where(r => !r.Changes).ToList()) == null, "question: none when nothing would change");
         f.FromElsewhere = true;

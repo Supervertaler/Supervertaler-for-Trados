@@ -804,7 +804,7 @@ namespace Supervertaler.Trados.Core
         // ─── words for people ───────────────────────────────────────
 
         // Supervertaler's own part and Trados Studio's, told apart in the group names (Michael, 20 Nov).
-        public const string GroupSupervertaler = "Supervertaler set-up", GroupTms = "Trados Studio: translation memories", GroupTermbases = "Trados Studio: termbases", GroupCustomer = "Trados Studio: customer";
+        public const string GroupSupervertaler = "Supervertaler project settings", GroupTms = "Trados Studio: translation memories", GroupTermbases = "Trados Studio: termbases", GroupCustomer = "Trados Studio: customer";
 
         /// <summary>
         /// What applying would do, as a table: one row per TM, termbase, customer and Supervertaler setting, saying whether
@@ -826,8 +826,8 @@ namespace Supervertaler.Trados.Core
                 int before = rows.Count;
                 foreach (var kv in SetupRows(sv)) Row(GroupSupervertaler, kv.Value, "Set", true, null, kv.Key);
                 if (rows.Count == before) Row(GroupSupervertaler, "(empty in the template)", "No change: the project keeps its own");
-                else notes.Add("Supervertaler settings the template leaves empty stay as the project has them.");
-                if (elsewhere) notes.Add("This project came from a package or GroupShare: Supervertaler's settings go into Supervertaler's own record only, and Studio's TMs, termbases and customer are left alone.");
+                else notes.Add("Supervertaler project settings the template leaves empty stay as the project has them.");
+                if (elsewhere) notes.Add("This project came from a package or GroupShare: Supervertaler's project settings go into Supervertaler's own record only, and Studio's TMs, termbases and customer are left alone.");
             }
 
             if (elsewhere)
@@ -914,7 +914,7 @@ namespace Supervertaler.Trados.Core
             var changes = (rows ?? new List<PreviewRow>()).Where(r => r.Changes).ToList();
             var parts = new List<string>();
             int Count(string g) => changes.Count(r => r.Group == g);
-            if (Count(GroupSupervertaler) > 0) parts.Add("set Supervertaler's " + (Count(GroupSupervertaler) == 1 ? "setting" : "settings") + " from the template");
+            if (Count(GroupSupervertaler) > 0) parts.Add("set Supervertaler's project " + (Count(GroupSupervertaler) == 1 ? "setting" : "settings") + " from the template");
             // A TM added to several lists is one TM: count names, not rows.
             int tms = changes.Where(r => r.Group == GroupTms && r.Action.StartsWith("Added", StringComparison.Ordinal))
                              .Select(r => r.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -1019,6 +1019,6 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>The step names, shared with the summary's TM notice.</summary>
-        public const string StepSupervertaler = "Supervertaler set-up", StepTms = "Studio TMs", StepTermbases = "Studio termbases", StepCustomer = "Studio customer", StepSave = "Saving the project";
+        public const string StepSupervertaler = "Supervertaler project settings", StepTms = "Studio TMs", StepTermbases = "Studio termbases", StepCustomer = "Studio customer", StepSave = "Saving the project";
     }
 }

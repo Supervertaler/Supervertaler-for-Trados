@@ -236,7 +236,7 @@ namespace Supervertaler.Trados.Core
             }
             catch (Exception ex)
             {
-                DiagnosticLog.WriteAlways(Log, "applying a job profile's Supervertaler set-up failed: " + ex.Message);
+                DiagnosticLog.WriteAlways(Log, "applying a job profile's Supervertaler project settings failed: " + ex.Message);
                 return new ApplyStep(what, StepOutcome.Failed, ex.Message);
             }
         }
@@ -305,7 +305,7 @@ namespace Supervertaler.Trados.Core
                 {
                     if (ReportedFromElsewhere(projectPath))
                         DiagnosticLog.Log(Log, Path.GetFileName(projectPath) + " came from a package or GroupShare: "
-                            + "Supervertaler's set-up is kept in its own record only, not written into the project");
+                            + "Supervertaler's project settings are kept in its own record only, not written into the project");
                     return true;
                 }
 
