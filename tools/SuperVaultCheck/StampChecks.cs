@@ -41,6 +41,7 @@ static class StampChecks
         StaleValues();
         RealProject();
         EverTmSwitches();
+        ReversedTms();
     }
 
     static FieldDefinition Def(string name, FieldValueType type, params string[] items)
@@ -130,6 +131,44 @@ static class StampChecks
         Check(after != null && after.Count(f => f.Name == "Project") == 1 && after.First(f => f.Name == "Project").ValueType == FieldValueType.MultipleString,
               "adding the field: the TM has one text field \"Project\" (twice is harmless), and the cache sees it at once");
         Check(new FileBasedTranslationMemory(without).FieldDefinitions.Any(f => f.Name == "Project"), "saved in the TM file");
+    }
+
+    /// <summary>
+    /// A TM whose languages are the project's the other way round (Michael, 20 Nov: an en-GB to nl-NL TM in a nl-NL to
+    /// en-GB project). Studio uses it for lookups but leaves it off its Field Values page, so stamping leaves it out
+    /// too and says so; the languages come from the TM itself, in the same cached read as its fields.
+    /// </summary>
+    static void ReversedTms()
+    {
+        var path = Path.Combine(_dir, "acme-reversed.sdltm");
+        var tm = new FileBasedTranslationMemory(path, "acme-reversed", EnGb, NlNl, FuzzyIndexes.SourceWordBased, BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
+        tm.FieldDefinitions.Add(Def("Project", FieldValueType.MultipleString));
+        tm.Save();
+        var forward = Tm("acme-forward", Def("Project", FieldValueType.MultipleString));
+
+        var d = TmFieldStamping.DirectionOf(path);
+        Check(d != null && string.Equals(d.Value.source, "en-GB", StringComparison.OrdinalIgnoreCase) && string.Equals(d.Value.target, "nl-NL", StringComparison.OrdinalIgnoreCase),
+            $"a TM's languages are read from the TM ({d?.source} -> {d?.target})");
+        Check(TmFieldStamping.DirectionOf(Path.Combine(_dir, "missing.sdltm")) == null && TmFieldStamping.DirectionOf(Path.Combine(_dir, "junk.sdltm")) == null,
+            "a missing or damaged TM: no languages, no error");
+
+        var rev = P(path); var fwd = P(forward);
+        TmFieldStamping.MarkReversed(new[] { rev, fwd }, "nl-NL", new List<string> { "en-GB" });
+        Check(rev.ReversedAs != null && fwd.ReversedAs == null, "in a nl-NL -> en-GB project the en-GB -> nl-NL TM is marked as used in reverse, the other is not");
+
+        var outcome = new TmFieldStamping.Outcome();
+        bool changed = TmFieldStamping.FillBundle(outcome, Sdl.Core.Settings.SettingsUtil.CreateSettingsBundle(null), new[] { rev },
+            TmFieldStamping.Wanted(true, false, "PROJ-001", null), TmFieldStamping.FieldsOf);
+        Check(!changed && outcome.Filled.Count == 0 && outcome.Reversed.Count == 1 && outcome.ToString().Contains("used in reverse") && outcome.NoField.Count == 0,
+            $"nothing is filled for a TM used in reverse, and the log says why ({outcome})");
+
+        var both = new TmFieldStamping.Outcome();
+        bool filled = TmFieldStamping.FillBundle(both, Sdl.Core.Settings.SettingsUtil.CreateSettingsBundle(null), new[] { rev, fwd },
+            TmFieldStamping.Wanted(true, false, "PROJ-001", null), TmFieldStamping.FieldsOf);
+        Check(filled && both.Filled.Count == 1 && both.Reversed.Count == 1, "with a TM the right way round as well, that one is still filled");
+
+        TmFieldStamping.MarkReversed(new[] { rev }, "en-GB", new List<string> { "nl-NL" });
+        Check(rev.ReversedAs == null, "the same TM in an en-GB -> nl-NL project is not marked (each run marks afresh)");
     }
 
     static TmFieldStamping.ProjectTm P(string path) => new TmFieldStamping.ProjectTm { Path = path, Uri = FileBasedTranslationMemory.GetFileBasedTranslationMemoryUri(path), Update = true };

@@ -174,6 +174,11 @@ namespace Supervertaler.Trados.Core
         public TmPlan Tms;
         public TermbasePlan Termbases;
         public CustomerDecision Customer;
+        /// <summary>
+        /// The added file TMs Studio will use in reverse for this project: path to "en-GB \u2192 nl-NL". Filled by
+        /// <see cref="JobProfile.FindReversed"/>; empty when not looked for or none.
+        /// </summary>
+        public Dictionary<string, string> Reversed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
     public enum StepOutcome { Done, Unchanged, Failed }
@@ -499,6 +504,28 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Notes in <see cref="PreparedProfile.Reversed"/> every file TM to be added that Studio would use in reverse
+        /// for the list it goes into (<see cref="TmFieldStamping.IsReversed"/>). <paramref name="directionOf"/> gives a
+        /// TM's languages, or null when unknown (then it is not marked). Opens TMs: any thread but the UI thread.
+        /// </summary>
+        public static void FindReversed(PreparedProfile p, ProjectFacts facts, Func<string, (string source, string target)?> directionOf)
+        {
+            if (p?.Tms == null || facts == null || directionOf == null) return;
+            foreach (var s in new[] { p.Tms.AllPairs }.Concat(p.Tms.PerTarget))
+                foreach (var e in s.Add)
+                {
+                    var path = e.Main.FilePath;
+                    if (string.IsNullOrEmpty(path) || p.Reversed.ContainsKey(path)) continue;
+                    (string source, string target)? d;
+                    try { d = directionOf(path); } catch { d = null; }
+                    if (d == null) continue;
+                    var targets = s.Target.Length == 0 ? (IEnumerable<string>)facts.Targets : new[] { s.Target };
+                    if (TmFieldStamping.IsReversed(d.Value.source, d.Value.target, facts.Source, targets))
+                        p.Reversed[path] = d.Value.source + " \u2192 " + d.Value.target;
+                }
+        }
+
+        /// <summary>
         /// A TM's identity, to tell whether the project has it already: a file TM by its full path (ignoring case), any
         /// other provider by its address (ignoring case).
         /// </summary>
@@ -784,7 +811,15 @@ namespace Supervertaler.Trados.Core
                         var flags = new List<string>();
                         if (e.Lookup) flags.Add("lookup");
                         if (e.Update) flags.Add("update");
-                        Row(GroupTms, e.Main.DisplayName + only, "Added (" + (flags.Count > 0 ? string.Join(", ", flags) : "switched off") + ")", true, e.Main.DisplayName);
+                        var action = "Added (" + (flags.Count > 0 ? string.Join(", ", flags) : "switched off") + ")";
+                        var path = e.Main.FilePath;
+                        if (path != null && p.Reversed.TryGetValue(path, out var reversed))
+                        {
+                            action += "; used in reverse";
+                            var note = e.Main.DisplayName + " is " + reversed + ", the other way round from this project: Studio looks things up in it but adds nothing to it.";
+                            if (!notes.Contains(note)) notes.Add(note);
+                        }
+                        Row(GroupTms, e.Main.DisplayName + only, action, true, e.Main.DisplayName);
                     }
                     foreach (var a in s.AlreadyIn.Where(a => !s.Kept.Contains(a, StringComparer.OrdinalIgnoreCase)))
                         Row(GroupTms, a + only, "Already in the project");

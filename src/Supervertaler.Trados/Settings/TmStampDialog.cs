@@ -110,10 +110,20 @@ namespace Supervertaler.Trados.Settings
         {
             UseWaitCursor = true;
             var paths = _tms.Where(t => t.IsFile).Select(t => t.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            string projectFile = null;
-            try { projectFile = _project.FilePath; } catch { }
+            string projectFile = null, source = null;
+            var targets = new List<string>();
+            try
+            {
+                projectFile = _project.FilePath;
+                var info = _project.GetProjectInfo();
+                source = info.SourceLanguage?.IsoAbbreviation;
+                foreach (var l in info.TargetLanguages ?? new Sdl.Core.Globalization.Language[0]) targets.Add(l.IsoAbbreviation);
+            }
+            catch { }
+            var tms = _tms.ToList();
             Task.Run(() =>
             {
+                TmFieldStamping.MarkReversed(tms, source, targets);
                 string customer = null;
                 if (_wantClient && projectFile != null)
                     try { customer = SuperVault.StudioProjects.ReadProject(projectFile).Item2; } catch { }
@@ -154,7 +164,7 @@ namespace Supervertaler.Trados.Settings
                     if (clashing[canonical].Any(u => u.Tm == TmFieldStamping.TmName(tm) && u.Name == own.Name)) return "clash: see below";
                     return TmFieldStamping.Find(fields, canonical) != null ? "yes (\"" + own.Name + "\")" : "not text";
                 }
-                var item = new ListViewItem(new[] { name + (tm.Language != null ? " (" + tm.Language + ")" : ""), tm.IsFile ? "File" : "GroupShare", tm.Update ? "yes" : "no", Has(VaultFields.Project), Has(VaultFields.Client) }) { Tag = tm };
+                var item = new ListViewItem(new[] { name + (tm.Language != null ? " (" + tm.Language + ")" : "") + (tm.ReversedAs != null ? " - used in reverse (" + tm.ReversedAs + "): not stamped" : ""), tm.IsFile ? "File" : "GroupShare", tm.Update ? "yes" : "no", Has(VaultFields.Project), Has(VaultFields.Client) }) { Tag = tm };
                 _list.Items.Add(item);
             }
 

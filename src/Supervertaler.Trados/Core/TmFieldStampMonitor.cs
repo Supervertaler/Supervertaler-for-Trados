@@ -80,6 +80,8 @@ namespace Supervertaler.Trados.Core
                 }
                 var tms = TmFieldStamping.TmsOf(project);
                 string name = info.Name, projectFile = SafeFilePath(project);
+                string source = info.SourceLanguage?.IsoAbbreviation;
+                var targets = (info.TargetLanguages ?? new Sdl.Core.Globalization.Language[0]).Select(l => l.IsoAbbreviation).ToList();
                 bool wantProject = s.StampStudioTmProject, wantClient = s.StampStudioTmClient;
                 int run = Interlocked.Increment(ref _run);
                 Task.Run(() =>
@@ -92,6 +94,7 @@ namespace Supervertaler.Trados.Core
                     var fields = new Dictionary<string, List<Sdl.LanguagePlatform.TranslationMemoryApi.FieldDefinition>>(StringComparer.OrdinalIgnoreCase);
                     foreach (var tm in tms.Where(t => t.IsFile && t.Update))
                         if (!fields.ContainsKey(tm.Path)) fields[tm.Path] = TmFieldStamping.FieldsOf(tm.Path);
+                    TmFieldStamping.MarkReversed(tms, source, targets);   // the same cached reads: no TM is opened twice
                     long readMs = sw.ElapsedMilliseconds;
                     var wanted = TmFieldStamping.Wanted(wantProject, wantClient, name, customer);
                     Post(() =>

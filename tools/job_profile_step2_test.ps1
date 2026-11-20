@@ -131,6 +131,50 @@ public static class JobProfileStep2Test {
         Guard(ListAndScale);
         Console.WriteLine("L  failure paths outside Studio");
         Guard(OutsideStudio);
+        Console.WriteLine("M  TMs used in reverse");
+        Guard(Reversed);
+    }
+
+    // --- M: TMs Studio uses in reverse (Michael, 20 Nov: an en-GB -> nl-NL TM in a nl-NL -> en-GB project) ---
+    static void Reversed() {
+        var one = new List<string> { "en-GB" };
+        Check(TmFieldStamping.IsReversed("en-GB", "nl-NL", "nl-NL", one), "a TM the other way round is reversed");
+        Check(TmFieldStamping.IsReversed("EN-gb", "nl-nl", "nl-NL", one), "languages compare ignoring case");
+        Check(!TmFieldStamping.IsReversed("nl-NL", "en-GB", "nl-NL", one), "a TM the same way round is not");
+        Check(!TmFieldStamping.IsReversed("en-US", "nl-NL", "nl-NL", one), "another variant is not called reversed (only a clear swap is)");
+        Check(!TmFieldStamping.IsReversed("en-GB", "nl-NL", "nl-NL", new List<string> { "en-GB", "de-DE" }),
+            "the list for all pairs: reversed only when it is reversed for every target the project has");
+        Check(!TmFieldStamping.IsReversed(null, "nl-NL", "nl-NL", one) && !TmFieldStamping.IsReversed("en-GB", "nl-NL", "", one)
+              && !TmFieldStamping.IsReversed("en-GB", "nl-NL", "nl-NL", new List<string>()) && !TmFieldStamping.IsReversed("en-GB", "nl-NL", "nl-NL", null),
+            "anything unknown is not reversed");
+
+        // The Apply table: an added TM that runs the other way is marked, and said once.
+        var t = Read(FullTemplate());
+        var f = Facts();
+        f.Source = "nl-NL"; f.Targets = new List<string> { "en-GB" };
+        f.TmsPerTarget.Clear();
+        PreparedProfile p;
+        Check(JobProfile.Prepare(FullTemplate(), f, File.Exists, JobProfile.ReadBundleWithStudio, out p) == null, "prepared for a nl-NL -> en-GB project");
+        var acmePath = p.Tms.AllPairs.Add.First(e => e.Main.DisplayName.StartsWith("Acme (")).Main.FilePath;
+        JobProfile.FindReversed(p, f, path => string.Equals(path, acmePath, StringComparison.OrdinalIgnoreCase)
+            ? (ValueTuple<string, string>?)new ValueTuple<string, string>("en-GB", "nl-NL") : null);
+        Check(p.Reversed.Count == 1 && p.Reversed.ContainsKey(acmePath), "the TM the other way round is found; TMs whose languages are unknown are not");
+        List<string> notes;
+        var rows = JobProfile.Rows(p, f, out notes);
+        var acme = rows.First(r => r.Group == JobProfile.GroupTms && r.Item.StartsWith("Acme ("));
+        Check(acme.Action.EndsWith("; used in reverse") && acme.Changes, "table: the added TM says it is used in reverse");
+        Check(notes.Count(n => n.Contains("the other way round") && n.Contains("adds nothing to it")) == 1, "and a note says what that means, once");
+        Check(rows.Where(r => r.Group == JobProfile.GroupTms && r != acme).All(r => !r.Action.Contains("reverse")), "no other TM is marked");
+
+        // A failure reading a TM's languages marks nothing and stops nothing.
+        PreparedProfile p2;
+        JobProfile.Prepare(FullTemplate(), f, File.Exists, JobProfile.ReadBundleWithStudio, out p2);
+        JobProfile.FindReversed(p2, f, path => { if (path != null) throw new IOException("locked"); return null; });
+        Check(p2.Reversed.Count == 0, "a TM that cannot be read is not marked, and the rest goes on");
+        JobProfile.FindReversed(null, f, path => (ValueTuple<string, string>?)null);
+        JobProfile.FindReversed(p2, null, path => (ValueTuple<string, string>?)null);
+        Check(true, "no plan or no project: nothing happens, no throw");
+
     }
 
     // ─── A ──────────────────────────────────────────────────────────

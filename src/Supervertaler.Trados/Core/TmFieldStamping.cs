@@ -48,6 +48,12 @@ namespace Supervertaler.Trados.Core
             public bool IsFile => Path != null;
             public bool Update;               // Update ticked and enabled
             public string Language;           // the target language whose list it is in; null for the project's own list
+            /// <summary>
+            /// "en-GB \u2192 nl-NL" when Studio uses this TM in reverse for the project (the TM's languages are the project's
+            /// the other way round): it looks things up in it but leaves it off its Field Values page, so nothing is
+            /// stamped into it. Null otherwise, and until <see cref="MarkReversed"/> has run.
+            /// </summary>
+            public string ReversedAs;
         }
 
         /// <summary>What filling did, for the settings window and the log.</summary>
@@ -58,6 +64,8 @@ namespace Supervertaler.Trados.Core
             public readonly List<string> NoField = new List<string>();     // switched on, but no TM defines it
             /// <summary>Left out because two TMs define it differently ("Project: TM-A one text value, TM-B several").</summary>
             public readonly List<string> Clashes = new List<string>();
+            /// <summary>Left out because Studio uses them in reverse ("IMPALA (en-GB \u2192 nl-NL)").</summary>
+            public readonly List<string> Reversed = new List<string>();
             public string Skipped;                                         // why nothing was done at all
             public override string ToString()
             {
@@ -65,6 +73,7 @@ namespace Supervertaler.Trados.Core
                 var s = "filled: " + Join(Filled) + "; already there: " + Join(Kept);
                 if (Clashes.Count > 0) s += "; left out, the TMs define it differently: " + Join(Clashes);
                 if (NoField.Count > 0) s += "; no TM has the field: " + Join(NoField);
+                if (Reversed.Count > 0) s += "; left out, used in reverse (Studio adds nothing to them): " + Join(Reversed);
                 return s;
             }
             static string Join(List<string> l) => l.Count == 0 ? "-" : string.Join(", ", l);
@@ -186,6 +195,39 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// True when Studio uses a TM in reverse for a list: the TM's source is the list's target language and its target
+        /// the project's source, for every target the list serves (<paramref name="targets"/>: one pair's, or all of the
+        /// project's for its list for all pairs). Studio then looks things up in the TM but does not count it as one it
+        /// updates: its Field Values page leaves it out (read from Studio 2026, FieldDefinitionHelper). Languages compare
+        /// exactly, ignoring case; anything unknown is not reversed.
+        /// </summary>
+        public static bool IsReversed(string tmSource, string tmTarget, string projectSource, IEnumerable<string> targets)
+        {
+            if (string.IsNullOrWhiteSpace(tmSource) || string.IsNullOrWhiteSpace(tmTarget) || string.IsNullOrWhiteSpace(projectSource)) return false;
+            var list = (targets ?? Enumerable.Empty<string>()).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+            if (list.Count == 0) return false;
+            bool Same(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+            return Same(tmTarget, projectSource) && list.All(t => Same(tmSource, t));
+        }
+
+        /// <summary>
+        /// Sets <see cref="ProjectTm.ReversedAs"/> on every file TM Studio uses in reverse for the list it is in. Opens
+        /// the TMs (cached with their fields): call it on a background thread.
+        /// </summary>
+        public static void MarkReversed(IEnumerable<ProjectTm> tms, string projectSource, IList<string> projectTargets)
+        {
+            foreach (var tm in tms ?? Enumerable.Empty<ProjectTm>())
+            {
+                tm.ReversedAs = null;
+                if (!tm.IsFile) continue;
+                var d = DirectionOf(tm.Path);
+                if (d == null) continue;
+                var targets = tm.Language != null ? new List<string> { tm.Language } : (IEnumerable<string>)projectTargets;
+                if (IsReversed(d.Value.source, d.Value.target, projectSource, targets)) tm.ReversedAs = d.Value.source + " \u2192 " + d.Value.target;
+            }
+        }
+
+        /// <summary>
         /// True for a project Studio didn't create here: from a package (any "Imported..." type), a GroupShare project,
         /// or anything downloaded. Its TMs are usually somebody else's.
         /// </summary>
@@ -194,35 +236,62 @@ namespace Supervertaler.Trados.Core
 
         // ---- reading the TMs' fields: cached per file, so switching documents doesn't reopen TMs ----
 
+        /// <summary>What is kept of a file TM: its field definitions and its languages (null when it can't be read).</summary>
+        sealed class TmFile
+        {
+            public List<FieldDefinition> Fields;
+            public string Source, Target;
+        }
+
         static readonly object CacheGate = new object();
-        static readonly Dictionary<string, (DateTime written, long length, List<FieldDefinition> fields)> Cache =
-            new Dictionary<string, (DateTime, long, List<FieldDefinition>)>(StringComparer.OrdinalIgnoreCase);
+        static readonly Dictionary<string, (DateTime written, long length, TmFile tm)> Cache =
+            new Dictionary<string, (DateTime, long, TmFile)>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// A file TM's field definitions, read once and kept while the file's size and write time stay the same (a
         /// field added in Studio's TM settings changes them). Null when the TM can't be opened (logged once per change).
         /// Thread-safe; meant for a background thread.
         /// </summary>
-        public static List<FieldDefinition> FieldsOf(string tmPath)
+        public static List<FieldDefinition> FieldsOf(string tmPath) => Read(tmPath)?.Fields;
+
+        /// <summary>A file TM's languages ("en-GB", "nl-NL"), from the same cached read; null when unknown.</summary>
+        public static (string source, string target)? DirectionOf(string tmPath)
+        {
+            var tm = Read(tmPath);
+            return tm == null || string.IsNullOrEmpty(tm.Source) || string.IsNullOrEmpty(tm.Target) ? ((string, string)?)null : (tm.Source, tm.Target);
+        }
+
+        static TmFile Read(string tmPath)
         {
             FileInfo info;
             try { info = new FileInfo(tmPath); if (!info.Exists) return null; }
             catch { return null; }
             lock (CacheGate)
-                if (Cache.TryGetValue(tmPath, out var c) && c.written == info.LastWriteTimeUtc && c.length == info.Length) return c.fields;
-            List<FieldDefinition> fields;
-            try { fields = new FileBasedTranslationMemory(tmPath).FieldDefinitions.ToList(); }
+                if (Cache.TryGetValue(tmPath, out var c) && c.written == info.LastWriteTimeUtc && c.length == info.Length) return c.tm;
+            var read = new TmFile();
+            try
+            {
+                var tm = new FileBasedTranslationMemory(tmPath);
+                read.Fields = tm.FieldDefinitions.ToList();
+                try
+                {
+                    var d = tm.LanguageDirection;
+                    read.Source = Convert.ToString(d.SourceLanguage);
+                    read.Target = Convert.ToString(d.TargetLanguage);
+                }
+                catch (Exception ex) { DiagnosticLog.Log(LogCategory, "Could not read the languages of " + System.IO.Path.GetFileName(tmPath) + ": " + ex.Message); }
+            }
             catch (Exception ex)
             {
                 DiagnosticLog.Log(LogCategory, "Could not read the fields of " + System.IO.Path.GetFileName(tmPath) + ": " + ex.Message);
-                fields = null;
+                read.Fields = null;
             }
             lock (CacheGate)
             {
                 if (Cache.Count > 200) Cache.Clear();   // a day's work touches a handful of TMs
-                Cache[tmPath] = (info.LastWriteTimeUtc, info.Length, fields);
+                Cache[tmPath] = (info.LastWriteTimeUtc, info.Length, read);
             }
-            return fields;
+            return read;
         }
 
         public static void ForgetCached(string tmPath) { lock (CacheGate) Cache.Remove(tmPath); }
@@ -302,6 +371,15 @@ namespace Supervertaler.Trados.Core
         public static bool FillBundle(Outcome outcome, Sdl.Core.Settings.ISettingsBundle bundle,
                                       IEnumerable<ProjectTm> tms, Dictionary<string, string> wanted, Func<string, List<FieldDefinition>> fieldsOf)
         {
+            // A TM Studio uses in reverse is left out, as Studio leaves it off its Field Values page: it adds nothing to it.
+            var all = (tms ?? Enumerable.Empty<ProjectTm>()).ToList();
+            foreach (var r in all.Where(t => t.ReversedAs != null))
+            {
+                var what = TmName(r) + " (" + r.ReversedAs + ")";
+                if (!outcome.Reversed.Contains(what)) outcome.Reversed.Add(what);
+            }
+            var reversedFields = Union(all.Where(t => t.ReversedAs != null).Select(t => (IEnumerable<FieldDefinition>)fieldsOf(t.Path) ?? Enumerable.Empty<FieldDefinition>()));
+            tms = all.Where(t => t.ReversedAs == null);
             var perTm = tms.Select(t => (tm: TmName(t), fields: (IEnumerable<FieldDefinition>)fieldsOf(t.Path) ?? Enumerable.Empty<FieldDefinition>())).ToList();
             var fields = Union(perTm.Select(x => x.fields));
             var group = bundle.GetSettingsGroup<Sdl.ProjectAutomation.Settings.TranslationMemorySettings>();
@@ -320,7 +398,8 @@ namespace Supervertaler.Trados.Core
                 var found = FindAll(fields, kv.Key);
                 if (found.Count == 0)
                 {
-                    if (clashing.Count == 0 && !outcome.NoField.Contains(kv.Key)) outcome.NoField.Add(kv.Key);
+                    // Not "no TM has the field" when a TM used in reverse has it: the reason is said under Reversed.
+                    if (clashing.Count == 0 && FindAll(reversedFields, kv.Key).Count == 0 && !outcome.NoField.Contains(kv.Key)) outcome.NoField.Add(kv.Key);
                     continue;
                 }
                 // Field values are looked up ignoring case, and so are a TM's fields: "client" and "Client" share one value.

@@ -51,8 +51,12 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>Reads the template and plans it for <paramref name="facts"/>. Any thread: file reads only.</summary>
-        internal static string Prepare(string templatePath, ProjectFacts facts, out PreparedProfile prepared) =>
-            JobProfile.Prepare(templatePath, facts, File.Exists, JobProfile.ReadBundleWithStudio, out prepared);
+        internal static string Prepare(string templatePath, ProjectFacts facts, out PreparedProfile prepared)
+        {
+            var error = JobProfile.Prepare(templatePath, facts, File.Exists, JobProfile.ReadBundleWithStudio, out prepared);
+            if (error == null) JobProfile.FindReversed(prepared, facts, TmFieldStamping.DirectionOf);
+            return error;
+        }
 
         /// <summary>
         /// Applies <paramref name="p"/> to <paramref name="project"/> and returns the summary for the user.
