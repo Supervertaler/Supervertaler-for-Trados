@@ -53,13 +53,14 @@ namespace Supervertaler.Trados.Settings
             Icon = IconHelper.AppIcon;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = MaximizeBox = false;
-            ClientSize = new Size(720, 380);
+            ClientSize = new Size(900, 380);
 
             _list.Columns.Add("Translation memory", 300);
             _list.Columns.Add("Kind", 90);
             _list.Columns.Add("Update", 60);
             _list.Columns.Add("Project field", 100);
             _list.Columns.Add("Client field", 100);
+            _list.Columns.Add("Note", 200);
             _list.SelectedIndexChanged += (s, e) => UpdateButtons();
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
@@ -164,8 +165,21 @@ namespace Supervertaler.Trados.Settings
                     if (clashing[canonical].Any(u => u.Tm == TmFieldStamping.TmName(tm) && u.Name == own.Name)) return "clash: see below";
                     return TmFieldStamping.Find(fields, canonical) != null ? "yes (\"" + own.Name + "\")" : "not text";
                 }
-                var item = new ListViewItem(new[] { name + (tm.Language != null ? " (" + tm.Language + ")" : "") + (tm.ReversedAs != null ? " - used in reverse (" + tm.ReversedAs + "): not stamped" : ""), tm.IsFile ? "File" : "GroupShare", tm.Update ? "yes" : "no", Has(VaultFields.Project), Has(VaultFields.Client) }) { Tag = tm };
+                var item = new ListViewItem(new[] { name + (tm.Language != null ? " (" + tm.Language + ")" : ""), tm.IsFile ? "File" : "GroupShare", tm.Update ? "yes" : "no", Has(VaultFields.Project), Has(VaultFields.Client),
+                    tm.ReversedAs != null ? "Used in reverse (" + tm.ReversedAs + "): not stamped" : "" }) { Tag = tm };
                 _list.Items.Add(item);
+            }
+            // Every column as wide as its widest cell or its heading, whichever is wider (Michael, 20 Nov: names and
+            // "Update" were cut off). A handful of TMs: measuring them is instant.
+            for (int i = 0; i < _list.Columns.Count; i++)
+            {
+                _list.AutoResizeColumn(i, ColumnHeaderAutoResizeStyle.HeaderSize);
+                int header = _list.Columns[i].Width;
+                if (_list.Items.Count > 0)
+                {
+                    _list.AutoResizeColumn(i, ColumnHeaderAutoResizeStyle.ColumnContent);
+                    if (_list.Columns[i].Width < header) _list.Columns[i].Width = header;
+                }
             }
 
             // What the list alone can't show: a field Studio leaves out, and a value that isn't this project's.

@@ -150,11 +150,24 @@ namespace Supervertaler.Trados.Settings
             _plan.BeginUpdate();
             _plan.Items.Clear();
             _plan.Groups.Clear();
+            // Two headings, Supervertaler and Trados Studio; Studio's parts ("Trados Studio: termbases") are subheadings
+            // under the second (Michael, 20 Nov). A ListView's groups do not nest, so a subheading is a bold row of its
+            // own and its items are indented under it.
             var groups = new Dictionary<string, ListViewGroup>();
+            string lastSub = null;
             foreach (var r in rows)
             {
-                if (!groups.TryGetValue(r.Group, out var g)) { g = new ListViewGroup(r.Group, r.Group); groups[r.Group] = g; _plan.Groups.Add(g); }
-                var item = new ListViewItem(new[] { r.Item, r.Action }, g) { UseItemStyleForSubItems = false };
+                int colon = r.Group.IndexOf(": ", StringComparison.Ordinal);
+                string top = colon < 0 ? (r.Group == JobProfile.GroupSupervertaler ? "Supervertaler" : r.Group) : r.Group.Substring(0, colon);
+                string sub = colon < 0 ? null : r.Group.Substring(colon + 2);
+                if (!groups.TryGetValue(top, out var g)) { g = new ListViewGroup(top, top); groups[top] = g; _plan.Groups.Add(g); }
+                if (sub != null && sub != lastSub)
+                {
+                    var heading = new ListViewItem(new[] { char.ToUpper(sub[0]) + sub.Substring(1), "" }, g) { Font = _bold, ForeColor = SystemColors.HotTrack };
+                    _plan.Items.Add(heading);
+                }
+                lastSub = sub;
+                var item = new ListViewItem(new[] { (sub != null ? "      " : "") + r.Item, r.Action }, g) { UseItemStyleForSubItems = false };
                 if (r.Changes) item.SubItems[1].Font = _bold;
                 _plan.Items.Add(item);
             }
