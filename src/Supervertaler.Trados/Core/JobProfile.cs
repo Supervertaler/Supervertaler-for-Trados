@@ -858,7 +858,7 @@ namespace Supervertaler.Trados.Core
                         {
                             Row(GroupTms, k.Label + only,
                                 (k.Missing ? "Kept, but its file is not there"
-                                 : k.InTemplate ? "Kept (in both project and job profile)" : "Kept (only in the project)") + (k.Off ? "; switched off" : ""));
+                                 : k.InTemplate ? "Kept (in both project and template)" : "Kept (only in the project)") + (k.Off ? "; switched off" : ""));
                             if (k.Missing)
                             {
                                 var note = k.Label + ": the project lists this TM, but its file is not there, so Studio cannot use it. Applying leaves it in the list; remove it in Studio's Project Settings if it is no longer needed.";
@@ -894,7 +894,7 @@ namespace Supervertaler.Trados.Core
             else
             {
                 foreach (var k in p.Termbases.Kept)
-                    Row(GroupTermbases, k, p.Termbases.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (in both project and job profile)" : "Kept (only in the project)");
+                    Row(GroupTermbases, k, p.Termbases.AlreadyIn.Contains(k, StringComparer.OrdinalIgnoreCase) ? "Kept (in both project and template)" : "Kept (only in the project)");
                 foreach (var tb in p.Termbases.Add)
                     Row(GroupTermbases, tb.Name.Length > 0 ? tb.Name : System.IO.Path.GetFileNameWithoutExtension(tb.Path), "Added", true);
                 foreach (var a in p.Termbases.AlreadyIn.Where(a => !p.Termbases.Kept.Contains(a, StringComparer.OrdinalIgnoreCase)))
@@ -1022,7 +1022,7 @@ namespace Supervertaler.Trados.Core
             if (tbs > 0) parts.Add("add " + (tbs == 1 ? "1 termbase" : tbs + " termbases"));
             if (Count(GroupCustomer) > 0) parts.Add("set the customer");
             if (parts.Count == 0) return null;
-            return "Apply the job profile \"" + profileName + "\" to \"" + projectName + "\"?\r\n\r\nThis will " + JoinAnd(parts) + ".\r\nNothing is removed.";
+            return "Apply the project template \"" + profileName + "\" to \"" + projectName + "\"?\r\n\r\nThis will " + JoinAnd(parts) + ".\r\nNothing is removed.";
         }
 
         static string JoinAnd(List<string> parts) =>
@@ -1099,7 +1099,7 @@ namespace Supervertaler.Trados.Core
             var sb = new StringBuilder();
             steps = steps ?? new List<ApplyStep>();
             bool failed = steps.Any(s => s.Outcome == StepOutcome.Failed);
-            sb.Append(failed ? "Job profile \"" + profileName + "\" applied to \"" + projectName + "\" in part." : "Job profile \"" + profileName + "\" applied to \"" + projectName + "\".");
+            sb.Append(failed ? "Project template \"" + profileName + "\" applied to \"" + projectName + "\" in part." : "Project template \"" + profileName + "\" applied to \"" + projectName + "\".");
             sb.Append("\r\n");
             void Section(string title, StepOutcome o)
             {

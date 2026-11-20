@@ -222,8 +222,8 @@ namespace Supervertaler.Trados.Core
                 ProjectProfile.Overlay(ps, merged, catalog, m => notes.Add(m));
                 if (catalog.Count == 0 && ProjectProfile.Lines(template?.Termbases).Count > 0)
                     notes.Add("its Supervertaler termbase choices are kept in the project but not used here: this computer's termbase database could not be read");
-                ProjectSettings.Save(path, ps, "job profile");
-                DiagnosticLog.Log(Log, "job profile '" + profileName + "' applied to " + Path.GetFileName(path) + ": " + merged.Describe()
+                ProjectSettings.Save(path, ps, "project template");
+                DiagnosticLog.Log(Log, "project template '" + profileName + "' applied to " + Path.GetFileName(path) + ": " + merged.Describe()
                     + (elsewhere ? " (own record only)" : ""));
 
                 var detail = elsewhere
@@ -236,7 +236,7 @@ namespace Supervertaler.Trados.Core
             }
             catch (Exception ex)
             {
-                DiagnosticLog.WriteAlways(Log, "applying a job profile's Supervertaler project settings failed: " + ex.Message);
+                DiagnosticLog.WriteAlways(Log, "applying a project template's Supervertaler project settings failed: " + ex.Message);
                 return new ApplyStep(what, StepOutcome.Failed, ex.Message);
             }
         }

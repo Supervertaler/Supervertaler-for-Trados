@@ -76,7 +76,7 @@ namespace Supervertaler.Trados.Core
                 steps.Add(new ApplyStep(JobProfile.StepSupervertaler, StepOutcome.Unchanged, "the template has none"));
             else
             {
-                var ps = TermLensEditorViewPart.LoadOrCreateProjectSettings(facts.Path, facts.Name, "job profile");
+                var ps = TermLensEditorViewPart.LoadOrCreateProjectSettings(facts.Path, facts.Name, "project template");
                 steps.Add(ps == null
                     ? new ApplyStep(JobProfile.StepSupervertaler, StepOutcome.Failed, "Supervertaler's settings file for this project could not be read, so it was left alone")
                     : ProjectProfileStore.ApplyProfile(project, ps, t.Supervertaler, t.ProfileName));
@@ -98,12 +98,12 @@ namespace Supervertaler.Trados.Core
             catch (Exception ex)
             {
                 steps.Add(new ApplyStep(JobProfile.StepSave, StepOutcome.Failed, ex.Message + " (the changes are in Studio, which saves the project again when it next saves it)"));
-                DiagnosticLog.WriteAlways(Log, "saving the project after applying a job profile failed: " + ex.Message);
+                DiagnosticLog.WriteAlways(Log, "saving the project after applying a project template failed: " + ex.Message);
             }
 
             // The panels follow: TermLens re-reads the project's set-up, TM field stamping looks at the new TMs.
             try { TermLensEditorViewPart.RefreshAfterSettingsChanged(); } catch (Exception ex) { DiagnosticLog.Log(Log, "refresh after applying: " + ex.Message); }
-            try { TmFieldStampMonitor.Run("job profile"); } catch { }
+            try { TmFieldStampMonitor.Run("project template"); } catch { }
 
             var summary = JobProfile.Summary(t.ProfileName, facts.Name, steps);
             DiagnosticLog.Log(Log, summary.Replace("\r\n", " | "));

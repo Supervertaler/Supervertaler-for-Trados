@@ -1,10 +1,12 @@
-# Job profiles: notes for the Help (steps 1 and 2, 20.209)
+# Project templates: notes for the Help (steps 1, 2 and 4, 20.209)
 
 Running notes on what the Help will have to say. Not user-facing yet; the design is in
 `docs/design/client-profiles.md` (branch `claude/client-profiles-design`; Order of work, steps 1 and 2).
-The feature is called **job profile** in all UI and Help text (Michael, 19 Nov): a profile can stand for a
-client, a client plus end client, or a kind of job. Any Studio project template can serve as a job profile: it holds Studio's TMs, termbases and
-customer, and Supervertaler stores its project settings inside it (memory bank, prompts, termbases, client).
+The feature is called **project template** in all UI and Help text (Michael, 20 Nov; it was "job profile" until then):
+it is Studio's own project template, the name Trados, memoQ, CafeTran and Transit all use. Supervertaler stores its
+project settings inside it (memory bank, prompts, termbases, client), next to Studio's TMs, termbases and customer.
+Not "Supervertaler project template": there is only one file, and the prefix would suggest a second kind. The Help
+should say a template can stand for a client, a client plus end client, or a kind of job.
 
 ## Step 1: what a template carries
 
@@ -50,9 +52,9 @@ customer, and Supervertaler stores its project settings inside it (memory bank, 
   itself, as always).
 - A termbase created after a project was set up is off in that project until switched on, as before.
 
-## Step 2: applying a job profile to a project that already exists
+## Step 2: applying a project template to a project that already exists
 
-Where: Supervertaler Settings > General > **Job profiles** > **Job profiles...** (the window was called "Apply a job
+Where: Supervertaler Settings > General > **Project templates** > **Project templates...** (the window was called "Apply a job
 profile" until step 4). It works on the project open in Studio: the one in the Editor, else the one selected in Projects.
 
 - Pick a template from the list (every template Studio offers under New Project, plus any in Studio's
@@ -60,7 +62,7 @@ profile" until step 4). It works on the project open in Studio: the one in the E
   anything changes, and asks once more before applying.
 - What is applied:
   - **Supervertaler's project settings** from the template (memory bank, prompts, client, termbase choices). Anything the
-    template leaves empty stays as the project has it. The project also records the job profile's name.
+    template leaves empty stays as the project has it. The project also records the template's name.
   - **Studio's termbases: keep, add** (Michael, 19 Nov). The project keeps all its termbases, in their order, with
     its default termbase, language indexes and recognition options. The template's termbases that the project
     does not have yet are added at the end; one it already has (same file) is left as it is and listed as
@@ -81,9 +83,9 @@ profile" until step 4). It works on the project open in Studio: the one in the E
     you are asked whether to add it; say no and the project's customer is left as it is.
 - **The open document and new TMs.** An added TM is used straight away: Project Settings shows it, and a
   Concordance search (F3) in the open document finds it (Michael, 20 Nov). No need to close and reopen anything.
-- **Applying from the Settings window.** After a job profile is applied, the Settings window shows the project's
+- **Applying from the Settings window.** After a project template is applied, the Settings window shows the project's
   new termbase and prompt choices, so pressing OK there keeps them. (Before 20 Nov, OK wrote back the choices the
-  window had shown before applying, which switched the job profile's termbases off again.)
+  window had shown before applying, which switched the template's termbases off again.)
 - **Nothing is ever removed** from the project's TM or termbase lists, and nothing is deleted from any TM or
   termbase. A template with no TMs, termbases or customer leaves those as they are. Applying the same profile
   twice adds nothing the second time.
@@ -103,8 +105,8 @@ profile" until step 4). It works on the project open in Studio: the one in the E
 
 ## Step 2: Studio's customer list, edited in Supervertaler
 
-Where: Supervertaler Settings > General > Job profiles > **Studio customers...**, and the same button in the
-Apply a job profile window.
+Where: Supervertaler Settings > General > Project templates > **Studio customers...**, and the same button in the
+Project templates window.
 
 - Shows Studio's customer list in alphabetical order (by your Windows language, ignoring capitals), with
   **Add**, **Edit** (name and email in one window; double-click a customer opens it too) and **Remove**.
@@ -123,15 +125,16 @@ Apply a job profile window.
 ## Confidentiality (say it in the Help, near "Create project template")
 
 - **A template carries the customer's name** (Studio puts it there) and, since step 1, the client, memory bank
-  and prompt names. Check before sending a template to anyone else. The job profile window says this too.
+  and prompt names. Check before sending a template to anyone else. The Project templates window says this too.
 
-## Step 4 (first part): seeing what a job profile holds
+## Step 4 (first part): seeing what a project template holds
 
-- In the Job profiles window, **Show: What it holds** lists everything the chosen template carries, with no project
+- In the Project templates window, **Show: What it holds** lists everything the chosen template carries, with no project
   to compare it with: Supervertaler's project settings (each part under its own subheading), Studio's TMs with
   their switches (lookup, concordance, update, penalty), each language pair's own TM list marked "[en-GB → nl-NL
   only]", Studio's termbases, term recognition (termbase indexes, minimum match value, search depth, search order,
   terms without a translation), and the customer. A TM or termbase whose file is not there says so, with its folder.
+- The template's file is named under the table; clicking it opens its folder in Explorer with the file selected.
 - **Show: What applying it to the open project would change** is the step 2 table. With no project open, only
   "What it holds" is offered. Clicking **Apply to this project...** always switches to the applying table first.
 - A template with no Supervertaler project settings says so, and how to give it some: set them up in a project
@@ -141,9 +144,9 @@ Apply a job profile window.
 
 ## Open for later steps
 
-- The profile name is now set when a job profile is applied, but nothing shows it yet.
+- The profile name is now set when a project template is applied, but nothing shows it yet.
 - Renaming a memory bank renames it in every project's Supervertaler record at once, but in a Studio project
   only the next time that project is open; a template keeps the old name until it is made again.
-- Templates themselves are not edited by Supervertaler yet (step 3/4: the job profile window).
+- Templates themselves are not edited by Supervertaler yet (step 4: the Project templates window).
 - Not yet tried inside Studio (step 2): whether Studio's open Projects view and Project Settings show a changed
   customer at once, and whether Studio keeps the sorted customer order when it saves.

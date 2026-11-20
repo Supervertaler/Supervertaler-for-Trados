@@ -136,7 +136,7 @@ public static class JobProfileStep2Test {
         Guard(OutsideStudio);
         Console.WriteLine("M  TMs used in reverse");
         Guard(Reversed);
-        Console.WriteLine("N  what a job profile holds (step 4)");
+        Console.WriteLine("N  what a project template holds (step 4)");
         Guard(Contents);
     }
 
@@ -583,7 +583,7 @@ public static class JobProfileStep2Test {
         var general = R(JobProfile.GroupTms, "General");
         var acme = rows.FirstOrDefault(r => r.Group == JobProfile.GroupTms && r.Item.StartsWith("Acme (en-GB-nl-NL)"));
         Check(own != null && own.Action == "Kept (only in the project)" && !own.Changes, "table: the project's own TM is kept, and does not count as a change");
-        Check(general != null && general.Action == "Kept (in both project and job profile)" && rows.Count(r => r.Item == "General") == 1,
+        Check(general != null && general.Action == "Kept (in both project and template)" && rows.Count(r => r.Item == "General") == 1,
             "table: a TM both have is one row, kept, not listed twice");
         Check(acme != null && acme.Action == "Added (lookup, update)" && acme.Changes, "table: the template's TM is added, with its switches");
         Check(rows.Any(r => r.Group == JobProfile.GroupTms && r.Action.StartsWith("New list of its own") && r.Item.Contains("en-GB \u2192 nl-NL")),
@@ -617,7 +617,7 @@ public static class JobProfileStep2Test {
             "a file check that fails does not call a TM missing, and nothing throws");
         Check(R(JobProfile.GroupCustomer, "acme") != null && R(JobProfile.GroupCustomer, "acme").Changes, "table: the customer is set");
         var q = JobProfile.ConfirmQuestion("Acme patents", "PROJ-001", rows);
-        Check(q != null && q.StartsWith("Apply the job profile \"Acme patents\" to \"PROJ-001\"?") && q.Contains("This will set Supervertaler's project settings from the template, add 5 TMs, give a language pair a TM list of its own") && q.Contains("add 1 termbase")
+        Check(q != null && q.StartsWith("Apply the project template \"Acme patents\" to \"PROJ-001\"?") && q.Contains("This will set Supervertaler's project settings from the template, add 5 TMs, give a language pair a TM list of its own") && q.Contains("add 1 termbase")
               && q.Contains(" and set the customer") && q.Contains("Nothing is removed"), "question: short, counts what changes, says nothing is removed");
         Check(JobProfile.ConfirmQuestion("X", "Y", rows.Where(r => !r.Changes).ToList()) == null, "question: none when nothing would change");
         f.FromElsewhere = true;
@@ -631,7 +631,7 @@ public static class JobProfileStep2Test {
             new ApplyStep(JobProfile.StepTms, StepOutcome.Done, "added Acme"),
             new ApplyStep(JobProfile.StepCustomer, StepOutcome.Unchanged, "the template names none"),
         });
-        Check(done.StartsWith("Job profile \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("No change: Studio customer.") && !done.Contains("Not done:"),
+        Check(done.StartsWith("Project template \"Acme patents\" applied to \"PROJ-001\".") && done.Contains("Changed:") && done.Contains("No change: Studio customer.") && !done.Contains("Not done:"),
             "summary: what changed and what was left, nothing failed");
         Check(!done.Contains("close it and open it again") && done.Contains("Nothing was removed"), "summary: says nothing was removed, and no reopen hint (the open document searches an added TM at once)");
         Check(done.Contains("\u2022 Studio TMs: added Acme\r\n"), "summary: one short line per change");
