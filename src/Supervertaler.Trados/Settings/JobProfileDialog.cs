@@ -63,7 +63,13 @@ namespace Supervertaler.Trados.Settings
             _list.SelectedIndexChanged += (s, e) => ReadSelected();
             _filter.TextChanged += (s, e) => Fill();
 
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
+            // Seven buttons and the ? Help link: the row grows to two lines in a narrow window rather than cutting off what
+            // does not fit (the Help link went missing at 900 pixels, Michael, 20 Nov).
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true,
+                FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0),
+            };
             var close = new Button { Text = "Close", DialogResult = DialogResult.Cancel, AutoSize = true };
             buttons.Controls.AddRange(new Control[] { _apply, _saveNew, _update, _edit, _customers, close, StudioCustomersDialog.HelpLink(HelpSystem.Topics.ProjectTemplates, "Project templates") });
             CancelButton = close;
