@@ -4073,11 +4073,10 @@ namespace Supervertaler.Trados.Core
                     PromptsFolder = PromptLibrary.PromptsFolderPath,
                     DraftedBy = target.DraftedBy,
                     App = appWord,
-                    Note = (created ? "Saved to the shared prompt library as \"" : "Updated \"") + target.Name + "\" ("
-                         + target.RelativePath + "). Recorded as drafted by the chat"
-                         + (string.Equals(appWord, "both", StringComparison.OrdinalIgnoreCase)
-                             ? " and available to both products. "
-                             : " and marked for " + appWord + " only, so it does not appear in the other product's list. ")
+                    // Since 21 Nov 2026 the library is Trados's own (prompt_library\Trados):
+                    // memoQ no longer sees it, so "available to both products" would be untrue.
+                    Note = (created ? "Saved to the Trados prompt library as \"" : "Updated \"") + target.Name + "\" ("
+                         + target.RelativePath + "). Recorded as drafted by the chat. "
                          + "The user selects it in Supervertaler for Trados under Batch Operations > Prompt, "
                          + "or from the Prompt Library tab."
                 });

@@ -1440,7 +1440,7 @@ namespace Supervertaler.Trados.Settings
                         Path.Combine(LegacyDir, "projects"),
                         ProjectsDir);
 
-                    // Legacy plugin prompts → shared prompt_library
+                    // Legacy plugin prompts → Trados's own prompt library (prompt_library\Trados since 21 Nov 2026)
                     MigrateDirectory(
                         Path.Combine(LegacyDir, "prompts"),
                         PromptLibraryDir);

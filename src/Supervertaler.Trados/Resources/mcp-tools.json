@@ -1301,7 +1301,7 @@
     {
       "name": "list_prompts",
       "access": "read",
-      "description": "List the prompts in the user's Supervertaler prompt library (Markdown files, shared with Supervertaler for memoQ). Returns each prompt's name, description, folder/category, relativePath (pass it to get_prompt or save_prompt), and flags (isDefault=built-in, isQuickLauncher=appears in the editor right-click menu, isReadOnly). Use this first to see what prompts exist before reading or improving one.",
+      "description": "List the prompts in Supervertaler for Trados's prompt library (Markdown files in the data folder's prompt_library\\Trados; memoQ keeps its own). Returns each prompt's name, description, folder/category, relativePath (pass it to get_prompt or save_prompt), and flags (isDefault=built-in, isQuickLauncher=appears in the editor right-click menu, isReadOnly). Use this first to see what prompts exist before reading or improving one.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1351,7 +1351,7 @@
     {
       "name": "save_prompt",
       "access": "write",
-      "description": "Create a new prompt, or update an existing one, in the Supervertaler prompt library (shared with Supervertaler for memoQ). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten \u2013 save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
+      "description": "Create a new prompt, or update an existing one, in Supervertaler for Trados's prompt library (its own; memoQ keeps a separate one). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten \u2013 save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
       "inputSchema": {
         "type": "object",
         "properties": {

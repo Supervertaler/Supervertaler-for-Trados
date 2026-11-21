@@ -45,7 +45,8 @@ namespace Supervertaler.Trados.Controls
                 _pathBox.Text = detected;
                 _noteLabel.Text =
                     "An existing Supervertaler data folder was detected at the path above.\r\n" +
-                    "Using it means prompts, termbases and API keys are shared with Supervertaler for memoQ and Sidekick automatically.";
+                    "Using it means termbases and API keys are shared with Supervertaler for memoQ and Sidekick automatically. " +
+                    "Prompts already there are copied into Trados's own prompt library.";
                 _noteLabel.ForeColor = Color.FromArgb(0, 120, 60);
             }
             else

@@ -50,6 +50,11 @@ namespace Supervertaler.Trados
             // (returns false) until that panel's handle exists. See Core/UiThread.
             Core.UiThread.Install();
 
+            // Supervertaler for Trados keeps its prompts in prompt_library\Trados,
+            // not the folder all products used to share (21 Nov 2026). Said before
+            // anything reads a prompt; it touches no disk.
+            Supervertaler.Core.SupervertalerPaths.SetProduct("Trados");
+
             try
             {
                 Core.DiagnosticLog.WriteAlways("Startup",
@@ -62,6 +67,27 @@ namespace Supervertaler.Trados
             // and prompt for restart.
             if (HandlePendingUpdate())
                 return;
+
+            // The first start with its own prompt library copies the prompts meant
+            // for Trados from the shared folder (once; see ProductPromptLibrary).
+            // Done here, before any panel opens, so the copy happens at a known
+            // moment and its outcome is logged. Never fatal: the library opens
+            // either way.
+            try
+            {
+                var promptDir = Supervertaler.Core.SupervertalerPaths.PromptLibraryDir;
+                var copy = Supervertaler.Core.ProductPromptLibrary.LastResult;
+                if (copy != null)
+                {
+                    Core.DiagnosticLog.WriteAlways("Prompts",
+                        "Own prompt library " + promptDir + ": " + copy +
+                        (copy.Failed.Count > 0 ? ". Failed: " + string.Join(" | ", copy.Failed) : ""));
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Core.DiagnosticLog.WriteAlways("Prompts", "Own prompt library not set up: " + ex.Message); } catch { }
+            }
 
             // Enable TLS 1.2+ for HTTPS API calls (OpenAI, Anthropic, Google)
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
