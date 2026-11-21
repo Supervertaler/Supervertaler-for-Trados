@@ -9,7 +9,7 @@
 > (`17.20.199`), with the same tail; headings name only the 2024 and 2026
 > numbers, and the website's changelog page adds the 2022 one.
 
-## [18.20.209 / 19.20.209] – Unreleased
+## [18.20.209 / 19.20.209] – 2026-11-21
 
 ### Added
 - ★ **A model per kind of task: Light tasks, Translation and AutoPrompt.** On the **AI Settings** tab, the **Model** list is now called **Translation**, with a list above it and one below. **Light tasks** is for small mechanical requests: FuzzyFixer, AutoTagger, Add term with abbreviation, choosing articles from a large memory bank. **AutoPrompt** is for writing your project prompt. So you can translate with a strong model, repair fuzzy matches with a cheap one, and let the strongest write the prompt. Both new lists start on “Follow Translation”, so nothing changes until you choose; they offer the models of the provider you have selected.
