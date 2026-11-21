@@ -25,7 +25,7 @@ status) is what the code does, to be confirmed in Studio before the Help page lo
 
 ## How to use it
 
-- **Ctrl+Alt+F** in the Editor, or right-click in the Editor > **FuzzyFixer: repair fuzzy match with AI**.
+- **Ctrl+Alt+F** in the Editor, or right-click in the Editor > **FuzzyFixer: repair fuzzy match**.
   The same shortcut as in Supervertaler Workbench. Like every Supervertaler shortcut, it can be changed in Studio under
   File > Options > Keyboard Shortcuts.
 - Voice command: **"repair match"** (also "fix match").

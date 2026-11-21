@@ -28,8 +28,9 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_WebSearch", typeof(EditorController),
         Name = "Search the web",
         Description = "Open the selected text in the enabled SuperSearch web resources")]
+    // Right-click menu group 9, "Search": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 11,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 9,
         DisplayType.Default, "", true)]
     [Shortcut(Keys.Alt | Keys.W)]
     public class WebSearchAction : AbstractAction

@@ -26,8 +26,9 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_ProofreadActiveSegment", typeof(EditorController),
         Name = "Proofread active segment",
         Description = "Ask the AI to proofread the active segment and offer its correction, without leaving the grid")]
+    // Right-click menu group 11, "AI on the active segment": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 10,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 11,
         DisplayType.Default, "", true)]
     [Shortcut(Keys.Control | Keys.Alt | Keys.P)]
     public class ProofreadActiveSegmentAction : AbstractAction

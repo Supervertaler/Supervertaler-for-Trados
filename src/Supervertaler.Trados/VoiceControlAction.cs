@@ -25,11 +25,12 @@ namespace Supervertaler.Trados
     /// users' fingers trained on it.
     /// </summary>
     [Action("Supervertaler_VoiceControl", typeof(EditorController),
-        Name = "Supervertaler: Toggle voice commands",
+        Name = "Toggle voice commands",
         Description = "Start/stop hands-free voice commands (confirm, next segment, insert term…)")]
+    // Right-click menu group 6, "Voice": see docs/design/context-menu-order.md
     [ActionLayout(
         typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 6,
-        DisplayType.Default, "", false)]
+        DisplayType.Default, "", true)]
     [Shortcut(Keys.Control | Keys.Alt | Keys.D)]
     public class VoiceControlAction : AbstractAction
     {

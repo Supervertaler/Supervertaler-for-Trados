@@ -23,8 +23,9 @@ namespace Supervertaler.Trados
     [Action("TermLens_QuickAddTerm", typeof(EditorController),
         Name = "Quick-add term to write termbases",
         Description = "Quickly add the selected source/target text to all write termbases (no dialog)")]
+    // Right-click menu group 8, "Terms": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 6,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
         DisplayType.Default, "", false)]
     [Shortcut(Keys.Alt | Keys.Down)]
     public class QuickAddTermAction : AbstractAction

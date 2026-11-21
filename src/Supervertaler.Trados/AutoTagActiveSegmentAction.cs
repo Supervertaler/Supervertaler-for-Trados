@@ -15,8 +15,9 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_AutoTagActiveSegment", typeof(EditorController),
         Name = "Auto-tag active segment",
         Description = "Place the source segment's inline tags into the current translation using AI")]
+    // Right-click menu group 11, "AI on the active segment": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 9,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 11,
         DisplayType.Default, "", true)]
     [Shortcut(Keys.Control | Keys.Alt | Keys.G)]
     public class AutoTagActiveSegmentAction : AbstractAction

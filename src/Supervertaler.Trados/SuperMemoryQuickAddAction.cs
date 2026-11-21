@@ -24,9 +24,10 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_SuperMemoryQuickAdd", typeof(EditorController),
         Name = "Add to SuperMemory",
         Description = "Quick-add a term or correction pattern to your SuperMemory knowledge base")]
+    // Right-click menu group 7, "SuperMemory": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
-        DisplayType.Default, "", false)]
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 7,
+        DisplayType.Default, "", true)]
     [Shortcut(Keys.Control | Keys.Alt | Keys.M)]
     public class SuperMemoryQuickAddAction : AbstractAction
     {

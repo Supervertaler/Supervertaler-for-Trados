@@ -42,8 +42,9 @@ namespace Supervertaler.Trados
     [Action("TermLens_AddTermWithAbbreviation", typeof(EditorController),
         Name = "Add term with abbreviation (AI)",
         Description = "Find the term in this segment that carries an abbreviation, and pre-fill the term entry dialog with both")]
+    // Right-click menu group 8, "Terms": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 7,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
         DisplayType.Default, "", true)]
     // Ctrl+Alt+A ("A" for abbreviation), sitting beside Ctrl+Alt+T for the plain
     // add-term dialog and Ctrl+Alt+N for non-translatables.

@@ -30,8 +30,9 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_TranslateActiveSegment", typeof(EditorController),
         Name = "Translate active segment",
         Description = "Translate the active segment using the batch translate settings")]
+    // Right-click menu group 11, "AI on the active segment": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 11,
         DisplayType.Default, "", true)]
     [Shortcut(Keys.Alt | Keys.T)]
     public class TranslateActiveSegmentAction : AbstractAction

@@ -23,8 +23,9 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_QuickLauncher", typeof(EditorController),
         Name = "QuickLauncher",
         Description = "Run a QuickLauncher prompt on the current segment using the AI Assistant")]
+    // Right-click menu group 10, "QuickLauncher": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 9,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 10,
         DisplayType.Default, "", true)]
     // Alt+Q, not Ctrl+Q: Ctrl+Q is Studio's own "View Internally Source", and
     // STUDIO WINS — so QuickLauncher did nothing on a fresh install until the

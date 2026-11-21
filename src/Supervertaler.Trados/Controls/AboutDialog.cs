@@ -220,7 +220,7 @@ namespace Supervertaler.Trados.Controls
                 // Ctrl+T collides with Trados's own "Apply Translation Result".
                 ("Alt+T",         "Translate active segment"),
                 ("Ctrl+Alt+G",     "AutoTagger (place inline tags)"),
-                ("Ctrl+Alt+F",     "FuzzyFixer (repair fuzzy match with AI)"),
+                ("Ctrl+Alt+F",     "FuzzyFixer (repair fuzzy match)"),
                 ("Ctrl+Alt+P",     "Proofread active segment"),
                 // Was Ctrl (tap) until the tap was retired: a bare Ctrl press
                 // is indistinguishable from any other program's Ctrl chord

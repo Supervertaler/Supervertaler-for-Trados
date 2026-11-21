@@ -42,9 +42,10 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_SuperMemoryAddSegments", typeof(EditorController),
         Name = "Add segments to SuperMemory",
         Description = "Copy a range of reviewed segments into a memory bank as reference translations")]
+    // Right-click menu group 7, "SuperMemory": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
-        DisplayType.Default, "", false)]
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 7,
+        DisplayType.Default, "", true)]
     [Shortcut(Keys.Control | Keys.Alt | Keys.Shift | Keys.A)]
     public class SuperMemoryAddSegmentsAction : AbstractAction
     {

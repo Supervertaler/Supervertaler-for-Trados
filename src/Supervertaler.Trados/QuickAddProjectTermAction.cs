@@ -21,8 +21,9 @@ namespace Supervertaler.Trados
     [Action("TermLens_QuickAddProjectTerm", typeof(EditorController),
         Name = "Quick-add term to project termbase",
         Description = "Quickly add the selected source/target text to the project termbase (no dialog)")]
+    // Right-click menu group 8, "Terms": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 7,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
         DisplayType.Default, "", false)]
     [Shortcut(Keys.Alt | Keys.Up)]
     public class QuickAddProjectTermAction : AbstractAction

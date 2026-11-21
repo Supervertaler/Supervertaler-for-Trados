@@ -15,8 +15,9 @@ namespace Supervertaler.Trados
     [Action("Supervertaler_SuperSearch", typeof(EditorController),
         Name = "SuperSearch",
         Description = "Search for the selected text across all project files")]
+    // Right-click menu group 9, "Search": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 10,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 9,
         DisplayType.Default, "", true)]
     [Shortcut(Keys.Alt | Keys.S)]
     public class SuperSearchAction : AbstractAction

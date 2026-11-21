@@ -22,6 +22,7 @@ namespace Supervertaler.Trados
     [Action("TermLens_AddTerm", typeof(EditorController),
         Name = "Add term to TermLens (dialog)",
         Description = "Add the selected source/target text as a new term via dialog")]
+    // Right-click menu group 8, "Terms": see docs/design/context-menu-order.md
     [ActionLayout(
         typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 8,
         DisplayType.Default, "", true)]

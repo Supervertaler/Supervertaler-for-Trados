@@ -24,10 +24,11 @@ namespace Supervertaler.Trados
     /// not from these attributes. Change both together.
     /// </summary>
     [Action("Supervertaler_FuzzyFixActiveSegment", typeof(EditorController),
-        Name = "FuzzyFixer: repair fuzzy match with AI",
+        Name = "FuzzyFixer: repair fuzzy match",
         Description = "Ask the AI to repair the best fuzzy TM match for the active segment, changing only what the source change requires")]
+    // Right-click menu group 11, "AI on the active segment": see docs/design/context-menu-order.md
     [ActionLayout(
-        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 10,
+        typeof(TranslationStudioDefaultContextMenus.EditorDocumentContextMenuLocation), 11,
         DisplayType.Default, "", true)]
     [Shortcut(Keys.Control | Keys.Alt | Keys.F)]
     public class FuzzyFixActiveSegmentAction : AbstractAction
