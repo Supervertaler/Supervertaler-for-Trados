@@ -533,13 +533,13 @@ public static class FuzzyFixerTest
     {
         return new BatchSegmentResultEventArgs { SegmentIndex = 0, SegmentName = "segment 1", Translation = translation };
     }
-    sealed class WriteOutcome { public bool Ok; public string Why, Note; }
+    sealed class WriteOutcome { public bool Ok; public string Why, Note; public bool AlreadyThere; }
     static WriteOutcome Write(FakeDocument d, ISegmentPair pair, BatchSegmentResultEventArgs repair)
     {
-        var args = new object[] { d, pair, repair, null, null };
+        var args = new object[] { d, pair, repair, null, null, false };
         var o = new WriteOutcome();
         o.Ok = (bool)View.GetMethod("FuzzyFixWrite", Any).Invoke(null, args);
-        o.Why = (string)args[3]; o.Note = (string)args[4];
+        o.Why = (string)args[3]; o.Note = (string)args[4]; o.AlreadyThere = (bool)args[5];
         return o;
     }
 
@@ -954,9 +954,22 @@ public static class FuzzyFixerTest
 
             var d = Doc(2, i => Old);
             var o = Write(d, d.Pairs[0], Result(New));
-            Check(o.Ok && o.Why == null && o.Note == null && Text(d.Pairs[0].Target) == New, "K the repair lands in the target, nothing to report");
+            Check(o.Ok && o.Why == null && o.Note == null && !o.AlreadyThere && Text(d.Pairs[0].Target) == New, "K the repair lands in the target, nothing to report");
             Check(d.Pairs[0].Properties.ConfirmationLevel == ConfirmationLevel.Draft && d.StatusUpdates >= 1, "K as a draft");
             Check(Text(d.Pairs[1].Target) == Old, "K and the segment beside it is untouched");
+
+            // The target already reads like the repair: nothing written, the status kept, and said (was silent).
+            d = Doc(2, i => New); d.Pairs[0].Properties.ConfirmationLevel = ConfirmationLevel.Translated;
+            o = Write(d, d.Pairs[0], Result(New));
+            Check(o.Ok && o.AlreadyThere && o.Why == null && d.Writes == 0 && Text(d.Pairs[0].Target) == New,
+                "K the target already reads like the repair -> nothing written, and flagged so it is said");
+            Check(d.Pairs[0].Properties.ConfirmationLevel == ConfirmationLevel.Translated && d.StatusUpdates == 0,
+                "K and its status is left as it was (not turned into a draft)");
+            var said = (string)Fixer.GetMethod("AlreadyInTarget", Any).Invoke(null, new object[] { "segment 7", "Check the unit." });
+            Check(said.Contains("segment 7") && said.Contains("nothing was written") && said.Contains("The AI's note: Check the unit."),
+                "K the message names the segment, says nothing was written, and passes on the AI's note: " + said.Replace("\n", " "));
+            Check(!((string)Fixer.GetMethod("AlreadyInTarget", Any).Invoke(null, new object[] { "segment 7", null })).Contains("note"),
+                "K without a note, no note line");
 
             d = Doc(2, i => Old); d.Pairs[1].Properties.ConfirmationLevel = ConfirmationLevel.Translated;
             o = Write(d, d.Pairs[1], Result(New));

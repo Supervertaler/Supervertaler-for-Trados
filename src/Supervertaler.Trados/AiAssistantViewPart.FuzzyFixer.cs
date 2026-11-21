@@ -88,9 +88,11 @@ namespace Supervertaler.Trados
 
                 // Back on the UI thread, the window closed, the same segment still
                 // active (the window was modal).
-                if (!FuzzyFixWrite(doc, pair, repair, out var why, out var note))
+                if (!FuzzyFixWrite(doc, pair, repair, out var why, out var note, out var alreadyThere))
                     FuzzyFixSay("The repaired translation was not written into " + SegmentLabelOf(doc, pair)
                         + (why != null ? ": " + why : ". The target is as it was."), MessageBoxIcon.Warning);
+                else if (alreadyThere)
+                    FuzzyFixSay(Core.FuzzyFixer.AlreadyInTarget(SegmentLabelOf(doc, pair), repair.Comment), MessageBoxIcon.Information);
                 else if (note != null)
                     FuzzyFixSay(note, MessageBoxIcon.Warning);
             }
@@ -489,18 +491,29 @@ namespace Supervertaler.Trados
         /// repair written over text is recorded word by word, as Batch Translate's
         /// writes are. False with <paramref name="why"/> when nothing was written;
         /// true with a <paramref name="note"/> when it was written but something
-        /// needs saying (Studio threw after taking it, or the status stayed). UI thread.
+        /// needs saying (Studio threw after taking it, or the status stayed); true
+        /// with <paramref name="alreadyThere"/> when the target already read exactly
+        /// like the repair, so nothing was written and the status was left alone. UI thread.
         /// </summary>
         private static bool FuzzyFixWrite(IStudioDocument doc, ISegmentPair pair, BatchSegmentResultEventArgs repair,
-            out string why, out string note)
+            out string why, out string note, out bool alreadyThere)
         {
             why = null;
             note = null;
+            alreadyThere = false;
             string faultNote = null;
+            bool same = false;
             try
             {
                 bool wrote = false;
                 Write(repair.Translation);
+                if (same)
+                {
+                    // Nothing to write, and nothing to mark: the segment keeps its text and its status.
+                    alreadyThere = true;
+                    BridgeLog.Write("FuzzyFixer: the repair reads like the target already there; nothing written.");
+                    return true;
+                }
                 if (wrote && repair.Comment != null && !TryAddTcComment(doc, pair, repair.Comment))
                     Write(BatchTranslator.InlineComment(repair.Translation, repair.Comment));
                 if (!wrote)
@@ -530,6 +543,8 @@ namespace Supervertaler.Trados
                 void Write(string translation) => Core.SegmentWriteCheck.ProcessChecked(doc, pair, "Supervertaler", (sp, cancel) =>
                 {
                     wrote = false;
+                    // As Accept All would leave it: the text the translator reads.
+                    string textBefore = Core.TrackedTargetMerge.Project(sp.Target, accept: true);
                     if (repair.HasTags && repair.TagMap != null && repair.TagMap.Count > 0)
                     {
                         wrote = SegmentTagHandler.ReconstructTarget(sp.Target, sp.Source, translation, repair.TagMap);
@@ -543,6 +558,12 @@ namespace Supervertaler.Trados
                             SegmentTagHandler.AppendText(sp.Target, translation, sp.Source, repair.TagMap, template);
                             wrote = true;
                         }
+                    }
+                    if (wrote && Core.TrackedTargetMerge.Project(sp.Target, accept: true) == textBefore)
+                    {
+                        same = true;
+                        cancel.Cancel = true;
+                        return;
                     }
                     if (wrote) Core.EditCapture.CaptureController.NoteProposal(sp, doc);
                     else cancel.Cancel = true;

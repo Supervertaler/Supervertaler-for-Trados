@@ -30,6 +30,7 @@
 - **The prompt list's first entry is named after what it sends.** On the Batch Operations tab, “(Built-in instructions only)” is now **(System Prompt only)** in Translate, the name the same text has in Settings → Library, and **(Built-in checks only)** in Proofread, which does not use the System Prompt. Under the System Prompt in the Library you can now also see the output rules Batch Translate always adds at the end of a request; they are fixed and cannot be edited.
 
 ### Fixed
+- **FuzzyFixer says so when the segment already holds the repaired translation.** If the repair reads exactly like the translation already in the segment, a short message now says nothing was written, and passes on the AI’s note if it left one. Before, nothing was said: with Track Changes on the write was skipped, and with it off the same text was written again and the segment became a draft. Now its status stays as it was.
 - **A built-in prompt is no longer listed twice in the QuickLauncher menu.** When another Supervertaler product had written its own copy of a prompt such as **Define** into the same folder of the shared prompt library, the Alt+Q menu showed both under one name. The menu now lists only the copy made for Trados. No file is deleted or renamed.
 
 ## [18.20.208 / 19.20.208] – 2026-11-18

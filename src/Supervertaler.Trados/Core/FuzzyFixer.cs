@@ -191,6 +191,19 @@ namespace Supervertaler.Trados.Core
                 + " in Project Settings, so there is nothing to take a fuzzy match from.";
         }
 
+        /// <summary>
+        /// What to tell the translator when the repair reads exactly like the
+        /// translation already in the segment (the segment held the repaired text
+        /// already): nothing is written, and the status is left as it was. Before
+        /// 20.209 this was silent - with Track Changes on the write was skipped and
+        /// nothing said; with it off the same text was written and the segment
+        /// became a draft.
+        /// </summary>
+        public static string AlreadyInTarget(string segmentLabel, string comment) =>
+            "The repaired translation reads exactly like the one already in " + segmentLabel
+            + ", so nothing was written and its status was left as it was."
+            + (string.IsNullOrWhiteSpace(comment) ? "" : "\n\nThe AI's note: " + comment.Trim());
+
         public enum ReplyVerdict { Repaired, Empty, Unchanged, TagsDiffer }
 
         /// <summary>
