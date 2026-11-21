@@ -26,6 +26,8 @@ namespace Supervertaler.Trados.Settings
         readonly TextBox _notes = new TextBox { Dock = DockStyle.Bottom, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 84, BorderStyle = BorderStyle.None, BackColor = SystemColors.Control };
         readonly Label _planTitle = new Label { Dock = DockStyle.Top, AutoSize = false, Height = 24, TextAlign = ContentAlignment.BottomLeft, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
         Font _bold;
+        /// <summary>True while ShowPlan fills the table; it fits the columns itself when done.</summary>
+        bool _filling;
         readonly Button _apply = new Button { Text = "Apply to this project...", AutoSize = true, Enabled = false };
         readonly Button _customers = new Button { Text = "Studio customers...", AutoSize = true };
         // Step 4: make a template from the open project, update one from it, edit Supervertaler's part of one.
@@ -194,7 +196,10 @@ namespace Supervertaler.Trados.Settings
                 ? "What project template \"" + prepared.Template.ProfileName + "\" holds"
                 : "Applying \"" + prepared.Template.ProfileName + "\" to this project";
             _plan.Columns[1].Text = holds ? "How it is set" : "What applying does";
+            _filling = true;
             _plan.BeginUpdate();
+            try
+            {
             _plan.Items.Clear();
             _plan.Groups.Clear();
             // Two headings, Supervertaler and Trados Studio; Studio's parts ("Trados Studio: termbases") are subheadings
@@ -222,7 +227,12 @@ namespace Supervertaler.Trados.Settings
                 if (r.Changes) item.SubItems[1].Font = _bold;
                 _plan.Items.Add(item);
             }
-            _plan.EndUpdate();
+            }
+            finally
+            {
+                _plan.EndUpdate();
+                _filling = false;
+            }
             FitPlanColumns();
             var all = new List<string>();
             SetFile(prepared.Template.Path);
@@ -277,15 +287,27 @@ namespace Supervertaler.Trados.Settings
         /// </summary>
         void FitPlanColumns()
         {
-            int width = _plan.ClientSize.Width;
-            if (width <= 0 || _plan.Columns.Count < 2) return;
-            int item = 200;
-            if (_plan.Items.Count > 0)
+            // Not while the table is being filled: a row being added can make the scrollbar appear, which
+            // resizes the table and lands here while Windows holds an empty slot for that row - a crash in
+            // Studio 2024 (Michael, 21 Nov, the GTE template). ShowPlan fits the columns once it is done.
+            if (_filling || IsDisposed) return;
+            try
+            {
+                int width = _plan.ClientSize.Width;
+                if (width <= 0 || _plan.Columns.Count < 2) return;
+                int item = 200;
                 foreach (ListViewItem i in _plan.Items)
-                    item = System.Math.Max(item, TextRenderer.MeasureText(i.Text, i.Font ?? _plan.Font).Width + 16);
-            item = System.Math.Min(item, width * 3 / 5);
-            _plan.Columns[0].Width = item;
-            _plan.Columns[1].Width = System.Math.Max(120, width - item);
+                    if (i != null)
+                        item = System.Math.Max(item, TextRenderer.MeasureText(i.Text ?? "", i.Font ?? _plan.Font).Width + 16);
+                item = System.Math.Min(item, width * 3 / 5);
+                _plan.Columns[0].Width = item;
+                _plan.Columns[1].Width = System.Math.Max(120, width - item);
+            }
+            catch (Exception ex)
+            {
+                // Column widths are cosmetic: never a reason to stop the window, or Studio.
+                DiagnosticLog.Log("JobProfile", "fitting the table's columns failed: " + ex.Message);
+            }
         }
 
         /// <summary>Studio's registered templates and the ones in its template folders: projects.xml and folder listings only.</summary>
