@@ -68,6 +68,8 @@ __pycache__/
 ## Build logs and GitHub release zips (transient / regenerated)
 build_*.log
 dist/*.zip
+# GitHub release notes written by tools/github_release.py: published on GitHub, not kept here (from 209 on)
+release-body-v*.md
 
 # Generated plugin resource bundle (built by tools/make_plugin_resources.ps1)
 src/Supervertaler.Trados/Resources/generated/
