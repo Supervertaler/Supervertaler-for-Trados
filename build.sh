@@ -120,6 +120,8 @@ echo ""
 # trados/mcp-server.md) against drift from the shipped tool set. The table's
 # prose stays hand-written; only the set of tool names is enforced.
 python "$SCRIPT_DIR/tools/check_mcp_docs.py" || exit 1
+# Studio reads menus and shortcuts from the hand-kept manifest, not the attributes.
+python "$SCRIPT_DIR/tools/check_manifest_actions.py" || exit 1
 echo ""
 
 # Asked for before Studio has shown its Editor view, GetController<EditorController>

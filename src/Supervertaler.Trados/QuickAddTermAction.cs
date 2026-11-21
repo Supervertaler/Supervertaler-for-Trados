@@ -21,7 +21,7 @@ namespace Supervertaler.Trados
     /// bypassing the AddTermDialog for faster workflow.
     /// </summary>
     [Action("TermLens_QuickAddTerm", typeof(EditorController),
-        Name = "Quick-add term to write termbases",
+        Name = "Quick add term to write termbases",
         Description = "Quickly add the selected source/target text to all write termbases (no dialog)")]
     // Right-click menu group 8, "Terms": see docs/design/context-menu-order.md
     [ActionLayout(

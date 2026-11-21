@@ -19,7 +19,7 @@ namespace Supervertaler.Trados
     /// Triggered by Ctrl+Alt+N.
     /// </summary>
     [Action("TermLens_QuickAddNonTranslatable", typeof(EditorController),
-        Name = "Quick-add non-translatable term",
+        Name = "Quick add non-translatable term",
         Description = "Mark the selected source text as non-translatable in all write termbases (no dialog)")]
     // Right-click menu group 8, "Terms": see docs/design/context-menu-order.md
     [ActionLayout(
