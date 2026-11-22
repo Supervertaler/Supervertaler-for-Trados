@@ -35,6 +35,7 @@ $icons = [ordered]@{
     'SuperSearchIcon' = 'supersearch'
     'AssistantIcon'   = 'assistant'
     'SuperVoiceIcon'  = 'supervoice'
+    'EverTmIcon'      = 'evertm'
 }
 
 $dir = Split-Path -Parent $Out

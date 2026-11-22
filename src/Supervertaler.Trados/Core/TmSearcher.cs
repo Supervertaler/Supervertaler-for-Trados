@@ -204,6 +204,31 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Whether segments confirmed in this language pair are learned by EverTM: it is in the pair's TM list, enabled,
+        /// with Update ticked (<c>PerformUpdate</c>). Read from the saved project file, so a change not yet saved in
+        /// Project Settings shows only once Studio has saved it. Null when the project file can't be found or read.
+        /// For EverTM Matches' status line; reads the file, so not on Studio's UI thread.
+        /// </summary>
+        public static bool? EverTmLearns(string anyProjectFilePath, string sourceCulture, string targetCulture)
+        {
+            try
+            {
+                var projPath = FindProjectFile(anyProjectFilePath);
+                if (projPath == null) return null;
+                var cascade = EffectiveCascade(XDocument.Load(projPath), sourceCulture, targetCulture);
+                if (cascade == null) return false;
+                foreach (var entry in cascade.Elements().Where(e => e.Name.LocalName == "CascadeEntryItem"))
+                {
+                    var main = entry.Elements().FirstOrDefault(e => e.Name.LocalName == "MainTranslationProviderItem");
+                    if (IsEverTmUri(main?.Attribute("Uri")?.Value) && !IsFalse(main.Attribute("Enabled")) && !IsFalse(entry.Attribute("PerformUpdate")))
+                        return true;
+                }
+                return false;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
         /// What the Batch Translate log says when a run left memories out, or null when it searched them all.
         /// </summary>
         public static string SkippedTmsSentence(int searched, int total)

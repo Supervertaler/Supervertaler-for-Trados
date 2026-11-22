@@ -74,11 +74,22 @@ def supervoice():
     return im
 
 
+def evertm():
+    """A match card: its source line, its target line, and a second card behind it."""
+    im, d = canvas()
+    d.rounded_rectangle([70, 22, 236, 150], radius=22, outline=BLUE, width=W)
+    d.rounded_rectangle([20, 92, 186, 230], radius=22, fill=(0, 0, 0, 0), outline=BLUE, width=W)
+    d.rectangle([31, 103, 175, 219], fill=(0, 0, 0, 0))
+    d.rounded_rectangle([50, 132, 156, 152], radius=10, fill=BLUE)
+    d.rounded_rectangle([50, 174, 128, 194], radius=10, fill=BLUE)
+    return im
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name, glyph in [('termlens', termlens), ('termpicker', termpicker),
                         ('supersearch', supersearch), ('assistant', assistant),
-                        ('supervoice', supervoice)]:
+                        ('supervoice', supervoice), ('evertm', evertm)]:
         im = glyph().resize((32, 32), Image.LANCZOS)
         im.save(os.path.join(OUT, name + '.png'))
         im.save(os.path.join(OUT, name + '.ico'), sizes=[(16, 16), (24, 24), (32, 32)])

@@ -99,6 +99,54 @@ namespace Supervertaler.Trados.Core
             }
         }
 
+        /// <summary>The origin type Studio gives an applied translation-memory match (DefaultTranslationOrigin.TranslationMemory).</summary>
+        internal const string TranslationMemory = "tm";
+
+        /// <summary>
+        /// After EverTM Matches inserted a match: labels the segment as Studio labels a TM match it applies itself,
+        /// "TM, <paramref name="percent"/>%, <paramref name="system"/>", instead of "edited by hand" (Michael's decision
+        /// of 9 Nov 2026, the one exception to <see cref="MarkEdited"/>; docs/design/evertm-pane.md, section 3).
+        ///
+        /// <para>Studio's editor relabels a ProcessSegmentPair write as interactive itself, once the write's callback
+        /// has returned (see the class note), so the label is set after the write, on the live segment. Read back once;
+        /// if Studio has not kept it, that is logged and the segment stays as Studio left it: never relabelled in a
+        /// loop. Never throws. UI thread.</para>
+        /// </summary>
+        /// <returns>True when the segment reads back as the TM match.</returns>
+        internal static bool MarkTmMatch(IStudioDocument doc, ISegmentPair pair, int percent, string system)
+        {
+            try
+            {
+                var live = SegmentWriteCheck.ReadLivePair(doc, pair);
+                var props = live?.Properties?.Clone() as ISegmentPairProperties;
+                if (props?.TranslationOrigin == null) return false;
+                var o = props.TranslationOrigin;
+                o.OriginType = TranslationMemory;
+                o.OriginSystem = system;
+                o.MatchPercent = (byte)Math.Max(0, Math.Min(100, percent));
+                o.OriginBeforeAdaptation = null;
+                o.IsStructureContextMatch = false;
+                o.IsSIDContextMatch = false;
+                o.TextContextMatchLevel = TextContextMatchLevel.None;
+                o.SetMetaData("last_modified_by", StudioUserName());
+                o.SetMetaData("modified_on", FormatDate(DateTime.UtcNow));
+                doc.UpdateSegmentPairProperties(live, props);
+
+                var after = SegmentWriteCheck.ReadLivePair(doc, pair)?.Properties?.TranslationOrigin;
+                bool kept = after != null && after.OriginType == TranslationMemory && after.MatchPercent == o.MatchPercent;
+                DiagnosticLog.Log("Origin", kept
+                    ? "EverTM match labelled tm " + o.MatchPercent + "%"
+                    : "EverTM match: Studio did not keep the tm label; the segment reads '" + (after?.OriginType ?? "(none)") + "'");
+                if (kept && pair.Properties != null) pair.Properties.TranslationOrigin = (ITranslationOrigin)after.Clone();
+                return kept;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("Origin", "could not label the EverTM match: " + ex.Message);
+                return false;
+            }
+        }
+
         internal static bool IsInteractive(ITranslationOrigin origin) =>
             origin != null && origin.OriginType == Interactive;
 
