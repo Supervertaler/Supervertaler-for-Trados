@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
 using Sdl.Desktop.IntegrationApi;
@@ -16,48 +17,63 @@ namespace Supervertaler.Trados.Core
     /// <para><b>What Studio does</b> (read from Studio 2024's editor): each time it looks the active segment up, it
     /// publishes "HighlightTmView", and the editor shows Translation Results: <c>Show()</c> and make it the selected tab
     /// of its group, which reopens it when closed. It holds back only when that would hide the Messages, Comments or
-    /// TQA pane. There is no setting.</para>
+    /// TQA pane. There is no setting (Michael asked RWS for one on the Ideas portal, 22 Nov 2026).</para>
     ///
-    /// <para><b>What this does</b>: while the switch is on, it notes once a second which watched Supervertaler panes
-    /// (TermLens, EverTM Matches, TermPicker) are in view. After each segment change it looks a few times over 1.5 s:
-    /// a pane that was in view just before, isn't now, with Translation Results now in view, gets its tab selected
-    /// again (<see cref="AbstractViewPartController.Show"/>: the same <c>Show()</c> + selected tab Studio used, without
-    /// activating the pane, so the keyboard stays in the editor). At most three times per segment, so it can never
-    /// fight Studio in a loop. It doesn't wait to be told a pane was covered: Studio's docking didn't tell (first
-    /// version, Michael's test, 22 Nov 2026).</para>
+    /// <para><b>What this does</b>: a watched Supervertaler pane (TermLens, EverTM Matches, TermPicker) that is in view
+    /// is "wanted". Five times a second, a wanted pane that Translation Results has covered gets its tab selected again
+    /// (<see cref="AbstractViewPartController.Show"/>: the same <c>Show()</c> + selected tab Studio used, without
+    /// activating the pane, so the keyboard stays in the editor). It stays wanted until the user clicks at its tabs, or
+    /// until something other than Translation Results has been in front of it for a while (the user slid an auto-hide
+    /// pane away, or left the editor).</para>
     ///
-    /// <para><b>What it leaves alone</b>: a pane the user clicked away from at its tabs, and a pane not in view lately
-    /// (the user picked Translation Results before moving on); Translation Results in another dock group (then nothing
-    /// is covered). Whether Translation Results is in
-    /// view is read by reflection (Studio's docking view is not public); if that fails, it does nothing.</para>
+    /// <para><b>Why it works this way</b> (Michael's tests, 22 Nov 2026). The first version waited to be told a pane
+    /// was covered: Studio's docking never told. The second looked only during the 1.5 s after a segment change, and a
+    /// pane had to have been in view in the 2.5 s before: Studio brought Translation Results forward a second time after
+    /// those looks, and the pane stayed covered ("stuck"). Studio's interface is busy while it looks a segment up, and
+    /// no plugin code runs until it is done, so Translation Results always shows for as long as that lookup takes
+    /// (about one to two seconds); only the sticking could be fixed.</para>
     ///
-    /// <para><b>State</b>: the watched panes, when each was last in view, two UI timers and a counter, all on the UI thread.
-    /// The once-a-second note reads one property per pane: nothing measurable.</para>
+    /// <para><b>Choices it leaves alone</b>: a mouse click at the pane's tabs (seen by a message filter, so a click is
+    /// noticed even when the check runs after the button is up), Translation Results in another dock group (then nothing
+    /// is covered). Not noticed: picking Translation Results from Studio's View ribbon; it is brought back behind.
+    /// Whether Translation Results is in view is read by reflection (Studio's docking view is not public); if that
+    /// fails, nothing is done.</para>
+    ///
+    /// <para><b>Fighting Studio</b>: at most <see cref="MaxPerSegment"/> restores per segment, so a Studio that keeps
+    /// showing Translation Results can never be fought in a loop; the next segment starts again.</para>
+    ///
+    /// <para><b>State</b>: the watched panes, for each wanted one when and where it was last seen in view, the last mouse
+    /// press, one UI timer and a counter, all on the UI thread. A tick reads one property per watched pane (three panes),
+    /// plus one reflection read while a pane is covered: nothing measurable.</para>
     /// </summary>
     internal static class TranslationResultsGuard
     {
         const string TranslationResultsId = "EditorView.TranslationMemoryViewPart";
-        const int MaxPerSegment = 3;
+        const int MaxPerSegment = 6;
+        const int TickMs = 200;
+        /// <summary>Checks in a row with neither the pane nor Translation Results in view before the pane stops being
+        /// wanted. Counted in checks, not time: while Studio is busy no check runs, however long it takes.</summary>
+        const int GoneChecks = 5;
+        const int MaxTraced = 12;         // the first decisions of each session go to the diagnostic log, then it is quiet
+
+        sealed class Seen
+        {
+            public long At;               // Clock ms when last seen in view
+            public Rectangle Area;        // its screen area then
+            public int Gone;              // checks in a row with something else (not Translation Results) in front
+        }
 
         static readonly List<(AbstractViewPartController Part, Control Content)> Watched = new List<(AbstractViewPartController, Control)>();
-        /// <summary>When each watched pane was last seen in view (Clock ms); missing: not lately.</summary>
-        static readonly Dictionary<AbstractViewPartController, long> InViewAt = new Dictionary<AbstractViewPartController, long>();
+        /// <summary>The wanted panes.</summary>
+        static readonly Dictionary<AbstractViewPartController, Seen> Wanted = new Dictionary<AbstractViewPartController, Seen>();
         static readonly Stopwatch Clock = Stopwatch.StartNew();
         static int _restoresThisSegment, _traced;
         static bool _wired;
         static IStudioDocument _doc;
-        /// <summary>Notes once a second which watched panes are in view, while the switch is on: a pane covered by
-        /// Translation Results is brought back only if it was in view just before. Studio's docking does not reliably
-        /// tell a pane it was covered (Michael's test, 22 Nov 2026: nothing happened), so this is read, not heard.</summary>
-        static Timer _notice;
-        /// <summary>The looks after a segment change: Studio brings Translation Results forward when its lookup starts,
-        /// which may be before or a little after plugins hear of the segment change.</summary>
-        static Timer _after;
-        static readonly int[] AfterMs = { 0, 50, 100, 200, 350, 600, 1000, 1500 };   // a covered pane is back within ~50 ms
+        static Timer _tick;
         static long _segmentAt;
-        static int _afterStep;
-        const long RecentMs = 2500;       // "in view just before"
-        const int MaxTraced = 12;         // the first decisions of each session go to the diagnostic log, then it is quiet
+        static long _downAt = -1;
+        static Point _downWhere;
 
         public static bool On
         {
@@ -70,17 +86,7 @@ namespace Supervertaler.Trados.Core
             if (part == null || content == null) return;
             foreach (var w in Watched) if (ReferenceEquals(w.Part, part)) return;
             Watched.Add((part, content));
-            content.VisibleChanged += (s, e) =>
-            {
-                if (content.Visible) return;
-                // A tab the user clicks away from: not "in view just before" any more.
-                if (ClickOnItsTabs(content)) { InViewAt.Remove(part); return; }
-                // Covered: look at once, once Studio has finished switching the tab (when Studio's docking says so;
-                // the looks after a segment change catch it otherwise).
-                if (On && !content.IsDisposed && content.IsHandleCreated)
-                    try { content.BeginInvoke((Action)(() => { try { Check("at once"); } catch { } })); } catch { }
-            };
-            content.Disposed += (s, e) => { Watched.RemoveAll(w => ReferenceEquals(w.Part, part)); InViewAt.Remove(part); };
+            content.Disposed += (s, e) => { Watched.RemoveAll(w => ReferenceEquals(w.Part, part)); Wanted.Remove(part); };
             WireEditor();
         }
 
@@ -90,11 +96,10 @@ namespace Supervertaler.Trados.Core
             var editor = StudioEditor.Controller;
             if (editor == null) return;
             _wired = true;
-            _notice = new Timer { Interval = 1000 };
-            _notice.Tick += (s, e) => { if (On) Note(); };
-            _notice.Start();
-            _after = new Timer();
-            _after.Tick += (s, e) => AfterTick();
+            Application.AddMessageFilter(new MouseDowns());
+            _tick = new Timer { Interval = TickMs };
+            _tick.Tick += (s, e) => { try { Check(); } catch { } };
+            _tick.Start();
             editor.ActiveDocumentChanged += (s, e) => Attach(editor.ActiveDocument);
             Attach(editor.ActiveDocument);
         }
@@ -109,72 +114,89 @@ namespace Supervertaler.Trados.Core
 
         static void OnSegmentChanged(object sender, EventArgs e)
         {
-            if (!On) return;
             _restoresThisSegment = 0;
             _segmentAt = Clock.ElapsedMilliseconds;
-            _afterStep = 0;
-            _after.Stop();
-            AfterTick();
-        }
-
-        static void AfterTick()
-        {
-            _after.Stop();
-            try { Check("look " + (_afterStep + 1)); } catch { }
-            _afterStep++;
-            if (_afterStep < AfterMs.Length)
-            {
-                _after.Interval = Math.Max(1, AfterMs[_afterStep] - AfterMs[_afterStep - 1]);
-                _after.Start();
-            }
-        }
-
-        /// <summary>Notes the panes in view now.</summary>
-        static void Note()
-        {
-            long now = Clock.ElapsedMilliseconds;
-            foreach (var w in Watched.ToArray())
-                try { if (!w.Content.IsDisposed && w.Part.IsInView) InViewAt[w.Part] = now; } catch { }
+            try { Check(); } catch { }
         }
 
         /// <summary>
-        /// Brings back each watched pane that was in view just before and isn't now, when Translation Results is the
-        /// one in view and the user didn't click at the pane's tabs. At most <see cref="MaxPerSegment"/> per segment.
+        /// Notes the panes in view (wanted), and brings back each wanted pane Translation Results has covered, unless
+        /// the user clicked at its tabs since it was last in view.
         /// </summary>
-        static void Check(string how)
+        static void Check()
         {
-            if (!On) return;
+            if (!On) { Wanted.Clear(); return; }
             long now = Clock.ElapsedMilliseconds;
             bool? tr = null;
             foreach (var w in Watched.ToArray())
             {
                 var part = w.Part;
                 if (w.Content.IsDisposed) continue;
-                if (part.IsInView) { InViewAt[part] = now; continue; }
-                if (!InViewAt.TryGetValue(part, out var at) || now - at > RecentMs) continue;   // not in view lately: leave it
-                if (tr == null) tr = TranslationResultsInView(part) ?? false;
-                if (tr != true) { Trace(Name(part) + " not in view, but Translation Results isn't either (or can't be read): left alone"); continue; }
-                if (ClickOnItsTabs(w.Content)) { InViewAt.Remove(part); Trace(Name(part) + ": left alone (a mouse click at the pane's tabs)"); continue; }
-                if (_restoresThisSegment >= MaxPerSegment) { Trace(Name(part) + ": left alone (already brought back " + MaxPerSegment + " times on this segment)"); continue; }
-                _restoresThisSegment++;
+                bool inView;
+                try { inView = part.IsInView; } catch { continue; }
+                if (inView)
+                {
+                    if (!Wanted.TryGetValue(part, out var s)) Wanted[part] = s = new Seen();
+                    s.At = now; s.Gone = 0;
+                    try { s.Area = w.Content.RectangleToScreen(w.Content.ClientRectangle); } catch { }
+                    continue;
+                }
+                if (!Wanted.TryGetValue(part, out var seen)) continue;
+                if (ClickedAtItsTabs(seen, w.Content))
+                {
+                    Wanted.Remove(part);
+                    Trace(Name(part) + ": left behind (a mouse click at its tabs)");
+                    continue;
+                }
+                if (tr == null) tr = TranslationResultsInView(part);
+                if (tr != true)
+                {
+                    // Something else is in front (or it can't be read): leave it, and stop wanting the pane after a while.
+                    if (++seen.Gone >= GoneChecks) { Wanted.Remove(part); Trace(Name(part) + ": not in view, and Translation Results isn't either: left alone"); }
+                    continue;
+                }
+                seen.Gone = 0;
+                if (_restoresThisSegment >= MaxPerSegment) continue;
+                if (++_restoresThisSegment == MaxPerSegment) Trace(Name(part) + ": brought back " + MaxPerSegment + " times on this segment; no more until the next one");
                 part.Show();
-                Trace(Name(part) + ": covered by Translation Results; brought back " + (now - _segmentAt) + " ms after the segment change (" + how + "; in view now: " + part.IsInView + ")");
-                if (part.IsInView) InViewAt[part] = now;
+                bool back = false;
+                try { back = part.IsInView; } catch { }
+                Trace(Name(part) + ": covered by Translation Results; brought back " + (now - _segmentAt) + " ms after the segment change (in view now: " + back + ")");
+                if (back) seen.At = now;
             }
         }
 
         /// <summary>
-        /// A mouse button down near the pane's own tabs (the pane's area and a strip above and below it, where a docked
-        /// group draws its tabs): the user is choosing a tab, Translation Results perhaps. A click anywhere else, such
-        /// as on a segment in the editor, is not a choice of pane.
+        /// A mouse press since the pane was last in view, at its area or a strip above and below it, where a docked
+        /// group draws its tabs: the user chose a tab, Translation Results perhaps. A press anywhere else, such as on a
+        /// segment in the editor, is not a choice of pane.
         /// </summary>
-        static bool ClickOnItsTabs(Control content)
+        static bool ClickedAtItsTabs(Seen seen, Control content)
         {
-            if (Control.MouseButtons == MouseButtons.None) return false;
-            var area = content.RectangleToScreen(content.ClientRectangle);
-            int strip = (int)(50 * content.DeviceDpi / 96.0);
+            if (_downAt < seen.At || seen.Area.IsEmpty) return false;
+            var area = seen.Area;
+            int strip = 50;
+            try { strip = (int)(50 * content.DeviceDpi / 96.0); } catch { }
             area.Inflate(0, strip);
-            return area.Contains(Control.MousePosition);
+            return area.Contains(_downWhere);
+        }
+
+        /// <summary>Notes each mouse press in Studio (never handles one). A check may run well after the button is up,
+        /// when Studio has been busy, so the press is remembered rather than read from the mouse at check time.</summary>
+        sealed class MouseDowns : IMessageFilter
+        {
+            public bool PreFilterMessage(ref Message m)
+            {
+                switch (m.Msg)
+                {
+                    case 0x0201: case 0x0204: case 0x0207:   // WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN
+                    case 0x00A1: case 0x00A4: case 0x00A7:   // the same on a window's frame
+                        _downAt = Clock.ElapsedMilliseconds;
+                        _downWhere = Control.MousePosition;
+                        break;
+                }
+                return false;
+            }
         }
 
         static string Name(AbstractViewPartController part) => part.GetType().Name.Replace("ViewPart", "");

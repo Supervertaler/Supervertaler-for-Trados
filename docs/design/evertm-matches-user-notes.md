@@ -34,8 +34,13 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - **Or let Supervertaler keep Translation Results back:** EverTM Matches > Options > **Keep Translation Results
   behind Supervertaler's panes** (off to start with). Then Translation Results can stay in the same tab group as
   TermLens, EverTM Matches or TermPicker: when Studio brings it forward after a segment change, Supervertaler puts its
-  own pane back at once. The cursor stays in the editor. Click the Translation Results tab yourself and it stays in
-  front, until you click a Supervertaler tab again. *(to confirm in Studio: whether the swap is visible as a flicker)*
+  own pane back. The cursor stays in the editor. Click the Translation Results tab yourself and it stays in
+  front, until you click a Supervertaler tab again.
+  - **Translation Results still shows for a second or two on each segment.** Studio keeps its window busy while it
+    looks the segment up in your TMs, and no plugin can act until it has finished. If that flash bothers you, use the
+    Comments/TQA parking above instead.
+  - Choosing Translation Results from Studio's **View** ribbon doesn't count as choosing it: Supervertaler puts its
+    pane back. Click the Translation Results tab instead.
 
 ## Options (top right of the pane)
 
