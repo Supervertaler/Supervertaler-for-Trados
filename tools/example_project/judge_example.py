@@ -4,8 +4,9 @@ the English, with a reason for anything below 5.
 
 COSTS MONEY: run only on Michael's go. Without --go it prints an estimate.
 
-    python -I tools\\example_project\\judge_example.py --keys <api-keys.json> [--go] [--only de,nl]
+    python tools\\example_project\\judge_example.py --keys <api-keys.json> [--go] [--only de,nl]
 
+(Not with -I: the anthropic package is in the user site-packages.)
 Reads tools\\example_project\\out\\<lang>.json, writes out\\verdicts.json
 ({lang: [{id, score, why}]}), which check_example.py reads.
 """
