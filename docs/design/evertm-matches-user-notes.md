@@ -78,15 +78,20 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
     and puts its own before every plugin's; its symbol actions count as on whenever a document is open, even with an
     empty symbol list). So, once: **File > Options > Keyboard Shortcuts > Editor**, select "1. Insert symbol" to
     "9. Insert symbol" and remove their shortcuts (or give them other keys). From then on Alt+Shift+1–9 insert EverTM
-    matches. Or give "EverTM: Insert match 1" to 9 keys of your own there.
-- After a double-click the cursor goes back to the target, so you can keep typing.
+    matches. Or give "EverTM: Insert match 1" to 9 keys of your own there. Do this in each Studio version you use.
+    (Confirmed by Michael in Studio 2024, 22 Nov 2026.)
+  - Put this step prominently on the Help page, near the top of the EverTM Matches section: without it the keys
+    silently do nothing.
+- After inserting, the cursor is in the target, so you can keep typing (confirmed for Alt+Shift+1).
 - **Inserting never confirms the segment.** Confirm it as usual (Ctrl+Enter); that is also when EverTM learns it.
 - Formatting tags land exactly where Translation Results puts them. When EverTM can't place them with confidence, the
   text goes in without them and the status line says so.
 - It replaces the target, like applying a match from Translation Results. It can be undone (Ctrl+Z), it doesn't write
   into a locked segment, and with unaccepted tracked changes in the target it says so rather than overwriting them.
-- **The segment is labelled as a TM match**, "TM, 87%, EverTM", like a match applied from Translation Results.
-  *(to confirm in Studio: whether Studio keeps that label, or shows the segment as edited by hand)*
+- **The segment is labelled as a TM match**, "TM, 87%, EverTM", like a match applied from Translation Results: the
+  editor shows the match % in its orange box (confirmed by Michael in Studio 2024, 22 Nov 2026).
+- A fuzzy match goes in as it was stored; the words your segment has and the stored one doesn't (the green ones in the
+  pane) are for you to add, as with any fuzzy match.
 
 ## While you move through the document
 
