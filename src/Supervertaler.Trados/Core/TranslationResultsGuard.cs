@@ -53,7 +53,8 @@ namespace Supervertaler.Trados.Core
         /// <summary>The looks after a segment change: Studio brings Translation Results forward when its lookup starts,
         /// which may be before or a little after plugins hear of the segment change.</summary>
         static Timer _after;
-        static readonly int[] AfterMs = { 0, 150, 600, 1500 };
+        static readonly int[] AfterMs = { 0, 50, 100, 200, 350, 600, 1000, 1500 };   // a covered pane is back within ~50 ms
+        static long _segmentAt;
         static int _afterStep;
         const long RecentMs = 2500;       // "in view just before"
         const int MaxTraced = 12;         // the first decisions of each session go to the diagnostic log, then it is quiet
@@ -71,8 +72,13 @@ namespace Supervertaler.Trados.Core
             Watched.Add((part, content));
             content.VisibleChanged += (s, e) =>
             {
+                if (content.Visible) return;
                 // A tab the user clicks away from: not "in view just before" any more.
-                if (!content.Visible && ClickOnItsTabs(content)) InViewAt.Remove(part);
+                if (ClickOnItsTabs(content)) { InViewAt.Remove(part); return; }
+                // Covered: look at once, once Studio has finished switching the tab (when Studio's docking says so;
+                // the looks after a segment change catch it otherwise).
+                if (On && !content.IsDisposed && content.IsHandleCreated)
+                    try { content.BeginInvoke((Action)(() => { try { Check("at once"); } catch { } })); } catch { }
             };
             content.Disposed += (s, e) => { Watched.RemoveAll(w => ReferenceEquals(w.Part, part)); InViewAt.Remove(part); };
             WireEditor();
@@ -105,6 +111,7 @@ namespace Supervertaler.Trados.Core
         {
             if (!On) return;
             _restoresThisSegment = 0;
+            _segmentAt = Clock.ElapsedMilliseconds;
             _afterStep = 0;
             _after.Stop();
             AfterTick();
@@ -113,7 +120,7 @@ namespace Supervertaler.Trados.Core
         static void AfterTick()
         {
             _after.Stop();
-            try { Check(); } catch { }
+            try { Check("look " + (_afterStep + 1)); } catch { }
             _afterStep++;
             if (_afterStep < AfterMs.Length)
             {
@@ -134,7 +141,7 @@ namespace Supervertaler.Trados.Core
         /// Brings back each watched pane that was in view just before and isn't now, when Translation Results is the
         /// one in view and the user didn't click at the pane's tabs. At most <see cref="MaxPerSegment"/> per segment.
         /// </summary>
-        static void Check()
+        static void Check(string how)
         {
             if (!On) return;
             long now = Clock.ElapsedMilliseconds;
@@ -151,7 +158,7 @@ namespace Supervertaler.Trados.Core
                 if (_restoresThisSegment >= MaxPerSegment) { Trace(Name(part) + ": left alone (already brought back " + MaxPerSegment + " times on this segment)"); continue; }
                 _restoresThisSegment++;
                 part.Show();
-                Trace(Name(part) + ": covered by Translation Results after a segment change; brought back (in view now: " + part.IsInView + ")");
+                Trace(Name(part) + ": covered by Translation Results; brought back " + (now - _segmentAt) + " ms after the segment change (" + how + "; in view now: " + part.IsInView + ")");
                 if (part.IsInView) InViewAt[part] = now;
             }
         }
