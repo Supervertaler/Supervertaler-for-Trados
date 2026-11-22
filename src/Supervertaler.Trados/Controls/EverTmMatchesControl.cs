@@ -131,6 +131,7 @@ namespace Supervertaler.Trados.Controls
                 }));
             }
             _optionsMenu.Items.Add(max);
+            _optionsMenu.Items.Add(DetailsMenu());
             _optionsMenu.Items.Add(new ToolStripSeparator());
             _optionsMenu.Items.Add(Item("Best match first", !_byDate, () => { _byDate = false; Redraw(); }));
             _optionsMenu.Items.Add(Item("Newest first", _byDate, () => { _byDate = true; Redraw(); }));
@@ -226,8 +227,10 @@ namespace Supervertaler.Trados.Controls
             if (m == null || _result == null) return;
             var c = m.Candidate ?? new VaultCandidate();
             var bold = new Font(Font, FontStyle.Bold);
+            var hidden = new HashSet<string>(Settings.SettingsService.Current.EverTmPaneHiddenDetails ?? new List<string>(), StringComparer.Ordinal);
             void Line(string label, string value)
             {
+                if (hidden.Contains(label)) return;   // switched off in Options > Details shown
                 _details.SelectionFont = bold;
                 _details.SelectionColor = Color.FromArgb(90, 90, 90);
                 _details.AppendText(label + "  ");
@@ -248,7 +251,7 @@ namespace Supervertaler.Trados.Controls
                 if (values.Count >= VaultFields.MaxValuesPerField) shown += "  (" + values.Count + " shown; more may exist)";
                 Line(name, shown);
             }
-            if (fields.Count == 0) Line("Fields", "none stored for this translation unit");
+            if (fields.Count == 0 && !VaultFields.Order.All(hidden.Contains)) Line("Fields", "none stored for this translation unit");
             Line("Created", When(c.Created, c.CreatedBy));
             Line("Changed", When(c.Changed, c.ChangedBy));
             Line("In EverTM since", c.Added == null ? "not known" : EverTmSummary.FormatDate(c.Added.Value));
@@ -264,6 +267,41 @@ namespace Supervertaler.Trados.Controls
             _details.SelectionStart = 0;
             _details.ScrollToCaret();
             bold.Dispose();
+        }
+
+        /// <summary>Every item the details area can show, in its order: what Options > Details shown lists.</summary>
+        static readonly string[] DetailItems = VaultFields.Order.Concat(new[]
+            { "Created", "Changed", "In EverTM since", "Language variants", "Older translations", "Numbers", "Formatting", "Differences" }).ToArray();
+
+        /// <summary>
+        /// Options > Details shown: a tick per item of the details area, and "Show all". Stays open while ticking, so
+        /// several can be changed in one go; each tick is saved and the details redrawn at once.
+        /// </summary>
+        ToolStripMenuItem DetailsMenu()
+        {
+            var menu = new ToolStripMenuItem("Details shown");
+            var hidden = new HashSet<string>(Settings.SettingsService.Current.EverTmPaneHiddenDetails ?? new List<string>(), StringComparer.Ordinal);
+            menu.DropDown.Closing += (s, e) => { if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked) e.Cancel = true; };
+            var showAll = new ToolStripMenuItem("Show all") { Enabled = hidden.Count > 0 };
+            var items = new List<ToolStripMenuItem>();
+            void Save()
+            {
+                var off = items.Where(i => !i.Checked).Select(i => i.Text).ToList();
+                Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = off.Count == 0 ? null : off);
+                showAll.Enabled = off.Count > 0;
+                ShowDetails();
+            }
+            showAll.Click += (s, e) => { foreach (var i in items) i.Checked = true; Save(); };
+            menu.DropDownItems.Add(showAll);
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            foreach (var name in DetailItems)
+            {
+                var item = new ToolStripMenuItem(name) { Checked = !hidden.Contains(name), CheckOnClick = true };
+                item.Click += (s, e) => Save();
+                items.Add(item);
+                menu.DropDownItems.Add(item);
+            }
+            return menu;
         }
 
         static string When(DateTime? utc, string user)

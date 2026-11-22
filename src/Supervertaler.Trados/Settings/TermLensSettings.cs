@@ -348,6 +348,14 @@ namespace Supervertaler.Trados.Settings
             set => _everTmPaneStacked = value;
         }
 
+        /// <summary>
+        /// The items the user switched off in EverTM Matches' details area (Options > Details shown), by their label
+        /// ("Document", "In EverTM since"). Empty or missing: everything is shown (Michael, 22 Nov 2026: "the user
+        /// should be able to show them all").
+        /// </summary>
+        [DataMember(Name = "everTmPaneHiddenDetails", EmitDefaultValue = false)]
+        public List<string> EverTmPaneHiddenDetails { get; set; }
+
         // ─── Voice commands ──────────────────────────────────────────
         /// <summary>
         /// Remembered position of the floating voice status strip (the

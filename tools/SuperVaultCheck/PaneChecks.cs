@@ -380,6 +380,8 @@ static class PaneChecks
             Matches = answer.Matches, Units = answer.Units, Milliseconds = 36, Editor = editor,
             TagMapAtLookup = SegmentTagHandler.Serialize(source).TagMap, SourceLang = "nl", SourceCulture = "nl-NL", TargetCulture = "en-GB",
         };
+        var hide = Environment.GetEnvironmentVariable("SV_PANE_HIDE");   // e.g. "Source,In EverTM since"
+        Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = hide == null ? null : hide.Split(',').ToList());
         foreach (var stacked in new[] { false, true })
         {
         Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneStacked = stacked);   // the run's own data folder

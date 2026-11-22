@@ -27,6 +27,9 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - **Lowest match shown:** 50% to 100%; 70% to start with.
 - **Most matches shown:** 1 to 20; 10 to start with.
 - **Best match first** or **Newest first**.
+- **Details shown:** a tick for each item of the details area (Project, Client, Subject, End client, Document, Source,
+  Note, Created, Changed, In EverTM since, Language variants, Older translations, Numbers, Formatting, Differences).
+  Untick the ones you don't need; **Show all** brings them all back. The menu stays open while you tick.
 - Remembered between Studio sessions, except the order, which starts on best match first.
 
 ## What each match shows
