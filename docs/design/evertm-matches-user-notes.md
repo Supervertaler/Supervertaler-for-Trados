@@ -19,6 +19,18 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   so EverTM Matches would keep disappearing behind it. Either close Translation Results, or put the two in different
   places.
 - If Translation Results stays open, EverTM's matches show in both. That's harmless.
+- **Closing Translation Results doesn't stick, and it jumps to the front on every segment.** Studio does this itself
+  (read from Studio 2024's editor, 22 Nov 2026): each time it looks a segment up, it asks to show Translation
+  Results, which reopens it if closed and brings it forward. There is no setting for it. The one exception Studio
+  makes: it doesn't bring Translation Results forward when that would hide the **Messages**, **Comments** or **TQA**
+  pane. So:
+  - drag Translation Results onto the **Comments** (or Messages) pane so the two become tabs of one group, and leave
+    the **Comments** tab selected. Keep that group pinned (not auto-hide).
+  - From then on Studio no longer brings Translation Results forward; it only makes its tab blink.
+  - Click the Translation Results tab whenever you want to see your Studio TMs' matches; click Comments to park it
+    again.
+  - Give EverTM Matches a place of its own (for example where Translation Results used to be).
+  *(to confirm in Studio: how much the tab blinks)*
 
 ## Options (top right of the pane)
 
