@@ -699,7 +699,7 @@
         "s5": "Betreiben Sie das Gerät niemals ohne Wasser.",
         "s6": "Kinder dürfen nicht mit dem Gerät spielen.",
         "h2": "2 Lieferumfang",
-        "c1": "1 Durchlauferhitzer",
+        "c1": "1 Warmwasserbereiter",
         "c2": "1 Wandhalterung",
         "c3": "3 Befestigungsschrauben mit Dübeln",
         "c4": "2 Dichtscheiben",
@@ -769,7 +769,7 @@
         "tm10": "Wenn das Display E2 anzeigt, tauschen Sie den Temperatursensor aus."
       },
       "terms": {
-        "w1": "Durchlauferhitzer",
+        "w1": "Warmwasserbereiter",
         "w2": "Gerät",
         "w3": "Stromnetz",
         "w4": "Fehlerstrom-Schutzschalter",
@@ -801,7 +801,7 @@
         "s5": "Μη θέτετε ποτέ τη συσκευή σε λειτουργία χωρίς νερό.",
         "s6": "Τα παιδιά δεν πρέπει να παίζουν με τη συσκευή.",
         "h2": "2 Περιεχόμενα συσκευασίας",
-        "c1": "1 ταχυθερμοσίφωνας",
+        "c1": "1 θερμαντήρας νερού",
         "c2": "1 στήριγμα τοίχου",
         "c3": "3 βίδες στερέωσης με ούπα",
         "c4": "2 ροδέλες στεγανοποίησης",
@@ -871,7 +871,7 @@
         "tm10": "Εάν η οθόνη εμφανίζει E2, αντικαταστήστε τον αισθητήρα θερμοκρασίας."
       },
       "terms": {
-        "w1": "ταχυθερμοσίφωνας",
+        "w1": "θερμαντήρας νερού",
         "w2": "συσκευή",
         "w3": "δίκτυο ηλεκτροδότησης",
         "w4": "διάταξη προστασίας διαφορικού ρεύματος",
@@ -1719,7 +1719,7 @@
         "s5": "Gebruik het toestel nooit zonder water.",
         "s6": "Kinderen mogen niet met het toestel spelen.",
         "h2": "2 Leveringsomvang",
-        "c1": "1 doorstroomverwarmer",
+        "c1": "1 waterverwarmer",
         "c2": "1 wandbeugel",
         "c3": "3 bevestigingsschroeven met pluggen",
         "c4": "2 afdichtringen",
@@ -1789,7 +1789,7 @@
         "tm10": "Als het display E2 toont, vervang dan de temperatuursensor."
       },
       "terms": {
-        "w1": "doorstroomverwarmer",
+        "w1": "waterverwarmer",
         "w2": "toestel",
         "w3": "elektriciteitsnet",
         "w4": "aardlekschakelaar",
