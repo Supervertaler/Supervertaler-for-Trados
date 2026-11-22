@@ -10,10 +10,12 @@ namespace Supervertaler.Trados
     /// "Insert EverTM match 1" to 9, from the editor without leaving it: Alt+Shift+1–9 (Michael, 9 Nov 2026, kept on
     /// 22 Nov). Keyboard-only Studio actions, so they can be given other keys in Studio's own Keyboard Shortcuts.
     ///
-    /// <para>Studio has its own actions on these keys in 2022, 2024 and 2026: "insert special character 1–9" from the
-    /// Editor's Insert Symbol list (Sdl.TranslationStudio.Editor.Symbols). That list is empty until Insert Symbol is
-    /// used, and Studio's actions are unavailable while it is. Someone who uses that list can move either set of
-    /// actions to other keys in Studio's Keyboard Shortcuts. (The shortcut values are also in
+    /// <para>Studio has its own actions on these keys in 2022, 2024 and 2026: "1. Insert symbol" to "9. Insert symbol"
+    /// (Sdl.TranslationStudio.Editor.Symbols). And Studio's own actions win: on a shared key its ActionService takes the
+    /// first ENABLED action of the highest context priority, with plugin actions moved to the end, and the symbol
+    /// actions are enabled whenever a document is open (only their Available follows the symbol list). Found in
+    /// Michael's first test, 22 Nov 2026. So these keys work once Studio's symbol shortcuts are removed in File >
+    /// Options > Keyboard Shortcuts; or the user gives these actions other keys there. (The shortcut values are also in
     /// Supervertaler.Trados.plugin.xml, which is what Studio reads.)</para>
     /// </summary>
     public abstract class EverTmInsertMatchActionBase : AbstractAction

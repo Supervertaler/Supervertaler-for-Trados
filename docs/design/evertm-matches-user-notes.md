@@ -73,10 +73,12 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - **Double-click** it, or select it with **Up/Down** and press **Enter**, or press **1** to **9** while the pane has
   the keyboard.
 - **From the editor, without leaving it: Alt+Shift+1** to **9** inserts match 1 to 9.
-  - Studio itself uses Alt+Shift+1–9 for the special characters you have inserted with **Insert Symbol** (its list of
-    recent symbols). Until you use Insert Symbol that list is empty and the keys do nothing in Studio. If you use
-    both, give one of them other keys in **File > Options > Keyboard Shortcuts** (search for "EverTM: Insert match").
-    *(to confirm in Studio: which one wins while both have the keys)*
+  - **Studio uses the same keys for its own "1. Insert symbol" to "9. Insert symbol", and Studio's own actions always
+    win** (read from Studio's ActionService, 22 Nov 2026: on a shared key it takes the first action that is switched on,
+    and puts its own before every plugin's; its symbol actions count as on whenever a document is open, even with an
+    empty symbol list). So, once: **File > Options > Keyboard Shortcuts > Editor**, select "1. Insert symbol" to
+    "9. Insert symbol" and remove their shortcuts (or give them other keys). From then on Alt+Shift+1–9 insert EverTM
+    matches. Or give "EverTM: Insert match 1" to 9 keys of your own there.
 - After a double-click the cursor goes back to the target, so you can keep typing.
 - **Inserting never confirms the segment.** Confirm it as usual (Ctrl+Enter); that is also when EverTM learns it.
 - Formatting tags land exactly where Translation Results puts them. When EverTM can't place them with confidence, the
