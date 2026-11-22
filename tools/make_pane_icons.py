@@ -75,14 +75,9 @@ def supervoice():
 
 
 def evertm():
-    """A match card: its source line, its target line, and a second card behind it."""
-    im, d = canvas()
-    d.rounded_rectangle([70, 22, 236, 150], radius=22, outline=BLUE, width=W)
-    d.rounded_rectangle([20, 92, 186, 230], radius=22, fill=(0, 0, 0, 0), outline=BLUE, width=W)
-    d.rectangle([31, 103, 175, 219], fill=(0, 0, 0, 0))
-    d.rounded_rectangle([50, 132, 156, 152], radius=10, fill=BLUE)
-    d.rounded_rectangle([50, 174, 128, 194], radius=10, fill=BLUE)
-    return im
+    """EverTM's octopus mascot (Michael, 22 Nov 2026), not a drawn glyph: evertm-octopus.png is the
+    Translator mascot from the EverTM artwork with its NL/EN chips and arrow cut off, 256 px."""
+    return Image.open(os.path.join(OUT, 'evertm-octopus.png')).convert('RGBA').resize((S, S), Image.LANCZOS)
 
 
 def main():
