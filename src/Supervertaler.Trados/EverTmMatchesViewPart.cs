@@ -74,6 +74,7 @@ namespace Supervertaler.Trados
             _instance = this;
             EnsureControl();
             _control.InsertRequested += (m, r) => Insert(m, r, fromPane: true);
+            _control.OptionsChanged += (s, e) => LookUpActive();
             _control.VisibleChanged += (s, e) => { if (_control.Visible && _owed) LookUpActive(); };
             _control.Disposed += (s, e) => Shutdown();
 
@@ -183,6 +184,8 @@ namespace Supervertaler.Trados
                         TargetLang = VaultMarkup.BaseLanguage(targetCulture),
                         SourceCulture = sourceCulture,
                         TargetCulture = targetCulture,
+                        MinScore = Settings.SettingsService.Current.EverTmPaneMinScore,
+                        MaxMatches = Settings.SettingsService.Current.EverTmPaneMaxMatches,
                     },
                 };
                 string fileKey = file?.LocalFilePath;

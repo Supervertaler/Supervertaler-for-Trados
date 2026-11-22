@@ -340,4 +340,58 @@ static class PaneChecks
             else if (item is IPlaceholderTag ph) yield return "<>" + ph.TagProperties.TagId.Id;
         }
     }
+    // ---- a picture of the pane, to look at (SuperVaultCheck pane-picture <file.png>) ----
+
+    public static int Picture(string png)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sv-pane-picture-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+        Directory.CreateDirectory(dir);
+        var tmx = Path.Combine(dir, "p.tmx");
+        File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"nl-NL\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+            "<tu><prop type=\"x-Client\">ACME</prop><prop type=\"x-Project\">PROJ-014</prop><tuv xml:lang=\"nl-NL\"><seg>De eindconcentratie aan pesticiden (P<bpt i=\"1\">&lt;sub&gt;</bpt>e<ept i=\"1\">&lt;/sub&gt;</ept>) na bijvoorbeeld een periode van 24 uren kan worden gemeten en gebruikt om de maximale pesticidenadsorptiecapaciteit te berekenen volgens de formule:</seg></tuv>" +
+            "<tuv xml:lang=\"en-GB\"><seg>The final concentration of pesticides (P<bpt i=\"1\">&lt;sub&gt;</bpt>e<ept i=\"1\">&lt;/sub&gt;</ept>) after, for example, a period of 24 hours can be measured and used to calculate the maximum pesticide adsorption capacity according to the formula:</seg></tuv></tu>" +
+            Tu("nl-NL", "en-US", "De pomp wordt gestart als de druk daalt.", "The pump is started when the pressure drops.") +
+            "</body></tmx>");
+        var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
+        lib.Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
+
+        var factory = new Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory();
+        factory.PropertiesFactory = new Sdl.FileTypeSupport.Framework.Native.PropertiesFactory();
+        var pf = factory.PropertiesFactory;
+        var source = factory.CreateSegment(factory.CreateSegmentPairProperties());
+        source.Add(factory.CreateText(pf.CreateTextProperties("De eindconcentratie van fosfor (P")));
+        var start = pf.CreateStartTagProperties("<sub>"); start.TagId = new TagId("3"); start.DisplayText = "sub";
+        var end = pf.CreateEndTagProperties("</sub>"); end.DisplayText = "sub";
+        var sub = factory.CreateTagPair(start, end);
+        sub.Add(factory.CreateText(pf.CreateTextProperties("e")));
+        source.Add(sub);
+        source.Add(factory.CreateText(pf.CreateTextProperties(") na bijvoorbeeld een periode van 336 uren kan gemeten worden en gebruikt worden om de maximale fosfor adsorptiecapaciteit te berekenen.")));
+        var editor = EverTmEditorSegment.From(source, new CultureCode("nl-NL"));
+        var answer = EverTmMatchesLookup.Run(lib, new EverTmMatchesLookup.Request { Document = editor.Pieces, SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-NL", TargetCulture = "en-GB" });
+        var result = new Supervertaler.Trados.Controls.EverTmPaneResult
+        {
+            Matches = answer.Matches, Units = answer.Units, Milliseconds = 36, Editor = editor,
+            TagMapAtLookup = SegmentTagHandler.Serialize(source).TagMap, SourceLang = "nl", SourceCulture = "nl-NL", TargetCulture = "en-GB",
+        };
+        foreach (var stacked in new[] { false, true })
+        {
+        Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneStacked = stacked);   // the run's own data folder
+        string file = stacked ? Path.ChangeExtension(png, null) + "-stacked.png" : png;
+        using (var form = new System.Windows.Forms.Form { Width = 760, Height = 520, FormBorderStyle = System.Windows.Forms.FormBorderStyle.None, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        using (var control = new Supervertaler.Trados.Controls.EverTmMatchesControl { Dock = System.Windows.Forms.DockStyle.Fill })
+        {
+            form.Controls.Add(control);
+            form.Show();
+            control.ShowResult(result);
+            System.Windows.Forms.Application.DoEvents();
+            using (var bmp = new System.Drawing.Bitmap(form.Width, form.Height))
+            {
+                form.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
+                bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+        }
+        Console.WriteLine(answer.Matches.Count + " matches drawn to " + png);
+        return 0;
+    }
 }

@@ -20,9 +20,18 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   places.
 - If Translation Results stays open, EverTM's matches show in both. That's harmless.
 
+## Options (top right of the pane)
+
+- **Source and target side by side** (the default, as in Translation Results) or **Source above target**, with a thin
+  line between the two either way.
+- **Lowest match shown:** 50% to 100%; 70% to start with.
+- **Most matches shown:** 1 to 20; 10 to start with.
+- **Best match first** or **Newest first**.
+- Remembered between Studio sessions, except the order, which starts on best match first.
+
 ## What each match shows
 
-- **Number and score.** Green for 100%, orange from 85%, brown below. At least 50%, at most 20 matches, best first.
+- **Number and score.** Green for 100%, orange from 85%, brown below. Best first, from the lowest match you chose.
 - **The stored source, with the differences from your segment:**
   - a word the stored sentence has and yours doesn't: struck through in red;
   - a word yours has and the stored one doesn't: green, underlined, where it goes;
@@ -83,11 +92,6 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - When you move on, the matches shown turn grey until the new segment's arrive, and grey matches can't be inserted,
   so a match never lands in the wrong segment.
 - When the pane is hidden, nothing is looked up.
-
-## Sorting
-
-- **Sorted by score** / **Sorted by date** at the top right switches between best first and newest first. Not saved:
-  the pane starts on score.
 
 ## What stays with Studio
 

@@ -11,9 +11,9 @@ namespace Supervertaler.Trados.SuperVault
     /// </summary>
     public static class EverTmMatchesLookup
     {
-        /// <summary>Shows a little more than Translation Results' usual 70% (design, section 2).</summary>
+        /// <summary>The lowest the user can set the minimum to (the pane's Options menu; default 70%).</summary>
         public const int MinScore = 50;
-        /// <summary>Newest-wins already removes repeats, so 20 is plenty.</summary>
+        /// <summary>The most the user can ask for; newest-wins already removes repeats, so 20 is plenty.</summary>
         public const int MaxMatches = 20;
 
         public sealed class Request
@@ -21,6 +21,8 @@ namespace Supervertaler.Trados.SuperVault
             public List<VaultPiece> Document;
             public string SourceLang, TargetLang;       // base languages ("nl", "en")
             public string SourceCulture, TargetCulture;  // the project's, with their variants ("nl-BE", "en-GB")
+            /// <summary>The user's choice in the pane (Options); 0 = the bounds above.</summary>
+            public int MinScore, MaxMatches;
         }
 
         public sealed class Answer
@@ -48,7 +50,9 @@ namespace Supervertaler.Trados.SuperVault
             if (status.State == VaultState.Broken) { answer.Problem = status.Message; return answer; }
             if (request?.Document == null || request.Document.Count == 0) return answer;
             // Missing: there may still be units just confirmed, which Lookup finds without an index.
-            answer.Matches = library.Lookup(request.Document, request.SourceLang, request.TargetLang, MinScore, MaxMatches, request.TargetCulture)
+            int min = request.MinScore > 0 ? Math.Max(MinScore, Math.Min(100, request.MinScore)) : MinScore;
+            int max = request.MaxMatches > 0 ? Math.Max(1, Math.Min(MaxMatches, request.MaxMatches)) : MaxMatches;
+            answer.Matches = library.Lookup(request.Document, request.SourceLang, request.TargetLang, min, max, request.TargetCulture)
                              ?? new List<VaultMatch>();
             if (status.State == VaultState.Missing && answer.Matches.Count == 0) answer.Problem = status.Message;
             return answer;

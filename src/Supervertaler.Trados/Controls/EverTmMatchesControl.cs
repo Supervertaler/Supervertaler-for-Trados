@@ -37,7 +37,8 @@ namespace Supervertaler.Trados.Controls
     public sealed class EverTmMatchesControl : UserControl, IUIControl
     {
         readonly Label _status;
-        readonly LinkLabel _sort;
+        readonly LinkLabel _options;
+        readonly ContextMenuStrip _optionsMenu = new ContextMenuStrip();
         readonly SplitContainer _split;
         readonly EverTmMatchList _list;
         readonly RichTextBox _details;
@@ -49,20 +50,23 @@ namespace Supervertaler.Trados.Controls
         /// <summary>The user asked to insert this match (double-click, Enter, a digit in the pane, the menu).</summary>
         public event Action<VaultMatch, EverTmPaneResult> InsertRequested;
 
+        /// <summary>The minimum % or the number of matches changed: the segment is looked up again.</summary>
+        public event EventHandler OptionsChanged;
+
         public EverTmMatchesControl()
         {
             BackColor = Color.White;
             Font = new Font("Segoe UI", 9f);
 
-            var top = new Panel { Dock = DockStyle.Top, Height = 22, BackColor = Color.FromArgb(246, 246, 246), Padding = new Padding(6, 0, 6, 0) };
+            var top = new Panel { Dock = DockStyle.Top, Height = Font.Height + 8, BackColor = Color.FromArgb(246, 246, 246), Padding = new Padding(6, 0, 6, 0) };
             _status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Color.FromArgb(70, 70, 70) };
-            _sort = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 4, 0, 0), LinkColor = Color.FromArgb(30, 100, 180) };
-            _sort.LinkClicked += (s, e) => { _byDate = !_byDate; UpdateSortLink(); Redraw(); };
+            _options = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 4, 0, 0), LinkColor = Color.FromArgb(30, 100, 180), Text = "Options ▾" };
+            _options.LinkClicked += (s, e) => { BuildOptionsMenu(); _optionsMenu.Show(_options, new Point(0, _options.Height)); };
             top.Controls.Add(_status);
-            top.Controls.Add(_sort);
-            UpdateSortLink();
+            top.Controls.Add(_options);
 
             _list = new EverTmMatchList { Dock = DockStyle.Fill };
+            try { _list.Stacked = Settings.SettingsService.Current.EverTmPaneStacked; } catch { }
             _list.SelectionChanged += (s, e) => ShowDetails();
             _list.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
 
@@ -86,7 +90,57 @@ namespace Supervertaler.Trados.Controls
             ShowStatus("Open a document to see EverTM's matches.");
         }
 
-        void UpdateSortLink() => _sort.Text = _byDate ? "Sorted by date" : "Sorted by score";
+        /// <summary>
+        /// The Options menu: the layout (side by side or stacked), the lowest match % shown, how many matches, and the
+        /// order. Remembered in Supervertaler's settings, except the order (it starts on score each time).
+        /// </summary>
+        void BuildOptionsMenu()
+        {
+            var s = Settings.SettingsService.Current;
+            _optionsMenu.Items.Clear();
+            ToolStripMenuItem Item(string text, bool check, Action click)
+            {
+                var item = new ToolStripMenuItem(text) { Checked = check };
+                item.Click += (o, e) => click();
+                return item;
+            }
+            _optionsMenu.Items.Add(Item("Source and target side by side", !s.EverTmPaneStacked, () => SetStacked(false)));
+            _optionsMenu.Items.Add(Item("Source above target", s.EverTmPaneStacked, () => SetStacked(true)));
+            _optionsMenu.Items.Add(new ToolStripSeparator());
+
+            var min = new ToolStripMenuItem("Lowest match shown: " + s.EverTmPaneMinScore + "%");
+            foreach (var v in new[] { 50, 60, 70, 75, 80, 85, 90, 95, 100 })
+            {
+                int value = v;
+                min.DropDownItems.Add(Item(value + "%", s.EverTmPaneMinScore == value, () =>
+                {
+                    Settings.SettingsService.Update(x => x.EverTmPaneMinScore = value);
+                    OptionsChanged?.Invoke(this, EventArgs.Empty);
+                }));
+            }
+            _optionsMenu.Items.Add(min);
+
+            var max = new ToolStripMenuItem("Most matches shown: " + s.EverTmPaneMaxMatches);
+            foreach (var v in new[] { 1, 3, 5, 10, 15, 20 })
+            {
+                int value = v;
+                max.DropDownItems.Add(Item(value.ToString(CultureInfo.CurrentCulture), s.EverTmPaneMaxMatches == value, () =>
+                {
+                    Settings.SettingsService.Update(x => x.EverTmPaneMaxMatches = value);
+                    OptionsChanged?.Invoke(this, EventArgs.Empty);
+                }));
+            }
+            _optionsMenu.Items.Add(max);
+            _optionsMenu.Items.Add(new ToolStripSeparator());
+            _optionsMenu.Items.Add(Item("Best match first", !_byDate, () => { _byDate = false; Redraw(); }));
+            _optionsMenu.Items.Add(Item("Newest first", _byDate, () => { _byDate = true; Redraw(); }));
+        }
+
+        void SetStacked(bool stacked)
+        {
+            Settings.SettingsService.Update(x => x.EverTmPaneStacked = stacked);
+            _list.Stacked = stacked;
+        }
 
         // ---- what the view part calls ----
 
@@ -265,6 +319,8 @@ namespace Supervertaler.Trados.Controls
             public int Top, Height;
             public List<Placed> SourceRuns = new List<Placed>(), TargetRuns = new List<Placed>();
             public int SummaryY;
+            /// <summary>The thin line between source and target: across (stacked) or down (side by side).</summary>
+            public Rectangle Divider;
         }
 
         readonly VScrollBar _scroll = new VScrollBar { Dock = DockStyle.Right, Visible = false };
@@ -278,7 +334,10 @@ namespace Supervertaler.Trados.Controls
         int _contentHeight;
         bool _stale;
 
-        const int Gutter = 54, Pad = 5, Gap = 2;
+        const int Pad = 5, Gap = 2;
+        // The number and score column, measured from its widest contents ("20", "100%"), so it grows with Windows'
+        // display scaling instead of the score badge running over the number.
+        readonly int _numberWidth, _badgeWidth, Gutter;
         static readonly Color RemovedColor = Color.FromArgb(190, 30, 30), AddedColor = Color.FromArgb(0, 120, 40),
             AddedBack = Color.FromArgb(222, 244, 226), TagColor = Color.FromArgb(120, 120, 120), TagBack = Color.FromArgb(232, 232, 232),
             SummaryColor = Color.FromArgb(140, 140, 140), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
@@ -297,6 +356,9 @@ namespace Supervertaler.Trados.Controls
             _small = new Font("Segoe UI", 8f);
             _bold = new Font("Segoe UI", 9f, FontStyle.Bold);
             _tag = new Font("Segoe UI", 7.5f);
+            _numberWidth = TextRenderer.MeasureText("20", _bold, Size.Empty, TextFormatFlags.NoPadding).Width;
+            _badgeWidth = TextRenderer.MeasureText("100%", _bold, Size.Empty, TextFormatFlags.NoPadding).Width + 8;
+            Gutter = 6 + _numberWidth + 4 + _badgeWidth + 8;
             Controls.Add(_scroll);
             _scroll.Scroll += (s, e) => Invalidate();
             _scroll.ValueChanged += (s, e) => Invalidate();
@@ -308,6 +370,14 @@ namespace Supervertaler.Trados.Controls
             _menu.Opening += (s, e) => { insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null; };
             ContextMenuStrip = _menu;
         }
+
+        /// <summary>Source above target (true), or side by side as in Translation Results (false, the default).</summary>
+        public bool Stacked
+        {
+            get => _stacked;
+            set { if (_stacked != value) { _stacked = value; _laidOutWidth = -1; if (_rows.Count > 0) LayoutRows(); Invalidate(); } }
+        }
+        bool _stacked;
 
         public bool Stale
         {
@@ -417,8 +487,11 @@ namespace Supervertaler.Trados.Controls
             var key = (text, style);
             if (_widths.TryGetValue(key, out var w)) return w;
             var font = FontOf(style);
-            if (text == " ") w = TextRenderer.MeasureText("a a", font, Size.Empty, TextFormatFlags.NoPadding).Width - TextRenderer.MeasureText("aa", font, Size.Empty, TextFormatFlags.NoPadding).Width;
-            else w = TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + (style == Style.Tag ? 6 : 0);
+            const TextFormatFlags flags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+            // Measured with a mark after it and the mark taken off again, so a trailing space counts in full.
+            if (text.EndsWith(" ", StringComparison.Ordinal))
+                w = TextRenderer.MeasureText(text + "x", font, Size.Empty, flags).Width - TextRenderer.MeasureText("x", font, Size.Empty, flags).Width;
+            else w = TextRenderer.MeasureText(text, font, Size.Empty, flags).Width + (style == Style.Tag ? 6 : 0);
             if (_widths.Count > 20000) _widths.Clear();   // bounded: one segment's words, many segments
             _widths[key] = w;
             return w;
@@ -426,7 +499,11 @@ namespace Supervertaler.Trados.Controls
 
         Font FontOf(Style s) => s == Style.Removed ? _strike : s == Style.Added ? _under : s == Style.Tag ? _tag : _normal;
 
-        /// <summary>Places the runs word by word, wrapping at the width; returns the height used.</summary>
+        /// <summary>
+        /// Places the runs word by word, wrapping at the width; returns the height used. A space, and punctuation
+        /// straight after a word, join the run before them when it has the same look, and are measured and drawn
+        /// with it: measured one by one, each piece gained a little width and the words stood too far apart.
+        /// </summary>
         int Flow(List<Run> runs, int x0, int y0, int width, List<Placed> placed)
         {
             placed.Clear();
@@ -434,9 +511,26 @@ namespace Supervertaler.Trados.Controls
             int x = x0, y = y0;
             foreach (var r in runs)
             {
-                int w = Measure(r.Text, r.Style);
                 if (r.Space && x == x0) continue;                       // no space at the start of a line
-                if (!r.Space && x > x0 && x + w > x0 + width) { x = x0; y += line; }
+                if (placed.Count > 0)
+                {
+                    var last = placed[placed.Count - 1];
+                    bool sameLine = last.Box.Y == y, sameLook = last.Run.Style == r.Style && r.Style != Style.Tag;
+                    bool glued = !last.Run.Text.EndsWith(" ", StringComparison.Ordinal);   // no space in between
+                    // Everything between two spaces that looks the same stays one piece ("(P", "drops.", "formule:").
+                    if (sameLine && (r.Space ? last.Run.Style != Style.Tag : sameLook && glued && r.Text.Length > 0))
+                    {
+                        var joined = last.Run;
+                        joined.Text += r.Space ? " " : r.Text;
+                        int jw = Measure(joined.Text, joined.Style);
+                        placed[placed.Count - 1] = new Placed { Run = joined, Box = new Rectangle(last.Box.X, y, jw, line) };
+                        x = last.Box.X + jw;
+                        continue;
+                    }
+                }
+                if (r.Space) { x += Measure(" ", Style.Normal); continue; }   // after a tag: just room
+                int w = Measure(r.Text, r.Style);
+                if (x > x0 && x + w > x0 + width) { x = x0; y += line; }
                 placed.Add(new Placed { Run = r, Box = new Rectangle(x, y, w, line) });
                 x += w;
             }
@@ -455,8 +549,23 @@ namespace Supervertaler.Trados.Controls
                 {
                     row.Top = y;
                     int h = Pad;
-                    h += Flow(row.Source, Gutter, y + h, width, row.SourceRuns) + Gap;
-                    h += Flow(row.Target, Gutter, y + h, width, row.TargetRuns) + Gap;
+                    if (_stacked)
+                    {
+                        h += Flow(row.Source, Gutter, y + h, width, row.SourceRuns) + Gap;
+                        row.Divider = new Rectangle(Gutter, y + h, width, 1);
+                        h += Gap + 1;
+                        h += Flow(row.Target, Gutter, y + h, width, row.TargetRuns) + Gap;
+                    }
+                    else
+                    {
+                        // Two columns, as Translation Results has them, with a thin line down between.
+                        const int between = 13;
+                        int column = Math.Max(40, (width - between) / 2);
+                        int hs = Flow(row.Source, Gutter, y + h, column, row.SourceRuns);
+                        int ht = Flow(row.Target, Gutter + column + between, y + h, column, row.TargetRuns);
+                        row.Divider = new Rectangle(Gutter + column + between / 2, y + h, 1, Math.Max(hs, ht));
+                        h += Math.Max(hs, ht) + Gap;
+                    }
                     row.SummaryY = y + h;
                     row.Summary = SummaryLine(row, width);
                     h += _small.Height + Pad;
@@ -523,10 +632,13 @@ namespace Supervertaler.Trados.Controls
                 if (_stale) badge = Color.Silver;
                 TextRenderer.DrawText(g, (i + 1).ToString(CultureInfo.InvariantCulture), _bold, new Point(6, top + Pad), _stale ? Color.Silver : Color.FromArgb(80, 80, 80), TextFormatFlags.NoPadding);
                 var scoreText = score + "%";
-                var scoreBox = new Rectangle(18, top + Pad, Gutter - 22, _normal.Height);
+                var scoreBox = new Rectangle(6 + _numberWidth + 4, top + Pad, _badgeWidth, _normal.Height);
                 using (var b = new SolidBrush(badge)) g.FillRectangle(b, scoreBox);
                 TextRenderer.DrawText(g, scoreText, _bold, scoreBox, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
+                var divider = row.Divider;
+                divider.Offset(0, -offset);
+                using (var b = new SolidBrush(Color.FromArgb(215, 215, 215))) g.FillRectangle(b, divider);
                 DrawRuns(g, row.SourceRuns, -offset);
                 DrawRuns(g, row.TargetRuns, -offset);
 
@@ -550,6 +662,13 @@ namespace Supervertaler.Trados.Controls
                 if (box.Bottom < 0 || box.Top > ClientSize.Height) continue;
                 var style = p.Run.Style;
                 Color fore = _stale ? Color.Silver : style == Style.Removed ? RemovedColor : style == Style.Added ? AddedColor : style == Style.Tag ? TagColor : ForeColorFor();
+                // The line under or through a word stops at the word: the space after it is drawn plain.
+                string text = p.Run.Text;
+                if ((style == Style.Added || style == Style.Removed) && text.EndsWith(" ", StringComparison.Ordinal))
+                {
+                    text = text.TrimEnd();
+                    box.Width = Measure(text, style);
+                }
                 if (style == Style.Added && !_stale) using (var b = new SolidBrush(AddedBack)) g.FillRectangle(b, box);
                 if (style == Style.Tag)
                 {
@@ -558,7 +677,7 @@ namespace Supervertaler.Trados.Controls
                     TextRenderer.DrawText(g, p.Run.Text, _tag, pill, fore, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                     continue;
                 }
-                TextRenderer.DrawText(g, p.Run.Text, FontOf(style), box.Location, fore, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, text, FontOf(style), box.Location, fore, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
         }
 

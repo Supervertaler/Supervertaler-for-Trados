@@ -60,6 +60,8 @@ static class Program
                 try { Directory.Delete(scratch, true); } catch { Console.WriteLine("(scratch left at " + scratch + ")"); }
             }
         }
+        if (args.Length > 1 && args[0] == "pane-picture")
+            return PaneChecks.Picture(args[1]);
         if (args.Length > 0 && args[0] == "pane")
         {
             var scratch = Path.Combine(Path.GetTempPath(), "sv-pane-" + Guid.NewGuid().ToString("N").Substring(0, 6));

@@ -317,6 +317,37 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "termPickerPaneColumnWidths")]
         public List<int> TermPickerPaneColumnWidths { get; set; }
 
+        // ─── EverTM Matches pane (Michael, 22 Nov 2026: "the low matches are completely useless") ───
+        // Chosen in the pane's Options menu. Nullable behind the property: the serializer skips initialisers, so a
+        // settings file from before has none and gets the default.
+
+        [DataMember(Name = "everTmPaneMinScore", EmitDefaultValue = false)]
+        private int? _everTmPaneMinScore;
+        /// <summary>The lowest match % EverTM Matches shows. Default 70, Studio's own usual minimum.</summary>
+        public int EverTmPaneMinScore
+        {
+            get => Math.Max(30, Math.Min(100, _everTmPaneMinScore ?? 70));
+            set => _everTmPaneMinScore = value;
+        }
+
+        [DataMember(Name = "everTmPaneMaxMatches", EmitDefaultValue = false)]
+        private int? _everTmPaneMaxMatches;
+        /// <summary>The most matches EverTM Matches shows. Default 10.</summary>
+        public int EverTmPaneMaxMatches
+        {
+            get => Math.Max(1, Math.Min(20, _everTmPaneMaxMatches ?? 10));
+            set => _everTmPaneMaxMatches = value;
+        }
+
+        [DataMember(Name = "everTmPaneStacked", EmitDefaultValue = false)]
+        private bool? _everTmPaneStacked;
+        /// <summary>Source above target in each EverTM match; false (the default) is side by side, as in Translation Results.</summary>
+        public bool EverTmPaneStacked
+        {
+            get => _everTmPaneStacked ?? false;
+            set => _everTmPaneStacked = value;
+        }
+
         // ─── Voice commands ──────────────────────────────────────────
         /// <summary>
         /// Remembered position of the floating voice status strip (the
