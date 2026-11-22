@@ -63,6 +63,10 @@ namespace Supervertaler.Trados.Controls
 
         private Button _btnShowKey;
         private Button _btnTestConnection;
+
+        /// <summary>"Open example project…" was pressed. The Settings dialog saves and
+        /// closes, then makes the project (<see cref="ExampleProjectRunner"/>).</summary>
+        public event EventHandler ExampleProjectRequested;
         private Label _lblStatus;
 
         // Machine-translation engines (SuperBench contenders; docs/design/mt-engines.md
@@ -487,6 +491,30 @@ namespace Supervertaler.Trados.Controls
             testHost.Controls.Add(_btnTestConnection);
             testHost.Controls.Add(_lblStatus);
             Pair(root, ref row, NoLabel(), testHost);
+
+            // First run: somewhere to try it all at once (first-run plan, step 1).
+            var btnExample = TextButton("Open example project…");
+            btnExample.Click += (s, e) => ExampleProjectRequested?.Invoke(this, EventArgs.Empty);
+            var lblExample = new Label
+            {
+                Text = "Saves these settings and makes a small practice project in your language.",
+                AutoSize = true,
+                ForeColor = Color.FromArgb(140, 140, 140),
+                Font = HintFont(),
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(UiScale.Pixels(8), UiScale.Pixels(8), 0, 0)
+            };
+            var exampleHost = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = new Padding(0, UiScale.Pixels(4), 0, 0)
+            };
+            exampleHost.Controls.Add(btnExample);
+            exampleHost.Controls.Add(lblExample);
+            Pair(root, ref row, NoLabel(), exampleHost);
 
             // ===== Ollama section (rows shown only when Ollama is selected) =====
             // Added directly to the root grid (not a nested AutoSize panel) so the

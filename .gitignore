@@ -76,3 +76,6 @@ src/Supervertaler.Trados/Resources/generated/
 
 # Claude Code machine-local permissions
 .claude/settings.local.json
+
+# Example project: AI translations and verdicts before they are merged
+tools/example_project/out/

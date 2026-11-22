@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "about": "The example project behind 'Open example project' (first-run plan, step 1). Invented product and company. English is the original; 'languages' holds the prepared translations, keyed by base language code (pt-BR and zh-Hans where variants differ). Inline markup in the text: **bold**, *italic*, [link text](url). tools\\example_project\\build_example_docs.py turns 'document' into one Word file per language.",
+  "sourceLanguage": "en-US",
+  "document": [
+    { "type": "title", "id": "t1", "text": "Acme *AquaLine AL-50*" },
+    { "type": "subtitle", "id": "t2", "text": "Electric instantaneous water heater" },
+    { "type": "subtitle", "id": "t3", "text": "Installation and operating guide" },
+    { "type": "para", "id": "i1", "text": "The *AL-50* is intended for domestic use only." },
+    { "type": "para", "id": "i2", "text": "Read this guide carefully before you install or use the appliance, and keep it for future reference." },
+
+    { "type": "heading", "id": "h1", "text": "1 Safety instructions" },
+    { "type": "bullets", "items": [
+      { "id": "s1", "text": "Disconnect the appliance from the mains before opening the cover." },
+      { "id": "s2", "text": "**Warning:** The appliance must be installed by a qualified electrician." },
+      { "id": "s3", "text": "Protect the appliance with a residual current device (RCD) with a rated residual current of 30 mA." },
+      { "id": "s4", "text": "Do not install the appliance in a room where the temperature can fall below 0 °C." },
+      { "id": "s5", "text": "Never operate the appliance without water." },
+      { "id": "s6", "text": "Children must not play with the appliance." }
+    ] },
+
+    { "type": "heading", "id": "h2", "text": "2 Package contents" },
+    { "type": "bullets", "items": [
+      { "id": "c1", "text": "1 water heater" },
+      { "id": "c2", "text": "1 wall bracket" },
+      { "id": "c3", "text": "3 fixing screws with wall plugs" },
+      { "id": "c4", "text": "2 sealing washers" },
+      { "id": "c5", "text": "1 installation and operating guide" }
+    ] },
+
+    { "type": "heading", "id": "h3", "text": "3 Technical data" },
+    { "type": "table", "header": true, "rows": [
+      [ { "id": "d0a", "text": "Property" }, { "id": "d0b", "text": "Value" } ],
+      [ { "id": "d1a", "text": "Rated power" }, { "id": "d1b", "text": "5.5 kW" } ],
+      [ { "id": "d2a", "text": "Rated voltage" }, { "id": "d2b", "text": "230 V ~ 50 Hz" } ],
+      [ { "id": "d3a", "text": "Maximum water pressure" }, { "id": "d3b", "text": "0.6 MPa (6 bar)" } ],
+      [ { "id": "d4a", "text": "Outlet temperature" }, { "id": "d4b", "text": "30–60 °C" } ],
+      [ { "id": "d5a", "text": "Dimensions (H × W × D)" }, { "id": "d5b", "text": "340 × 190 × 95 mm" } ],
+      [ { "id": "d6a", "text": "Weight" }, { "id": "d6b", "text": "2.4 kg" } ]
+    ] },
+    { "type": "para", "id": "d7", "text": "The maximum water pressure is 0.6 MPa (6 bar). If the mains water pressure is higher, fit a pressure reducing valve." },
+
+    { "type": "heading", "id": "h4", "text": "4 Installation" },
+    { "type": "steps", "items": [
+      { "id": "n1", "text": "Mark the positions of the holes, using the wall bracket as a template." },
+      { "id": "n2", "text": "Drill three holes with a diameter of 6 mm and insert the wall plugs." },
+      { "id": "n3", "text": "Fix the wall bracket to the wall with the upper fixing screw." },
+      { "id": "n4", "text": "Hang the appliance on the wall bracket." },
+      { "id": "n5", "text": "Tighten the two lower fixing screws with a 4 mm hex key." },
+      { "id": "n6", "text": "Connect the cold water supply to the blue inlet." },
+      { "id": "n7", "text": "Connect the hot water pipe to the red outlet." },
+      { "id": "n8", "text": "Open a hot water tap until the water flows without air bubbles, then close it." },
+      { "id": "n9", "text": "Have a qualified electrician connect the appliance to the mains." }
+    ] },
+
+    { "type": "heading", "id": "h5", "text": "5 Operation" },
+    { "type": "steps", "items": [
+      { "id": "o1", "text": "Switch the appliance on with the **ON/OFF** button." },
+      { "id": "o2", "text": "Turn the temperature dial clockwise to increase the water temperature." },
+      { "id": "o3", "text": "Press **+** to raise the temperature in steps of 1 °C." },
+      { "id": "o4", "text": "Press **–** to lower the temperature in steps of 1 °C." }
+    ] },
+    { "type": "para", "id": "o5", "text": "The display shows the set temperature. The appliance switches off automatically if no water flows for 10 minutes." },
+
+    { "type": "heading", "id": "h6", "text": "6 Troubleshooting" },
+    { "type": "table", "header": true, "rows": [
+      [ { "id": "e0a", "text": "Display" }, { "id": "e0b", "text": "Cause" }, { "id": "e0c", "text": "Remedy" } ],
+      [ { "id": "e1a", "text": "E1" }, { "id": "e1b", "text": "The water supply is interrupted." }, { "id": "e1c", "text": "Open the stopcock on the cold water supply." } ],
+      [ { "id": "e2a", "text": "E2" }, { "id": "e2b", "text": "The temperature sensor is faulty." }, { "id": "e2c", "text": "Contact customer service." } ],
+      [ { "id": "e3a", "text": "E3" }, { "id": "e3b", "text": "The inlet filter is blocked." }, { "id": "e3c", "text": "Clean the inlet filter." } ]
+    ] },
+    { "type": "para", "id": "e4", "text": "If the display shows E3, the inlet filter is blocked. Clean the filter as described in section 7." },
+
+    { "type": "heading", "id": "h7", "text": "7 Maintenance and disposal" },
+    { "type": "para", "id": "m1", "text": "Before you open the cover, read the safety instructions." },
+    { "type": "para", "id": "m2", "text": "Clean the inlet filter once a year. In areas with hard water, descale the appliance every two years." },
+    { "type": "para", "id": "m3", "text": "Do not dispose of the appliance with household waste." },
+    { "type": "para", "id": "m4", "text": "For spare parts and service, visit [www.acme.example/service](https://www.acme.example/service) or call +1 555 0100." }
+  ],
+
+  "tmBands": "100 = an exact match; numbers = differs only in its numbers (Studio scores it 100 and fills in the numbers, FuzzyFixer treats it as 99); fuzzy = 70-99, what FuzzyFixer repairs; low = below 70, which FuzzyFixer leaves alone. The example-project test checks each one with Studio's own fuzzy search.",
+  "tm": [
+    { "id": "tm1", "for": "s1", "band": "100", "source": "Disconnect the appliance from the mains before opening the cover." },
+    { "id": "tm2", "for": "m1", "band": "100", "source": "Before you open the cover, read the safety instructions." },
+    { "id": "tm3", "for": "n7", "band": "100", "source": "Connect the hot water pipe to the red outlet.", "alsoFor": "n6" },
+    { "id": "tm4", "for": "d7", "band": "numbers", "source": "The maximum water pressure is 1.0 MPa (10 bar)." },
+    { "id": "tm5", "for": "i1", "band": "fuzzy", "source": "The appliance is intended for domestic use only." },
+    { "id": "tm6", "for": "o3", "band": "fuzzy", "source": "Press + to change the temperature in steps of 1 °C." },
+    { "id": "tm7", "for": "o2", "band": "fuzzy", "source": "Turn the temperature dial clockwise to increase the flow rate." },
+    { "id": "tm8", "for": "n5", "band": "fuzzy", "source": "Tighten the upper fixing screw with a 5 mm hex key." },
+    { "id": "tm9", "for": "s4", "band": "fuzzy", "source": "Do not install the appliance in a room where it can freeze." },
+    { "id": "tm10", "for": "e4", "band": "low", "source": "If the display shows E2, replace the temperature sensor." }
+  ],
+
+  "terms": [
+    { "id": "w1", "source": "water heater" },
+    { "id": "w2", "source": "appliance" },
+    { "id": "w3", "source": "mains" },
+    { "id": "w4", "source": "residual current device" },
+    { "id": "w5", "source": "fixing screw" },
+    { "id": "w6", "source": "hex key" },
+    { "id": "w7", "source": "wall bracket" },
+    { "id": "w8", "source": "inlet filter" },
+    { "id": "w9", "source": "temperature dial" },
+    { "id": "w10", "source": "flow rate" },
+    { "id": "w11", "source": "rated power" },
+    { "id": "w12", "source": "pressure reducing valve" },
+    { "id": "w13", "source": "descale" },
+    { "id": "w14", "source": "display" },
+    { "id": "w15", "source": "stopcock" }
+  ],
+
+  "languages": {}
+}
