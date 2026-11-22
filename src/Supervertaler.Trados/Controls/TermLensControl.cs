@@ -211,10 +211,11 @@ namespace Supervertaler.Trados.Controls
             // ─── Refresh button (v4.19.113) ──────────────────────────
             // Drops the in-memory term index and reloads from disk.
             // Useful after editing terms in the Workbench (or any other
-            // process) while the same SQLite DB is open here. F5 already
-            // does the same thing via RefreshTermbaseAction, but the
-            // visible button matches the affordance Workbench v1.10.68
-            // added and is more discoverable than a keyboard shortcut.
+            // process) while the same SQLite DB is open here. It is the
+            // only manual refresh: an F5 action existed in code but was
+            // never in the manifest, so Studio never registered it, and it
+            // was removed in 20.210. The button matches the affordance
+            // Workbench v1.10.68 added.
             // Auto-refresh via FileSystemWatcher (TermLensEditorViewPart
             // v4.19.113) covers the unattended case; this button is the
             // explicit fallback / "yes, do it now" trigger. Matches the
@@ -241,7 +242,7 @@ namespace Supervertaler.Trados.Controls
             _btnRefresh.Click += OnRefreshClicked;
             Core.ClickThrough.Attach(_btnRefresh, OnRefreshClicked);
             fontButtonTip.SetToolTip(_btnRefresh,
-                "Refresh termbases from disk (F5)\n" +
+                "Refresh termbases from disk\n" +
                 "\n" +
                 "Reloads the in-memory term index from the database.\n" +
                 "Use this after editing terms in another tool (e.g.\n" +

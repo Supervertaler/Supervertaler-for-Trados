@@ -37,10 +37,9 @@ KEYS.update({f"F{n}": 0x6F + n for n in range(1, 13)})
 # entry says why it is left. Keep this list short; never add to it to make a
 # build pass.
 KNOWN_MISSING_FROM_MANIFEST = {
-    # "TermLens: Refresh termbases" (F5) has never been in the manifest, so
-    # Studio has never registered it: F5 does Studio's own thing. Adding it now
-    # would bind F5 for every user. Found 21 Nov 2026; for Michael to decide.
-    "RefreshTermbaseAction",
+    # Empty. "TermLens: Refresh termbases" (F5) was here until 20.210: it had
+    # never been in the manifest, so Studio never registered it, and Michael
+    # chose (22 Nov 2026) to remove it; TermLens's refresh button does the job.
 }
 
 ACTION = re.compile(r'\[Action\(\s*"([^"]+)"(.*?)\)\]', re.S)

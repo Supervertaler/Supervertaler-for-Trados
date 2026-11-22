@@ -16,6 +16,9 @@
 - **Supervertaler's entries in the Editor's right-click menu are grouped by what they do.** From the top: the AI actions on the segment you are in (Translate, Proofread, FuzzyFixer, Auto-tag), QuickLauncher, search (Search the web, SuperSearch), adding terms, SuperMemory, and voice commands, with a line between each group. Before, they were in no particular order, and Translate sat apart from Proofread and FuzzyFixer. Two entries have shorter names: **FuzzyFixer: repair fuzzy match** and **Toggle voice commands**. Keyboard shortcuts, including any you set yourself, are unchanged.
 - **During the trial, with the anonymous usage statistics on, the trial check-in also says how many AI requests have been made.** It sends a number (up to 100) and the day of the first request, and checks in once more after the first request of a Studio session. This shows whether new users get as far as using the AI. Nothing else is sent: no text, project, file or model. With the usage statistics switched off, or with a licence, nothing about it is sent.
 
+### Fixed
+- **The TermLens refresh button's tooltip no longer mentions F5, and the Help no longer lists F5 as a TermLens shortcut.** F5 never refreshed TermLens: the command existed in Supervertaler but was never registered with Trados Studio, so pressing F5 did whatever Studio itself does with it. The command has been removed; use the **↻** button in the TermLens panel to reload your Supervertaler termbases from disk.
+
 ## [18.20.209 / 19.20.209] – 2026-11-21
 
 ### Added
