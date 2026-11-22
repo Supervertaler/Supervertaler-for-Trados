@@ -48,12 +48,22 @@ namespace Supervertaler.Trados
             public EverTmMatchesLookup.Request Lookup;
             public EverTmPaneResult Shown;      // the UI-thread half, filled in before the lookup
             public string ProjectFile;          // set once per document: the worker reads whether EverTM learns here
+            public bool Again;                  // the second look at the same segment (see _again)
         }
 
         EditorController _editor;
         IStudioDocument _doc;
         EverTmLookupWorker<Request, EverTmPaneResult> _worker;
         bool _owed;              // a segment changed while the pane was hidden
+        string _segmentKey;      // the segment last looked up (paragraph and segment id), for the second look
+        /// <summary>
+        /// One more lookup of the same segment, 4 s after arriving on it (1 s of margin). A segment you have just confirmed reaches
+        /// EverTM's index 1 to 3 s later (it is gathered for 0.5 s, stored, and the index is reopened every 2 s), and
+        /// until then EverTM offers it only as an exact match. So the next segment, very often a near-repeat in a
+        /// patent, was looked up too early to get it as a fuzzy match (Michael's test, 22 Nov 2026, segments 342-343).
+        /// Nothing changes on screen when the second look finds the same.
+        /// </summary>
+        System.Windows.Forms.Timer _again;
         string _noteFor;         // the document whose "EverTM learns here" note has been asked for
         string _projectNote;     // that note
 
@@ -78,6 +88,9 @@ namespace Supervertaler.Trados
             _control.VisibleChanged += (s, e) => { if (_control.Visible && _owed) LookUpActive(); };
             _control.Disposed += (s, e) => Shutdown();
 
+            _again = new System.Windows.Forms.Timer { Interval = 4000 };
+            _again.Tick += (s, e) => { _again.Stop(); LookUpActive(again: true); };
+
             _worker = new EverTmLookupWorker<Request, EverTmPaneResult>(RunLookup, Deliver,
                 m => { try { DiagnosticLog.WriteAlways("EverTM", m); } catch { } });
 
@@ -96,6 +109,7 @@ namespace Supervertaler.Trados
         void Shutdown()
         {
             try { _worker?.Stop(); } catch { }
+            try { _again?.Stop(); _again?.Dispose(); } catch { }
             try { LicenseManager.Instance.LicenseStateChanged -= OnLicenceChanged; } catch { }
             try { if (_editor != null) _editor.ActiveDocumentChanged -= OnActiveDocumentChanged; } catch { }
             Attach(null);
@@ -135,6 +149,8 @@ namespace Supervertaler.Trados
         {
             if (_doc != null) { try { _doc.ActiveSegmentChanged -= OnActiveSegmentChanged; } catch { } }
             _doc = doc;
+            _segmentKey = null;
+            try { _again?.Stop(); } catch { }
             _worker?.Invalidate();
             if (_doc != null) _doc.ActiveSegmentChanged += OnActiveSegmentChanged;
         }
@@ -144,7 +160,7 @@ namespace Supervertaler.Trados
         /// <summary>
         /// Copies the active segment and asks for its lookup. UI thread; costs the copy only. Never throws into Studio.
         /// </summary>
-        void LookUpActive()
+        void LookUpActive(bool again = false)
         {
             try
             {
@@ -158,6 +174,8 @@ namespace Supervertaler.Trados
                 var pair = doc.ActiveSegmentPair;
                 if (pair?.Source == null) { _worker.Invalidate(); c.ShowMessage("Click a segment to see EverTM's matches."); return; }
 
+                string key = doc.GetParentParagraphUnit(pair)?.Properties?.ParagraphUnitId.Id + "/" + pair.Properties?.Id.Id;
+                if (again && key != _segmentKey) return;   // moved on meanwhile: that segment has its own lookup
                 var file = doc.ActiveFile;
                 var sourceCulture = file?.SourceFile?.Language?.CultureInfo?.Name;
                 var targetCulture = file?.Language?.CultureInfo?.Name;
@@ -189,9 +207,16 @@ namespace Supervertaler.Trados
                     },
                 };
                 string fileKey = file?.LocalFilePath;
-                if (fileKey != null && fileKey != _noteFor) { _noteFor = fileKey; _projectNote = null; request.ProjectFile = fileKey; }
+                if (!again && fileKey != null && fileKey != _noteFor) { _noteFor = fileKey; _projectNote = null; request.ProjectFile = fileKey; }
 
-                c.MarkStale();
+                request.Again = again;
+                if (!again)
+                {
+                    _segmentKey = key;
+                    c.MarkStale();
+                    _again.Stop();
+                    _again.Start();
+                }
                 _worker.Submit(request);
             }
             catch (Exception ex)
@@ -234,8 +259,22 @@ namespace Supervertaler.Trados
                 r.Milliseconds = result.Milliseconds;
                 if (r.ProjectNote != null) _projectNote = r.ProjectNote;
                 else r.ProjectNote = _projectNote;
+                if (result.Value != null && SameMatches(c.Result, r)) return;   // the second look found nothing new
                 c.ShowResult(r);
             }));
+        }
+
+        /// <summary>Whether a second look found what is already shown (same units, same scores, same problem).</summary>
+        static bool SameMatches(EverTmPaneResult shown, EverTmPaneResult fresh)
+        {
+            if (shown == null || fresh == null || shown.SegmentId != fresh.SegmentId || shown.ParagraphId != fresh.ParagraphId) return false;
+            if (shown.Problem != fresh.Problem || shown.Error != fresh.Error) return false;
+            var a = shown.Matches ?? new List<VaultMatch>();
+            var b = fresh.Matches ?? new List<VaultMatch>();
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (a[i].Score != b[i].Score || a[i].Candidate?.Id != b[i].Candidate?.Id || a[i].Candidate?.TargetRaw != b[i].Candidate?.TargetRaw) return false;
+            return true;
         }
 
         // ---- inserting ----

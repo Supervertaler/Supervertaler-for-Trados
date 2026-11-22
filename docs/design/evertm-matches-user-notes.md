@@ -102,6 +102,10 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - When you move on, the matches shown turn grey until the new segment's arrive, and grey matches can't be inserted,
   so a match never lands in the wrong segment.
 - When the pane is hidden, nothing is looked up.
+- A segment you have just confirmed takes EverTM 1 to 3 seconds to take in. So the pane looks the segment you are on
+  up once more after 4 seconds: the segment you confirmed a moment ago then shows up as a fuzzy match for the next one
+  (very common in patents, where the next sentence is often a near-repeat). If nothing new turns up, nothing on screen
+  changes. (Translation Results doesn't do this: it looks a segment up once.)
 
 ## What stays with Studio
 

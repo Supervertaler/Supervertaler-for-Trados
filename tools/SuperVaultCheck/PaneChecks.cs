@@ -35,6 +35,8 @@ static class PaneChecks
         var root = Lookups(scratch, check);
         Console.WriteLine("EverTM Matches: the same tags as Translation Results");
         SameTagsAsTranslationResults(root, check);
+        Console.WriteLine("EverTM Matches: a segment just confirmed, as a fuzzy match for the next one");
+        JustConfirmed(root, check);
     }
 
     // ---- the worker ----
@@ -402,5 +404,30 @@ static class PaneChecks
         }
         Console.WriteLine(answer.Matches.Count + " matches drawn to " + png);
         return 0;
+    }
+    // ---- the second look ----
+
+    /// <summary>
+    /// The pane looks a segment up again 4 s after arriving on it (EverTmMatchesViewPart._again), because a segment
+    /// just confirmed is offered only as an exact match until it reaches the index. This checks the timing that
+    /// relies on: right after confirming, the near-repeat is not yet a fuzzy match; within 4 s it is.
+    /// </summary>
+    static void JustConfirmed(string root, Action<bool, string> check)
+    {
+        var lib = VaultLibrary.For(root);
+        var next = Request("De klep wordt automatisch gesloten zodra de druk boven de 4 bar komt.");
+        lib.Learn(new[] { new VaultLearnUnit { SourceCulture = "nl-BE", Source = "De klep wordt automatisch gesloten zodra de druk boven de 3 bar komt.",
+                                              TargetCulture = "en-GB", Target = "The valve is closed automatically as soon as the pressure exceeds 3 bar." } });
+        var first = EverTmMatchesLookup.Run(lib, next);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        EverTmMatchesLookup.Answer later = null;
+        while (sw.ElapsedMilliseconds < 4000)
+        {
+            Thread.Sleep(250);
+            later = EverTmMatchesLookup.Run(lib, next);
+            if (later.Matches.Count > 0) break;
+        }
+        check(later != null && later.Matches.Count > 0,
+              $"a segment just confirmed is a fuzzy match for the next one within 4 s ({sw.ElapsedMilliseconds} ms; at once: {first.Matches.Count} matches, so the second look is needed)");
     }
 }
