@@ -413,7 +413,7 @@ static class PaneChecks
             {
                 var list = Field<System.Windows.Forms.Control>(control, "_list");
                 int withOlder = answer.Matches.FindIndex(x => x.Candidate.Older > 0);
-                if (withOlder >= 0) list.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(list, new object[] { withOlder });
+                if (withOlder >= 0) control.ToggleOlder(answer.Matches[withOlder]);
             }
             for (int i = 0; i < 5; i++) { System.Windows.Forms.Application.DoEvents(); Thread.Sleep(20); }
             using (var bmp = new System.Drawing.Bitmap(form.Width, form.Height))
@@ -480,8 +480,13 @@ static class PaneChecks
             control.OlderWanted += (m, r, page) => asked.Add((m, page));
             control.ShowResult(result);
             System.Windows.Forms.Application.DoEvents();
+            check(asked.Count == 0 && Field<System.Windows.Forms.SplitContainer>(control, "_detailSplit").Panel2Collapsed,
+                  "only the newest shows: older translations are neither looked up nor listed until asked for (Michael, 22 Nov 2026)");
+            var matchList = Field<System.Windows.Forms.Control>(control, "_list");
+            check((bool)matchList.GetType().GetProperty("ShowOlderNote").GetValue(matchList), "the row says \"2 older\", as a link");
+            control.ToggleOlder(answer.Matches[0]);   // "2 older" clicked
             check(asked.Count == 1 && ReferenceEquals(asked[0].match, answer.Matches[0]) && asked[0].page == 0,
-                  "showing a result whose selected match has older translations asks for their first page, once (" + asked.Count + ")");
+                  "clicking \"2 older\" asks for their first page, once (" + asked.Count + ")");
             check(Title(control).Contains("Older translations (2)") && Title(control).Contains("loading"), "while it is on its way: \"" + Title(control) + "\"");
 
             // The view part's worker, done here in line.
@@ -511,6 +516,9 @@ static class PaneChecks
             check(details.StartsWith("Older translation 2 of match 1") && details.Contains("Created  1 Jan 2021"),
                   "selecting it shows its own details: " + details.Split('\n')[0]);
 
+            control.ToggleOlder(answer.Matches[0]);
+            check(Field<System.Windows.Forms.SplitContainer>(control, "_detailSplit").Panel2Collapsed && OlderCount(control) == 0, "clicking \"2 older\" again closes them");
+
             // A new segment without older translations: nothing asked, the area closed.
             var plain = EverTmMatchesLookup.Run(lib, Request("De klep sluit."));
             control.ShowResult(new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = plain.Matches, Units = plain.Units, SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB" });
@@ -520,7 +528,9 @@ static class PaneChecks
             // Switched off in Options > Details shown: never asked for.
             Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = new List<string> { "Older translations" });
             control.ShowResult(result);
-            check(asked.Count == 1, "\"Older translations\" switched off: not looked up");
+            control.ToggleOlder(answer.Matches[0]);
+            check(asked.Count == 1 && !(bool)matchList.GetType().GetProperty("ShowOlderNote").GetValue(matchList),
+                  "\"Older translations\" switched off in Options > Details shown: no \"2 older\" note, and never looked up");
             Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = null);
         }
     }

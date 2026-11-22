@@ -82,6 +82,8 @@ namespace Supervertaler.Trados.Controls
             try { _list.Stacked = Settings.SettingsService.Current.EverTmPaneStacked; } catch { }
             _list.SelectionChanged += (s, e) => MatchSelected();
             _list.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
+            _list.OlderClicked += m => ToggleOlder(m);
+            _list.ShowOlderNote = !OlderHidden;
 
             _details = new RichTextBox
             {
@@ -230,6 +232,7 @@ namespace Supervertaler.Trados.Controls
             var rows = r.Matches ?? new List<VaultMatch>();
             if (_byDate)
                 rows = rows.Select((m, i) => (m, i)).OrderByDescending(x => (x.m.Candidate?.Changed ?? x.m.Candidate?.Created) ?? DateTime.MinValue).ThenBy(x => x.i).Select(x => x.m).ToList();
+            _list.ShowOlderNote = !OlderHidden;
             _list.SetRows(rows, r);
             ShowStatus(StatusText());
             ShowDetails();
@@ -260,8 +263,8 @@ namespace Supervertaler.Trados.Controls
 
         // ---- older translations ----
 
-        /// <summary>A match was selected (or a new result came): its details, and its older translations if it has any.
-        /// Looked up only now, for the selected match, never for every segment's every match.</summary>
+        /// <summary>A match was selected (or a new result came): its details. Its older translations stay closed until
+        /// asked for: usually only the newest is wanted (Michael, 22 Nov 2026).</summary>
         void MatchSelected()
         {
             _detailsOf = null;
@@ -269,7 +272,18 @@ namespace Supervertaler.Trados.Controls
             var m = _list.Selected;
             if (m != null && ReferenceEquals(m, _olderFor)) return;
             ClearOlder();
+        }
+
+        /// <summary>
+        /// "2 older" clicked (or the menu's "Show older translations"): opens that match's older translations under its
+        /// details, looking up the first page; clicked again, closes them. Only then, and only for that match, are they
+        /// looked up.
+        /// </summary>
+        public void ToggleOlder(VaultMatch m)
+        {
             if (m == null || _result == null || (m.Candidate?.Older ?? 0) <= 0 || OlderHidden) return;
+            if (ReferenceEquals(m, _olderFor)) { ClearOlder(); ShowDetails(); return; }
+            ClearOlder();
             _olderFor = m;
             _olderTotal = m.Candidate.Older;
             _detailSplit.Panel2Collapsed = false;
@@ -402,8 +416,8 @@ namespace Supervertaler.Trados.Controls
                 Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = off.Count == 0 ? null : off);
                 showAll.Enabled = off.Count > 0;
                 ShowDetails();
+                _list.ShowOlderNote = !OlderHidden;
                 if (OlderHidden) ClearOlder();
-                else if (_olderFor == null) MatchSelected();
             }
             showAll.Click += (s, e) => { foreach (var i in items) i.Checked = true; Save(); };
             menu.DropDownItems.Add(showAll);
@@ -496,13 +510,24 @@ namespace Supervertaler.Trados.Controls
         readonly int _numberWidth, _badgeWidth, Gutter;
         static readonly Color RemovedColor = Color.FromArgb(190, 30, 30), AddedColor = Color.FromArgb(0, 120, 40),
             AddedBack = Color.FromArgb(222, 244, 226), TagColor = Color.FromArgb(120, 120, 120), TagBack = Color.FromArgb(232, 232, 232),
-            SummaryColor = Color.FromArgb(140, 140, 140), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
+            SummaryColor = Color.FromArgb(140, 140, 140), LinkColor = Color.FromArgb(30, 100, 180), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
 
         public event EventHandler SelectionChanged;
         public event Action<VaultMatch> InsertRequested;
 
         /// <summary>A match's older translations: target and summary line only, nothing selected at first.</summary>
         public readonly bool Others;
+
+        /// <summary>"2 older" on a row was clicked, or the menu's "Show older translations" chosen.</summary>
+        public event Action<VaultMatch> OlderClicked;
+
+        /// <summary>Whether rows say "2 older" (Options > Details shown > Older translations).</summary>
+        public bool ShowOlderNote
+        {
+            get => _showOlderNote;
+            set { if (_showOlderNote != value) { _showOlderNote = value; _laidOutWidth = -1; Invalidate(); } }
+        }
+        bool _showOlderNote = true;
 
         public EverTmMatchList(bool others = false)
         {
@@ -525,9 +550,15 @@ namespace Supervertaler.Trados.Controls
 
             var insert = new ToolStripMenuItem(others ? "Insert this translation" : "Insert this match", null, (s, e) => RequestInsert());
             var copy = new ToolStripMenuItem("Copy the target text", null, (s, e) => CopyTarget());
+            var older = new ToolStripMenuItem("Show older translations", null, (s, e) => { if (Selected != null) OlderClicked?.Invoke(Selected); });
             _menu.Items.Add(insert);
             _menu.Items.Add(copy);
-            _menu.Opening += (s, e) => { insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null; };
+            if (!others) _menu.Items.Add(older);
+            _menu.Opening += (s, e) =>
+            {
+                insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null;
+                older.Visible = _showOlderNote && (Selected?.Candidate?.Older ?? 0) > 0;
+            };
             ContextMenuStrip = _menu;
         }
 
@@ -580,7 +611,7 @@ namespace Supervertaler.Trados.Controls
         {
             var row = new Row { Match = m, Source = Others ? new List<Run>() : SourceRuns(m, r), Target = PlainRuns(m.Target, Style.Normal) };
             row.TooLong = m.Diff != null && m.Diff.Edits == null;
-            if (!Others && m.Candidate?.Older > 0) row.Older = m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older + " older";
+            if (!Others && m.Candidate?.Older > 0) row.Older = (m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older.ToString("N0", CultureInfo.CurrentCulture) + " older") + " ▸";
             return row;
         }
 
@@ -813,7 +844,18 @@ namespace Supervertaler.Trados.Controls
             else _scroll.Value = 0;
         }
 
-        int OlderWidth(Row row) => row.Older == null ? 0 : TextRenderer.MeasureText(row.Older, _small, Size.Empty, TextFormatFlags.NoPadding).Width + 10;
+        bool HasOlderNote(Row row) => row.Older != null && _showOlderNote;
+
+        int OlderWidth(Row row) => !HasOlderNote(row) ? 0 : TextRenderer.MeasureText(row.Older, _small, Size.Empty, TextFormatFlags.NoPadding).Width + 10;
+
+        /// <summary>Where a row's "2 older" link is, in content coordinates; empty when it has none.</summary>
+        Rectangle OlderBox(Row row)
+        {
+            if (!HasOlderNote(row)) return Rectangle.Empty;
+            int right = ClientSize.Width - (_scroll.Visible ? _scroll.Width : 0);
+            int w = OlderWidth(row);
+            return new Rectangle(right - w, row.SummaryY - 2, w, _small.Height + 4);
+        }
 
         /// <summary>The faint line, fitted once per layout (not per paint): Client · Project · date, and the variant.</summary>
         string SummaryLine(Row row, int width)
@@ -864,10 +906,12 @@ namespace Supervertaler.Trados.Controls
 
                 // The summary line, faint; "N older" at its right.
                 int sy = row.SummaryY - offset;
-                if (row.Older != null)
+                if (HasOlderNote(row))
                 {
+                    // A link: it opens this match's older translations.
                     int olderWidth = OlderWidth(row);
-                    TextRenderer.DrawText(g, row.Older, _small, new Point(right - olderWidth, sy), SummaryColor, TextFormatFlags.NoPadding);
+                    using (var link = new Font(_small, FontStyle.Underline))
+                        TextRenderer.DrawText(g, row.Older, link, new Point(right - olderWidth, sy), _stale ? Color.Silver : LinkColor, TextFormatFlags.NoPadding);
                 }
                 TextRenderer.DrawText(g, row.Summary ?? "", _small, new Point(Gutter, sy), SummaryColor, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
@@ -929,6 +973,22 @@ namespace Supervertaler.Trados.Controls
             Focus();
             int i = RowAtPoint(e.Location);
             if (i >= 0) Select(i);
+            if (i >= 0 && e.Button == MouseButtons.Left && !_stale && OnOlderLink(i, e.Location)) OlderClicked?.Invoke(_rows[i].Match);
+        }
+
+        bool OnOlderLink(int i, Point p)
+        {
+            var box = OlderBox(_rows[i]);
+            if (box.IsEmpty) return false;
+            box.Offset(0, -(_scroll.Visible ? _scroll.Value : 0));
+            return box.Contains(p);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            int i = Others ? -1 : RowAtPoint(e.Location);
+            Cursor = i >= 0 && OnOlderLink(i, e.Location) ? Cursors.Hand : Cursors.Default;
         }
 
         protected override void OnMouseDoubleClick(MouseEventArgs e)

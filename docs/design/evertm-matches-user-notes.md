@@ -72,8 +72,8 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   - Several values: the first and "+2".
   - A language variant other than your project's is added at the end ("· en-US" in an en-GB project).
   - In a narrow pane, Client and Project are shortened with "…"; the date is always shown whole.
-- **"2 older"** at the right: EverTM has 2 older translations of the same sentence, and shows the newest. Select
-  the match to see them (see below).
+- **"2 older ▸"** at the right: EverTM has 2 older translations of the same sentence, and shows only the newest.
+  Click it to see them (see below).
 
 ## The details under the list
 
@@ -85,16 +85,18 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 
 ## Older translations
 
-- When the selected match has older translations, they're listed under its details: **Older translations (2)**.
-  Best first, by the same rule as the match itself: your project's own variant (en-GB in an en-GB project) first,
+- Usually you only want the newest, so that's all the pane shows. To see the others, click **"2 older ▸"** on the
+  match (or right-click it and choose **Show older translations**). They're listed under its details:
+  **Older translations (2)**. Click "2 older ▸" again, or pick another match, to close them. Best first, by the same rule as the match itself: your project's own variant (en-GB in an en-GB project) first,
   then the newest.
 - Each shows its translation and a faint line with its client, project and date. Click one to see all its details.
 - **Double-click one, or select it and press Enter, to insert it** instead of the match. It goes in just like a
   match: with your segment's formatting, a different number put right (claim 8 becomes claim 9), labelled as a TM
   match, never confirmed. Alt+Shift+1–9 and the digit keys still insert the matches in the list above.
 - A sentence with many translations shows 50 at a time: **Show 50 more** at the right.
-- Not wanted? Options > Details shown > untick **Older translations**, and they're never looked up.
-- They're looked up only for the selected match, in the background, so moving through segments is never slowed.
+- Not wanted at all? Options > Details shown > untick **Older translations**: no "2 older" on the matches, and
+  they're never looked up.
+- They're looked up only when you click, in the background, so moving through segments is never slowed.
   A segment you confirmed in the last minute isn't listed yet.
 
 ## The status line
