@@ -356,6 +356,13 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "everTmPaneHiddenDetails", EmitDefaultValue = false)]
         public List<string> EverTmPaneHiddenDetails { get; set; }
 
+        /// <summary>
+        /// Keep Studio's Translation Results from covering Supervertaler's panes (TermLens, EverTM Matches, TermPicker)
+        /// on every segment: <see cref="Core.TranslationResultsGuard"/>. Off unless switched on (EverTM Matches > Options).
+        /// </summary>
+        [DataMember(Name = "keepTranslationResultsBack", EmitDefaultValue = false)]
+        public bool KeepTranslationResultsBack { get; set; }
+
         // ─── Voice commands ──────────────────────────────────────────
         /// <summary>
         /// Remembered position of the floating voice status strip (the

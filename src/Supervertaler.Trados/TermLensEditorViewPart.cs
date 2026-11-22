@@ -196,6 +196,8 @@ namespace Supervertaler.Trados
 
             _currentInstance = this;
             _uiThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+            // Translation Results covering this pane on every segment (EverTM Matches > Options; off by default).
+            Core.TranslationResultsGuard.Watch(this, _mainPanel.Value);
             ProjectProfileStore.AttachUiThread();
 
             // Startup notices are marshalled onto this context when the TermLens

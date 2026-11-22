@@ -31,6 +31,11 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
     again.
   - Give EverTM Matches a place of its own (for example where Translation Results used to be).
   *(to confirm in Studio: how much the tab blinks)*
+- **Or let Supervertaler keep Translation Results back:** EverTM Matches > Options > **Keep Translation Results
+  behind Supervertaler's panes** (off to start with). Then Translation Results can stay in the same tab group as
+  TermLens, EverTM Matches or TermPicker: when Studio brings it forward after a segment change, Supervertaler puts its
+  own pane back at once. The cursor stays in the editor. Click the Translation Results tab yourself and it stays in
+  front, until you click a Supervertaler tab again. *(to confirm in Studio: whether the swap is visible as a flicker)*
 
 ## Options (top right of the pane)
 

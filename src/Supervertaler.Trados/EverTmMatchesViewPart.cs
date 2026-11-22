@@ -87,6 +87,7 @@ namespace Supervertaler.Trados
             _control.OptionsChanged += (s, e) => LookUpActive();
             _control.VisibleChanged += (s, e) => { if (_control.Visible && _owed) LookUpActive(); };
             _control.Disposed += (s, e) => Shutdown();
+            TranslationResultsGuard.Watch(this, _control);
 
             _again = new System.Windows.Forms.Timer { Interval = 4000 };
             _again.Tick += (s, e) => { _again.Stop(); LookUpActive(again: true); };

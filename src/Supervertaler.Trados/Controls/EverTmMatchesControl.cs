@@ -133,6 +133,9 @@ namespace Supervertaler.Trados.Controls
             _optionsMenu.Items.Add(max);
             _optionsMenu.Items.Add(DetailsMenu());
             _optionsMenu.Items.Add(new ToolStripSeparator());
+            _optionsMenu.Items.Add(Item("Keep Translation Results behind Supervertaler's panes", s.KeepTranslationResultsBack,
+                () => Settings.SettingsService.Update(x => x.KeepTranslationResultsBack = !x.KeepTranslationResultsBack)));
+            _optionsMenu.Items.Add(new ToolStripSeparator());
             _optionsMenu.Items.Add(Item("Best match first", !_byDate, () => { _byDate = false; Redraw(); }));
             _optionsMenu.Items.Add(Item("Newest first", _byDate, () => { _byDate = true; Redraw(); }));
         }
