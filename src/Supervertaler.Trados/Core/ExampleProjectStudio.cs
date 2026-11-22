@@ -317,8 +317,10 @@ namespace Supervertaler.Trados.Core
 
             string refused = UiThread.Invoke(() =>
             {
-                var editor = SdlTradosStudio.Application.GetController<EditorController>();
-                foreach (var doc in editor.GetDocuments())
+                // StudioEditor.Controller, not Studio's own lookup: asked for before the
+                // Editor view exists, that lookup half-builds the view (see StudioEditor.cs).
+                var editor = StudioEditor.Controller;
+                foreach (var doc in editor?.GetDocuments() ?? Enumerable.Empty<IStudioDocument>())
                 {
                     try
                     {
