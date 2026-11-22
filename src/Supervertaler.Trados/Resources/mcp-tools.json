@@ -1301,7 +1301,7 @@
     {
       "name": "list_prompts",
       "access": "read",
-      "description": "List the prompts in Supervertaler for Trados's prompt library (Markdown files in the data folder's prompt_library\\Trados; memoQ keeps its own). Returns each prompt's name, description, folder/category, relativePath (pass it to get_prompt or save_prompt), and flags (isDefault=built-in, isQuickLauncher=appears in the editor right-click menu, isReadOnly). Use this first to see what prompts exist before reading or improving one.",
+      "description": "List the prompts in Supervertaler for Trados's prompt library (Markdown files in the data folder's prompt_library_Trados; memoQ keeps its own). Returns each prompt's name, description, folder/category, relativePath (pass it to get_prompt or save_prompt), and flags (isDefault=built-in, isQuickLauncher=appears in the editor right-click menu, isReadOnly). Use this first to see what prompts exist before reading or improving one.",
       "inputSchema": {
         "type": "object",
         "properties": {

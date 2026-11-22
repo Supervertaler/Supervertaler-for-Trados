@@ -50,8 +50,8 @@ namespace Supervertaler.Trados
             // (returns false) until that panel's handle exists. See Core/UiThread.
             Core.UiThread.Install();
 
-            // Supervertaler for Trados keeps its prompts in prompt_library\Trados,
-            // not the folder all products used to share (21 Nov 2026). Said before
+            // Supervertaler for Trados keeps its prompts in prompt_library_Trados, beside
+            // the folder all products used to share (21-22 Nov 2026). Said before
             // anything reads a prompt; it touches no disk.
             Supervertaler.Core.SupervertalerPaths.SetProduct("Trados");
 
@@ -68,7 +68,8 @@ namespace Supervertaler.Trados
             if (HandlePendingUpdate())
                 return;
 
-            // The first start with its own prompt library copies the prompts meant
+            // The first start with its own prompt library carries over a pre-release
+            // prompt_library\Trados if there is one, then copies the prompts meant
             // for Trados from the shared folder (once; see ProductPromptLibrary).
             // Done here, before any panel opens, so the copy happens at a known
             // moment and its outcome is logged. Never fatal: the library opens

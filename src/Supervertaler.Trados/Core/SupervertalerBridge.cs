@@ -4073,7 +4073,7 @@ namespace Supervertaler.Trados.Core
                     PromptsFolder = PromptLibrary.PromptsFolderPath,
                     DraftedBy = target.DraftedBy,
                     App = appWord,
-                    // Since 21 Nov 2026 the library is Trados's own (prompt_library\Trados):
+                    // Since 21 Nov 2026 the library is Trados's own (prompt_library_Trados):
                     // memoQ no longer sees it, so "available to both products" would be untrue.
                     Note = (created ? "Saved to the Trados prompt library as \"" : "Updated \"") + target.Name + "\" ("
                          + target.RelativePath + "). Recorded as drafted by the chat. "
