@@ -25,9 +25,13 @@ repository). Not yet in Help.
   switched off in the example project.
 - For a **language that is not prepared yet**: the document only. Translate active segment, Batch Translate,
   Proofread and QuickLauncher all work; FuzzyFixer and TermLens have nothing to show. A message says so.
-- The example's translations were made with AI and checked by AI (and the Dutch by a person). [Fill in when the
-  translations are made.]
-- The prepared languages: [list when made].
+- The example's translations were made with AI (GPT-6.1 Sol) and checked by AI (Claude Opus 5.5, every segment scored
+  blind; nothing below "correct" went in), plus checks by script (numbers, formatting, product names). The Dutch was
+  read by a person. [Confirm once Michael has read it.]
+- The prepared languages (22): Chinese (Simplified), Czech, Danish, Dutch, Finnish, French, German, Greek, Hungarian,
+  Italian, Japanese, Korean, Norwegian (Bokmål), Polish, Portuguese (Brazil), Portuguese (Portugal), Romanian, Russian,
+  Spanish, Swedish, Turkish, Ukrainian. Other variants of these languages (German (Austria), French (Canada) …) use
+  the same data. Every other language: document only.
 
 ## Things to try (the closing message lists them)
 

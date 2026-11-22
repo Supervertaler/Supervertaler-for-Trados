@@ -289,6 +289,50 @@ foreach ($e in $data.Tm) {
 }
 $tm = $null
 
+# Into English, every prepared language: the TM's source is that language now,
+# and the scores follow that language's wording, so entries designed to sit
+# near 70% land either side of it. What the demo needs, and what is checked:
+# the exact matches at 100%, and at least four matches FuzzyFixer repairs.
+# Entries outside their English band are listed, not failed.
+$checkedRev = 0
+foreach ($k in @($data.Languages.Keys | Sort-Object)) {
+    if ($EP::Missing($data, $k).Count -gt 0) { continue }
+    $cult = switch ($k) { 'pt' { 'pt-PT' } 'zh-Hans' { 'zh-CN' } default { [Globalization.CultureInfo]::CreateSpecificCulture($k).Name } }
+    $dir = $EP::Direction($data, $cult, $true, 'en-US', [ref]$err)
+    if (-not $dir) { Check $false "into English from $k ($cult): $err"; continue }
+    $u = $EP::TmUnits($data, $dir)
+    $p2 = [string](Join-Path $Root "tm\rev-$k.sdltm")
+    (S 'CreateTmFile').Invoke($null, [object[]]@($p2, $cult, 'en-US', $u.PSObject.BaseObject))
+    $tmr = New-Object Sdl.LanguagePlatform.TranslationMemoryApi.FileBasedTranslationMemory($p2)
+    $c = [Globalization.CultureInfo]::GetCultureInfo($cult)
+    $bad = @(); $shown = @(); $off = @(); $repairable = 0
+    foreach ($e in $data.Tm) {
+        $text = FirstSentence ($data.Languages[$k].Document[$e.For])
+        $tsrc = $EP::PlainText($data.Languages[$k].Tm[$e.Id])
+        $seg = New-Object Sdl.LanguagePlatform.Core.Segment($c); $seg.Add($text)
+        $best = 0
+        foreach ($r in $tmr.LanguageDirection.SearchSegment($settings, $seg).Results) {
+            if ($r.MemoryTranslationUnit.SourceSegment.ToPlain() -eq $tsrc -and $r.ScoringResult.Match -gt $best) { $best = $r.ScoringResult.Match } }
+        $ff = $TFL::Describe($text, $tsrc, 'target', $best, $false, 70, 'example')
+        if ($e.Band -eq '100' -and $best -ne 100) { $bad += "$($e.Id) $best% (exact match expected)" }
+        if ($ff -and $ff.Score -ge 70 -and $ff.Score -le 99) { $repairable++ }
+        $inBand = switch ($e.Band) {
+            '100'     { $best -eq 100 }
+            'numbers' { $ff -and $ff.Score -ge 99 }
+            'fuzzy'   { $ff -and $ff.Score -ge 70 -and $ff.Score -le 99 }
+            'low'     { $null -eq $ff }
+        }
+        $shown += "$($e.Id) $best"
+        if (-not $inBand -and $e.Band -ne '100') { $off += "$($e.Id) $best% (band $($e.Band))" }
+    }
+    if ($repairable -lt 4) { $bad += "only $repairable matches FuzzyFixer repairs" }
+    $tmr = $null
+    Check ($bad.Count -eq 0) ("into English from {0}: {1} repairable; {2}{3}{4}" -f $cult, $repairable, ($shown -join ', '),
+        $(if ($off.Count) { '  (outside the English band: ' + ($off -join '; ') + ')' }), $(if ($bad.Count) { '  PROBLEM: ' + ($bad -join '; ') }))
+    $checkedRev++
+}
+Write-Host "INFO  into-English directions checked: $checkedRev"
+
 # == F  the termbase ============================================================
 Write-Host "-- F  the termbase"
 $TR = $plugin.GetType('Supervertaler.Trados.Core.TermbaseReader', $true)

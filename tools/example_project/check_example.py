@@ -37,9 +37,33 @@ def markup(t):
     return (t.count("**"), len(re.findall(r"(?<!\*)\*(?!\*)", t)), sorted(re.findall(r"\]\(([^)]+)\)", t)))
 
 
-def numbers(t):
+WORDS = {"one": "1", "once": "1", "two": "2", "twice": "2", "three": "3", "four": "4", "five": "5",
+         "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
+
+
+def numbers(t, english=False):
     t = re.sub(r"\]\([^)]+\)", "", t)  # not the url
-    return sorted(n.replace(",", ".") for n in re.findall(r"\d+(?:[.,]\d+)?", t))
+    found = [n.replace(",", ".") for n in re.findall(r"\d+(?:[.,]\d+)?", t)]
+    if english:  # Japanese, Korean, Chinese write "three holes" and "every two years" with digits
+        found += [WORDS[w] for w in re.findall(r"[a-z]+", t.lower()) if w in WORDS]
+    return sorted(found)
+
+
+def numbers_ok(en, tr):
+    """Every digit of the English is in the translation; any other number in the
+    translation is one the English spells out as a word."""
+    have, need, words = numbers(tr), numbers(en), numbers(en, english=True)
+    rest = list(have)
+    for n in need:
+        if n not in rest: return False
+        rest.remove(n)
+    pool = list(words)
+    for n in numbers(en): pool.remove(n)
+    for n in rest:
+        if n == "1": continue  # "2年に1回": once every two years
+        if n not in pool: return False
+        pool.remove(n)
+    return True
 
 
 def check(data, lang, res, verdicts):
@@ -53,7 +77,7 @@ def check(data, lang, res, verdicts):
             tr = (got.get(i) or "").strip()
             if not tr: errors.append(f"{part} {i}: missing"); continue
             if markup(en) != markup(tr): errors.append(f"{part} {i}: markup differs: {tr}")
-            if numbers(en) != numbers(tr): errors.append(f"{part} {i}: numbers differ: {tr}")
+            if not numbers_ok(en, tr): errors.append(f"{part} {i}: numbers differ: {tr}")
             for k in KEEP:
                 if k in en and k not in tr: errors.append(f"{part} {i}: '{k}' not kept: {tr}")
     terms = r.get("terms") or {}
@@ -77,6 +101,7 @@ def check(data, lang, res, verdicts):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # Greek, Japanese … on a Windows console
     merge = "--merge" in sys.argv
     data = json.load(open(DATA, encoding="utf-8"))
     vpath = os.path.join(HERE, "out", "verdicts.json")

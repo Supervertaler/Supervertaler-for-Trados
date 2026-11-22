@@ -10,7 +10,7 @@ COSTS MONEY: run only on Michael's go. Without --go it prints an estimate.
 Reads tools\\example_project\\out\\<lang>.json, writes out\\verdicts.json
 ({lang: [{id, score, why}]}), which check_example.py reads.
 """
-import argparse, json, os
+import argparse, json, os, sys
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,7 +50,7 @@ def judge(key, data, lang, res):
     # Streaming: a long answer must not hit the HTTP timeout. Effort high: this
     # is a quality check, not bulk work (Opus 5.5 defaults to medium).
     with client.messages.stream(model=MODEL, max_tokens=64000, system=SYSTEM,
-                                thinking={"type": "adaptive"}, output_config={"effort": "high"},
+                                extra_body={"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}},  # SDK 0.72 predates both
                                 messages=[{"role": "user", "content": msg}]) as st:
         r = st.get_final_message()
     if r.stop_reason in ("refusal", "max_tokens"):
@@ -64,6 +64,7 @@ def judge(key, data, lang, res):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # Greek, Japanese … on a Windows console
     ap = argparse.ArgumentParser()
     ap.add_argument("--keys", required=True)
     ap.add_argument("--go", action="store_true")
@@ -76,7 +77,7 @@ def main():
     if not a.go or not langs:
         print("Not sent: add --go to send." if langs else "Nothing translated yet.")
         return
-    key = json.load(open(a.keys, encoding="utf-8"))["anthropic"]
+    key = json.load(open(a.keys, encoding="utf-8"))["claude"]
     todo = [(l, json.load(open(os.path.join(OUT, l + ".json"), encoding="utf-8"))) for l in langs]
     with ThreadPoolExecutor(4) as ex:
         res = list(ex.map(lambda t: judge(key, data, t[0], t[1]), todo))

@@ -107,6 +107,7 @@ def run(key, data, lang):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # Greek, Japanese … on a Windows console
     ap = argparse.ArgumentParser()
     ap.add_argument("--keys", required=True, help="the Supervertaler api-keys.json")
     ap.add_argument("--go", action="store_true", help="really send (costs money)")
