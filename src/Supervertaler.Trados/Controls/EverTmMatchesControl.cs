@@ -414,41 +414,85 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>
         /// The stored source with the differences from the document marked, from the alignment EverTM computed for the
-        /// score (the one Translation Results draws): a stored word your segment lacks is struck through in red; a
-        /// word your segment has and the stored one lacks is shown in place, green and underlined; a changed word is
-        /// the stored one struck through, then yours. A number EverTM replaced counts as the same.
+        /// score (the one Translation Results draws), grouped as Translation Results groups them (Michael, 22 Nov
+        /// 2026): each stretch that differs is shown as the stored words struck through in red, all together, then
+        /// your segment's words for it, green and underlined, all together. Spaces between changed words don't end a
+        /// stretch; an unchanged word does. A number EverTM replaced counts as unchanged.
         /// </summary>
         static List<Run> SourceRuns(VaultMatch m, EverTmPaneResult r)
         {
             var memory = m.SourceTokens;
-            if (m.Diff?.Edits == null || memory == null || m.DocumentTokens == null) return PlainRuns(m.Source, Style.Normal);
+            var doc = m.DocumentTokens;
+            if (m.Diff?.Edits == null || memory == null || doc == null) return PlainRuns(m.Source, Style.Normal);
             var docPieces = r?.Editor?.Pieces;
-            var before = new Dictionary<int, List<int>>();         // memory position -> document tokens to show before it
-            var style = new Dictionary<int, Style>();              // memory token -> how it is drawn
-            var changedTo = new Dictionary<int, int>();            // memory token -> the document token that replaced it
+            int n = memory.Count;
+            var removed = new bool[n];
+            var addedAt = new Dictionary<int, List<int>>();     // memory position -> document tokens that belong there
+            void Add(int at, int a)
+            {
+                if (a < 0 || a >= doc.Count) return;
+                if (!addedAt.TryGetValue(at, out var list)) addedAt[at] = list = new List<int>();
+                list.Add(a);
+            }
             foreach (var e in m.Diff.Edits)
             {
                 switch (e.Op)
                 {
-                    case VaultEditOp.Insert: style[e.B] = Style.Removed; break;
-                    case VaultEditOp.Delete:
-                        if (!before.TryGetValue(e.B, out var list)) before[e.B] = list = new List<int>();
-                        list.Add(e.A);
-                        break;
+                    case VaultEditOp.Insert: if (e.B >= 0 && e.B < n) removed[e.B] = true; break;
+                    case VaultEditOp.Delete: Add(Math.Max(0, Math.Min(n, e.B)), e.A); break;
                     case VaultEditOp.Change:
-                        if (!e.Replaced) { style[e.B] = Style.Removed; changedTo[e.B] = e.A; }
+                        if (e.Replaced || e.B < 0 || e.B >= n) break;
+                        removed[e.B] = true;
+                        Add(e.B + 1, e.A);
                         break;
                 }
             }
+
+            bool Changed(int k) => (k < n && removed[k]) || addedAt.ContainsKey(k);
             var runs = new List<Run>();
-            for (int b = 0; b <= memory.Count; b++)
+            int b = 0;
+            while (b <= n)
             {
-                if (before.TryGetValue(b, out var docs))
-                    foreach (var a in docs) runs.Add(TokenRun(m.DocumentTokens, a, docPieces, Style.Added));
-                if (b == memory.Count) break;
-                var s = style.TryGetValue(b, out var st) ? st : Style.Normal;
-                runs.Add(TokenRun(memory, b, m.Source, s));
-                if (changedTo.TryGetValue(b, out var a2)) runs.Add(TokenRun(m.DocumentTokens, a2, docPieces, Style.Added));
+                if (!Changed(b))
+                {
+                    if (b == n) break;
+                    runs.Add(TokenRun(memory, b, m.Source, Style.Normal));
+                    b++;
+                    continue;
+                }
+                // One stretch: from here to the next unchanged word.
+                int memFirst = -1, memLast = -1, docMin = int.MaxValue, docMax = -1, j = b;
+                while (j <= n)
+                {
+                    if (addedAt.TryGetValue(j, out var list))
+                    {
+                        foreach (var a in list) { docMin = Math.Min(docMin, a); docMax = Math.Max(docMax, a); }
+                        addedAt.Remove(j);   // taken: the unchanged word at j is drawn next, as it is
+                    }
+                    if (j == n) { j = n + 1; break; }
+                    if (removed[j]) { if (memFirst < 0) memFirst = j; memLast = j; j++; continue; }
+                    if (memory[j].Kind == VaultTokenKind.Space)
+                    {
+                        int k = j;
+                        while (k < n && memory[k].Kind == VaultTokenKind.Space) k++;
+                        if (Changed(k) && k > j) { j = k; continue; }   // only spaces before more change: same stretch
+                    }
+                    break;
+                }
+                if (memFirst >= 0)
+                    for (int k = memFirst; k <= memLast; k++)
+                        runs.Add(TokenRun(memory, k, m.Source, Style.Removed));
+                // Your words, without spaces at either end: the unchanged text around them has its own.
+                while (docMax >= docMin && docMax >= 0 && doc[docMax].Kind == VaultTokenKind.Space) docMax--;
+                while (docMin <= docMax && doc[docMin].Kind == VaultTokenKind.Space) docMin++;
+                if (docMax >= 0 && docMin <= docMax)
+                    for (int a = docMin; a <= docMax; a++)
+                        runs.Add(TokenRun(doc, a, docPieces, Style.Added));
+                // The spaces skipped after the last removed word, before the unchanged word, are drawn as they are.
+                int resume = memLast >= 0 ? memLast + 1 : b;
+                for (int k = resume; k < Math.Min(j, n); k++)
+                    if (!removed[k]) runs.Add(TokenRun(memory, k, m.Source, Style.Normal));
+                b = j;   // the unchanged word that ended the stretch (its additions are taken), or past the end
             }
             return runs;
         }
@@ -458,7 +502,7 @@ namespace Supervertaler.Trados.Controls
             if (i < 0 || i >= tokens.Count) return new Run { Text = "", Style = style };
             var t = tokens[i];
             if (t.Kind == VaultTokenKind.Tag) return new Run { Text = TagMark(pieces, t.Piece), Style = Style.Tag };
-            if (t.Kind == VaultTokenKind.Space) return new Run { Text = " ", Style = style == Style.Added ? Style.Added : Style.Normal, Space = true };
+            if (t.Kind == VaultTokenKind.Space) return new Run { Text = " ", Style = style == Style.Added || style == Style.Removed ? style : Style.Normal, Space = true };
             return new Run { Text = t.Text, Style = style };
         }
 
@@ -518,7 +562,11 @@ namespace Supervertaler.Trados.Controls
                     bool sameLine = last.Box.Y == y, sameLook = last.Run.Style == r.Style && r.Style != Style.Tag;
                     bool glued = !last.Run.Text.EndsWith(" ", StringComparison.Ordinal);   // no space in between
                     // Everything between two spaces that looks the same stays one piece ("(P", "drops.", "formule:").
-                    if (sameLine && (r.Space ? last.Run.Style != Style.Tag : sameLook && glued && r.Text.Length > 0))
+                    // A changed stretch (struck through, or underlined) stays one piece across its spaces, so its line runs
+                    // unbroken, as in Translation Results; it breaks only where the line wraps.
+                    bool stretch = sameLook && (r.Style == Style.Added || r.Style == Style.Removed);
+                    if (sameLine && (r.Space ? last.Run.Style != Style.Tag : sameLook && (glued || stretch) && r.Text.Length > 0)
+                        && (r.Space || glued || last.Box.X + Measure(last.Run.Text + r.Text, r.Style) <= x0 + width))
                     {
                         var joined = last.Run;
                         joined.Text += r.Space ? " " : r.Text;

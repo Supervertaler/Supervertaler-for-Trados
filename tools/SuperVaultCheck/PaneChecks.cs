@@ -351,6 +351,7 @@ static class PaneChecks
             "<tu><prop type=\"x-Client\">ACME</prop><prop type=\"x-Project\">PROJ-014</prop><tuv xml:lang=\"nl-NL\"><seg>De eindconcentratie aan pesticiden (P<bpt i=\"1\">&lt;sub&gt;</bpt>e<ept i=\"1\">&lt;/sub&gt;</ept>) na bijvoorbeeld een periode van 24 uren kan worden gemeten en gebruikt om de maximale pesticidenadsorptiecapaciteit te berekenen volgens de formule:</seg></tuv>" +
             "<tuv xml:lang=\"en-GB\"><seg>The final concentration of pesticides (P<bpt i=\"1\">&lt;sub&gt;</bpt>e<ept i=\"1\">&lt;/sub&gt;</ept>) after, for example, a period of 24 hours can be measured and used to calculate the maximum pesticide adsorption capacity according to the formula:</seg></tuv></tu>" +
             Tu("nl-NL", "en-US", "De pomp wordt gestart als de druk daalt.", "The pump is started when the pressure drops.") +
+            Tu("nl-NL", "en-GB", "Meer in het bijzonder wordt de pomp gestart volgens conclusie 8, waarbij de druk daalt tot 4 bar.", "More particularly, the pump is started according to claim 8, wherein the pressure drops to 4 bar.") +
             "</body></tmx>");
         var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
         lib.Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
@@ -365,6 +366,12 @@ static class PaneChecks
         var sub = factory.CreateTagPair(start, end);
         sub.Add(factory.CreateText(pf.CreateTextProperties("e")));
         source.Add(sub);
+        if (Environment.GetEnvironmentVariable("SV_PANE_PICTURE") == "grouped")
+        {
+            source = factory.CreateSegment(factory.CreateSegmentPairProperties());
+            source.Add(factory.CreateText(pf.CreateTextProperties("In een tweede aspect wordt de pomp gestart voor het zuiveren van water middels een drukfilter, waarbij de druk daalt tot 4 bar.")));
+        }
+        else
         source.Add(factory.CreateText(pf.CreateTextProperties(") na bijvoorbeeld een periode van 336 uren kan gemeten worden en gebruikt worden om de maximale fosfor adsorptiecapaciteit te berekenen.")));
         var editor = EverTmEditorSegment.From(source, new CultureCode("nl-NL"));
         var answer = EverTmMatchesLookup.Run(lib, new EverTmMatchesLookup.Request { Document = editor.Pieces, SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-NL", TargetCulture = "en-GB" });
