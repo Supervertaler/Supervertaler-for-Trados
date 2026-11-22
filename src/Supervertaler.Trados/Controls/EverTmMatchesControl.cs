@@ -42,6 +42,15 @@ namespace Supervertaler.Trados.Controls
         readonly SplitContainer _split;
         readonly EverTmMatchList _list;
         readonly RichTextBox _details;
+        // The selected match's older translations, under its details (docs/design/evertm-pane.md, section 7).
+        readonly SplitContainer _detailSplit;
+        readonly Label _olderTitle;
+        readonly LinkLabel _olderMore;
+        readonly EverTmMatchList _older;
+        VaultMatch _olderFor;      // the match whose older translations are shown (or on their way)
+        int _olderTotal, _olderPages;
+        bool _olderLoading;
+        VaultMatch _detailsOf;     // the older translation whose details are shown; null: the selected match's
         Panel _licenseOverlay;
         EverTmPaneResult _result;
         bool _byDate;
@@ -52,6 +61,10 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>The minimum % or the number of matches changed: the segment is looked up again.</summary>
         public event EventHandler OptionsChanged;
+
+        /// <summary>A page (0 is the first) of this match's older translations is wanted: the view part looks them up in
+        /// the background and hands them to <see cref="ShowOlder"/>.</summary>
+        public event Action<VaultMatch, EverTmPaneResult, int> OlderWanted;
 
         public EverTmMatchesControl()
         {
@@ -67,7 +80,7 @@ namespace Supervertaler.Trados.Controls
 
             _list = new EverTmMatchList { Dock = DockStyle.Fill };
             try { _list.Stacked = Settings.SettingsService.Current.EverTmPaneStacked; } catch { }
-            _list.SelectionChanged += (s, e) => ShowDetails();
+            _list.SelectionChanged += (s, e) => MatchSelected();
             _list.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
 
             _details = new RichTextBox
@@ -76,16 +89,37 @@ namespace Supervertaler.Trados.Controls
                 DetectUrls = false, ScrollBars = RichTextBoxScrollBars.Vertical, WordWrap = true, TabStop = false,
             };
 
+            _older = new EverTmMatchList(others: true) { Dock = DockStyle.Fill };
+            _older.SelectionChanged += (s, e) => { _detailsOf = _older.Selected; ShowDetails(); };
+            _older.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
+            var olderTop = new Panel { Dock = DockStyle.Top, Height = Font.Height + 6, BackColor = Color.FromArgb(246, 246, 246), Padding = new Padding(6, 0, 6, 0) };
+            _olderTitle = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Color.FromArgb(70, 70, 70) };
+            _olderMore = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 3, 0, 0), LinkColor = Color.FromArgb(30, 100, 180), Visible = false };
+            _olderMore.LinkClicked += (s, e) => MoreOlder();
+            olderTop.Controls.Add(_olderTitle);
+            olderTop.Controls.Add(_olderMore);
+
+            _detailSplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 5, BackColor = Color.FromArgb(225, 225, 225), Panel2Collapsed = true };
+            _detailSplit.Panel1.BackColor = Color.White;
+            _detailSplit.Panel2.BackColor = Color.White;
+            _detailSplit.Panel1.Padding = new Padding(6, 4, 4, 2);
+            _detailSplit.Panel1.Controls.Add(_details);
+            _detailSplit.Panel2.Controls.Add(_older);
+            _detailSplit.Panel2.Controls.Add(olderTop);
+
             _split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 5, BackColor = Color.FromArgb(225, 225, 225) };
             _split.Panel1.BackColor = Color.White;
             _split.Panel2.BackColor = Color.White;
             _split.Panel1.Controls.Add(_list);
-            _split.Panel2.Controls.Add(_details);
-            _split.Panel2.Padding = new Padding(6, 4, 4, 2);
+            _split.Panel2.Controls.Add(_detailSplit);
 
             Controls.Add(_split);
             Controls.Add(top);
-            Load += (s, e) => { try { _split.SplitterDistance = Math.Max(60, (int)(Height * 0.62)); } catch { } };
+            Load += (s, e) =>
+            {
+                try { _split.SplitterDistance = Math.Max(60, (int)(Height * 0.62)); } catch { }
+                try { _detailSplit.SplitterDistance = Math.Max(40, _detailSplit.Height / 2); } catch { }
+            };
 
             ShowStatus("Open a document to see EverTM's matches.");
         }
@@ -162,12 +196,13 @@ namespace Supervertaler.Trados.Controls
             _result = null;
             _note = null;
             _list.SetRows(new List<VaultMatch>(), null);
+            ClearOlder();
             _details.Clear();
             ShowStatus(message);
         }
 
         /// <summary>The segment changed and its lookup is on its way: the old matches are greyed, and can't be inserted.</summary>
-        public void MarkStale() => _list.Stale = true;
+        public void MarkStale() { _list.Stale = true; _older.Stale = true; }
 
         /// <summary>A note about the last action, shown in the status line until the next segment's result.</summary>
         public void ShowNote(string note)
@@ -223,9 +258,83 @@ namespace Supervertaler.Trados.Controls
             _status.Text = text ?? "";
         }
 
+        // ---- older translations ----
+
+        /// <summary>A match was selected (or a new result came): its details, and its older translations if it has any.
+        /// Looked up only now, for the selected match, never for every segment's every match.</summary>
+        void MatchSelected()
+        {
+            _detailsOf = null;
+            ShowDetails();
+            var m = _list.Selected;
+            if (m != null && ReferenceEquals(m, _olderFor)) return;
+            ClearOlder();
+            if (m == null || _result == null || (m.Candidate?.Older ?? 0) <= 0 || OlderHidden) return;
+            _olderFor = m;
+            _olderTotal = m.Candidate.Older;
+            _detailSplit.Panel2Collapsed = false;
+            AskOlder(0);
+        }
+
+        static bool OlderHidden =>
+            (Settings.SettingsService.Current.EverTmPaneHiddenDetails ?? new List<string>()).Contains("Older translations");
+
+        void ClearOlder()
+        {
+            _olderFor = null;
+            _olderTotal = _olderPages = 0;
+            _olderLoading = false;
+            _detailsOf = null;
+            _older.SetRows(new List<VaultMatch>(), null);
+            _olderMore.Visible = false;
+            _detailSplit.Panel2Collapsed = true;
+        }
+
+        void AskOlder(int page)
+        {
+            _olderLoading = true;
+            OlderTitle();
+            OlderWanted?.Invoke(_olderFor, _result, page);
+        }
+
+        void MoreOlder()
+        {
+            if (_olderFor == null || _olderLoading) return;
+            AskOlder(_olderPages);
+        }
+
+        /// <summary>
+        /// A page of <paramref name="match"/>'s older translations, from the view part. Dropped if another match has been
+        /// selected meanwhile. UI thread.
+        /// </summary>
+        public void ShowOlder(VaultMatch match, int page, List<VaultMatch> items, int total, string error)
+        {
+            if (match == null || !ReferenceEquals(match, _olderFor)) return;
+            _olderLoading = false;
+            if (error != null) { _olderTitle.Text = "Older translations: couldn't be read (" + error + ")"; return; }
+            _olderTotal = total;
+            if (page == 0) _older.SetRows(items ?? new List<VaultMatch>(), _result);
+            else _older.AddRows(items);
+            _olderPages = page + 1;
+            if (total == 0 && page == 0) { _detailSplit.Panel2Collapsed = true; return; }
+            OlderTitle();
+        }
+
+        void OlderTitle()
+        {
+            int shown = _older.Count;
+            string count = _olderTotal.ToString("N0", CultureInfo.CurrentCulture);
+            _olderTitle.Text = "Older translations (" + count + ")"
+                + (_olderLoading ? " · loading…" : shown < _olderTotal ? " · " + shown.ToString("N0", CultureInfo.CurrentCulture) + " shown" : "")
+                + (_olderLoading ? "" : " · double-click to insert");
+            int more = Math.Min(VaultLibrary.TranslationsPageSize, _olderTotal - shown);
+            _olderMore.Text = "Show " + more + " more";
+            _olderMore.Visible = !_olderLoading && more > 0 && _olderPages > 0;
+        }
+
         void ShowDetails()
         {
-            var m = _list.Selected;
+            var m = _detailsOf ?? _list.Selected;
             _details.Clear();
             if (m == null || _result == null) return;
             var c = m.Candidate ?? new VaultCandidate();
@@ -243,7 +352,9 @@ namespace Supervertaler.Trados.Controls
             }
 
             _details.SelectionFont = bold;
-            _details.AppendText("Match " + (_list.SelectedIndex + 1) + ", " + m.Score + "%" + (c.Exact ? " (exact)" : "") + "\n");
+            _details.AppendText(_detailsOf != null
+                ? "Older translation " + (_older.SelectedIndex + 1) + " of match " + (_list.SelectedIndex + 1) + "\n"
+                : "Match " + (_list.SelectedIndex + 1) + ", " + m.Score + "%" + (c.Exact ? " (exact)" : "") + "\n");
 
             var fields = c.Fields ?? new List<(string Field, string Value)>();
             foreach (var name in VaultFields.Order.Concat(fields.Select(f => f.Field).Where(f => !VaultFields.Order.Contains(f)).Distinct()))
@@ -259,8 +370,6 @@ namespace Supervertaler.Trados.Controls
             Line("Changed", When(c.Changed, c.ChangedBy));
             Line("In EverTM since", c.Added == null ? "not known" : EverTmSummary.FormatDate(c.Added.Value));
             Line("Language variants", string.IsNullOrWhiteSpace(c.Variant) ? "not known" : c.Variant.Replace(">", " > "));
-            if (c.Older > 0)
-                Line("Older translations", c.Older.ToString(CultureInfo.CurrentCulture) + " (newer translations of the same sentence win; the older ones will be listed here in a later version)");
             if (m.NumbersReplaced > 0)
                 Line("Numbers", m.NumbersReplaced == 1 ? "1 number replaced by your segment's" : m.NumbersReplaced + " numbers replaced by your segment's");
             if (m.Tags == VaultTagOutcome.Unmapped && _result.Editor != null && _result.Editor.HasTags)
@@ -293,6 +402,8 @@ namespace Supervertaler.Trados.Controls
                 Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = off.Count == 0 ? null : off);
                 showAll.Enabled = off.Count > 0;
                 ShowDetails();
+                if (OlderHidden) ClearOlder();
+                else if (_olderFor == null) MatchSelected();
             }
             showAll.Click += (s, e) => { foreach (var i in items) i.Checked = true; Save(); };
             menu.DropDownItems.Add(showAll);
@@ -342,6 +453,10 @@ namespace Supervertaler.Trados.Controls
     /// The list of matches. Each row: number and score; the stored source with the differences from your segment
     /// marked; the stored target; one faint summary line. Owner-drawn: only the rows on screen are painted, and the
     /// layout (word positions) is worked out once per result and per width, for at most 20 rows.
+    ///
+    /// <para>The same list shows a match's older translations (<see cref="Others"/>): the target and the summary line
+    /// only, as their source is the match's; no number, as Alt+Shift+1-9 and the digits insert matches. Up to a few
+    /// hundred rows (pages of 50, shown on request); laid out once per page and per width.</para>
     /// </summary>
     internal sealed class EverTmMatchList : Control
     {
@@ -386,8 +501,12 @@ namespace Supervertaler.Trados.Controls
         public event EventHandler SelectionChanged;
         public event Action<VaultMatch> InsertRequested;
 
-        public EverTmMatchList()
+        /// <summary>A match's older translations: target and summary line only, nothing selected at first.</summary>
+        public readonly bool Others;
+
+        public EverTmMatchList(bool others = false)
         {
+            Others = others;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
             TabStop = true;
             BackColor = Color.White;
@@ -399,12 +518,12 @@ namespace Supervertaler.Trados.Controls
             _tag = new Font("Segoe UI", 7.5f);
             _numberWidth = TextRenderer.MeasureText("20", _bold, Size.Empty, TextFormatFlags.NoPadding).Width;
             _badgeWidth = TextRenderer.MeasureText("100%", _bold, Size.Empty, TextFormatFlags.NoPadding).Width + 8;
-            Gutter = 6 + _numberWidth + 4 + _badgeWidth + 8;
+            Gutter = others ? 8 : 6 + _numberWidth + 4 + _badgeWidth + 8;
             Controls.Add(_scroll);
             _scroll.Scroll += (s, e) => Invalidate();
             _scroll.ValueChanged += (s, e) => Invalidate();
 
-            var insert = new ToolStripMenuItem("Insert this match", null, (s, e) => RequestInsert());
+            var insert = new ToolStripMenuItem(others ? "Insert this translation" : "Insert this match", null, (s, e) => RequestInsert());
             var copy = new ToolStripMenuItem("Copy the target text", null, (s, e) => CopyTarget());
             _menu.Items.Add(insert);
             _menu.Items.Add(copy);
@@ -434,7 +553,7 @@ namespace Supervertaler.Trados.Controls
         {
             _result = result;
             _rows = matches.Select(m => MakeRow(m, result)).ToList();
-            _selected = _rows.Count > 0 ? 0 : -1;
+            _selected = _rows.Count > 0 && !Others ? 0 : -1;
             _stale = false;
             _laidOutWidth = -1;
             _scroll.Value = 0;
@@ -443,13 +562,25 @@ namespace Supervertaler.Trados.Controls
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
 
+        /// <summary>The next page of older translations, below those shown; the selection and scroll position stay.</summary>
+        public void AddRows(List<VaultMatch> more)
+        {
+            if (more == null || more.Count == 0) return;
+            _rows.AddRange(more.Select(m => MakeRow(m, _result)));
+            _laidOutWidth = -1;
+            LayoutRows();
+            Invalidate();
+        }
+
+        public int Count => _rows.Count;
+
         // ---- rows ----
 
         Row MakeRow(VaultMatch m, EverTmPaneResult r)
         {
-            var row = new Row { Match = m, Source = SourceRuns(m, r), Target = PlainRuns(m.Target, Style.Normal) };
+            var row = new Row { Match = m, Source = Others ? new List<Run>() : SourceRuns(m, r), Target = PlainRuns(m.Target, Style.Normal) };
             row.TooLong = m.Diff != null && m.Diff.Edits == null;
-            if (m.Candidate?.Older > 0) row.Older = m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older + " older";
+            if (!Others && m.Candidate?.Older > 0) row.Older = m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older + " older";
             return row;
         }
 
@@ -638,7 +769,12 @@ namespace Supervertaler.Trados.Controls
                 {
                     row.Top = y;
                     int h = Pad;
-                    if (_stacked)
+                    if (Others)
+                    {
+                        h += Flow(row.Target, Gutter, y + h, width, row.TargetRuns) + Gap;
+                        row.Divider = Rectangle.Empty;
+                    }
+                    else if (_stacked)
                     {
                         h += Flow(row.Source, Gutter, y + h, width, row.SourceRuns) + Gap;
                         row.Divider = new Rectangle(Gutter, y + h, width, 1);
@@ -715,19 +851,14 @@ namespace Supervertaler.Trados.Controls
                     using (var b = new SolidBrush(Focused ? SelectedBack : Color.FromArgb(236, 242, 250))) g.FillRectangle(b, 0, top, right, row.Height);
                 using (var p = new Pen(Line)) g.DrawLine(p, 0, top + row.Height - 1, right, top + row.Height - 1);
 
-                // Number and score.
-                var score = row.Match.Score;
-                Color badge = score >= 100 ? Color.FromArgb(46, 140, 60) : score >= 85 ? Color.FromArgb(200, 130, 0) : Color.FromArgb(150, 110, 60);
-                if (_stale) badge = Color.Silver;
-                TextRenderer.DrawText(g, (i + 1).ToString(CultureInfo.InvariantCulture), _bold, new Point(6, top + Pad), _stale ? Color.Silver : Color.FromArgb(80, 80, 80), TextFormatFlags.NoPadding);
-                var scoreText = score + "%";
-                var scoreBox = new Rectangle(6 + _numberWidth + 4, top + Pad, _badgeWidth, _normal.Height);
-                using (var b = new SolidBrush(badge)) g.FillRectangle(b, scoreBox);
-                TextRenderer.DrawText(g, scoreText, _bold, scoreBox, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                if (!Others) PaintNumber(g, i, row.Match.Score, top);
 
                 var divider = row.Divider;
-                divider.Offset(0, -offset);
-                using (var b = new SolidBrush(Color.FromArgb(215, 215, 215))) g.FillRectangle(b, divider);
+                if (!divider.IsEmpty)
+                {
+                    divider.Offset(0, -offset);
+                    using (var b = new SolidBrush(Color.FromArgb(215, 215, 215))) g.FillRectangle(b, divider);
+                }
                 DrawRuns(g, row.SourceRuns, -offset);
                 DrawRuns(g, row.TargetRuns, -offset);
 
@@ -740,6 +871,17 @@ namespace Supervertaler.Trados.Controls
                 }
                 TextRenderer.DrawText(g, row.Summary ?? "", _small, new Point(Gutter, sy), SummaryColor, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
+        }
+
+        /// <summary>A match row's number and score badge.</summary>
+        void PaintNumber(Graphics g, int i, int score, int top)
+        {
+            Color badge = score >= 100 ? Color.FromArgb(46, 140, 60) : score >= 85 ? Color.FromArgb(200, 130, 0) : Color.FromArgb(150, 110, 60);
+            if (_stale) badge = Color.Silver;
+            TextRenderer.DrawText(g, (i + 1).ToString(CultureInfo.InvariantCulture), _bold, new Point(6, top + Pad), _stale ? Color.Silver : Color.FromArgb(80, 80, 80), TextFormatFlags.NoPadding);
+            var scoreBox = new Rectangle(6 + _numberWidth + 4, top + Pad, _badgeWidth, _normal.Height);
+            using (var b = new SolidBrush(badge)) g.FillRectangle(b, scoreBox);
+            TextRenderer.DrawText(g, score + "%", _bold, scoreBox, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
 
         void DrawRuns(Graphics g, List<Placed> runs, int dy)
@@ -826,7 +968,7 @@ namespace Supervertaler.Trados.Controls
                 case Keys.PageDown: Select(Math.Min(_rows.Count - 1, _selected + 5)); e.Handled = true; break;
                 case Keys.Enter: RequestInsert(); e.Handled = true; e.SuppressKeyPress = true; break;
                 default:
-                    if (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D9 || e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9)
+                    if (!Others && (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D9 || e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9))
                     {
                         int n = e.KeyCode >= Keys.NumPad1 ? e.KeyCode - Keys.NumPad1 : e.KeyCode - Keys.D1;
                         if (n < _rows.Count) { Select(n); RequestInsert(); }

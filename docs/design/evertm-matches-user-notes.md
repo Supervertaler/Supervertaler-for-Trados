@@ -72,16 +72,30 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   - Several values: the first and "+2".
   - A language variant other than your project's is added at the end ("· en-US" in an en-GB project).
   - In a narrow pane, Client and Project are shortened with "…"; the date is always shown whole.
-- **"2 older"** at the right: EverTM has 2 older translations of the same sentence, and shows the newest.
-  *(later: the older translations themselves, and inserting one)*
+- **"2 older"** at the right: EverTM has 2 older translations of the same sentence, and shows the newest. Select
+  the match to see them (see below).
 
 ## The details under the list
 
 - For the match you select: every field with all its values (Project, Client, Subject, End client, Document, Source,
-  Note), created and changed (date and user), when it entered EverTM, its language variants, how many older
-  translations there are, and whether a number was replaced or the formatting can't be placed.
+  Note), created and changed (date and user), when it entered EverTM, its language variants, and whether a number
+  was replaced or the formatting can't be placed.
 - A field with 20 values says "(20 shown; more may exist)": EverTM keeps at most 20 values per field.
 - Drag the line between the list and the details to give either more room.
+
+## Older translations
+
+- When the selected match has older translations, they're listed under its details: **Older translations (2)**.
+  Best first, by the same rule as the match itself: your project's own variant (en-GB in an en-GB project) first,
+  then the newest.
+- Each shows its translation and a faint line with its client, project and date. Click one to see all its details.
+- **Double-click one, or select it and press Enter, to insert it** instead of the match. It goes in just like a
+  match: with your segment's formatting, a different number put right (claim 8 becomes claim 9), labelled as a TM
+  match, never confirmed. Alt+Shift+1–9 and the digit keys still insert the matches in the list above.
+- A sentence with many translations shows 50 at a time: **Show 50 more** at the right.
+- Not wanted? Options > Details shown > untick **Older translations**, and they're never looked up.
+- They're looked up only for the selected match, in the background, so moving through segments is never slowed.
+  A segment you confirmed in the last minute isn't listed yet.
 
 ## The status line
 
@@ -137,6 +151,5 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 
 ## Later
 
-- The older translations of a sentence, with their own dates and fields, 50 at a time, and inserting one.
 - Removing a wrong translation from EverTM, with Undo and a "Removed translations" list.
 - Filters (by client, subject, source) and the Language variants setting.

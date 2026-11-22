@@ -51,9 +51,29 @@ namespace Supervertaler.Trados
             public bool Again;                  // the second look at the same segment (see _again)
         }
 
+        /// <summary>A page of a match's older translations: asked for when a match with some is selected, or "Show more".</summary>
+        sealed class OlderRequest
+        {
+            public VaultMatch Match;
+            public EverTmPaneResult Result;
+            public int Page;
+        }
+
+        sealed class OlderAnswer
+        {
+            public VaultMatch Match;            // which match and page this is: the control drops it if that match is no longer selected
+            public int Page;
+            public List<VaultMatch> Items = new List<VaultMatch>();
+            public int Total;
+            public string Error;
+        }
+
         EditorController _editor;
         IStudioDocument _doc;
         EverTmLookupWorker<Request, EverTmPaneResult> _worker;
+        /// <summary>Older translations, on a worker of their own (newest request wins, like the lookups), so a page never
+        /// waits behind a segment's lookup or holds one up.</summary>
+        EverTmLookupWorker<OlderRequest, OlderAnswer> _olderWorker;
         bool _owed;              // a segment changed while the pane was hidden
         string _segmentKey;      // the segment last looked up (paragraph and segment id), for the second look
         /// <summary>
@@ -85,6 +105,7 @@ namespace Supervertaler.Trados
             EnsureControl();
             _control.InsertRequested += (m, r) => Insert(m, r, fromPane: true);
             _control.OptionsChanged += (s, e) => LookUpActive();
+            _control.OlderWanted += (m, r, page) => _olderWorker?.Submit(new OlderRequest { Match = m, Result = r, Page = page });
             _control.VisibleChanged += (s, e) => { if (_control.Visible && _owed) LookUpActive(); };
             _control.Disposed += (s, e) => Shutdown();
             TranslationResultsGuard.Watch(this, _control);
@@ -93,6 +114,8 @@ namespace Supervertaler.Trados
             _again.Tick += (s, e) => { _again.Stop(); LookUpActive(again: true); };
 
             _worker = new EverTmLookupWorker<Request, EverTmPaneResult>(RunLookup, Deliver,
+                m => { try { DiagnosticLog.WriteAlways("EverTM", m); } catch { } });
+            _olderWorker = new EverTmLookupWorker<OlderRequest, OlderAnswer>(RunOlder, DeliverOlder,
                 m => { try { DiagnosticLog.WriteAlways("EverTM", m); } catch { } });
 
             LicenseManager.Instance.LicenseStateChanged += OnLicenceChanged;
@@ -110,6 +133,7 @@ namespace Supervertaler.Trados
         void Shutdown()
         {
             try { _worker?.Stop(); } catch { }
+            try { _olderWorker?.Stop(); } catch { }
             try { _again?.Stop(); _again?.Dispose(); } catch { }
             try { LicenseManager.Instance.LicenseStateChanged -= OnLicenceChanged; } catch { }
             try { if (_editor != null) _editor.ActiveDocumentChanged -= OnActiveDocumentChanged; } catch { }
@@ -153,6 +177,7 @@ namespace Supervertaler.Trados
             _segmentKey = null;
             try { _again?.Stop(); } catch { }
             _worker?.Invalidate();
+            _olderWorker?.Invalidate();
             if (_doc != null) _doc.ActiveSegmentChanged += OnActiveSegmentChanged;
         }
 
@@ -262,6 +287,50 @@ namespace Supervertaler.Trados
                 else r.ProjectNote = _projectNote;
                 if (result.Value != null && SameMatches(c.Result, r)) return;   // the second look found nothing new
                 c.ShowResult(r);
+            }));
+        }
+
+        /// <summary>
+        /// On the worker: one page of a match's older translations (<see cref="VaultLibrary.Translations"/>, 50 at a
+        /// time), each made ready to insert against this segment's source (its tags placed, a number put right). A page
+        /// reads 50 units: about 18 ms, also in a group of thousands.
+        /// </summary>
+        static OlderAnswer RunOlder(OlderRequest request)
+        {
+            var answer = new OlderAnswer { Match = request.Match, Page = request.Page };
+            var r = request.Result;
+            if (request.Match == null || r == null || string.IsNullOrEmpty(r.TargetCulture)) return answer;
+            var document = r.Editor?.Pieces;
+            if (document == null) return answer;   // never so: the segment was copied before its lookup
+            try
+            {
+                var library = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
+                var page = library.Translations(request.Match, r.SourceLang, VaultMarkup.BaseLanguage(r.TargetCulture), request.Page, r.TargetCulture);
+                answer.Total = page.Total;
+                foreach (var c in page.Items)
+                {
+                    var m = VaultLookup.Offer(document, request.Match, c);
+                    if (m != null) answer.Items.Add(m);
+                }
+            }
+            catch (Exception ex)
+            {
+                answer.Error = ex.Message;   // shown in the pane; the worker logs nothing for a caught failure, so log it here
+                try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: reading older translations failed: " + ex); } catch { }
+            }
+            return answer;
+        }
+
+        void DeliverOlder(EverTmLookupWorker<OlderRequest, OlderAnswer>.Result<OlderAnswer> result)
+        {
+            var c = _control;
+            if (c == null || c.IsDisposed || !c.IsHandleCreated) return;
+            var a = result.Value;
+            if (a == null) return;   // RunOlder catches its own failures, so there is always an answer
+            c.BeginInvoke((Action)(() =>
+            {
+                if (c.IsDisposed || !_olderWorker.IsLatest(result.Id)) return;
+                c.ShowOlder(a.Match, a.Page, a.Items, a.Total, a.Error);
             }));
         }
 

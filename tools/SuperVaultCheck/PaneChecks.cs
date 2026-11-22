@@ -37,6 +37,8 @@ static class PaneChecks
         SameTagsAsTranslationResults(root, check);
         Console.WriteLine("EverTM Matches: a segment just confirmed, as a fuzzy match for the next one");
         JustConfirmed(root, check);
+        Console.WriteLine("EverTM Matches: older translations");
+        OlderTranslations(scratch, check);
     }
 
     // ---- the worker ----
@@ -353,7 +355,9 @@ static class PaneChecks
             "<tu><prop type=\"x-Client\">ACME</prop><prop type=\"x-Project\">PROJ-014</prop><tuv xml:lang=\"nl-NL\"><seg>De eindconcentratie aan pesticiden (P<bpt i=\"1\">&lt;sub&gt;</bpt>e<ept i=\"1\">&lt;/sub&gt;</ept>) na bijvoorbeeld een periode van 24 uren kan worden gemeten en gebruikt om de maximale pesticidenadsorptiecapaciteit te berekenen volgens de formule:</seg></tuv>" +
             "<tuv xml:lang=\"en-GB\"><seg>The final concentration of pesticides (P<bpt i=\"1\">&lt;sub&gt;</bpt>e<ept i=\"1\">&lt;/sub&gt;</ept>) after, for example, a period of 24 hours can be measured and used to calculate the maximum pesticide adsorption capacity according to the formula:</seg></tuv></tu>" +
             Tu("nl-NL", "en-US", "De pomp wordt gestart als de druk daalt.", "The pump is started when the pressure drops.") +
-            Tu("nl-NL", "en-GB", "Meer in het bijzonder wordt de pomp gestart volgens conclusie 8, waarbij de druk daalt tot 4 bar.", "More particularly, the pump is started according to claim 8, wherein the pressure drops to 4 bar.") +
+            "<tu creationdate=\"20251104T000000Z\"><prop type=\"x-Client\">ACME</prop><prop type=\"x-Project\">PROJ-021</prop><tuv xml:lang=\"nl-NL\"><seg>Meer in het bijzonder wordt de pomp gestart volgens conclusie 8, waarbij de druk daalt tot 4 bar.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>More particularly, the pump is started according to claim 8, wherein the pressure drops to 4 bar.</seg></tuv></tu>" +
+            "<tu creationdate=\"20220310T000000Z\"><prop type=\"x-Client\">ACME</prop><prop type=\"x-Project\">PROJ-003</prop><tuv xml:lang=\"nl-NL\"><seg>Meer in het bijzonder wordt de pomp gestart volgens conclusie 8, waarbij de druk daalt tot 4 bar.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>In particular, the pump is started as claimed in claim 8, the pressure falling to 4 bar.</seg></tuv></tu>" +
+            "<tu creationdate=\"20190615T000000Z\"><tuv xml:lang=\"nl-NL\"><seg>Meer in het bijzonder wordt de pomp gestart volgens conclusie 8, waarbij de druk daalt tot 4 bar.</seg></tuv><tuv xml:lang=\"en-US\"><seg>More specifically, the pump starts according to claim 8, with the pressure dropping to 4 bar.</seg></tuv></tu>" +
             "</body></tmx>");
         var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
         lib.Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
@@ -373,10 +377,15 @@ static class PaneChecks
             source = factory.CreateSegment(factory.CreateSegmentPairProperties());
             source.Add(factory.CreateText(pf.CreateTextProperties("In een tweede aspect wordt de pomp gestart voor het zuiveren van water middels een drukfilter, waarbij de druk daalt tot 4 bar.")));
         }
+        else if (Environment.GetEnvironmentVariable("SV_PANE_PICTURE") == "older")
+        {
+            source = factory.CreateSegment(factory.CreateSegmentPairProperties());
+            source.Add(factory.CreateText(pf.CreateTextProperties("Meer in het bijzonder wordt de pomp gestart volgens conclusie 9, waarbij de druk daalt tot 4 bar.")));
+        }
         else
         source.Add(factory.CreateText(pf.CreateTextProperties(") na bijvoorbeeld een periode van 336 uren kan gemeten worden en gebruikt worden om de maximale fosfor adsorptiecapaciteit te berekenen.")));
         var editor = EverTmEditorSegment.From(source, new CultureCode("nl-NL"));
-        var answer = EverTmMatchesLookup.Run(lib, new EverTmMatchesLookup.Request { Document = editor.Pieces, SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-NL", TargetCulture = "en-GB" });
+        var answer = EverTmMatchesLookup.Run(lib, new EverTmMatchesLookup.Request { Document = editor.Pieces, SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-NL", TargetCulture = "en-GB", MinScore = 50, MaxMatches = 10 });
         var result = new Supervertaler.Trados.Controls.EverTmPaneResult
         {
             Matches = answer.Matches, Units = answer.Units, Milliseconds = 36, Editor = editor,
@@ -393,8 +402,20 @@ static class PaneChecks
         {
             form.Controls.Add(control);
             form.Show();
+            // The view part's older-translations worker, done here in line.
+            control.OlderWanted += (m, r, page) =>
+            {
+                var t = lib.Translations(m, "nl", "en", page, "en-GB");
+                control.BeginInvoke((System.Action)(() => control.ShowOlder(m, page, t.Items.Select(c => VaultLookup.Offer(editor.Pieces, m, c)).ToList(), t.Total, null)));
+            };
             control.ShowResult(result);
-            System.Windows.Forms.Application.DoEvents();
+            if (Environment.GetEnvironmentVariable("SV_PANE_PICTURE") == "older")   // the match with older translations selected
+            {
+                var list = Field<System.Windows.Forms.Control>(control, "_list");
+                int withOlder = answer.Matches.FindIndex(x => x.Candidate.Older > 0);
+                if (withOlder >= 0) list.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(list, new object[] { withOlder });
+            }
+            for (int i = 0; i < 5; i++) { System.Windows.Forms.Application.DoEvents(); Thread.Sleep(20); }
             using (var bmp = new System.Drawing.Bitmap(form.Width, form.Height))
             {
                 form.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
@@ -402,9 +423,119 @@ static class PaneChecks
             }
         }
         }
-        Console.WriteLine(answer.Matches.Count + " matches drawn to " + png);
+        Console.WriteLine(answer.Matches.Count + " matches (" + answer.Units + " units" + (answer.Problem == null ? "" : ", " + answer.Problem) + ") drawn to " + png);
         return 0;
     }
+    // ---- older translations ----
+
+    /// <summary>
+    /// A match's older translations (step 2): asked for only for a selected match that has some, a page at a time;
+    /// listed best first under its details, insertable with their own tags placed; a page that comes back after another
+    /// match was selected is dropped. Drives the real control in a hidden form, with the view part's two calls.
+    /// </summary>
+    static void OlderTranslations(string scratch, Action<bool, string> check)
+    {
+        var dir = Path.Combine(scratch, "older");
+        Directory.CreateDirectory(dir);
+        var tmx = Path.Combine(dir, "older.tmx");
+        string Dated(string sl, string tl, string src, string trg, string date) =>
+            $"<tu creationdate=\"{date}\"><prop type=\"x-Client\">ACME</prop><tuv xml:lang=\"{sl}\"><seg>{src}</seg></tuv><tuv xml:lang=\"{tl}\"><seg>{trg}</seg></tuv></tu>";
+        File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"nl-BE\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+            Dated("nl-BE", "en-GB", SaveNl, SaveEn, "20250101T000000Z") +
+            Dated("nl-BE", "en-GB", SaveNl, "Click <bpt i=\"1\">&lt;b&gt;</bpt>Save<ept i=\"1\">&lt;/b&gt;</ept> to store the changes.", "20230101T000000Z") +
+            Dated("nl-BE", "en-GB", SaveNl, "Press <bpt i=\"1\">&lt;b&gt;</bpt>Save<ept i=\"1\">&lt;/b&gt;</ept> to keep your changes.", "20210101T000000Z") +
+            Dated("nl-BE", "en-GB", "De klep sluit.", "The valve closes.", "20240101T000000Z") +
+            "</body></tmx>");
+        var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
+        lib.Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
+
+        var factory = new Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory();
+        factory.PropertiesFactory = new Sdl.FileTypeSupport.Framework.Native.PropertiesFactory();
+        var pf = factory.PropertiesFactory;
+        var source = factory.CreateSegment(factory.CreateSegmentPairProperties());
+        source.Add(factory.CreateText(pf.CreateTextProperties("Klik op ")));
+        var start = pf.CreateStartTagProperties("<b>"); start.TagId = new TagId("7"); start.DisplayText = "b";
+        var end = pf.CreateEndTagProperties("</b>"); end.DisplayText = "b";
+        var bold = factory.CreateTagPair(start, end);
+        bold.Add(factory.CreateText(pf.CreateTextProperties("Opslaan")));
+        source.Add(bold);
+        source.Add(factory.CreateText(pf.CreateTextProperties(" om de wijzigingen te bewaren.")));
+        var editor = EverTmEditorSegment.From(source, NlBe);
+        var answer = EverTmMatchesLookup.Run(lib, new EverTmMatchesLookup.Request { Document = editor.Pieces, SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-BE", TargetCulture = "en-GB" });
+        check(answer.Matches.Count == 1 && answer.Matches[0].Score == 100 && answer.Matches[0].Candidate.Older == 2,
+              "the newest translation is the match, with 2 older ones hidden: " + string.Join(", ", answer.Matches.Select(m => m.Score + "% older " + m.Candidate.Older)));
+        var result = new Supervertaler.Trados.Controls.EverTmPaneResult
+        {
+            Matches = answer.Matches, Units = answer.Units, Editor = editor, TagMapAtLookup = SegmentTagHandler.Serialize(source).TagMap,
+            SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB",
+        };
+
+        var asked = new List<(VaultMatch match, int page)>();
+        Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = null);   // this run's own data folder
+        using (var form = new System.Windows.Forms.Form { Width = 700, Height = 520, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        using (var control = new Supervertaler.Trados.Controls.EverTmMatchesControl { Dock = System.Windows.Forms.DockStyle.Fill })
+        {
+            form.Controls.Add(control);
+            form.Show();
+            control.OlderWanted += (m, r, page) => asked.Add((m, page));
+            control.ShowResult(result);
+            System.Windows.Forms.Application.DoEvents();
+            check(asked.Count == 1 && ReferenceEquals(asked[0].match, answer.Matches[0]) && asked[0].page == 0,
+                  "showing a result whose selected match has older translations asks for their first page, once (" + asked.Count + ")");
+            check(Title(control).Contains("Older translations (2)") && Title(control).Contains("loading"), "while it is on its way: \"" + Title(control) + "\"");
+
+            // The view part's worker, done here in line.
+            var page0 = lib.Translations(asked[0].match, "nl", "en", 0, "en-GB");
+            var offered = page0.Items.Select(c => VaultLookup.Offer(editor.Pieces, asked[0].match, c)).ToList();
+            check(offered.Select(EverTmEditorSegment.PlainTarget).SequenceEqual(new[] { "Click Save to store the changes.", "Press Save to keep your changes." }),
+                  "best first: " + string.Join(" | ", offered.Select(EverTmEditorSegment.PlainTarget)));
+            var markup = editor.TargetMarkup(offered[1], result.TagMapAtLookup);
+            check(markup == "Press <t1>Save</t1> to keep your changes.", "an older translation is inserted with the segment's own bold, like a match: " + markup);
+
+            // A page for a match no longer selected: dropped.
+            control.ShowOlder(new VaultMatch(), 0, offered, 2, null);
+            check(OlderCount(control) == 0, "a page that arrives for another match is dropped");
+            control.ShowOlder(asked[0].match, 0, offered, page0.Total, null);
+            System.Windows.Forms.Application.DoEvents();
+            check(OlderCount(control) == 2 && Title(control).StartsWith("Older translations (2)") && !Title(control).Contains("loading"),
+                  "listed under the details: " + OlderCount(control) + " rows, \"" + Title(control) + "\"");
+
+            // Inserting one: the pane hands it over like a match.
+            VaultMatch inserted = null;
+            control.InsertRequested += (m, r) => inserted = m;
+            var olderList = Field<System.Windows.Forms.Control>(control, "_older");
+            olderList.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(olderList, new object[] { 1 });
+            olderList.GetType().GetMethod("RequestInsert", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(olderList, null);
+            check(inserted != null && ReferenceEquals(inserted, offered[1]), "double-click or Enter on an older translation inserts that one");
+            var details = Field<System.Windows.Forms.RichTextBox>(control, "_details").Text;
+            check(details.StartsWith("Older translation 2 of match 1") && details.Contains("Created  1 Jan 2021"),
+                  "selecting it shows its own details: " + details.Split('\n')[0]);
+
+            // A new segment without older translations: nothing asked, the area closed.
+            var plain = EverTmMatchesLookup.Run(lib, Request("De klep sluit."));
+            control.ShowResult(new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = plain.Matches, Units = plain.Units, SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB" });
+            check(asked.Count == 1 && Field<System.Windows.Forms.SplitContainer>(control, "_detailSplit").Panel2Collapsed,
+                  "a match without older translations: nothing looked up, no older-translations area");
+
+            // Switched off in Options > Details shown: never asked for.
+            Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = new List<string> { "Older translations" });
+            control.ShowResult(result);
+            check(asked.Count == 1, "\"Older translations\" switched off: not looked up");
+            Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = null);
+        }
+    }
+
+    static T Field<T>(object o, string name) where T : class =>
+        o.GetType().GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(o) as T;
+
+    static string Title(Supervertaler.Trados.Controls.EverTmMatchesControl c) => Field<System.Windows.Forms.Label>(c, "_olderTitle").Text;
+
+    static int OlderCount(Supervertaler.Trados.Controls.EverTmMatchesControl c)
+    {
+        var list = Field<object>(c, "_older");
+        return (int)list.GetType().GetProperty("Count").GetValue(list);
+    }
+
     // ---- the second look ----
 
     /// <summary>
