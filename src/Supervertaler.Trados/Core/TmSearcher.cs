@@ -241,6 +241,23 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// Whether Studio looks EverTM up for this language pair: it is in the pair's TM list, Enabled, with Lookup ticked
+        /// (<c>PerformNormalSearch</c>). EverTM Matches follows the same ticks (Michael, 23 Nov 2026: "It should follow
+        /// the ticks, like Studio does"). Read from the saved project file. Null when the project file can't be found or
+        /// read, so a document outside a project, or a file that can't be read, never hides EverTM.
+        /// </summary>
+        public static bool? EverTmLooksUp(string anyProjectFilePath, string sourceCulture, string targetCulture)
+        {
+            try
+            {
+                var projPath = FindProjectFile(anyProjectFilePath);
+                if (projPath == null) return null;
+                return FindLookupTms(XDocument.Load(projPath), Path.GetDirectoryName(projPath), sourceCulture, targetCulture).EverTm;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
         /// What the Batch Translate log says when a run left memories out, or null when it searched them all.
         /// </summary>
         public static string SkippedTmsSentence(int searched, int total)

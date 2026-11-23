@@ -48,7 +48,7 @@ namespace Supervertaler.Trados
         {
             public EverTmMatchesLookup.Request Lookup;
             public EverTmPaneResult Shown;      // the UI-thread half, filled in before the lookup
-            public string ProjectFile;          // set once per document: the worker reads whether EverTM learns here
+            public string DocumentFile;         // the worker reads the project's ticks for EverTM (ProjectTicks)
             public bool Again;                  // the second look at the same segment (see _again)
         }
 
@@ -96,13 +96,11 @@ namespace Supervertaler.Trados
         /// Nothing changes on screen when the second look finds the same.
         /// </summary>
         System.Windows.Forms.Timer _again;
-        string _noteFor;         // the document whose "EverTM learns here" note has been asked for
         /// <summary>The last removal, for Undo (until the next removal or until the pane closes); and the library whose
         /// RemovalsApplied this pane listens to.</summary>
         VaultRemovalKey _lastRemoval;
         VaultTranslationEdit _lastEdit;     // the last edit, for Undo; only one of the two is set
         VaultLibrary _removalLibrary;
-        string _projectNote;     // that note
 
         protected override IUIControl GetContentControl()
         {
@@ -260,7 +258,7 @@ namespace Supervertaler.Trados
                     },
                 };
                 string fileKey = file?.LocalFilePath;
-                if (!again && fileKey != null && fileKey != _noteFor) { _noteFor = fileKey; _projectNote = null; request.ProjectFile = fileKey; }
+                request.DocumentFile = fileKey;
 
                 request.Again = again;
                 AskStudio(shown, request, fileKey, key, editor);
@@ -348,23 +346,63 @@ namespace Supervertaler.Trados
             }));
         }
 
-        /// <summary>On the worker: the lookup, and once per document whether EverTM learns in it. No Studio objects.</summary>
+        // What the project's TM list says about EverTM: read again whenever the project file has been saved since (one
+        // file-date read per lookup). Used only on the lookup worker, one lookup at a time.
+        static string _ticksFor;           // document file and languages
+        static string _ticksProject;       // its .sdlproj
+        static DateTime _ticksSaved;
+        static bool? _looksUp, _learns;
+
+        /// <summary>Whether Studio looks EverTM up and learns into it in this document's project (null: not known). EverTM worker.</summary>
+        static void ProjectTicks(Request request, out bool? looksUp, out bool? learns)
+        {
+            var l = request.Lookup;
+            string key = request.DocumentFile + "|" + l.SourceCulture + "|" + l.TargetCulture;
+            if (key != _ticksFor)
+            {
+                _ticksFor = key;
+                _ticksProject = request.DocumentFile == null ? null : TmSearcher.ProjectFileOf(request.DocumentFile);
+                _ticksSaved = default;
+                _looksUp = _learns = null;
+            }
+            if (_ticksProject != null)
+            {
+                DateTime saved = default;
+                try { saved = System.IO.File.GetLastWriteTimeUtc(_ticksProject); } catch { }
+                if (saved != _ticksSaved)
+                {
+                    _ticksSaved = saved;
+                    _looksUp = TmSearcher.EverTmLooksUp(_ticksProject, l.SourceCulture, l.TargetCulture);
+                    _learns = TmSearcher.EverTmLearns(_ticksProject, l.SourceCulture, l.TargetCulture);
+                }
+            }
+            looksUp = _looksUp;
+            learns = _learns;
+        }
+
+        /// <summary>
+        /// On the worker: the lookup, unless EverTM is switched off in the project's TM list (Enabled or Lookup unticked),
+        /// as Studio does; and whether EverTM learns here. No Studio objects.
+        /// </summary>
         static EverTmPaneResult RunLookup(Request request)
         {
             if (VaultLibrary.Log == null)
                 VaultLibrary.Log = message => DiagnosticLog.WriteAlways("EverTM", message);
+            var r = request.Shown;
+            ProjectTicks(request, out var looksUp, out var learns);
+            if (looksUp == false)
+            {
+                r.EverTmOff = true;
+                r.Matches = new List<VaultMatch>();
+                return r;
+            }
             var library = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
             var answer = EverTmMatchesLookup.Run(library, request.Lookup);
-            var r = request.Shown;
             r.Matches = answer.Matches;
             r.Units = answer.Units;
             r.Problem = answer.Problem;
             r.Building = answer.Building;
-            if (request.ProjectFile != null)
-            {
-                var learns = TmSearcher.EverTmLearns(request.ProjectFile, request.Lookup.SourceCulture, request.Lookup.TargetCulture);
-                if (learns == false) r.ProjectNote = "EverTM is not in this project's TMs with Update ticked: segments you confirm won't be learned";
-            }
+            if (learns == false) r.ProjectNote = "EverTM is not in this project's TMs with Update ticked: segments you confirm won't be learned";
             return r;
         }
 
@@ -379,8 +417,6 @@ namespace Supervertaler.Trados
                 var r = result.Value ?? new EverTmPaneResult();
                 if (result.Error != null) r.Error = result.Error;
                 r.Milliseconds = result.Milliseconds;
-                if (r.ProjectNote != null) _projectNote = r.ProjectNote;
-                else r.ProjectNote = _projectNote;
                 if (result.Value != null && SameMatches(c.Result, r)) return;   // the second look found nothing new
                 if (r.StudioKey != null && _studioAnswer != null && _studioAnswer.Key == r.StudioKey) r.MergeStudio(_studioAnswer, _studioAnswer.MaxMatches);
                 c.ShowResult(r);
@@ -437,6 +473,7 @@ namespace Supervertaler.Trados
             if (shown == null || fresh == null || shown.SegmentId != fresh.SegmentId || shown.ParagraphId != fresh.ParagraphId) return false;
             if (shown.Problem != fresh.Problem || shown.Error != fresh.Error) return false;
             if (shown.StudioKey != fresh.StudioKey || shown.StudioPending != fresh.StudioPending) return false;
+            if (shown.EverTmOff != fresh.EverTmOff || shown.ProjectNote != fresh.ProjectNote) return false;
             var a = shown.EverTmMatches ?? shown.Matches ?? new List<VaultMatch>();
             var b = fresh.Matches ?? new List<VaultMatch>();
             if (a.Count != b.Count) return false;

@@ -21,8 +21,10 @@ namespace Supervertaler.Trados.Controls
         public long Units;
         public string Problem, Building, Error;
         public long Milliseconds;
-        /// <summary>"EverTM is not in this project's TMs…", once per document; null when it learns or it isn't known.</summary>
+        /// <summary>"EverTM is not in this project's TMs…"; null when it learns or it isn't known.</summary>
         public string ProjectNote;
+        /// <summary>EverTM is switched off in the project's TM list (Enabled or Lookup unticked): not looked up, as in Studio.</summary>
+        public bool EverTmOff;
         // For inserting and for the summary line.
         public EverTmEditorSegment Editor;
         public Dictionary<int, Core.TagInfo> TagMapAtLookup;
@@ -328,7 +330,8 @@ namespace Supervertaler.Trados.Controls
             var r = _result;
             if (r == null) return _status.Text;
             string text;
-            if (r.Error != null) text = "EverTM lookup failed: " + r.Error;
+            if (r.EverTmOff) text = "No EverTM matches: EverTM is off in this project's TMs (Enabled or Lookup unticked)";
+            else if (r.Error != null) text = "EverTM lookup failed: " + r.Error;
             else if (r.Problem != null) text = r.Problem;
             else
             {
@@ -344,8 +347,12 @@ namespace Supervertaler.Trados.Controls
                 else
                 {
                     int n = r.FromStudio?.Count ?? 0;
-                    text += " · " + a.Tms + " Studio TM" + (a.Tms == 1 ? "" : "s") + ": " + (n == 0 ? "nothing more" : n == 1 ? "1 more match" : n + " more matches")
-                          + " · " + a.Milliseconds.ToString(CultureInfo.CurrentCulture) + " ms";
+                    int both = r.AlsoIn?.Keys.Count(k => r.StudioOf(k) == null) ?? 0;   // EverTM's rows a Studio TM has too
+                    int total = n + both;
+                    string found = total == 0 ? "no matches"
+                        : (total == 1 ? "1 match" : total + " matches")
+                          + (both == 0 ? "" : both == total ? (total == 1 ? ", also in EverTM" : ", all also in EverTM") : ", " + both + " also in EverTM");
+                    text += " · " + a.Tms + " Studio TM" + (a.Tms == 1 ? "" : "s") + ": " + found + " · " + a.Milliseconds.ToString(CultureInfo.CurrentCulture) + " ms";
                     if (a.LeftOut.Count > 0) text += " · left out: " + string.Join(", ", a.LeftOut);
                 }
             }
@@ -588,8 +595,10 @@ namespace Supervertaler.Trados.Controls
             public VaultMatch Match;
             public List<Run> Source, Target;
             public string Summary, Older;
-            /// <summary>The Studio TM's name, before the summary line; null for EverTM's matches.</summary>
+            /// <summary>The Studio TM's name, in a blue chip before the summary line; null for EverTM's matches.</summary>
             public string Badge;
+            /// <summary>On EverTM's row a Studio TM has too: "also in Hydraulics_TM", in an outlined chip.</summary>
+            public string Also;
             public bool TooLong;
             // Layout, for the current width.
             public int Top, Height;
@@ -744,6 +753,11 @@ namespace Supervertaler.Trados.Controls
             var row = new Row { Match = m, Source = Others ? new List<Run>() : SourceRuns(m, r), Target = PlainRuns(m.Target, Style.Normal) };
             row.TooLong = m.Diff != null && m.Diff.Edits == null;
             if (!Others) row.Badge = r?.StudioOf(m)?.Name;
+            if (!Others && r?.AlsoIn != null && r.AlsoIn.TryGetValue(m, out var also) && also.Count > 0)
+            {
+                if (row.Badge != null) row.Badge += " +" + also.Count;   // other Studio TMs have it too
+                else row.Also = "also in " + string.Join(", ", also);
+            }
             if (!Others && m.Candidate?.Older > 0) row.Older = (m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older.ToString("N0", CultureInfo.CurrentCulture) + " older") + " ▸";
             return row;
         }
@@ -995,13 +1009,42 @@ namespace Supervertaler.Trados.Controls
         {
             var parts = EverTmSummary.Make(row.Match.Candidate, _result?.SourceLang, _result?.SourceCulture, _result?.TargetCulture);
             if (row.TooLong) parts.Tail += " · too long to compare word by word";
-            if (!Others && _result?.AlsoIn != null && _result.AlsoIn.TryGetValue(row.Match, out var also) && also.Count > 0)
-                parts.Tail += " · also in " + string.Join(", ", also);
             return EverTmSummary.Fit(parts, width - OlderWidth(row) - BadgeWidth(row), s => TextRenderer.MeasureText(s, _small, Size.Empty, TextFormatFlags.NoPadding).Width);
         }
 
-        /// <summary>The Studio TM's name before the summary line, with the gap after it; 0 for EverTM's rows.</summary>
-        int BadgeWidth(Row row) => row.Badge == null ? 0 : TextRenderer.MeasureText(row.Badge + " ·", _smallBold, Size.Empty, TextFormatFlags.NoPadding).Width + 4;
+        /// <summary>The chip before the summary line (a Studio TM's name, or "also in …"), with the gap after it; 0 when none.</summary>
+        int BadgeWidth(Row row)
+        {
+            var text = ChipText(row);
+            return text == null ? 0 : TextRenderer.MeasureText(text, _smallBold, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + 10 + 6;
+        }
+
+        static string ChipText(Row row) => row.Badge ?? row.Also;
+
+        /// <summary>
+        /// A Studio TM's row stands out at a glance (Michael, 23 Nov 2026: "Make the Studio TM matches stand out more"):
+        /// a blue stripe down its left edge, its score in Studio blue (EverTM's are green and orange), and the TM's name
+        /// in a filled blue chip. EverTM's row that a Studio TM has too keeps EverTM's look, with an outlined blue
+        /// "also in …" chip.
+        /// </summary>
+        void PaintChip(Graphics g, Row row, int sy)
+        {
+            var text = ChipText(row);
+            if (text == null) return;
+            int w = BadgeWidth(row) - 6;
+            var box = new Rectangle(Gutter, sy - 1, w, _small.Height + 2);
+            var blue = _stale ? Color.Silver : StudioBlue;
+            if (row.Badge != null)
+            {
+                using (var b = new SolidBrush(blue)) g.FillRectangle(b, box);
+                TextRenderer.DrawText(g, text, _smallBold, box, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            }
+            else
+            {
+                using (var pen = new Pen(blue)) g.DrawRectangle(pen, box.X, box.Y, box.Width - 1, box.Height - 1);
+                TextRenderer.DrawText(g, text, _smallBold, box, blue, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            }
+        }
 
         protected override void OnResize(EventArgs e)
         {
@@ -1031,7 +1074,9 @@ namespace Supervertaler.Trados.Controls
                     using (var b = new SolidBrush(Focused ? SelectedBack : Color.FromArgb(236, 242, 250))) g.FillRectangle(b, 0, top, right, row.Height);
                 using (var p = new Pen(Line)) g.DrawLine(p, 0, top + row.Height - 1, right, top + row.Height - 1);
 
-                if (!Others) PaintNumber(g, i, row.Match.Score, top, outlined: row.Badge != null);
+                if (row.Badge != null)
+                    using (var b = new SolidBrush(_stale ? Color.Silver : StudioBlue)) g.FillRectangle(b, 0, top, 4, row.Height - 1);
+                if (!Others) PaintNumber(g, i, row.Match.Score, top, studio: row.Badge != null);
 
                 var divider = row.Divider;
                 if (!divider.IsEmpty)
@@ -1051,26 +1096,19 @@ namespace Supervertaler.Trados.Controls
                     using (var link = new Font(_small, FontStyle.Underline))
                         TextRenderer.DrawText(g, row.Older, link, new Point(right - olderWidth, sy), _stale ? Color.Silver : LinkColor, TextFormatFlags.NoPadding);
                 }
-                if (row.Badge != null)
-                    TextRenderer.DrawText(g, row.Badge + " ·", _smallBold, new Point(Gutter, sy), _stale ? Color.Silver : StudioBlue, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+                PaintChip(g, row, sy);
                 TextRenderer.DrawText(g, row.Summary ?? "", _small, new Point(Gutter + BadgeWidth(row), sy), SummaryColor, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
         }
 
-        /// <summary>A match row's number and score badge: filled for EverTM's matches, outlined for a Studio TM's.</summary>
-        void PaintNumber(Graphics g, int i, int score, int top, bool outlined = false)
+        /// <summary>A match row's number and score badge: green or orange for EverTM's matches, Studio blue for a Studio TM's.</summary>
+        void PaintNumber(Graphics g, int i, int score, int top, bool studio = false)
         {
             Color badge = score >= 100 ? Color.FromArgb(46, 140, 60) : score >= 85 ? Color.FromArgb(200, 130, 0) : Color.FromArgb(150, 110, 60);
             if (_stale) badge = Color.Silver;
             TextRenderer.DrawText(g, (i + 1).ToString(CultureInfo.InvariantCulture), _bold, new Point(6, top + Pad), _stale ? Color.Silver : Color.FromArgb(80, 80, 80), TextFormatFlags.NoPadding);
             var scoreBox = new Rectangle(6 + _numberWidth + 4, top + Pad, _badgeWidth, _normal.Height);
-            if (outlined)
-            {
-                using (var b = new SolidBrush(BackColor)) g.FillRectangle(b, scoreBox);
-                using (var pen = new Pen(badge, 2)) g.DrawRectangle(pen, scoreBox.X + 1, scoreBox.Y + 1, scoreBox.Width - 2, scoreBox.Height - 2);
-                TextRenderer.DrawText(g, score + "%", _bold, scoreBox, badge, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                return;
-            }
+            if (studio && !_stale) badge = StudioBlue;
             using (var b = new SolidBrush(badge)) g.FillRectangle(b, scoreBox);
             TextRenderer.DrawText(g, score + "%", _bold, scoreBox, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }

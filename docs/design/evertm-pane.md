@@ -623,6 +623,12 @@ on equal scores; the project's penalties applied. Built in `SuperVault/StudioTmM
   `Session` per document, used only on that worker (a lock guards the open-TM table against a search still finishing).
 - The last answer is kept for its segment, so the 4-second second look and a removal's new lookup don't search the
   Studio TMs again.
+- 23 Nov, after Michael's test: the pane follows EverTM's Enabled and Lookup ticks in the project ("It should follow
+  the ticks, like Studio does"; `TmSearcher.EverTmLooksUp`, null outside a project so EverTM is never hidden there).
+  This reverses the 9 Nov choice of showing EverTM in every project. Both the EverTM ticks and the Studio TM list are
+  read again when the .sdlproj's save time changes (one file-date read per lookup). Studio TM rows were made to stand
+  out ("Make the Studio TM matches stand out more"): blue left stripe, Studio-blue score, filled blue TM-name chip;
+  EverTM's rows a Studio TM also has keep EverTM's colours with an outlined "also in …" chip.
 - Scale: tested with one scratch .sdltm (a search about 120–220 ms cold); designed for up to ~10 TMs and multi-GB
   .sdltm files. With 50 TMs each segment waits longer for them, but EverTM's matches never do.
 

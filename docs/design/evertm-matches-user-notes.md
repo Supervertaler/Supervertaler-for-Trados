@@ -54,6 +54,14 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   Untick the ones you don't need; **Show all** brings them all back. The menu stays open while you tick.
 - Remembered between Studio sessions, except the order, which starts on best match first.
 
+## EverTM switched off in a project
+
+- The pane follows EverTM's own row in the project's TM list, as Studio does: with its **Enabled** or **Lookup**
+  unticked, the pane shows no EverTM matches, and the status line says "No EverTM matches: EverTM is off in this
+  project's TMs". Your Studio TMs' matches still show if that option is on.
+- Ticking it again works from the next segment once Studio has saved the project settings. A document that isn't in a
+  project always shows EverTM's matches.
+
 ## What each match shows
 
 - **Number and score.** Green for 100%, orange from 85%, brown below. Best first, from the lowest match you chose.
@@ -142,18 +150,18 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   with Lookup ticked (EverTM itself not counted). File TMs and GroupShare TMs.
 - Change a TM's Enabled, Lookup or penalty in Project Settings and the pane follows from the next segment, once
   Studio has saved the project. No need to reopen the document.
-- How to tell them apart: a Studio TM's match has **its TM's name in blue** at the start of its faint summary line,
-  and its **score in an outlined box** (EverTM's are filled). Its details say "From Studio TM" with the TM's file or
-  server address.
+- How to tell them apart at a glance: a Studio TM's match has a **blue stripe down its left edge**, its **score in
+  Studio blue** (EverTM's are green or orange) and **its TM's name in a blue label** under the text. Its details say
+  "From Studio TM" with the TM's file or server address.
 - The scores are Studio's own, with the project's penalty for that TM, so they match Translation Results. One
   difference: a "100%" whose source isn't exactly your segment's text (Studio does that when only numbers differ) is
   shown as 99%, as everywhere in Supervertaler.
 - As in Translation Results, when a Studio TM has a 100% match it offers that one alone, without its fuzzy matches.
-- **The same translation in EverTM and a Studio TM shows once, as EverTM's**, with "also in Hydraulics_TM" on its
-  summary line and in its details. On equal scores EverTM's match comes first. "Most matches shown" counts both.
+- **The same translation in EverTM and a Studio TM shows once, as EverTM's** (green or orange score, no stripe), with
+  an outlined blue "also in Hydraulics_TM" label under it, and "Also in" in its details. On equal scores EverTM's match comes first. "Most matches shown" counts both.
 - EverTM's matches appear straight away; the Studio TMs' are added a moment later ("searching Studio TMs…" in the
-  status line). Then the status line says how many Studio TMs were searched, how many more matches they gave, and how
-  long they took.
+  status line). Then the status line says how many Studio TMs were searched, what they found ("2 matches, all also in
+  EverTM"), and how long they took.
 - Inserting a Studio TM's match works the same way (formatting included); the segment is labelled with that TM's name
   ("TM, 87%, Hydraulics_TM").
 - **Edit in EverTM**, **Remove from EverTM** and older translations are for EverTM's matches only. On a Studio TM's

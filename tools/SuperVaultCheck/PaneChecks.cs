@@ -903,6 +903,20 @@ static class PaneChecks
         WriteProject("true", 0, new DateTime(2026, 11, 23, 10, 15, 0, DateTimeKind.Utc));
         check(StudioTmMatches.Search(s4, InProject(editor2)).Hits.Count == 2, "ticked again: searched again");
 
+        // EverTM's own row in the project's TM list: the pane follows its Enabled and Lookup ticks, as Studio does.
+        void EverTmRow(string enabled, string lookup) =>
+            File.WriteAllText(sdlproj, "<Project><CascadeItem><CascadeEntryItem PerformConcordanceSearch=\"true\" Penalty=\"0\" PerformUpdate=\"true\" PerformNormalSearch=\"" + lookup
+                + "\"><MainTranslationProviderItem Uri=\"evertm:///\" State=\"\" Enabled=\"" + enabled + "\" /></CascadeEntryItem></CascadeItem>"
+                + "<LanguageDirections><LanguageDirection SourceLanguageCode=\"nl-BE\" TargetLanguageCode=\"en-GB\"><CascadeItem/></LanguageDirection></LanguageDirections></Project>");
+        var docInProject = Path.Combine(project, "en-GB", "doc.sdlxliff");
+        EverTmRow("true", "true");
+        check(TmSearcher.EverTmLooksUp(docInProject, "nl-BE", "en-GB") == true, "EverTM enabled with Lookup ticked: looked up");
+        EverTmRow("false", "true");
+        check(TmSearcher.EverTmLooksUp(docInProject, "nl-BE", "en-GB") == false, "EverTM's row not Enabled: not looked up");
+        EverTmRow("true", "false");
+        check(TmSearcher.EverTmLooksUp(docInProject, "nl-BE", "en-GB") == false, "EverTM's Lookup unticked: not looked up");
+        check(TmSearcher.EverTmLooksUp(Path.Combine(dir, "no-project", "doc.sdlxliff"), "nl-BE", "en-GB") == null, "a document outside any project: not known, so EverTM is never hidden");
+
         // A segment with nothing to search, and a request without a segment: no hits, no exception.
         check(StudioTmMatches.Search(new StudioTmMatches.Session(), new StudioTmMatches.Request()).Hits.Count == 0, "a request without a segment: nothing, no exception");
 
@@ -925,9 +939,10 @@ static class PaneChecks
                   "merged in: EverTM's match and the Studio TM's, two rows");
             check(ReferenceEquals(control.MatchNumber(1) == null ? null : Field<System.Windows.Forms.Control>(control, "_list").GetType().GetProperty("Selected").GetValue(Field<System.Windows.Forms.Control>(control, "_list")), selectedBefore),
                   "the match selected before the Studio TMs' came stays selected");
-            check(status.Text.Contains("1 Studio TM: 1 more match"), "the status line: " + status.Text);
+            check(status.Text.Contains("1 Studio TM: 2 matches, 1 also in EverTM"), "the status line says what the Studio TM found: " + status.Text);
             check(r.EverTmMatches != null && r.EverTmMatches.Count == 1, "EverTM's own matches are kept apart (for the second look)");
             var details = Field<System.Windows.Forms.RichTextBox>(control, "_details");
+            var pictureDir = Environment.GetEnvironmentVariable("SV_PANE_PICTURE_DIR");
             check(details.Text.Contains("Also in  Hydraulics_TM"), "EverTM's match's details: also in Hydraulics_TM");
             list.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(list, new object[] { studioRow });
             check(details.Text.Contains("From Studio TM  Hydraulics_TM (" + path + ")") && !details.Text.Contains("In EverTM since"), "the Studio TM's match's details: from Studio TM Hydraulics_TM and where it is");
@@ -937,13 +952,25 @@ static class PaneChecks
             var items = menu.Items.Cast<System.Windows.Forms.ToolStripItem>().ToList();
             check(!items.First(i => i.Text == "Edit in EverTM...").Available && !items.First(i => i.Text == "Remove from EverTM").Available && items.Any(i => i.Available && i.Text.StartsWith("From the Studio TM Hydraulics_TM")),
                   "on a Studio TM's match the menu has no Edit or Remove, and says to use Translation Results");
-            var picture = Environment.GetEnvironmentVariable("SV_PANE_PICTURE_DIR");
-            if (!string.IsNullOrEmpty(picture))
+            void Snap(string name)
+            {
+                if (string.IsNullOrEmpty(pictureDir)) return;
                 using (var bmp = new System.Drawing.Bitmap(form.ClientSize.Width, form.ClientSize.Height))
                 {
                     control.DrawToBitmap(bmp, new System.Drawing.Rectangle(System.Drawing.Point.Empty, form.ClientSize));
-                    bmp.Save(Path.Combine(picture, "studio-tms.png"));
+                    bmp.Save(Path.Combine(pictureDir, name));
                 }
+            }
+            Snap("studio-tms.png");
+
+            // EverTM switched off in the project: no EverTM matches, and the status line says why; the Studio TM's still show.
+            var off = new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = new List<VaultMatch>(), EverTmOff = true, SegmentId = "1", SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB", Editor = editor2, TagMapAtLookup = SegmentTagHandler.Serialize(source2).TagMap, StudioKey = "doc1|1/1" };
+            off.MergeStudio(answer, 10);
+            control.ShowResult(off);
+            check(status.Text.StartsWith("No EverTM matches: EverTM is off in this project's TMs") && status.Text.Contains("1 Studio TM: 2 matches")
+                  && control.MatchNumber(1) != null && off.StudioOf(control.MatchNumber(1)) != null && off.StudioOf(control.MatchNumber(2)) != null,
+                  "EverTM off in the project: only the Studio TM's matches, and the status line says why: " + status.Text);
+            Snap("studio-tms-evertm-off.png");
         }
     }
 
