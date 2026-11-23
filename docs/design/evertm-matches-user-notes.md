@@ -49,7 +49,7 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - **Lowest match shown:** 50% to 100%; 70% to start with.
 - **Most matches shown:** 1 to 20; 10 to start with.
 - **Best match first** or **Newest first**.
-- **Details shown:** a tick for each item of the details area (Project, Client, Subject, End client, Document, Source,
+- **Details shown:** a tick for each item of the details area (Project, Client, Subject, End client, Document, Came from,
   Note, Created, Changed, In EverTM since, Language variants, Older translations, Numbers, Formatting, Differences).
   Untick the ones you don't need; **Show all** brings them all back. The menu stays open while you tick.
 - Remembered between Studio sessions, except the order, which starts on best match first.
@@ -85,7 +85,14 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 
 ## The details under the list
 
-- For the match you select: every field with all its values (Project, Client, Subject, End client, Document, Source,
+- First line after the match: **Found in**, with a label per place: a green "EverTM" and a blue label for each Studio
+  TM that has it.
+- Then **EverTM entry** (or **Studio TM entry** for a match only a Studio TM has): the fields, dates and users.
+- **Came from** (EverTM's old "Source") says where EverTM got the entry, in words: "confirmed in Studio project
+  BRANTS (HELLO-003)" (learned when you confirmed it there), "imported from Studio TM Acme.sdltm", "imported from TMX
+  file Acme.tmx", or a Workbench TM's name. It is history, not a TM that has it now; that's "Found in".
+
+- For the match you select: every field with all its values (Project, Client, Subject, End client, Document, Came from,
   Note), created and changed (date and user), when it entered EverTM, its language variants, and whether a number
   was replaced or the formatting can't be placed.
 - A field with 20 values says "(20 shown; more may exist)": EverTM keeps at most 20 values per field.
@@ -152,13 +159,17 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   Studio has saved the project. No need to reopen the document.
 - How to tell them apart at a glance: a Studio TM's match has a **blue stripe down its left edge**, its **score in
   Studio blue** (EverTM's are green or orange) and **its TM's name in a blue label** under the text. Its details say
-  "From Studio TM" with the TM's file or server address.
+  "Found in" with that TM's blue label, and a "Studio TM entry" block with its file or server address.
+- Studio TMs are named with their file extension ("BRANTS (HELLO-003+004-BE-EP).sdltm"), so they read as Trados
+  memories at a glance; a GroupShare TM as "Legal (GroupShare)". In a narrow pane a long name is shortened, and
+  keeps its ".sdltm".
 - The scores are Studio's own, with the project's penalty for that TM, so they match Translation Results. One
   difference: a "100%" whose source isn't exactly your segment's text (Studio does that when only numbers differ) is
   shown as 99%, as everywhere in Supervertaler.
 - As in Translation Results, when a Studio TM has a 100% match it offers that one alone, without its fuzzy matches.
 - **The same translation in EverTM and a Studio TM shows once, as EverTM's** (green or orange score, no stripe), with
-  an outlined blue "also in Hydraulics_TM" label under it, and "Also in" in its details. On equal scores EverTM's match comes first. "Most matches shown" counts both.
+  "also in Hydraulics_TM.sdltm" in plain blue on its summary line ("also in 2 Studio TMs" when several), and all of
+  them under "Found in" in its details. On equal scores EverTM's match comes first. "Most matches shown" counts both.
 - EverTM's matches appear straight away; the Studio TMs' are added a moment later ("searching Studio TMs…" in the
   status line). Then the status line says how many Studio TMs were searched, what they found ("2 matches, all also in
   EverTM"), and how long they took.

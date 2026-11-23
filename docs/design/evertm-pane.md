@@ -628,7 +628,7 @@ on equal scores; the project's penalties applied. Built in `SuperVault/StudioTmM
   This reverses the 9 Nov choice of showing EverTM in every project. Both the EverTM ticks and the Studio TM list are
   read again when the .sdlproj's save time changes (one file-date read per lookup). Studio TM rows were made to stand
   out ("Make the Studio TM matches stand out more"): blue left stripe, Studio-blue score, filled blue TM-name chip;
-  EverTM's rows a Studio TM also has keep EverTM's colours with an outlined "also in …" chip.
+  EverTM's rows a Studio TM also has keep EverTM's colours with "also in …" in plain blue text (the outlined label drew the eye too much).
 - Scale: tested with one scratch .sdltm (a search about 120–220 ms cold); designed for up to ~10 TMs and multi-GB
   .sdltm files. With 50 TMs each segment waits longer for them, but EverTM's matches never do.
 

@@ -452,6 +452,12 @@ namespace Supervertaler.Trados.Controls
             _olderMore.Visible = !_olderLoading && more > 0 && _olderPages > 0;
         }
 
+        /// <summary>
+        /// The selected match's details (Michael, 23 Nov 2026): first where it was found ("Found in", with labels in the
+        /// row's colours: EverTM's, and Studio blue for each Studio TM), then the entry it shows: "EverTM entry" (its
+        /// fields, where EverTM got it from, its dates) or, for a match only a Studio TM has, "Studio TM entry" (the
+        /// TM's file, the unit's fields and dates); then what was done to it for your segment (numbers, formatting).
+        /// </summary>
         void ShowDetails()
         {
             var m = _detailsOf ?? _list.Selected;
@@ -460,54 +466,99 @@ namespace Supervertaler.Trados.Controls
             var c = m.Candidate ?? new VaultCandidate();
             var bold = new Font(Font, FontStyle.Bold);
             var hidden = new HashSet<string>(Settings.SettingsService.Current.EverTmPaneHiddenDetails ?? new List<string>(), StringComparer.Ordinal);
-            void Line(string label, string value)
+            void Put(string text, Font font, Color fore, Color back)
+            {
+                _details.SelectionStart = _details.TextLength;
+                _details.SelectionLength = 0;
+                _details.SelectionFont = font;
+                _details.SelectionColor = fore;
+                _details.SelectionBackColor = back;
+                _details.SelectedText = text;
+            }
+            void Line(string label, string value, int indent = 12)
             {
                 if (hidden.Contains(label)) return;   // switched off in Options > Details shown
-                _details.SelectionFont = bold;
-                _details.SelectionColor = Color.FromArgb(90, 90, 90);
-                _details.AppendText(label + "  ");
-                _details.SelectionFont = Font;
-                _details.SelectionColor = Color.Black;
-                _details.AppendText(value + "\n");
+                _details.SelectionStart = _details.TextLength;
+                _details.SelectionIndent = indent;
+                Put(label + "  ", bold, Color.FromArgb(90, 90, 90), Color.White);
+                Put(value + "\n", Font, Color.Black, Color.White);
+            }
+            void Heading(string text)
+            {
+                _details.SelectionStart = _details.TextLength;
+                _details.SelectionIndent = 0;
+                Put(text + "\n", bold, Color.FromArgb(60, 60, 60), Color.White);
             }
 
             var tm = _detailsOf != null ? null : _result.StudioOf(m);
-            _details.SelectionFont = bold;
-            _details.AppendText(_detailsOf != null
+            _details.SelectionIndent = 0;
+            Put(_detailsOf != null
                 ? "Older translation " + (_older.SelectedIndex + 1) + " of match " + (_list.SelectedIndex + 1) + "\n"
-                : "Match " + (_list.SelectedIndex + 1) + ", " + m.Score + "%" + (c.Exact ? " (exact)" : "") + (tm != null ? " · from a Studio TM" : "") + "\n");
-            if (tm != null)
-                Line("From Studio TM", tm.Name + (tm.Name != tm.Entry ? " (" + tm.Entry + ")" : "") + (tm.Penalty > 0 ? " · project penalty " + tm.Penalty + "%" : ""));
-            if (_detailsOf == null && _result.AlsoIn != null && _result.AlsoIn.TryGetValue(m, out var also) && also.Count > 0)
-                Line("Also in", string.Join("; ", also));
+                : "Match " + (_list.SelectedIndex + 1) + ", " + m.Score + "%" + (c.Exact ? " (exact)" : "") + "\n", bold, Color.Black, Color.White);
 
+            // Found in: EverTM and/or the Studio TMs, as labels in the row's colours.
+            Put("Found in  ", bold, Color.FromArgb(90, 90, 90), Color.White);
+            var studioNames = new List<string>();
+            if (tm != null) studioNames.Add(tm.Name);
+            if (_detailsOf == null && _result.AlsoIn != null && _result.AlsoIn.TryGetValue(m, out var also)) studioNames.AddRange(also);
+            if (tm == null) { Put(" EverTM ", bold, Color.White, EverTmGreen); Put(" ", Font, Color.Black, Color.White); }
+            foreach (var name in studioNames.Distinct()) { Put(" " + name + " ", bold, Color.White, EverTmMatchList.StudioBlue); Put(" ", Font, Color.Black, Color.White); }
+            Put("\n", Font, Color.Black, Color.White);
+
+            Heading(tm != null ? "Studio TM entry" : "EverTM entry");
+            if (tm != null)
+                Line(tm.Entry.EndsWith(".sdltm", StringComparison.OrdinalIgnoreCase) ? "File" : "Server",
+                     tm.Entry + (tm.Penalty > 0 ? " · project penalty " + tm.Penalty + "%" : ""));
             var fields = c.Fields ?? new List<(string Field, string Value)>();
             foreach (var name in VaultFields.Order.Concat(fields.Select(f => f.Field).Where(f => !VaultFields.Order.Contains(f)).Distinct()))
             {
                 var values = fields.Where(f => f.Field == name && !string.IsNullOrWhiteSpace(f.Value)).Select(f => f.Value.Trim()).Distinct().ToList();
                 if (values.Count == 0) continue;
+                if (name == VaultFields.Source) values = values.Select(CameFrom).ToList();
                 string shown = string.Join("; ", values);
                 if (values.Count >= VaultFields.MaxValuesPerField) shown += "  (" + values.Count + " shown; more may exist)";
-                Line(name, shown);
+                Line(name == VaultFields.Source ? CameFromLabel : name, shown);
             }
             if (fields.Count == 0 && !VaultFields.Order.All(hidden.Contains)) Line("Fields", "none stored for this translation unit");
             Line("Created", When(c.Created, c.CreatedBy));
             Line("Changed", When(c.Changed, c.ChangedBy));
             if (tm == null) Line("In EverTM since", c.Added == null ? "not known" : EverTmSummary.FormatDate(c.Added.Value));
             Line("Language variants", string.IsNullOrWhiteSpace(c.Variant) ? "not known" : c.Variant.Replace(">", " > "));
+
+            // What was done to it for your segment.
             if (m.NumbersReplaced > 0)
-                Line("Numbers", m.NumbersReplaced == 1 ? "1 number replaced by your segment's" : m.NumbersReplaced + " numbers replaced by your segment's");
+                Line("Numbers", m.NumbersReplaced == 1 ? "1 number replaced by your segment's" : m.NumbersReplaced + " numbers replaced by your segment's", 0);
             if (m.Tags == VaultTagOutcome.Unmapped && _result.Editor != null && _result.Editor.HasTags)
-                Line("Formatting", "this match's tags can't be placed with confidence: it is inserted without formatting");
+                Line("Formatting", "this match's tags can't be placed with confidence: it is inserted without formatting", 0);
             if (m.Diff != null && m.Diff.Edits == null)
-                Line("Differences", "too long to compare word by word");
+                Line("Differences", "too long to compare word by word", 0);
             _details.SelectionStart = 0;
             _details.ScrollToCaret();
             bold.Dispose();
         }
 
+        static readonly Color EverTmGreen = Color.FromArgb(46, 140, 60);
+
+        /// <summary>The details' name for EverTM's Source field: where EverTM got the entry (not a TM that has it now).</summary>
+        const string CameFromLabel = "Came from";
+
+        /// <summary>
+        /// A Source value in words: "Studio: BRANTS (HELLO-003)" is a segment confirmed in that Studio project (learned),
+        /// "Acme.sdltm" an imported Studio TM, "Acme.tmx" an imported TMX file; anything else (a Workbench TM's name:
+        /// "PATENTS", "trash") as it is.
+        /// </summary>
+        public static string CameFrom(string value)
+        {
+            var v = (value ?? "").Trim();
+            if (v.Equals("Studio", StringComparison.OrdinalIgnoreCase)) return "confirmed in a Studio project";
+            if (v.StartsWith("Studio: ", StringComparison.OrdinalIgnoreCase)) return "confirmed in Studio project " + v.Substring(8).Trim();
+            if (v.EndsWith(".sdltm", StringComparison.OrdinalIgnoreCase)) return "imported from Studio TM " + v;
+            if (v.EndsWith(".tmx", StringComparison.OrdinalIgnoreCase)) return "imported from TMX file " + v;
+            return v;
+        }
+
         /// <summary>Every item the details area can show, in its order: what Options > Details shown lists.</summary>
-        static readonly string[] DetailItems = VaultFields.Order.Concat(new[]
+        static readonly string[] DetailItems = VaultFields.Order.Select(f => f == VaultFields.Source ? CameFromLabel : f).Concat(new[]
             { "Created", "Changed", "In EverTM since", "Language variants", "Older translations", "Numbers", "Formatting", "Differences" }).ToArray();
 
         /// <summary>
@@ -599,6 +650,8 @@ namespace Supervertaler.Trados.Controls
             public string Badge;
             /// <summary>On EverTM's row a Studio TM has too: "also in Hydraulics_TM", in an outlined chip.</summary>
             public string Also;
+            /// <summary>The chip's text as drawn: shortened to the pane's width (a TM's ".sdltm" kept).</summary>
+            public string Chip;
             public bool TooLong;
             // Layout, for the current width.
             public int Top, Height;
@@ -625,7 +678,10 @@ namespace Supervertaler.Trados.Controls
         readonly int _numberWidth, _badgeWidth, Gutter;
         static readonly Color RemovedColor = Color.FromArgb(190, 30, 30), AddedColor = Color.FromArgb(0, 120, 40),
             AddedBack = Color.FromArgb(222, 244, 226), TagColor = Color.FromArgb(120, 120, 120), TagBack = Color.FromArgb(232, 232, 232),
-            SummaryColor = Color.FromArgb(140, 140, 140), StudioBlue = Color.FromArgb(25, 100, 175), LinkColor = Color.FromArgb(30, 100, 180), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
+            SummaryColor = Color.FromArgb(140, 140, 140), LinkColor = Color.FromArgb(30, 100, 180), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
+
+        /// <summary>Studio blue: a Studio TM's score, stripe and name label, here and in the details.</summary>
+        internal static readonly Color StudioBlue = Color.FromArgb(25, 100, 175);
 
         public event EventHandler SelectionChanged;
         public event Action<VaultMatch> InsertRequested;
@@ -756,7 +812,7 @@ namespace Supervertaler.Trados.Controls
             if (!Others && r?.AlsoIn != null && r.AlsoIn.TryGetValue(m, out var also) && also.Count > 0)
             {
                 if (row.Badge != null) row.Badge += " +" + also.Count;   // other Studio TMs have it too
-                else row.Also = "also in " + string.Join(", ", also);
+                else row.Also = also.Count == 1 ? "also in " + also[0] + " ·" : "also in " + also.Count + " Studio TMs ·";   // the names: "Found in", in the details
             }
             if (!Others && m.Candidate?.Older > 0) row.Older = (m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older.ToString("N0", CultureInfo.CurrentCulture) + " older") + " ▸";
             return row;
@@ -1007,6 +1063,8 @@ namespace Supervertaler.Trados.Controls
         /// <summary>The faint line, fitted once per layout (not per paint): Client · Project · date, and the variant.</summary>
         string SummaryLine(Row row, int width)
         {
+            var full = row.Badge ?? row.Also;
+            row.Chip = full == null ? null : FitChip(full, Math.Max(60, width * 3 / 5), ChipFont(row));
             var parts = EverTmSummary.Make(row.Match.Candidate, _result?.SourceLang, _result?.SourceCulture, _result?.TargetCulture);
             if (row.TooLong) parts.Tail += " · too long to compare word by word";
             return EverTmSummary.Fit(parts, width - OlderWidth(row) - BadgeWidth(row), s => TextRenderer.MeasureText(s, _small, Size.Empty, TextFormatFlags.NoPadding).Width);
@@ -1016,16 +1074,37 @@ namespace Supervertaler.Trados.Controls
         int BadgeWidth(Row row)
         {
             var text = ChipText(row);
-            return text == null ? 0 : TextRenderer.MeasureText(text, _smallBold, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + 10 + 6;
+            if (text == null) return 0;
+            return row.Badge != null ? ChipTextWidth(text, _smallBold) + 10 + 6 : ChipTextWidth(text, _small) + 4;
         }
 
-        static string ChipText(Row row) => row.Badge ?? row.Also;
+        /// <summary>A Studio TM's name label is bold; "also in …" on EverTM's row is the summary line's own weight.</summary>
+        Font ChipFont(Row row) => row.Badge != null ? _smallBold : _small;
+
+        static int ChipTextWidth(string text, Font font) => TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+
+        static string ChipText(Row row) => row.Chip;
+
+        /// <summary>
+        /// A chip's text shortened to <paramref name="max"/> pixels: "BRANTS (HELLO-0….sdltm", the TM's ".sdltm" (and
+        /// a "+1" after it) kept, so it still reads as a Studio TM; other text cut at the end.
+        /// </summary>
+        static string FitChip(string text, int max, Font font)
+        {
+            if (ChipTextWidth(text, font) + 10 <= max) return text;
+            int ext = text.LastIndexOf(".sdltm", StringComparison.OrdinalIgnoreCase);
+            string tail = ext > 0 ? text.Substring(ext) : "";
+            string stem = ext > 0 ? text.Substring(0, ext) : text;
+            while (stem.Length > 1 && ChipTextWidth(stem + "\u2026" + tail, font) + 10 > max) stem = stem.Substring(0, stem.Length - 1);
+            return stem.TrimEnd() + "\u2026" + tail;
+        }
 
         /// <summary>
         /// A Studio TM's row stands out at a glance (Michael, 23 Nov 2026: "Make the Studio TM matches stand out more"):
         /// a blue stripe down its left edge, its score in Studio blue (EverTM's are green and orange), and the TM's name
-        /// in a filled blue chip. EverTM's row that a Studio TM has too keeps EverTM's look, with an outlined blue
-        /// "also in …" chip.
+        /// in a filled blue chip. EverTM's row that a Studio TM has too keeps EverTM's look, with "also in …" in plain
+        /// blue text at the summary line's weight: EverTM's match is the main thing there (Michael: the outlined label
+        /// "draws the eye there too much").
         /// </summary>
         void PaintChip(Graphics g, Row row, int sy)
         {
@@ -1039,11 +1118,7 @@ namespace Supervertaler.Trados.Controls
                 using (var b = new SolidBrush(blue)) g.FillRectangle(b, box);
                 TextRenderer.DrawText(g, text, _smallBold, box, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
-            else
-            {
-                using (var pen = new Pen(blue)) g.DrawRectangle(pen, box.X, box.Y, box.Width - 1, box.Height - 1);
-                TextRenderer.DrawText(g, text, _smallBold, box, blue, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            }
+            else TextRenderer.DrawText(g, text, _small, new Point(Gutter, sy), blue, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         }
 
         protected override void OnResize(EventArgs e)

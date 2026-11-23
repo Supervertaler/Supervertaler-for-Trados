@@ -151,7 +151,7 @@ namespace Supervertaler.Trados.SuperVault
                 var tms = found.Tms.Select(e => new Tm
                 {
                     Entry = e,
-                    Name = TmSearcher.DisplayName(e),
+                    Name = PaneName(e),
                     Penalty = found.Penalties.TryGetValue(e, out int p) ? p : 0,
                 }).ToList();
                 var keep = new HashSet<string>(tms.Select(t => t.Entry), StringComparer.OrdinalIgnoreCase);
@@ -310,6 +310,19 @@ namespace Supervertaler.Trados.SuperVault
                     : string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
             return lds.FirstOrDefault(l => Same(l.SourceLanguage, source, false) && Same(l.TargetLanguage, target, false))
                 ?? lds.FirstOrDefault(l => Same(l.SourceLanguage, source, true) && Same(l.TargetLanguage, target, true));
+        }
+
+        /// <summary>
+        /// A Studio TM's name as the pane shows it (Michael, 23 Nov 2026): a file TM with its ".sdltm", so it reads as a
+        /// Trados memory at a glance ("BRANTS (HELLO-003+004-BE-EP).sdltm"); a GroupShare TM, which has no file, as
+        /// "Legal (GroupShare)". Pane-only: TmSearcher.DisplayName stays as other features use it.
+        /// </summary>
+        public static string PaneName(string entry)
+        {
+            if (string.IsNullOrEmpty(entry)) return "";
+            if (ServerTmClient.IsServerTmUri(entry)) return TmSearcher.DisplayName(entry);
+            try { return Path.GetFileName(entry); }
+            catch { return entry; }
         }
 
         // ---- merging ----

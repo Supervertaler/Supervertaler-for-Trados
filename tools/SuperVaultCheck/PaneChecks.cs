@@ -786,7 +786,7 @@ static class PaneChecks
         var source2 = Source(" om de instellingen te bewaren.");
         var editor2 = EverTmEditorSegment.From(source2, NlBe);
 
-        var tm = new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM", Penalty = 0 };
+        var tm = new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM.sdltm", Penalty = 0 };
         StudioTmMatches.Request Ask(List<StudioTmMatches.Tm> tms, EverTmEditorSegment e, string doc = "doc1.sdlxliff") => new StudioTmMatches.Request
         {
             Key = doc + "|1/1", DocumentFile = Path.Combine(dir, doc), Segment = e.Segment, Document = e.Pieces,
@@ -820,7 +820,7 @@ static class PaneChecks
         check(studioScores.SequenceEqual(ourScores), "the scores are Studio's own: " + string.Join(", ", ourScores) + " / Studio: " + string.Join(", ", studioScores));
 
         // The project's penalty for the TM.
-        var penalised = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM", Penalty = 5 } }, editor2));
+        var penalised = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM.sdltm", Penalty = 5 } }, editor2));
         check(penalised.Hits.Select(h => h.Match.Score).OrderByDescending(x => x).SequenceEqual(ourScores.Select(x => x - 5)),
               "a project penalty of 5% takes 5 off each: " + string.Join(", ", penalised.Hits.Select(h => h.Match.Score)));
 
@@ -830,7 +830,7 @@ static class PaneChecks
         check(everTm.Count == 1 && merged.Matches.Count == 2 && merged.Matches.Contains(everTm[0]) && merged.FromStudio.Count == 1 && ReferenceEquals(merged.FromStudio.Keys.First(), fuzzy?.Match)
               && merged.Matches[0].Score >= merged.Matches[1].Score,
               "merged: the translation both have shows once, as EverTM's; the Studio TM's other one as its own row; best first: " + string.Join(", ", merged.Matches.Select(m => m.Score + "%")));
-        check(merged.AlsoIn.TryGetValue(everTm[0], out var also) && also.SequenceEqual(new[] { "Hydraulics_TM" }), "EverTM's row says it is also in Hydraulics_TM");
+        check(merged.AlsoIn.TryGetValue(everTm[0], out var also) && also.SequenceEqual(new[] { "Hydraulics_TM.sdltm" }), "EverTM's row says it is also in Hydraulics_TM");
         var tie = new VaultMatch { Score = everTm[0].Score, Source = new List<VaultPiece> { new VaultPiece { Text = "x" } }, Target = new List<VaultPiece> { new VaultPiece { Text = "y" } } };
         var tied = StudioTmMatches.Merge(everTm, new[] { new StudioTmMatches.Hit { Match = tie, Tm = tm } }, 10);
         check(ReferenceEquals(tied.Matches[0], everTm[0]) && ReferenceEquals(tied.Matches[1], tie), "an equal score: EverTM's first");
@@ -902,6 +902,12 @@ static class PaneChecks
         check(unticked.Tms == 0 && unticked.Hits.Count == 0 && s4.OpenCount == 0, "Lookup unticked and saved: no longer searched, and the TM let go, without reopening the document");
         WriteProject("true", 0, new DateTime(2026, 11, 23, 10, 15, 0, DateTimeKind.Utc));
         check(StudioTmMatches.Search(s4, InProject(editor2)).Hits.Count == 2, "ticked again: searched again");
+        check(StudioTmMatches.Search(new StudioTmMatches.Session(), InProject(editor2)).Hits.All(h => h.Tm.Name == "Hydraulics_TM.sdltm"), "a file TM is named with its .sdltm");
+        check(StudioTmMatches.PaneName("sdltm.https://gs.example.com/Acme?orgPath=/&tmName=Legal") .EndsWith("(GroupShare)"), "a GroupShare TM is marked (GroupShare): " + StudioTmMatches.PaneName("sdltm.https://gs.example.com/Acme?orgPath=/&tmName=Legal"));
+        check(Supervertaler.Trados.Controls.EverTmMatchesControl.CameFrom("Studio: BRANTS (HELLO-003)") == "confirmed in Studio project BRANTS (HELLO-003)"
+              && Supervertaler.Trados.Controls.EverTmMatchesControl.CameFrom("Acme.sdltm") == "imported from Studio TM Acme.sdltm"
+              && Supervertaler.Trados.Controls.EverTmMatchesControl.CameFrom("PATENTS") == "PATENTS",
+              "\"Came from\" in words: a project confirmed in, a Studio TM or TMX imported, a Workbench TM's name as it is");
 
         // EverTM's own row in the project's TM list: the pane follows its Enabled and Lookup ticks, as Studio does.
         void EverTmRow(string enabled, string lookup) =>
@@ -935,7 +941,7 @@ static class PaneChecks
             r.MergeStudio(answer, 10);
             control.UpdateResult(r);
             int studioRow = control.MatchNumber(1) != null && r.StudioOf(control.MatchNumber(1)) != null ? 0 : 1;
-            check(control.MatchNumber(3) == null && r.StudioOf(control.MatchNumber(studioRow + 1))?.Name == "Hydraulics_TM" && r.StudioOf(control.MatchNumber(2 - studioRow)) == null,
+            check(control.MatchNumber(3) == null && r.StudioOf(control.MatchNumber(studioRow + 1))?.Name == "Hydraulics_TM.sdltm" && r.StudioOf(control.MatchNumber(2 - studioRow)) == null,
                   "merged in: EverTM's match and the Studio TM's, two rows");
             check(ReferenceEquals(control.MatchNumber(1) == null ? null : Field<System.Windows.Forms.Control>(control, "_list").GetType().GetProperty("Selected").GetValue(Field<System.Windows.Forms.Control>(control, "_list")), selectedBefore),
                   "the match selected before the Studio TMs' came stays selected");
@@ -943,9 +949,15 @@ static class PaneChecks
             check(r.EverTmMatches != null && r.EverTmMatches.Count == 1, "EverTM's own matches are kept apart (for the second look)");
             var details = Field<System.Windows.Forms.RichTextBox>(control, "_details");
             var pictureDir = Environment.GetEnvironmentVariable("SV_PANE_PICTURE_DIR");
-            check(details.Text.Contains("Also in  Hydraulics_TM"), "EverTM's match's details: also in Hydraulics_TM");
+            check(details.Text.Contains("Found in   EverTM   Hydraulics_TM.sdltm ") && details.Text.Contains("EverTM entry") && details.Text.Contains("Came from  imported from TMX file evertm.tmx"),
+                  "EverTM's match's details: found in EverTM and Hydraulics_TM.sdltm; the EverTM entry, and where EverTM got it: " + details.Text.Replace('\n', '|'));
             list.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(list, new object[] { studioRow });
-            check(details.Text.Contains("From Studio TM  Hydraulics_TM (" + path + ")") && !details.Text.Contains("In EverTM since"), "the Studio TM's match's details: from Studio TM Hydraulics_TM and where it is");
+            check(details.Text.Contains("Found in   Hydraulics_TM.sdltm ") && !details.Text.Contains(" EverTM ") && details.Text.Contains("Studio TM entry") && details.Text.Contains("File  " + path) && !details.Text.Contains("In EverTM since"),
+                  "the Studio TM's match's details: found in Hydraulics_TM.sdltm only, and the Studio TM entry with its file: " + details.Text.Replace('\n', '|'));
+            form.Width = 330;
+            System.Windows.Forms.Application.DoEvents();
+            Snap("studio-tms-narrow.png");
+            form.Width = 760;
             var menu = list.ContextMenuStrip;
             var opening = typeof(System.Windows.Forms.ToolStripDropDown).GetMethod("OnOpening", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             opening.Invoke(menu, new object[] { new System.ComponentModel.CancelEventArgs() });
