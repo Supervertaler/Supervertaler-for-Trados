@@ -1,13 +1,14 @@
 # EverTM Matches: notes for the help page
 
-User-facing notes, kept while building, for docs.supervertaler.com/trados/evertm/ (a new section "EverTM Matches").
+User-facing notes, kept while building. Written up as the Help page docs.supervertaler.com/trados/evertm-matches/
+(Supervertaler-Help, branch claude/help-evertm-matches, 23 Nov 2026); keep the two in step.
 Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 
 ## What it is
 
 - A pane of its own that shows EverTM's matches for the segment you are in, with everything EverTM knows about each.
-- It can take the place of Studio's Translation Results for EverTM. Studio's other TMs still show in Translation
-  Results.
+- It can take the place of Studio's Translation Results: for EverTM, and with Options > Also show matches from the
+  project's Studio TMs, for those too.
 - It needs a Supervertaler licence (or the trial), like TermLens and the Assistant. EverTM itself, in your project's TM
   list, stays free.
 
@@ -76,7 +77,7 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - **The stored translation.** A number that differs from your segment is already replaced, as in Translation
   Results.
 - **A faint line under it:** Client · Project · date (last changed, else created; "undated" without one).
-  - Missing ones are left out. With neither Client nor Project, the Source (the TMX or TM it came from) is shown.
+  - Missing ones are left out. With neither Client nor Project, where EverTM got it (Came from) is shown.
   - Several values: the first and "+2".
   - A language variant other than your project's is added at the end ("· en-US" in an en-GB project).
   - In a narrow pane, Client and Project are shortened with "…"; the date is always shown whole.
@@ -188,12 +189,14 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - Normally: how many translation units EverTM holds, how many matches, and how long the lookup took.
 - Instead, when there's something to know: "EverTM is empty…", "EverTM is being rebuilt…" (matches still come from
   the index before the rebuild), "The EverTM index could not be opened… Rebuild it.", "EverTM lookup failed: …".
-- "EverTM is not in this project's TMs with Update ticked: segments you confirm won't be learned". The pane reads
-  EverTM in any project, but EverTM only learns your confirmed segments when it is in the project's TM list with
-  Update ticked. (Read from the saved project, so it updates after Studio saves the project settings.)
+- "EverTM is not in this project's TMs with Update ticked: segments you confirm won't be learned": EverTM only learns
+  your confirmed segments when it is in the project's TM list with Update ticked. (Read from the saved project, so it
+  updates after Studio saves the project settings.)
+- "No EverTM matches: EverTM is off in this project's TMs (Enabled or Lookup unticked)": see above.
 - After inserting: "Match 87% inserted", or "… inserted without formatting"; for a Studio TM's match, "Match 87%
   from Hydraulics_TM inserted".
-- With Studio TM matches on: "searching Studio TMs…", then "3 Studio TMs: 2 more matches · 40 ms", and any TM left out.
+- With Studio TM matches on: "searching Studio TMs…", then "3 Studio TMs: 2 matches, 1 also in EverTM · 40 ms", and
+  any TM left out.
 
 ## Inserting a match
 
