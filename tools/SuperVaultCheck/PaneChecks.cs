@@ -949,10 +949,10 @@ static class PaneChecks
             check(r.EverTmMatches != null && r.EverTmMatches.Count == 1, "EverTM's own matches are kept apart (for the second look)");
             var details = Field<System.Windows.Forms.RichTextBox>(control, "_details");
             var pictureDir = Environment.GetEnvironmentVariable("SV_PANE_PICTURE_DIR");
-            check(details.Text.Contains("Found in   EverTM   Hydraulics_TM.sdltm ") && details.Text.Contains("EverTM entry") && details.Text.Contains("Came from  imported from TMX file evertm.tmx"),
+            check(System.Text.RegularExpressions.Regex.IsMatch(details.Text, @"Found in +EverTM +Hydraulics_TM.sdltm ") && details.Text.Contains("EverTM entry") && details.Text.Contains("Came from  imported from TMX file evertm.tmx"),
                   "EverTM's match's details: found in EverTM and Hydraulics_TM.sdltm; the EverTM entry, and where EverTM got it: " + details.Text.Replace('\n', '|'));
             list.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(list, new object[] { studioRow });
-            check(details.Text.Contains("Found in   Hydraulics_TM.sdltm ") && !details.Text.Contains(" EverTM ") && details.Text.Contains("Studio TM entry") && details.Text.Contains("File  " + path) && !details.Text.Contains("In EverTM since"),
+            check(System.Text.RegularExpressions.Regex.IsMatch(details.Text, @"Found in +Hydraulics_TM.sdltm ") && !details.Text.Contains(" EverTM ") && details.Text.Contains("Studio TM entry") && details.Text.Contains("File  " + path) && !details.Text.Contains("In EverTM since"),
                   "the Studio TM's match's details: found in Hydraulics_TM.sdltm only, and the Studio TM entry with its file: " + details.Text.Replace('\n', '|'));
             form.Width = 330;
             System.Windows.Forms.Application.DoEvents();

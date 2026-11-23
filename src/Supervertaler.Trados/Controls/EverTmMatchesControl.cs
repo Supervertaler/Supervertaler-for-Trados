@@ -501,8 +501,9 @@ namespace Supervertaler.Trados.Controls
             var studioNames = new List<string>();
             if (tm != null) studioNames.Add(tm.Name);
             if (_detailsOf == null && _result.AlsoIn != null && _result.AlsoIn.TryGetValue(m, out var also)) studioNames.AddRange(also);
-            if (tm == null) { Put(" EverTM ", bold, Color.White, EverTmGreen); Put(" ", Font, Color.Black, Color.White); }
-            foreach (var name in studioNames.Distinct()) { Put(" " + name + " ", bold, Color.White, EverTmMatchList.StudioBlue); Put(" ", Font, Color.Black, Color.White); }
+            // Tags, not buttons (Michael, 23 Nov 2026: "tone it down a bit"): dark coloured text on a pale tint.
+            if (tm == null) { Put(" EverTM ", Font, EverTmGreen, EverTmGreenPale); Put("  ", Font, Color.Black, Color.White); }
+            foreach (var name in studioNames.Distinct()) { Put(" " + name + " ", Font, EverTmMatchList.StudioBlue, EverTmMatchList.StudioBluePale); Put("  ", Font, Color.Black, Color.White); }
             Put("\n", Font, Color.Black, Color.White);
 
             Heading(tm != null ? "Studio TM entry" : "EverTM entry");
@@ -537,7 +538,7 @@ namespace Supervertaler.Trados.Controls
             bold.Dispose();
         }
 
-        static readonly Color EverTmGreen = Color.FromArgb(46, 140, 60);
+        static readonly Color EverTmGreen = Color.FromArgb(36, 120, 50), EverTmGreenPale = Color.FromArgb(230, 244, 232);
 
         /// <summary>The details' name for EverTM's Source field: where EverTM got the entry (not a TM that has it now).</summary>
         const string CameFromLabel = "Came from";
@@ -682,6 +683,8 @@ namespace Supervertaler.Trados.Controls
 
         /// <summary>Studio blue: a Studio TM's score, stripe and name label, here and in the details.</summary>
         internal static readonly Color StudioBlue = Color.FromArgb(25, 100, 175);
+        /// <summary>The pale tint behind a Studio TM's name label, and its border.</summary>
+        internal static readonly Color StudioBluePale = Color.FromArgb(232, 240, 251), StudioBlueBorder = Color.FromArgb(190, 210, 236);
 
         public event EventHandler SelectionChanged;
         public event Action<VaultMatch> InsertRequested;
@@ -1075,11 +1078,11 @@ namespace Supervertaler.Trados.Controls
         {
             var text = ChipText(row);
             if (text == null) return 0;
-            return row.Badge != null ? ChipTextWidth(text, _smallBold) + 10 + 6 : ChipTextWidth(text, _small) + 4;
+            return row.Badge != null ? ChipTextWidth(text, _small) + 8 + 6 : ChipTextWidth(text, _small) + 4;
         }
 
-        /// <summary>A Studio TM's name label is bold; "also in …" on EverTM's row is the summary line's own weight.</summary>
-        Font ChipFont(Row row) => row.Badge != null ? _smallBold : _small;
+        /// <summary>The labels are at the summary line's own size and weight: tags, not buttons.</summary>
+        Font ChipFont(Row row) => _small;
 
         static int ChipTextWidth(string text, Font font) => TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
 
@@ -1102,7 +1105,7 @@ namespace Supervertaler.Trados.Controls
         /// <summary>
         /// A Studio TM's row stands out at a glance (Michael, 23 Nov 2026: "Make the Studio TM matches stand out more"):
         /// a blue stripe down its left edge, its score in Studio blue (EverTM's are green and orange), and the TM's name
-        /// in a filled blue chip. EverTM's row that a Studio TM has too keeps EverTM's look, with "also in …" in plain
+        /// in a pale blue tag. EverTM's row that a Studio TM has too keeps EverTM's look, with "also in …" in plain
         /// blue text at the summary line's weight: EverTM's match is the main thing there (Michael: the outlined label
         /// "draws the eye there too much").
         /// </summary>
@@ -1110,13 +1113,16 @@ namespace Supervertaler.Trados.Controls
         {
             var text = ChipText(row);
             if (text == null) return;
-            int w = BadgeWidth(row) - 6;
+            int w = BadgeWidth(row) - 6;   // (for "also in", unused: it is drawn as plain text)
             var box = new Rectangle(Gutter, sy - 1, w, _small.Height + 2);
             var blue = _stale ? Color.Silver : StudioBlue;
             if (row.Badge != null)
             {
-                using (var b = new SolidBrush(blue)) g.FillRectangle(b, box);
-                TextRenderer.DrawText(g, text, _smallBold, box, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                // A quiet tag (Michael, 23 Nov 2026: the filled labels "jump out at you"): a pale tint, a thin pale
+                // border, the name in Studio blue at the summary line's weight.
+                using (var b = new SolidBrush(_stale ? Color.FromArgb(245, 245, 245) : StudioBluePale)) g.FillRectangle(b, box);
+                using (var pen = new Pen(_stale ? Color.Gainsboro : StudioBlueBorder)) g.DrawRectangle(pen, box.X, box.Y, box.Width - 1, box.Height - 1);
+                TextRenderer.DrawText(g, text, _small, box, blue, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
             else TextRenderer.DrawText(g, text, _small, new Point(Gutter, sy), blue, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         }

@@ -85,7 +85,7 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 
 ## The details under the list
 
-- First line after the match: **Found in**, with a label per place: a green "EverTM" and a blue label for each Studio
+- First line after the match: **Found in**, with a quiet tag per place: green "EverTM" and a blue tag for each Studio
   TM that has it.
 - Then **EverTM entry** (or **Studio TM entry** for a match only a Studio TM has): the fields, dates and users.
 - **Came from** (EverTM's old "Source") says where EverTM got the entry, in words: "confirmed in Studio project
@@ -158,8 +158,8 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - Change a TM's Enabled, Lookup or penalty in Project Settings and the pane follows from the next segment, once
   Studio has saved the project. No need to reopen the document.
 - How to tell them apart at a glance: a Studio TM's match has a **blue stripe down its left edge**, its **score in
-  Studio blue** (EverTM's are green or orange) and **its TM's name in a blue label** under the text. Its details say
-  "Found in" with that TM's blue label, and a "Studio TM entry" block with its file or server address.
+  Studio blue** (EverTM's are green or orange) and **its TM's name in a pale blue tag** under the text. Its details say
+  "Found in" with that TM's blue tag, and a "Studio TM entry" block with its file or server address.
 - Studio TMs are named with their file extension ("BRANTS (HELLO-003+004-BE-EP).sdltm"), so they read as Trados
   memories at a glance; a GroupShare TM as "Legal (GroupShare)". In a narrow pane a long name is shortened, and
   keeps its ".sdltm".
