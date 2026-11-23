@@ -69,8 +69,11 @@ namespace Supervertaler.Trados.Controls
         /// <summary>"Remove from EverTM" on a match or an older translation (right-click, or Delete).</summary>
         public event Action<VaultMatch> RemoveRequested;
 
-        /// <summary>"Undo" after a removal.</summary>
+        /// <summary>"Undo" after a removal or an edit.</summary>
         public event EventHandler UndoRequested;
+
+        /// <summary>"Edit in EverTM..." on a match or an older translation (right-click, or F2).</summary>
+        public event Action<VaultMatch> EditRequested;
 
         /// <summary>A page (0 is the first) of this match's older translations is wanted: the view part looks them up in
         /// the background and hands them to <see cref="ShowOlder"/>.</summary>
@@ -97,6 +100,7 @@ namespace Supervertaler.Trados.Controls
             _list.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
             _list.OlderClicked += m => ToggleOlder(m);
             _list.RemoveRequested += m => RemoveRequested?.Invoke(m);
+            _list.EditRequested += m => EditRequested?.Invoke(m);
             _list.ShowOlderNote = !OlderHidden;
 
             _details = new RichTextBox
@@ -109,6 +113,7 @@ namespace Supervertaler.Trados.Controls
             _older.SelectionChanged += (s, e) => { _detailsOf = _older.Selected; ShowDetails(); };
             _older.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
             _older.RemoveRequested += m => RemoveRequested?.Invoke(m);
+            _older.EditRequested += m => EditRequested?.Invoke(m);
             var olderTop = new Panel { Dock = DockStyle.Top, Height = Font.Height + 6, BackColor = Color.FromArgb(246, 246, 246), Padding = new Padding(6, 0, 6, 0) };
             _olderTitle = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Color.FromArgb(70, 70, 70) };
             _olderMore = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 3, 0, 0), LinkColor = Color.FromArgb(30, 100, 180), Visible = false };
@@ -556,6 +561,9 @@ namespace Supervertaler.Trados.Controls
         /// <summary>"Remove from EverTM" chosen, or Delete pressed, on the selected row.</summary>
         public event Action<VaultMatch> RemoveRequested;
 
+        /// <summary>"Edit in EverTM..." chosen, or F2 pressed, on the selected row.</summary>
+        public event Action<VaultMatch> EditRequested;
+
         /// <summary>Whether rows say "2 older" (Options > Details shown > Older translations).</summary>
         public bool ShowOlderNote
         {
@@ -587,14 +595,16 @@ namespace Supervertaler.Trados.Controls
             var copy = new ToolStripMenuItem("Copy the target text", null, (s, e) => CopyTarget());
             var older = new ToolStripMenuItem("Show older translations", null, (s, e) => { if (Selected != null) OlderClicked?.Invoke(Selected); });
             var remove = new ToolStripMenuItem("Remove from EverTM", null, (s, e) => { if (Selected != null) RemoveRequested?.Invoke(Selected); }) { ShortcutKeyDisplayString = "Del" };
+            var edit = new ToolStripMenuItem("Edit in EverTM...", null, (s, e) => { if (Selected != null) EditRequested?.Invoke(Selected); }) { ShortcutKeyDisplayString = "F2" };
             _menu.Items.Add(insert);
             _menu.Items.Add(copy);
             if (!others) _menu.Items.Add(older);
             _menu.Items.Add(new ToolStripSeparator());
+            _menu.Items.Add(edit);
             _menu.Items.Add(remove);
             _menu.Opening += (s, e) =>
             {
-                insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null; remove.Enabled = Selected != null;
+                insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null; remove.Enabled = Selected != null; edit.Enabled = Selected != null;
                 older.Visible = _showOlderNote && (Selected?.Candidate?.Older ?? 0) > 0;
             };
             ContextMenuStrip = _menu;
@@ -1047,7 +1057,7 @@ namespace Supervertaler.Trados.Controls
         {
             switch (keyData & Keys.KeyCode)
             {
-                case Keys.Up: case Keys.Down: case Keys.Home: case Keys.End: case Keys.PageUp: case Keys.PageDown: case Keys.Enter: case Keys.Delete: return true;
+                case Keys.Up: case Keys.Down: case Keys.Home: case Keys.End: case Keys.PageUp: case Keys.PageDown: case Keys.Enter: case Keys.Delete: case Keys.F2: return true;
             }
             return base.IsInputKey(keyData);
         }
@@ -1066,6 +1076,7 @@ namespace Supervertaler.Trados.Controls
                 case Keys.PageDown: Select(Math.Min(_rows.Count - 1, _selected + 5)); e.Handled = true; break;
                 case Keys.Enter: RequestInsert(); e.Handled = true; e.SuppressKeyPress = true; break;
                 case Keys.Delete: if (Selected != null) RemoveRequested?.Invoke(Selected); e.Handled = true; e.SuppressKeyPress = true; break;
+                case Keys.F2: if (Selected != null) EditRequested?.Invoke(Selected); e.Handled = true; e.SuppressKeyPress = true; break;
                 default:
                     if (!Others && (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D9 || e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9))
                     {

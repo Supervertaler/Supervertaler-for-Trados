@@ -41,6 +41,8 @@ static class PaneChecks
         OlderTranslations(scratch, check);
         Console.WriteLine("EverTM Matches: removing a wrong translation");
         Removing(scratch, check);
+        Console.WriteLine("EverTM Matches: editing a translation");
+        Editing(scratch, check);
     }
 
     // ---- the worker ----
@@ -618,6 +620,96 @@ static class PaneChecks
             var back = EverTmMatchesLookup.Run(lib, request);
             check(back.Matches.Count == 1 && EverTmEditorSegment.PlainTarget(back.Matches[0]) == "The pmup is started." && back.Matches[0].Candidate.Fields.Any(f => f.Value == "ACME"),
                   "and it is back, its client with it, as the newest: " + string.Join(" | ", back.Matches.Select(EverTmEditorSegment.PlainTarget)));
+            dialog.Close();
+        }
+    }
+
+    // ---- editing a translation ----
+
+    /// <summary>
+    /// Step 4: F2 (or the menu) asks to edit; the Edit window shows the tags as protected markers and puts the stored
+    /// text back together from them; a missing marker is refused; the fields round-trip; the edit is applied and the
+    /// edited text is offered; Undo puts the old one back. Drives the real window, hidden.
+    /// </summary>
+    static void Editing(string scratch, Action<bool, string> check)
+    {
+        var dir = Path.Combine(scratch, "editing");
+        Directory.CreateDirectory(dir);
+        var tmx = Path.Combine(dir, "edit.tmx");
+        File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"nl-BE\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+            "<tu creationdate=\"20250101T000000Z\"><prop type=\"x-Client\">ACME</prop><prop type=\"x-Project\">PROJ-014</prop><tuv xml:lang=\"nl-BE\"><seg>" + SaveNl + "</seg></tuv><tuv xml:lang=\"en-GB\"><seg>Click <bpt i=\"1\">&lt;b&gt;</bpt>Save<ept i=\"1\">&lt;/b&gt;</ept> to kepe the changes.</seg></tuv></tu>" +
+            "</body></tmx>");
+        var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
+        lib.Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
+        var request = Request("Klik op Opslaan om de wijzigingen te bewaren.");
+        var m = EverTmMatchesLookup.Run(lib, request).Matches.First();
+        check(EverTmEditorSegment.PlainTarget(m) == "Click Save to kepe the changes.", "the typo is the match");
+
+        // F2 on a match asks to edit.
+        using (var form = new System.Windows.Forms.Form { Width = 600, Height = 400, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        using (var control = new Supervertaler.Trados.Controls.EverTmMatchesControl { Dock = System.Windows.Forms.DockStyle.Fill })
+        {
+            form.Controls.Add(control);
+            form.Show();
+            control.ShowResult(new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = new List<VaultMatch> { m }, SegmentId = "1", SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB" });
+            VaultMatch asked = null;
+            control.EditRequested += x => asked = x;
+            var list = Field<System.Windows.Forms.Control>(control, "_list");
+            list.GetType().GetMethod("OnKeyDown", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(list, new object[] { new System.Windows.Forms.KeyEventArgs(System.Windows.Forms.Keys.F2) });
+            check(ReferenceEquals(asked, m), "F2 on the selected match asks to edit it");
+            check(list.ContextMenuStrip.Items.Cast<System.Windows.Forms.ToolStripItem>().Any(i => i.Text == "Edit in EverTM..."), "and so does the right-click menu's \"Edit in EverTM...\"");
+        }
+
+        using (var dialog = new Supervertaler.Trados.Controls.EverTmEditDialog(m.Candidate, "nl-BE", "en-GB") { StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        {
+            dialog.Show();
+            var t = dialog.TargetBox;
+            check(t.Text == "Click \u20391\u203ASave\u2039/1\u203A to kepe the changes.", "the tags show as markers: " + t.Text);
+            t.Select(t.Text.IndexOf('\u2039'), 3);
+            check(t.SelectionProtected, "and the markers can't be typed over");
+            check(dialog.FieldBox("Client").Text == "ACME" && dialog.FieldBox("Project").Text == "PROJ-014", "the fields are there to edit");
+
+            // A missing marker: refused, nothing saved.
+            t.SelectAll(); t.SelectionProtected = false;
+            t.Text = "Click Save to keep the changes.";
+            dialog.SaveForTests();
+            check(dialog.DialogResult != System.Windows.Forms.DialogResult.OK && dialog.Problem.Contains("missing"), "a missing formatting marker is refused: " + dialog.Problem);
+
+            t.Text = "Click \u20391\u203ASave\u2039/1\u203A to keep the changes.";
+            dialog.FieldBox("Client").Text = "ACME; Acme Two";
+            dialog.SaveForTests();
+            check(dialog.DialogResult == System.Windows.Forms.DialogResult.OK, "Save: " + dialog.Problem);
+            check(dialog.NewTarget == "Click <bpt i=\"1\">&lt;b&gt;</bpt>Save<ept i=\"1\">&lt;/b&gt;</ept> to keep the changes.".Replace("&lt;", "<").Replace("&gt;", ">") || dialog.NewTarget.Contains("Save") && dialog.NewTarget.Contains("to keep the changes.") && VaultMarkup.Parse(dialog.NewTarget).Count(x => x.IsTag) == 2,
+                  "the stored text comes back with the same tag codes: " + dialog.NewTarget);
+            check(dialog.NewSource == m.Candidate.SourceRaw, "the untouched source comes back exactly");
+            check(dialog.NewFields != null && dialog.NewFields.Contains(("Client", "Acme Two")) && dialog.NewFields.Contains(("Project", "PROJ-014")), "the fields as edited");
+
+            // What the view part does next (EverTmMatchesViewPart.Edit), here in line.
+            bool applied = false;
+            lib.RemovalsApplied += () => applied = true;
+            var edit = lib.Edit(new VaultTranslationEdit
+            {
+                SourceLang = "nl", TargetLang = "en", ShownSource = m.Candidate.SourceRaw, ShownTarget = m.Candidate.TargetRaw,
+                NewSource = dialog.NewSource, NewTarget = dialog.NewTarget, Fields = dialog.NewFields,
+                OldFields = m.Candidate.Fields.ToList(), OldChanged = m.Candidate.Changed, OldChangedBy = m.Candidate.ChangedBy,
+            }, "tester");
+            var wait = System.Diagnostics.Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 15000 && (!applied || lib.RemovalsWaiting() > 0)) Thread.Sleep(50);
+            var after = EverTmMatchesLookup.Run(lib, request).Matches;
+            check(after.Count == 1 && EverTmEditorSegment.PlainTarget(after[0]) == "Click Save to keep the changes." && VaultMarkup.Parse(after[0].Candidate.TargetRaw).Count(x => x.IsTag) == 2,
+                  $"applied ({wait.ElapsedMilliseconds} ms): the edited text is the match, its bold kept in EverTM: " + string.Join(" | ", after.Select(EverTmEditorSegment.PlainTarget)));
+            check(after.Count == 1 && after[0].Candidate.Fields.Contains(("Client", "Acme Two")), "with the edited fields");
+            var removed = lib.Removed(0, out _);
+            check(removed.Count == 1 && removed[0].Edited, "the old text is in Removed translations, as edited");
+
+            applied = false;
+            lib.UndoEdit(edit, "tester");
+            wait.Restart();
+            while (wait.ElapsedMilliseconds < 15000 && (!applied || lib.RemovalsWaiting() > 0)) Thread.Sleep(50);
+            var back = EverTmMatchesLookup.Run(lib, request).Matches;
+            check(back.Count == 1 && EverTmEditorSegment.PlainTarget(back[0]) == "Click Save to kepe the changes." && lib.StoreCount() == 1,
+                  "Undo: the old text back, the edited one gone: " + string.Join(" | ", back.Select(EverTmEditorSegment.PlainTarget)));
             dialog.Close();
         }
     }

@@ -116,6 +116,24 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   **Removed translations...** > select it > **Restore**. It comes back exactly as it was, with its client, project
   and dates.
 
+## Editing a translation
+
+- Right-click a match (or an older translation) > **Edit in EverTM...**, or select it and press **F2**. As in
+  Studio's Edit Translation Unit, a window shows the source and target to edit, and its fields.
+- Tags show as grey markers (‹1›Save‹/1›). Type around them: they can't be typed over. If one goes missing, Save
+  says so and saves nothing.
+- Fields: Project, Client, End client, Subject, Document and Note. Several values: separate them with ";". Where the
+  unit came from (Source), its dates and the language variants are shown, not edited.
+- **Save** changes EverTM only: never your Studio TMs, files or the target. The status line offers **Undo**.
+- What an edit does:
+  - Every copy of that translation (any formatting or language variant) becomes one unit with your edited text, in
+    the formatting of the one you edited. It keeps its original creation date, and is "changed now, by you", so it's
+    the newest translation of that sentence.
+  - The old text is marked removed, so importing a file that has it won't bring it back. It shows in
+    **Removed translations** as "(edited)", where you can restore it.
+  - Changing only the fields marks nothing.
+- Undo puts back exactly what was there before.
+
 ## The status line
 
 - Normally: how many translation units EverTM holds, how many matches, and how long the lookup took.

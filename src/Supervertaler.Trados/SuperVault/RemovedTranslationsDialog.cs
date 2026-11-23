@@ -93,7 +93,7 @@ namespace Supervertaler.Trados.SuperVault
 
         /// <summary>"nl: De pomp wordt gestart.  ⇄  en: The pmup is started."</summary>
         static string Describe(VaultRemoved r) =>
-            r.Key.LangA + ": " + VaultMarkup.Plain(r.TextA ?? "") + "  ⇄  " + r.Key.LangB + ": " + VaultMarkup.Plain(r.TextB ?? "");
+            (r.Edited ? "(edited) " : "") + r.Key.LangA + ": " + VaultMarkup.Plain(r.TextA ?? "") + "  ⇄  " + r.Key.LangB + ": " + VaultMarkup.Plain(r.TextB ?? "");
 
         void RestoreSelected()
         {

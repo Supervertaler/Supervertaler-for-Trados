@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Sdl.Desktop.IntegrationApi;
 using Sdl.Desktop.IntegrationApi.Extensions;
 using Sdl.Desktop.IntegrationApi.Interfaces;
@@ -88,6 +89,7 @@ namespace Supervertaler.Trados
         /// <summary>The last removal, for Undo (until the next removal or until the pane closes); and the library whose
         /// RemovalsApplied this pane listens to.</summary>
         VaultRemovalKey _lastRemoval;
+        VaultTranslationEdit _lastEdit;     // the last edit, for Undo; only one of the two is set
         VaultLibrary _removalLibrary;
         string _projectNote;     // that note
 
@@ -111,6 +113,7 @@ namespace Supervertaler.Trados
             _control.OptionsChanged += (s, e) => LookUpActive();
             _control.OlderWanted += (m, r, page) => _olderWorker?.Submit(new OlderRequest { Match = m, Result = r, Page = page });
             _control.RemoveRequested += m => Remove(m);
+            _control.EditRequested += m => Edit(m);
             _control.UndoRequested += (s, e) => Undo();
             _control.VisibleChanged += (s, e) => { if (_control.Visible && _owed) LookUpActive(); };
             _control.Disposed += (s, e) => Shutdown();
@@ -375,6 +378,7 @@ namespace Supervertaler.Trados
                 var key = library.Remove(m.Candidate, r.SourceLang, VaultMarkup.BaseLanguage(r.TargetCulture), Environment.UserName);
                 if (key == null) { c.ShowNote("Nothing to remove"); return; }
                 _lastRemoval = key;
+                _lastEdit = null;
                 c.ShowRemoved("Removed from EverTM only (your Studio TMs are unchanged): \u201C" + Short(EverTmEditorSegment.PlainTarget(m)) + "\u201D", undo: true);
                 LookUpActive();
             }
@@ -387,6 +391,24 @@ namespace Supervertaler.Trados
 
         void Undo()
         {
+            var edit = _lastEdit;
+            if (edit != null)
+            {
+                _lastEdit = null;
+                try
+                {
+                    var lib = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
+                    ListenForRemovals(lib);
+                    lib.UndoEdit(edit, Environment.UserName);
+                    _control.ShowRemoved("Edit undone: the old translation comes back in a moment", undo: false);
+                }
+                catch (Exception ex)
+                {
+                    try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: undo failed: " + ex); } catch { }
+                    _control.ShowNote("Not undone: " + ex.Message);
+                }
+                return;
+            }
             var key = _lastRemoval;
             if (key == null) return;
             _lastRemoval = null;
@@ -401,6 +423,50 @@ namespace Supervertaler.Trados
             {
                 try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: undo failed: " + ex); } catch { }
                 _control.ShowNote("Not undone: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// "Edit in EverTM..." (right-click, or F2): the stored source and target, with their tags as markers, and the
+        /// fields, in a window (<see cref="EverTmEditDialog"/>). On Save, VaultLibrary.Edit: every copy of this
+        /// translation becomes the edited one (the old text marked removed, so an import doesn't bring it back), or only
+        /// the fields change. Only EverTM; never a Studio TM, a file or the target. Undo in the status line.
+        /// </summary>
+        void Edit(VaultMatch m)
+        {
+            var c = _control;
+            var r = c?.LastResult;
+            if (m?.Candidate == null || r == null || string.IsNullOrEmpty(r.TargetCulture)) return;
+            try
+            {
+                VaultTranslationEdit edit;
+                using (var dialog = new EverTmEditDialog(m.Candidate, r.SourceCulture ?? r.SourceLang, r.TargetCulture))
+                {
+                    if (dialog.ShowDialog(c.FindForm()) != System.Windows.Forms.DialogResult.OK) return;
+                    edit = new VaultTranslationEdit
+                    {
+                        SourceLang = r.SourceLang, TargetLang = VaultMarkup.BaseLanguage(r.TargetCulture),
+                        ShownSource = m.Candidate.SourceRaw, ShownTarget = m.Candidate.TargetRaw,
+                        NewSource = dialog.NewSource, NewTarget = dialog.NewTarget, Fields = dialog.NewFields,
+                        OldFields = m.Candidate.Fields?.ToList() ?? new List<(string, string)>(),
+                        OldChanged = m.Candidate.Changed, OldChangedBy = m.Candidate.ChangedBy,
+                    };
+                }
+                var library = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
+                ListenForRemovals(library);
+                var queued = library.Edit(edit, Environment.UserName);
+                if (queued == null) { c.ShowNote("Nothing changed"); return; }
+                _lastEdit = queued;
+                _lastRemoval = null;
+                c.ShowRemoved(queued.TextChanged
+                    ? "Edited in EverTM only (your Studio TMs are unchanged): \u201C" + Short(VaultMarkup.Plain(queued.NewTarget)) + "\u201D"
+                    : "Fields edited in EverTM only", undo: true);
+                LookUpActive();
+            }
+            catch (Exception ex)
+            {
+                try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: edit failed: " + ex); } catch { }
+                c.ShowNote("Not edited: " + ex.Message);
             }
         }
 
