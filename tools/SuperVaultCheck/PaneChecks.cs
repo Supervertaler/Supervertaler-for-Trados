@@ -873,6 +873,36 @@ static class PaneChecks
         }
         finally { StudioTmMatches.TimeoutMs = timeout; }
 
+        // The project's TM list read again when Project Settings are saved, without reopening the document.
+        var project = Path.Combine(dir, "project");
+        Directory.CreateDirectory(project);
+        var sdlproj = Path.Combine(project, "Acme.sdlproj");
+        void WriteProject(string lookup, int penalty, DateTime saved)
+        {
+            File.WriteAllText(sdlproj, "<Project><CascadeItem><CascadeEntryItem PerformConcordanceSearch=\"true\" Penalty=\"" + penalty + "\" PerformUpdate=\"false\" PerformNormalSearch=\"" + lookup
+                + "\"><MainTranslationProviderItem Uri=\"sdltm.file:///" + path.Replace('\\', '/') + "\" State=\"\" Enabled=\"true\" /></CascadeEntryItem></CascadeItem>"
+                + "<LanguageDirections><LanguageDirection SourceLanguageCode=\"nl-BE\" TargetLanguageCode=\"en-GB\"><CascadeItem/></LanguageDirection></LanguageDirections></Project>");
+            File.SetLastWriteTimeUtc(sdlproj, saved);
+        }
+        StudioTmMatches.Request InProject(EverTmEditorSegment e)
+        {
+            var q = Ask(null, e);
+            q.DocumentFile = Path.Combine(project, "en-GB", "doc.sdlxliff");
+            return q;
+        }
+        var s4 = new StudioTmMatches.Session();
+        WriteProject("true", 0, new DateTime(2026, 11, 23, 10, 0, 0, DateTimeKind.Utc));
+        var listed = StudioTmMatches.Search(s4, InProject(editor2));
+        check(listed.Tms == 1 && listed.Hits.Count == 2, "the project's TM list: the TM with Lookup ticked is searched");
+        WriteProject("true", 3, new DateTime(2026, 11, 23, 10, 5, 0, DateTimeKind.Utc));
+        var penaltyNow = StudioTmMatches.Search(s4, InProject(editor2));
+        check(penaltyNow.Hits.Count == 2 && penaltyNow.Hits.All(h => h.Match.Score == ourScores[0] - 3), "a penalty set in Project Settings counts from the next segment: " + string.Join(", ", penaltyNow.Hits.Select(h => h.Match.Score)));
+        WriteProject("false", 0, new DateTime(2026, 11, 23, 10, 10, 0, DateTimeKind.Utc));
+        var unticked = StudioTmMatches.Search(s4, InProject(editor2));
+        check(unticked.Tms == 0 && unticked.Hits.Count == 0 && s4.OpenCount == 0, "Lookup unticked and saved: no longer searched, and the TM let go, without reopening the document");
+        WriteProject("true", 0, new DateTime(2026, 11, 23, 10, 15, 0, DateTimeKind.Utc));
+        check(StudioTmMatches.Search(s4, InProject(editor2)).Hits.Count == 2, "ticked again: searched again");
+
         // A segment with nothing to search, and a request without a segment: no hits, no exception.
         check(StudioTmMatches.Search(new StudioTmMatches.Session(), new StudioTmMatches.Request()).Hits.Count == 0, "a request without a segment: nothing, no exception");
 

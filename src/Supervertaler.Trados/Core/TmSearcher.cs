@@ -296,7 +296,9 @@ namespace Supervertaler.Trados.Core
             return path != null && File.Exists(path) ? path : null;
         }
 
-        /// <summary>The .sdlproj in the folder of <paramref name="anyProjectFilePath"/> or above it, or null.</summary>
+        /// <summary>The project file (.sdlproj) of a document in it: in its folder or above. Null when there is none.</summary>
+        public static string ProjectFileOf(string anyProjectFilePath) => FindProjectFile(anyProjectFilePath);
+
         static string FindProjectFile(string anyProjectFilePath)
         {
             if (string.IsNullOrEmpty(anyProjectFilePath)) return null;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Sdl.LanguagePlatform.Core;
@@ -98,6 +99,9 @@ namespace Supervertaler.Trados.SuperVault
             internal readonly Dictionary<string, Task> Running = new Dictionary<string, Task>(StringComparer.OrdinalIgnoreCase);
             internal ServerTmClient.Connections Connections = new ServerTmClient.Connections();
 
+            /// <summary>How many TMs are open (for the checks).</summary>
+            public int OpenCount { get { lock (Gate) return Open.Count; } }
+
             void Reset(string document)
             {
                 lock (Gate)
@@ -111,20 +115,53 @@ namespace Supervertaler.Trados.SuperVault
                 }
             }
 
+            /// <summary>The project file the TM list was read from, and when it was last saved then. A later save (Project
+            /// Settings changed: a TM's Enabled, Lookup or penalty) has the list read again at the next segment, without
+            /// reopening the document (Michael, 23 Nov 2026). One file-date read per segment.</summary>
+            internal string ProjectFile;
+            internal DateTime ProjectSaved;
+
             internal void For(Request r)
             {
                 string document = (r.DocumentFile ?? "") + "|" + r.SourceCulture + "|" + r.TargetCulture
                                   + (r.Tms == null ? "" : "|" + string.Join("|", r.Tms.Select(t => t.Entry)));
-                if (document == Document) return;
-                Reset(document);
-                if (r.Tms != null) { Tms = r.Tms; return; }
-                var found = TmSearcher.FindLookupTms(r.DocumentFile, r.SourceCulture, r.TargetCulture);   // never throws
-                Tms = found.Tms.Select(e => new Tm
+                if (document != Document)
+                {
+                    Reset(document);
+                    if (r.Tms != null) { Tms = r.Tms; return; }
+                    ProjectFile = TmSearcher.ProjectFileOf(r.DocumentFile);
+                    ReadList(r);
+                    return;
+                }
+                if (r.Tms != null || ProjectFile == null) return;
+                DateTime saved;
+                try { saved = File.GetLastWriteTimeUtc(ProjectFile); } catch { return; }
+                if (saved != ProjectSaved) ReadList(r);
+            }
+
+            /// <summary>
+            /// Reads the project's TM list for the document's pair. A TM still listed keeps its open handle and its
+            /// failure count; one no longer listed (removed, switched off, Lookup unticked) is let go.
+            /// </summary>
+            void ReadList(Request r)
+            {
+                try { ProjectSaved = ProjectFile == null ? default : File.GetLastWriteTimeUtc(ProjectFile); } catch { }
+                var found = ProjectFile == null ? new TmSearcher.LookupTms()
+                    : TmSearcher.FindLookupTms(ProjectFile, r.SourceCulture, r.TargetCulture);   // never throws
+                var tms = found.Tms.Select(e => new Tm
                 {
                     Entry = e,
                     Name = TmSearcher.DisplayName(e),
                     Penalty = found.Penalties.TryGetValue(e, out int p) ? p : 0,
                 }).ToList();
+                var keep = new HashSet<string>(tms.Select(t => t.Entry), StringComparer.OrdinalIgnoreCase);
+                lock (Gate)
+                {
+                    Tms = tms;
+                    foreach (var gone in Open.Keys.Where(k => !keep.Contains(k)).ToList()) Open.Remove(gone);
+                    foreach (var gone in Failures.Keys.Where(k => !keep.Contains(k)).ToList()) Failures.Remove(gone);
+                    foreach (var gone in Running.Keys.Where(k => !keep.Contains(k)).ToList()) Running.Remove(gone);
+                }
             }
         }
 

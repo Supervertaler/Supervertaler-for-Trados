@@ -140,6 +140,8 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   TMs who'd rather work from this pane than from Translation Results.
 - Which TMs: the ones Studio itself looks up in for this document: the project's TM list for its language pair, those
   with Lookup ticked (EverTM itself not counted). File TMs and GroupShare TMs.
+- Change a TM's Enabled, Lookup or penalty in Project Settings and the pane follows from the next segment, once
+  Studio has saved the project. No need to reopen the document.
 - How to tell them apart: a Studio TM's match has **its TM's name in blue** at the start of its faint summary line,
   and its **score in an outlined box** (EverTM's are filled). Its details say "From Studio TM" with the TM's file or
   server address.
