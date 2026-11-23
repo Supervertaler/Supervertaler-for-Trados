@@ -75,6 +75,17 @@ namespace Supervertaler.Trados
         /// <summary>Older translations, on a worker of their own (newest request wins, like the lookups), so a page never
         /// waits behind a segment's lookup or holds one up.</summary>
         EverTmLookupWorker<OlderRequest, OlderAnswer> _olderWorker;
+        /// <summary>
+        /// The project's Studio TMs (Options > "Also show matches from the project's Studio TMs"), on a worker of their
+        /// own, newest segment wins, so EverTM's matches never wait for them (StudioTmMatches). The session holds the
+        /// open TMs for the current document and is used only on that worker; it is replaced when the switch goes off.
+        /// The last answer is kept for its segment, so looking the same segment up again (the second look, a removal)
+        /// doesn't search the Studio TMs again.
+        /// </summary>
+        EverTmLookupWorker<StudioTmMatches.Request, StudioTmMatches.Answer> _studioWorker;
+        volatile StudioTmMatches.Session _studioSession = new StudioTmMatches.Session();   // read on the Studio TM worker
+        StudioTmMatches.Answer _studioAnswer;
+        StudioTmMatches.Request _studioAsked;   // the search on its way, if any
         bool _owed;              // a segment changed while the pane was hidden
         string _segmentKey;      // the segment last looked up (paragraph and segment id), for the second look
         /// <summary>
@@ -126,6 +137,9 @@ namespace Supervertaler.Trados
                 m => { try { DiagnosticLog.WriteAlways("EverTM", m); } catch { } });
             _olderWorker = new EverTmLookupWorker<OlderRequest, OlderAnswer>(RunOlder, DeliverOlder,
                 m => { try { DiagnosticLog.WriteAlways("EverTM", m); } catch { } });
+            _studioWorker = new EverTmLookupWorker<StudioTmMatches.Request, StudioTmMatches.Answer>(
+                r => StudioTmMatches.Search(_studioSession, r), DeliverStudio,
+                m => { try { DiagnosticLog.WriteAlways("EverTM", m); } catch { } });
 
             LicenseManager.Instance.LicenseStateChanged += OnLicenceChanged;
             ApplyLicence();
@@ -143,6 +157,8 @@ namespace Supervertaler.Trados
         {
             try { _worker?.Stop(); } catch { }
             try { _olderWorker?.Stop(); } catch { }
+            try { _studioWorker?.Stop(); } catch { }
+            _studioSession = new StudioTmMatches.Session();   // the open TMs released
             try { if (_removalLibrary != null) _removalLibrary.RemovalsApplied -= OnRemovalsApplied; } catch { }
             try { _again?.Stop(); _again?.Dispose(); } catch { }
             try { LicenseManager.Instance.LicenseStateChanged -= OnLicenceChanged; } catch { }
@@ -188,6 +204,7 @@ namespace Supervertaler.Trados
             try { _again?.Stop(); } catch { }
             _worker?.Invalidate();
             _olderWorker?.Invalidate();
+            ForgetStudio();
             if (_doc != null) _doc.ActiveSegmentChanged += OnActiveSegmentChanged;
         }
 
@@ -202,7 +219,7 @@ namespace Supervertaler.Trados
             {
                 var c = _control;
                 if (c == null || c.IsDisposed || !Licensed) return;
-                if (!c.Visible) { _owed = true; _worker.Invalidate(); return; }
+                if (!c.Visible) { _owed = true; _worker.Invalidate(); ForgetStudio(); return; }
                 _owed = false;
 
                 var doc = _doc;
@@ -246,6 +263,7 @@ namespace Supervertaler.Trados
                 if (!again && fileKey != null && fileKey != _noteFor) { _noteFor = fileKey; _projectNote = null; request.ProjectFile = fileKey; }
 
                 request.Again = again;
+                AskStudio(shown, request, fileKey, key, editor);
                 if (!again)
                 {
                     _segmentKey = key;
@@ -260,6 +278,74 @@ namespace Supervertaler.Trados
                 try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: reading the segment failed: " + ex); } catch { }
                 try { _control?.ShowMessage("EverTM Matches couldn't read this segment: " + ex.Message); } catch { }
             }
+        }
+
+        // ---- Studio TMs ----
+
+        /// <summary>
+        /// With the switch on: marks the result as waiting for the Studio TMs, and asks for their search unless this
+        /// segment's answer (same minimum and maximum) is already here or on its way. With it off: nothing, and the open
+        /// TMs are let go. UI thread.
+        /// </summary>
+        void AskStudio(EverTmPaneResult shown, Request request, string fileKey, string segmentKey, EverTmEditorSegment editor)
+        {
+            if (!Settings.SettingsService.Current.EverTmPaneStudioTms || fileKey == null)
+            {
+                if (_studioAnswer != null || _studioAsked != null || _studioSession.Document != null)
+                {
+                    ForgetStudio();
+                    _studioSession = new StudioTmMatches.Session();
+                }
+                return;
+            }
+            var l = request.Lookup;
+            int min = Math.Max(EverTmMatchesLookup.MinScore, Math.Min(100, l.MinScore));
+            int max = Math.Max(1, Math.Min(EverTmMatchesLookup.MaxMatches, l.MaxMatches));
+            shown.StudioKey = fileKey + "|" + segmentKey;
+            bool Same(string key, int mn, int mx) => key == shown.StudioKey && mn == min && mx == max;
+            if (_studioAnswer != null && Same(_studioAnswer.Key, _studioAnswer.MinScore, _studioAnswer.MaxMatches)) return;
+            _studioAnswer = null;
+            shown.StudioPending = true;
+            if (_studioAsked != null && Same(_studioAsked.Key, _studioAsked.MinScore, _studioAsked.MaxMatches)) return;
+            _studioAsked = new StudioTmMatches.Request
+            {
+                Key = shown.StudioKey, DocumentFile = fileKey, Segment = editor.Segment, Document = editor.Pieces,
+                SourceLang = l.SourceLang, TargetLang = l.TargetLang, SourceCulture = l.SourceCulture, TargetCulture = l.TargetCulture,
+                MinScore = min, MaxMatches = max,
+            };
+            _studioWorker.Submit(_studioAsked);
+        }
+
+        void ForgetStudio()
+        {
+            _studioWorker?.Invalidate();
+            _studioAnswer = null;
+            _studioAsked = null;
+        }
+
+        /// <summary>From the Studio TM worker: kept for its segment, and merged into the result shown if it is that segment's.</summary>
+        void DeliverStudio(EverTmLookupWorker<StudioTmMatches.Request, StudioTmMatches.Answer>.Result<StudioTmMatches.Answer> result)
+        {
+            var c = _control;
+            if (c == null || c.IsDisposed || !c.IsHandleCreated) return;
+            c.BeginInvoke((Action)(() =>
+            {
+                if (c.IsDisposed || !_studioWorker.IsLatest(result.Id)) return;
+                var asked = _studioAsked;
+                var a = result.Value;
+                if (a == null)
+                {
+                    if (asked == null) return;
+                    a = new StudioTmMatches.Answer { Key = asked.Key, MinScore = asked.MinScore, MaxMatches = asked.MaxMatches };
+                    a.LeftOut.Add("the search failed: " + result.Error);
+                }
+                _studioAnswer = a;
+                _studioAsked = null;
+                var r = c.LastResult;
+                if (r == null || r.StudioKey != a.Key) return;
+                r.MergeStudio(a, a.MaxMatches);
+                c.UpdateResult(r);
+            }));
         }
 
         /// <summary>On the worker: the lookup, and once per document whether EverTM learns in it. No Studio objects.</summary>
@@ -296,6 +382,7 @@ namespace Supervertaler.Trados
                 if (r.ProjectNote != null) _projectNote = r.ProjectNote;
                 else r.ProjectNote = _projectNote;
                 if (result.Value != null && SameMatches(c.Result, r)) return;   // the second look found nothing new
+                if (r.StudioKey != null && _studioAnswer != null && _studioAnswer.Key == r.StudioKey) r.MergeStudio(_studioAnswer, _studioAnswer.MaxMatches);
                 c.ShowResult(r);
             }));
         }
@@ -349,7 +436,8 @@ namespace Supervertaler.Trados
         {
             if (shown == null || fresh == null || shown.SegmentId != fresh.SegmentId || shown.ParagraphId != fresh.ParagraphId) return false;
             if (shown.Problem != fresh.Problem || shown.Error != fresh.Error) return false;
-            var a = shown.Matches ?? new List<VaultMatch>();
+            if (shown.StudioKey != fresh.StudioKey || shown.StudioPending != fresh.StudioPending) return false;
+            var a = shown.EverTmMatches ?? shown.Matches ?? new List<VaultMatch>();
             var b = fresh.Matches ?? new List<VaultMatch>();
             if (a.Count != b.Count) return false;
             for (int i = 0; i < a.Count; i++)
@@ -371,6 +459,7 @@ namespace Supervertaler.Trados
             var c = _control;
             var r = c?.LastResult;
             if (m?.Candidate == null || r == null || string.IsNullOrEmpty(r.TargetCulture)) return;
+            if (NotOurs(m, r)) return;
             try
             {
                 var library = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
@@ -437,6 +526,7 @@ namespace Supervertaler.Trados
             var c = _control;
             var r = c?.LastResult;
             if (m?.Candidate == null || r == null || string.IsNullOrEmpty(r.TargetCulture)) return;
+            if (NotOurs(m, r)) return;
             try
             {
                 VaultTranslationEdit edit;
@@ -468,6 +558,15 @@ namespace Supervertaler.Trados
                 try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: edit failed: " + ex); } catch { }
                 c.ShowNote("Not edited: " + ex.Message);
             }
+        }
+
+        /// <summary>A Studio TM's match: not EverTM's to change. Says so.</summary>
+        bool NotOurs(VaultMatch m, EverTmPaneResult r)
+        {
+            var tm = r.StudioOf(m);
+            if (tm == null) return false;
+            _control.ShowNote("This match is from the Studio TM " + tm.Name + ": edit or delete it in Studio's Translation Results");
+            return true;
         }
 
         void ListenForRemovals(VaultLibrary library)
@@ -524,6 +623,7 @@ namespace Supervertaler.Trados
                 { c.ShowNote("These matches are for another segment"); return; }
                 if (pair.Properties?.IsLocked == true) { c.ShowNote("This segment is locked: nothing inserted"); return; }
 
+                var tm = r.StudioOf(m);   // a Studio TM's match: labelled with that TM's name
                 string markup = r.Editor?.TargetMarkup(m, r.TagMapAtLookup);
                 bool plain = markup == null || (m.Tags == VaultTagOutcome.Unmapped && r.Editor != null && r.Editor.HasTags);
                 if (plain) markup = null;
@@ -546,11 +646,12 @@ namespace Supervertaler.Trados
                     var destination = SegmentTagHandler.OpenCommentMarkers(sp.Target, markers);
                     SegmentTagHandler.AppendText(destination, text, sp.Source, live.TagMap, template);
                     written = true;
-                }, label: (d, p) => SegmentOrigin.MarkTmMatch(d, p, m.Score, SuperVaultProvider.DisplayName));
+                }, label: (d, p) => SegmentOrigin.MarkTmMatch(d, p, m.Score, tm?.Name ?? SuperVaultProvider.DisplayName));
 
+                string what = "Match " + m.Score + "%" + (tm != null ? " from " + tm.Name : "");
                 if (!written) c.ShowNote("Nothing inserted: this segment's source has no text to copy the formatting from");
-                else if (plain && r.Editor != null && r.Editor.HasTags) c.ShowNote("Match " + m.Score + "% inserted without formatting");
-                else c.ShowNote("Match " + m.Score + "% inserted");
+                else if (plain && r.Editor != null && r.Editor.HasTags) c.ShowNote(what + " inserted without formatting");
+                else c.ShowNote(what + " inserted");
             }
             catch (Exception ex)
             {

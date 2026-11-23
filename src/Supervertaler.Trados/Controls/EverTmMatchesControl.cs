@@ -28,6 +28,37 @@ namespace Supervertaler.Trados.Controls
         public Dictionary<int, Core.TagInfo> TagMapAtLookup;
         public string ParagraphId, SegmentId;
         public string SourceLang, SourceCulture, TargetCulture;
+
+        // Studio TMs' matches (Options > "Also show matches from the project's Studio TMs"). Matches is then the merged
+        // list (StudioTmMatches.Merge); EverTmMatches keeps EverTM's own.
+        /// <summary>EverTM's own matches, once Studio TMs' have been merged in; null before.</summary>
+        public List<VaultMatch> EverTmMatches;
+        /// <summary>The rows that are a Studio TM's, and which TM's (by reference).</summary>
+        public Dictionary<VaultMatch, StudioTmMatches.Tm> FromStudio = new Dictionary<VaultMatch, StudioTmMatches.Tm>();
+        /// <summary>EverTM's rows that a Studio TM has too: those TMs' names.</summary>
+        public Dictionary<VaultMatch, List<string>> AlsoIn = new Dictionary<VaultMatch, List<string>>();
+        /// <summary>Which Studio TM search belongs to this result ("file|segment"); null when the switch is off.</summary>
+        public string StudioKey;
+        /// <summary>The Studio TMs are still being searched.</summary>
+        public bool StudioPending;
+        /// <summary>The Studio TMs' answer, once merged in.</summary>
+        public StudioTmMatches.Answer Studio;
+
+        /// <summary>The Studio TM a row came from; null for EverTM's.</summary>
+        public StudioTmMatches.Tm StudioOf(VaultMatch m) => m != null && FromStudio != null && FromStudio.TryGetValue(m, out var t) ? t : null;
+
+        /// <summary>Merges the Studio TMs' answer into this result (UI thread). Again with a newer answer: from EverTM's own.</summary>
+        public void MergeStudio(StudioTmMatches.Answer answer, int max)
+        {
+            if (answer == null) return;
+            EverTmMatches = EverTmMatches ?? Matches ?? new List<VaultMatch>();
+            var merged = StudioTmMatches.Merge(EverTmMatches, answer.Hits, max);
+            Matches = merged.Matches;
+            FromStudio = merged.FromStudio;
+            AlsoIn = merged.AlsoIn;
+            Studio = answer;
+            StudioPending = false;
+        }
     }
 
     /// <summary>
@@ -189,6 +220,12 @@ namespace Supervertaler.Trados.Controls
             _optionsMenu.Items.Add(max);
             _optionsMenu.Items.Add(DetailsMenu());
             _optionsMenu.Items.Add(new ToolStripSeparator());
+            _optionsMenu.Items.Add(Item("Also show matches from the project's Studio TMs", s.EverTmPaneStudioTms, () =>
+            {
+                Settings.SettingsService.Update(x => x.EverTmPaneStudioTms = !x.EverTmPaneStudioTms);
+                OptionsChanged?.Invoke(this, EventArgs.Empty);
+            }));
+            _optionsMenu.Items.Add(new ToolStripSeparator());
             _optionsMenu.Items.Add(Item("Keep Translation Results behind Supervertaler's panes", s.KeepTranslationResultsBack,
                 () => Settings.SettingsService.Update(x => x.KeepTranslationResultsBack = !x.KeepTranslationResultsBack)));
             _optionsMenu.Items.Add(new ToolStripSeparator());
@@ -211,6 +248,18 @@ namespace Supervertaler.Trados.Controls
             _note = null;
             if (_removedNote != null && r?.SegmentId != _removedSegment) _removedNote = null;   // said on the segment it was removed on
             Redraw();
+        }
+
+        /// <summary>
+        /// The same segment's result again with the Studio TMs' matches merged in: the selected match stays selected,
+        /// and the note about the last action stays. UI thread.
+        /// </summary>
+        public void UpdateResult(EverTmPaneResult r)
+        {
+            var selected = _list.Selected;
+            _result = r;
+            Redraw();
+            if (selected != null) _list.SelectMatch(selected);
         }
 
         /// <summary>A plain message instead of matches: no document, no segment, no licence.</summary>
@@ -286,6 +335,19 @@ namespace Supervertaler.Trados.Controls
                 int n = r.Matches?.Count ?? 0;
                 text = VaultLibrary.Units(r.Units) + " · " + (n == 0 ? "no matches" : n == 1 ? "1 match" : n + " matches") + " · " + r.Milliseconds.ToString(CultureInfo.CurrentCulture) + " ms";
                 if (r.Building != null) text = "EverTM is being rebuilt (" + r.Building + "); matches from the index before it · " + text;
+            }
+            if (r.StudioPending) text += " · searching Studio TMs\u2026";
+            else if (r.Studio != null && r.Error == null)
+            {
+                var a = r.Studio;
+                if (a.Tms == 0) text += " · no Studio TMs with Lookup ticked in this project";
+                else
+                {
+                    int n = r.FromStudio?.Count ?? 0;
+                    text += " · " + a.Tms + " Studio TM" + (a.Tms == 1 ? "" : "s") + ": " + (n == 0 ? "nothing more" : n == 1 ? "1 more match" : n + " more matches")
+                          + " · " + a.Milliseconds.ToString(CultureInfo.CurrentCulture) + " ms";
+                    if (a.LeftOut.Count > 0) text += " · left out: " + string.Join(", ", a.LeftOut);
+                }
             }
             if (r.ProjectNote != null) text += " · " + r.ProjectNote;
             if (_removedNote != null) text = _removedNote + " · " + text;
@@ -402,10 +464,15 @@ namespace Supervertaler.Trados.Controls
                 _details.AppendText(value + "\n");
             }
 
+            var tm = _detailsOf != null ? null : _result.StudioOf(m);
             _details.SelectionFont = bold;
             _details.AppendText(_detailsOf != null
                 ? "Older translation " + (_older.SelectedIndex + 1) + " of match " + (_list.SelectedIndex + 1) + "\n"
-                : "Match " + (_list.SelectedIndex + 1) + ", " + m.Score + "%" + (c.Exact ? " (exact)" : "") + "\n");
+                : "Match " + (_list.SelectedIndex + 1) + ", " + m.Score + "%" + (c.Exact ? " (exact)" : "") + (tm != null ? " · from a Studio TM" : "") + "\n");
+            if (tm != null)
+                Line("From Studio TM", tm.Name + (tm.Name != tm.Entry ? " (" + tm.Entry + ")" : "") + (tm.Penalty > 0 ? " · project penalty " + tm.Penalty + "%" : ""));
+            if (_detailsOf == null && _result.AlsoIn != null && _result.AlsoIn.TryGetValue(m, out var also) && also.Count > 0)
+                Line("Also in", string.Join("; ", also));
 
             var fields = c.Fields ?? new List<(string Field, string Value)>();
             foreach (var name in VaultFields.Order.Concat(fields.Select(f => f.Field).Where(f => !VaultFields.Order.Contains(f)).Distinct()))
@@ -419,7 +486,7 @@ namespace Supervertaler.Trados.Controls
             if (fields.Count == 0 && !VaultFields.Order.All(hidden.Contains)) Line("Fields", "none stored for this translation unit");
             Line("Created", When(c.Created, c.CreatedBy));
             Line("Changed", When(c.Changed, c.ChangedBy));
-            Line("In EverTM since", c.Added == null ? "not known" : EverTmSummary.FormatDate(c.Added.Value));
+            if (tm == null) Line("In EverTM since", c.Added == null ? "not known" : EverTmSummary.FormatDate(c.Added.Value));
             Line("Language variants", string.IsNullOrWhiteSpace(c.Variant) ? "not known" : c.Variant.Replace(">", " > "));
             if (m.NumbersReplaced > 0)
                 Line("Numbers", m.NumbersReplaced == 1 ? "1 number replaced by your segment's" : m.NumbersReplaced + " numbers replaced by your segment's");
@@ -521,6 +588,8 @@ namespace Supervertaler.Trados.Controls
             public VaultMatch Match;
             public List<Run> Source, Target;
             public string Summary, Older;
+            /// <summary>The Studio TM's name, before the summary line; null for EverTM's matches.</summary>
+            public string Badge;
             public bool TooLong;
             // Layout, for the current width.
             public int Top, Height;
@@ -532,7 +601,7 @@ namespace Supervertaler.Trados.Controls
 
         readonly VScrollBar _scroll = new VScrollBar { Dock = DockStyle.Right, Visible = false };
         readonly ContextMenuStrip _menu = new ContextMenuStrip();
-        readonly Font _normal, _strike, _under, _small, _bold, _tag;
+        readonly Font _normal, _strike, _under, _small, _bold, _tag, _smallBold;
         readonly Dictionary<(string, Style), int> _widths = new Dictionary<(string, Style), int>();
         List<Row> _rows = new List<Row>();
         EverTmPaneResult _result;
@@ -547,7 +616,7 @@ namespace Supervertaler.Trados.Controls
         readonly int _numberWidth, _badgeWidth, Gutter;
         static readonly Color RemovedColor = Color.FromArgb(190, 30, 30), AddedColor = Color.FromArgb(0, 120, 40),
             AddedBack = Color.FromArgb(222, 244, 226), TagColor = Color.FromArgb(120, 120, 120), TagBack = Color.FromArgb(232, 232, 232),
-            SummaryColor = Color.FromArgb(140, 140, 140), LinkColor = Color.FromArgb(30, 100, 180), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
+            SummaryColor = Color.FromArgb(140, 140, 140), StudioBlue = Color.FromArgb(25, 100, 175), LinkColor = Color.FromArgb(30, 100, 180), SelectedBack = Color.FromArgb(220, 235, 252), Line = Color.FromArgb(232, 232, 232);
 
         public event EventHandler SelectionChanged;
         public event Action<VaultMatch> InsertRequested;
@@ -584,6 +653,7 @@ namespace Supervertaler.Trados.Controls
             _small = new Font("Segoe UI", 8f);
             _bold = new Font("Segoe UI", 9f, FontStyle.Bold);
             _tag = new Font("Segoe UI", 7.5f);
+            _smallBold = new Font("Segoe UI", 8f, FontStyle.Bold);
             _numberWidth = TextRenderer.MeasureText("20", _bold, Size.Empty, TextFormatFlags.NoPadding).Width;
             _badgeWidth = TextRenderer.MeasureText("100%", _bold, Size.Empty, TextFormatFlags.NoPadding).Width + 8;
             Gutter = others ? 8 : 6 + _numberWidth + 4 + _badgeWidth + 8;
@@ -600,12 +670,19 @@ namespace Supervertaler.Trados.Controls
             _menu.Items.Add(copy);
             if (!others) _menu.Items.Add(older);
             _menu.Items.Add(new ToolStripSeparator());
+            // A Studio TM's match is changed in Studio, not here.
+            var studio = new ToolStripMenuItem("") { Enabled = false, Visible = false };
             _menu.Items.Add(edit);
             _menu.Items.Add(remove);
+            _menu.Items.Add(studio);
             _menu.Opening += (s, e) =>
             {
                 insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null; remove.Enabled = Selected != null; edit.Enabled = Selected != null;
                 older.Visible = _showOlderNote && (Selected?.Candidate?.Older ?? 0) > 0;
+                var tm = _result?.StudioOf(Selected);
+                edit.Visible = remove.Visible = tm == null;
+                studio.Visible = tm != null;
+                if (tm != null) studio.Text = "From the Studio TM " + tm.Name + ": edit or delete it in Studio's Translation Results";
             };
             ContextMenuStrip = _menu;
         }
@@ -627,6 +704,13 @@ namespace Supervertaler.Trados.Controls
         public VaultMatch Selected => _selected >= 0 && _selected < _rows.Count ? _rows[_selected].Match : null;
         public int SelectedIndex => _selected;
         public VaultMatch RowAt(int i) => i >= 0 && i < _rows.Count ? _rows[i].Match : null;
+
+        /// <summary>Selects this match if it is a row (by reference).</summary>
+        public void SelectMatch(VaultMatch m)
+        {
+            int i = _rows.FindIndex(r => ReferenceEquals(r.Match, m));
+            if (i >= 0) Select(i);
+        }
 
         public void SetRows(List<VaultMatch> matches, EverTmPaneResult result)
         {
@@ -659,6 +743,7 @@ namespace Supervertaler.Trados.Controls
         {
             var row = new Row { Match = m, Source = Others ? new List<Run>() : SourceRuns(m, r), Target = PlainRuns(m.Target, Style.Normal) };
             row.TooLong = m.Diff != null && m.Diff.Edits == null;
+            if (!Others) row.Badge = r?.StudioOf(m)?.Name;
             if (!Others && m.Candidate?.Older > 0) row.Older = (m.Candidate.Older == 1 ? "1 older" : m.Candidate.Older.ToString("N0", CultureInfo.CurrentCulture) + " older") + " ▸";
             return row;
         }
@@ -910,8 +995,13 @@ namespace Supervertaler.Trados.Controls
         {
             var parts = EverTmSummary.Make(row.Match.Candidate, _result?.SourceLang, _result?.SourceCulture, _result?.TargetCulture);
             if (row.TooLong) parts.Tail += " · too long to compare word by word";
-            return EverTmSummary.Fit(parts, width - OlderWidth(row), s => TextRenderer.MeasureText(s, _small, Size.Empty, TextFormatFlags.NoPadding).Width);
+            if (!Others && _result?.AlsoIn != null && _result.AlsoIn.TryGetValue(row.Match, out var also) && also.Count > 0)
+                parts.Tail += " · also in " + string.Join(", ", also);
+            return EverTmSummary.Fit(parts, width - OlderWidth(row) - BadgeWidth(row), s => TextRenderer.MeasureText(s, _small, Size.Empty, TextFormatFlags.NoPadding).Width);
         }
+
+        /// <summary>The Studio TM's name before the summary line, with the gap after it; 0 for EverTM's rows.</summary>
+        int BadgeWidth(Row row) => row.Badge == null ? 0 : TextRenderer.MeasureText(row.Badge + " ·", _smallBold, Size.Empty, TextFormatFlags.NoPadding).Width + 4;
 
         protected override void OnResize(EventArgs e)
         {
@@ -941,7 +1031,7 @@ namespace Supervertaler.Trados.Controls
                     using (var b = new SolidBrush(Focused ? SelectedBack : Color.FromArgb(236, 242, 250))) g.FillRectangle(b, 0, top, right, row.Height);
                 using (var p = new Pen(Line)) g.DrawLine(p, 0, top + row.Height - 1, right, top + row.Height - 1);
 
-                if (!Others) PaintNumber(g, i, row.Match.Score, top);
+                if (!Others) PaintNumber(g, i, row.Match.Score, top, outlined: row.Badge != null);
 
                 var divider = row.Divider;
                 if (!divider.IsEmpty)
@@ -961,17 +1051,26 @@ namespace Supervertaler.Trados.Controls
                     using (var link = new Font(_small, FontStyle.Underline))
                         TextRenderer.DrawText(g, row.Older, link, new Point(right - olderWidth, sy), _stale ? Color.Silver : LinkColor, TextFormatFlags.NoPadding);
                 }
-                TextRenderer.DrawText(g, row.Summary ?? "", _small, new Point(Gutter, sy), SummaryColor, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+                if (row.Badge != null)
+                    TextRenderer.DrawText(g, row.Badge + " ·", _smallBold, new Point(Gutter, sy), _stale ? Color.Silver : StudioBlue, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, row.Summary ?? "", _small, new Point(Gutter + BadgeWidth(row), sy), SummaryColor, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             }
         }
 
-        /// <summary>A match row's number and score badge.</summary>
-        void PaintNumber(Graphics g, int i, int score, int top)
+        /// <summary>A match row's number and score badge: filled for EverTM's matches, outlined for a Studio TM's.</summary>
+        void PaintNumber(Graphics g, int i, int score, int top, bool outlined = false)
         {
             Color badge = score >= 100 ? Color.FromArgb(46, 140, 60) : score >= 85 ? Color.FromArgb(200, 130, 0) : Color.FromArgb(150, 110, 60);
             if (_stale) badge = Color.Silver;
             TextRenderer.DrawText(g, (i + 1).ToString(CultureInfo.InvariantCulture), _bold, new Point(6, top + Pad), _stale ? Color.Silver : Color.FromArgb(80, 80, 80), TextFormatFlags.NoPadding);
             var scoreBox = new Rectangle(6 + _numberWidth + 4, top + Pad, _badgeWidth, _normal.Height);
+            if (outlined)
+            {
+                using (var b = new SolidBrush(BackColor)) g.FillRectangle(b, scoreBox);
+                using (var pen = new Pen(badge, 2)) g.DrawRectangle(pen, scoreBox.X + 1, scoreBox.Y + 1, scoreBox.Width - 2, scoreBox.Height - 2);
+                TextRenderer.DrawText(g, score + "%", _bold, scoreBox, badge, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                return;
+            }
             using (var b = new SolidBrush(badge)) g.FillRectangle(b, scoreBox);
             TextRenderer.DrawText(g, score + "%", _bold, scoreBox, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
@@ -1125,7 +1224,7 @@ namespace Supervertaler.Trados.Controls
         {
             if (disposing)
             {
-                _normal.Dispose(); _strike.Dispose(); _under.Dispose(); _small.Dispose(); _bold.Dispose(); _tag.Dispose();
+                _normal.Dispose(); _strike.Dispose(); _under.Dispose(); _small.Dispose(); _bold.Dispose(); _tag.Dispose(); _smallBold.Dispose();
                 _menu.Dispose();
             }
             base.Dispose(disposing);

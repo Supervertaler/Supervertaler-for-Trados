@@ -7,6 +7,7 @@ using Sdl.Core.Globalization;
 using Sdl.FileTypeSupport.Framework.BilingualApi;
 using Sdl.FileTypeSupport.Framework.NativeApi;
 using Sdl.LanguagePlatform.Core;
+using Sdl.LanguagePlatform.Core.Tokenization;
 using Sdl.LanguagePlatform.TranslationMemory;
 using Sdl.LanguagePlatform.TranslationMemoryApi;
 using Supervertaler.Core.SuperVault;
@@ -43,6 +44,8 @@ static class PaneChecks
         Removing(scratch, check);
         Console.WriteLine("EverTM Matches: editing a translation");
         Editing(scratch, check);
+        Console.WriteLine("EverTM Matches: Studio TM matches too");
+        StudioTms(scratch, check);
     }
 
     // ---- the worker ----
@@ -711,6 +714,206 @@ static class PaneChecks
             check(back.Count == 1 && EverTmEditorSegment.PlainTarget(back[0]) == "Click Save to kepe the changes." && lib.StoreCount() == 1,
                   "Undo: the old text back, the edited one gone: " + string.Join(" | ", back.Select(EverTmEditorSegment.PlainTarget)));
             dialog.Close();
+        }
+    }
+
+    // ---- Studio TM matches in the pane ----
+
+    static Tag OpenTag(string id, int anchor) => new Tag(Sdl.LanguagePlatform.Core.TagType.Start, id, anchor, anchor, null);
+    static Tag CloseTag(string id, int anchor) => new Tag(Sdl.LanguagePlatform.Core.TagType.End, id, anchor, 0, null);
+
+    static Segment Seg(CultureCode culture, params object[] parts)
+    {
+        var seg = new Segment(culture);
+        foreach (var p in parts) if (p is string t) seg.Add(t); else seg.Add((Tag)p);
+        return seg;
+    }
+
+    /// <summary>
+    /// Step 5: the project's Studio TMs searched for the segment with Studio's own search, merged with EverTM's matches
+    /// (the same translation once, as EverTM's, "also in"; by score, EverTM first on a tie), the project's penalty
+    /// applied, a TM that fails or is too slow left out and then skipped, the TMs released on another document, and the
+    /// pane drawing a Studio TM's row with its TM name and an outlined score.
+    /// </summary>
+    static void StudioTms(string scratch, Action<bool, string> check)
+    {
+        var dir = Path.Combine(scratch, "studio-tms");
+        Directory.CreateDirectory(dir);
+
+        // EverTM: the bold "Save" sentence.
+        var tmx = Path.Combine(dir, "evertm.tmx");
+        File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"nl-BE\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+            Tu("nl-BE", "en-GB", SaveNl, SaveEn) + "</body></tmx>");
+        var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
+        lib.Import((store, pr, c) => VaultTmx.Import(store, tmx, pr, c), null, CancellationToken.None);
+
+        // A Studio TM (nl-BE > en-GB): the same translation, a fuzzy one EverTM hasn't got, and one too far off.
+        var path = Path.Combine(dir, "Hydraulics_TM.sdltm");
+        var file = new FileBasedTranslationMemory(path, "Hydraulics_TM", NlBe, EnGb, FuzzyIndexes.SourceWordBased | FuzzyIndexes.SourceCharacterBased,
+            BuiltinRecognizers.RecognizeAll, TokenizerFlags.DefaultFlags, WordCountFlags.DefaultFlags);
+        file.Save();
+        var units = new[]
+        {
+            new TranslationUnit(Seg(NlBe, "Klik op ", OpenTag("pt1", 1), "Opslaan", CloseTag("pt1", 1), " om de wijzigingen te bewaren."),
+                                Seg(EnGb, "Click ", OpenTag("pt1", 1), "Save", CloseTag("pt1", 1), " to keep the changes.")),
+            new TranslationUnit(Seg(NlBe, "Klik op ", OpenTag("pt1", 1), "Opslaan", CloseTag("pt1", 1), " om de gegevens te bewaren."),
+                                Seg(EnGb, "Click ", OpenTag("pt1", 1), "Save", CloseTag("pt1", 1), " to keep the data.")),
+            new TranslationUnit(Seg(NlBe, "De pomp wordt gestart."), Seg(EnGb, "The pump is started.")),
+        };
+        var added = file.LanguageDirection.AddTranslationUnitsMasked(units, new ImportSettings(), units.Select(_ => true).ToArray());
+        check(added.All(x => x.Action == Sdl.LanguagePlatform.TranslationMemory.Action.Add), "a scratch Studio TM with 3 units");
+        file = null;
+
+        // The editor's segments, as the pane copies them: "Klik op [b]Opslaan[/b] om de wijzigingen te bewaren." (in both
+        // EverTM and the Studio TM) and "... om de instellingen te bewaren." (fuzzy matches only).
+        var factory = new Sdl.FileTypeSupport.Framework.Bilingual.DocumentItemFactory();
+        factory.PropertiesFactory = new Sdl.FileTypeSupport.Framework.Native.PropertiesFactory();
+        var pf = factory.PropertiesFactory;
+        ISegment Source(string tail)
+        {
+            var seg = factory.CreateSegment(factory.CreateSegmentPairProperties());
+            seg.Add(factory.CreateText(pf.CreateTextProperties("Klik op ")));
+            var start = pf.CreateStartTagProperties("<b>"); start.TagId = new TagId("7"); start.DisplayText = "b";
+            var end = pf.CreateEndTagProperties("</b>"); end.DisplayText = "b";
+            var pair = factory.CreateTagPair(start, end);
+            pair.Add(factory.CreateText(pf.CreateTextProperties("Opslaan")));
+            seg.Add(pair);
+            seg.Add(factory.CreateText(pf.CreateTextProperties(tail)));
+            return seg;
+        }
+        var source = Source(" om de wijzigingen te bewaren.");
+        var editor = EverTmEditorSegment.From(source, NlBe);
+        var source2 = Source(" om de instellingen te bewaren.");
+        var editor2 = EverTmEditorSegment.From(source2, NlBe);
+
+        var tm = new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM", Penalty = 0 };
+        StudioTmMatches.Request Ask(List<StudioTmMatches.Tm> tms, EverTmEditorSegment e, string doc = "doc1.sdlxliff") => new StudioTmMatches.Request
+        {
+            Key = doc + "|1/1", DocumentFile = Path.Combine(dir, doc), Segment = e.Segment, Document = e.Pieces,
+            SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-BE", TargetCulture = "en-GB", MinScore = 70, MaxMatches = 10, Tms = tms,
+        };
+
+        var answer1 = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { tm }, editor));
+        var exact = answer1.Hits.FirstOrDefault();
+        check(answer1.Tms == 1 && answer1.LeftOut.Count == 0 && answer1.Hits.Count == 1 && exact != null && EverTmEditorSegment.PlainTarget(exact.Match) == "Click Save to keep the changes.",
+              $"the same sentence in the Studio TM: that match alone, as Studio's search gives it with a 100% ({answer1.Hits.Count} hits in {answer1.Milliseconds} ms)");
+        check(exact != null && exact.Match.Score == 100 && exact.Match.Tags == VaultTagOutcome.Mapped, "100%, with its bold placed on your segment's tag");
+        var serialized = SegmentTagHandler.Serialize(source);
+        check(exact != null && editor.TargetMarkup(exact.Match, serialized.TagMap) == "Click <t1>Save</t1> to keep the changes.",
+              "a Studio TM's match is inserted with the source's own tag, as EverTM's are: " + (exact == null ? "" : editor.TargetMarkup(exact.Match, serialized.TagMap)));
+        check(exact != null && exact.Match.Candidate.Changed != null && !exact.Match.Candidate.Fields.Any(f => f.Field == VaultFields.Source),
+              "with the unit's own dates; the TM's name isn't repeated as a field");
+
+        var session = new StudioTmMatches.Session();
+        var answer = StudioTmMatches.Search(session, Ask(new List<StudioTmMatches.Tm> { tm }, editor2));
+        var same = answer.Hits.FirstOrDefault(h => EverTmEditorSegment.PlainTarget(h.Match) == "Click Save to keep the changes.");
+        var fuzzy = answer.Hits.FirstOrDefault(h => EverTmEditorSegment.PlainTarget(h.Match) == "Click Save to keep the data.");
+        check(answer.Hits.Count == 2 && same != null && fuzzy != null && answer.Hits.All(h => h.Match.Score < 100 && h.Match.Diff?.Edits != null),
+              "a segment with fuzzy matches only: both fuzzy ones, not the pump, with their differences to draw: " + string.Join(" | ", answer.Hits.Select(h => h.Match.Score + "% " + EverTmEditorSegment.PlainTarget(h.Match))));
+
+        // The same scores as Studio's own search with the project's default penalties (Translation Results).
+        var direct = new FileBasedTranslationMemory(path).LanguageDirection;
+        var settings = new SearchSettings { Mode = SearchMode.NormalSearch, MinScore = 70, MaxResults = 10 };
+        settings.AddPenalty(PenaltyType.TagMismatch, 1); settings.AddPenalty(PenaltyType.MemoryTagsDeleted, 1); settings.AddPenalty(PenaltyType.MultipleTranslations, 1);
+        var studioScores = direct.SearchSegment(settings, editor2.Segment).Results.Select(r => r.ScoringResult.Match).OrderByDescending(x => x).ToList();
+        var ourScores = answer.Hits.Select(h => h.Match.Score).OrderByDescending(x => x).ToList();
+        check(studioScores.SequenceEqual(ourScores), "the scores are Studio's own: " + string.Join(", ", ourScores) + " / Studio: " + string.Join(", ", studioScores));
+
+        // The project's penalty for the TM.
+        var penalised = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM", Penalty = 5 } }, editor2));
+        check(penalised.Hits.Select(h => h.Match.Score).OrderByDescending(x => x).SequenceEqual(ourScores.Select(x => x - 5)),
+              "a project penalty of 5% takes 5 off each: " + string.Join(", ", penalised.Hits.Select(h => h.Match.Score)));
+
+        // Merged with EverTM's.
+        var everTm = EverTmMatchesLookup.Run(lib, new EverTmMatchesLookup.Request { Document = editor2.Pieces, SourceLang = "nl", TargetLang = "en", SourceCulture = "nl-BE", TargetCulture = "en-GB", MinScore = 70, MaxMatches = 10 }).Matches;
+        var merged = StudioTmMatches.Merge(everTm, answer.Hits, 10);
+        check(everTm.Count == 1 && merged.Matches.Count == 2 && merged.Matches.Contains(everTm[0]) && merged.FromStudio.Count == 1 && ReferenceEquals(merged.FromStudio.Keys.First(), fuzzy?.Match)
+              && merged.Matches[0].Score >= merged.Matches[1].Score,
+              "merged: the translation both have shows once, as EverTM's; the Studio TM's other one as its own row; best first: " + string.Join(", ", merged.Matches.Select(m => m.Score + "%")));
+        check(merged.AlsoIn.TryGetValue(everTm[0], out var also) && also.SequenceEqual(new[] { "Hydraulics_TM" }), "EverTM's row says it is also in Hydraulics_TM");
+        var tie = new VaultMatch { Score = everTm[0].Score, Source = new List<VaultPiece> { new VaultPiece { Text = "x" } }, Target = new List<VaultPiece> { new VaultPiece { Text = "y" } } };
+        var tied = StudioTmMatches.Merge(everTm, new[] { new StudioTmMatches.Hit { Match = tie, Tm = tm } }, 10);
+        check(ReferenceEquals(tied.Matches[0], everTm[0]) && ReferenceEquals(tied.Matches[1], tie), "an equal score: EverTM's first");
+        check(StudioTmMatches.Merge(everTm, answer.Hits, 1).Matches.Count == 1 && StudioTmMatches.Merge(everTm, answer.Hits, 1).FromStudio.Count == 0,
+              "\"Most matches shown\" counts both kinds together");
+
+        // A TM that can't be opened: left out, said so, the others still searched; after two failures, skipped.
+        var missing = new StudioTmMatches.Tm { Entry = Path.Combine(dir, "gone.sdltm"), Name = "Gone_TM" };
+        var twoTms = new List<StudioTmMatches.Tm> { tm, missing };
+        var s2 = new StudioTmMatches.Session();
+        var f1 = StudioTmMatches.Search(s2, Ask(twoTms, editor2));
+        check(f1.Hits.Count == 2 && f1.LeftOut.Count == 1 && f1.LeftOut[0].StartsWith("Gone_TM (failed"), "a TM that can't be opened is left out and said so, the other searched: " + string.Join("; ", f1.LeftOut));
+        StudioTmMatches.Search(s2, Ask(twoTms, editor2));
+        var f3 = StudioTmMatches.Search(s2, Ask(twoTms, editor2));
+        check(f3.Hits.Count == 2 && f3.LeftOut.Count == 1 && f3.LeftOut[0].Contains("skipped in this document"), "after failing twice it is skipped for the document: " + string.Join("; ", f3.LeftOut));
+        var f4 = StudioTmMatches.Search(s2, Ask(twoTms, editor2, "doc2.sdlxliff"));
+        check(f4.LeftOut.Count == 1 && f4.LeftOut[0].StartsWith("Gone_TM (failed"), "another document: tried again (the TMs were released and reopened)");
+
+        // Too slow: left out of this segment; not searched again while its search is still running.
+        int timeout = StudioTmMatches.TimeoutMs;
+        try
+        {
+            var one = new List<StudioTmMatches.Tm> { tm };
+            StudioTmMatches.TimeoutMs = 0;
+            var s3 = new StudioTmMatches.Session();
+            var slow = StudioTmMatches.Search(s3, Ask(one, editor2));
+            check(slow.Hits.Count == 0 && slow.LeftOut.Count == 1 && slow.LeftOut[0].Contains("took over"), "a TM that isn't back in time is left out of the segment: " + string.Join("; ", slow.LeftOut));
+            var next = StudioTmMatches.Search(s3, Ask(one, editor2));
+            check(next.LeftOut.Count == 1 && next.LeftOut[0].Contains("still busy"), "the next segment doesn't search it while that search is still running: " + string.Join("; ", next.LeftOut));
+            Thread.Sleep(1500);
+            StudioTmMatches.TimeoutMs = timeout;
+            var back = StudioTmMatches.Search(s3, Ask(one, editor2));
+            check(back.LeftOut.Count == 0 && back.Hits.Count == 2, "once it has finished, it is searched again (slow once is forgiven)");
+            StudioTmMatches.TimeoutMs = 0;
+            StudioTmMatches.Search(s3, Ask(one, editor2));
+            Thread.Sleep(1500);
+            StudioTmMatches.TimeoutMs = timeout;
+            var later = StudioTmMatches.Search(s3, Ask(one, editor2));
+            check(later.LeftOut.Count == 1 && later.LeftOut[0].Contains("skipped in this document"), "slow twice: skipped for the document: " + string.Join("; ", later.LeftOut));
+        }
+        finally { StudioTmMatches.TimeoutMs = timeout; }
+
+        // A segment with nothing to search, and a request without a segment: no hits, no exception.
+        check(StudioTmMatches.Search(new StudioTmMatches.Session(), new StudioTmMatches.Request()).Hits.Count == 0, "a request without a segment: nothing, no exception");
+
+        // The pane: the Studio TM's row with its name and an outlined score; Edit and Remove are EverTM's only.
+        using (var form = new System.Windows.Forms.Form { Width = 760, Height = 420, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        using (var control = new Supervertaler.Trados.Controls.EverTmMatchesControl { Dock = System.Windows.Forms.DockStyle.Fill })
+        {
+            form.Controls.Add(control);
+            form.Show();
+            var r = new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = everTm, SegmentId = "1", SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB", Editor = editor2, TagMapAtLookup = SegmentTagHandler.Serialize(source2).TagMap, StudioKey = "doc1|1/1", StudioPending = true, Units = 1 };
+            control.ShowResult(r);
+            var status = Field<System.Windows.Forms.Label>(control, "_status");
+            check(status.Text.Contains("searching Studio TMs"), "while the Studio TMs are searched, the status line says so: " + status.Text);
+            var list = Field<System.Windows.Forms.Control>(control, "_list");
+            var selectedBefore = control.MatchNumber(1);
+            r.MergeStudio(answer, 10);
+            control.UpdateResult(r);
+            int studioRow = control.MatchNumber(1) != null && r.StudioOf(control.MatchNumber(1)) != null ? 0 : 1;
+            check(control.MatchNumber(3) == null && r.StudioOf(control.MatchNumber(studioRow + 1))?.Name == "Hydraulics_TM" && r.StudioOf(control.MatchNumber(2 - studioRow)) == null,
+                  "merged in: EverTM's match and the Studio TM's, two rows");
+            check(ReferenceEquals(control.MatchNumber(1) == null ? null : Field<System.Windows.Forms.Control>(control, "_list").GetType().GetProperty("Selected").GetValue(Field<System.Windows.Forms.Control>(control, "_list")), selectedBefore),
+                  "the match selected before the Studio TMs' came stays selected");
+            check(status.Text.Contains("1 Studio TM: 1 more match"), "the status line: " + status.Text);
+            check(r.EverTmMatches != null && r.EverTmMatches.Count == 1, "EverTM's own matches are kept apart (for the second look)");
+            var details = Field<System.Windows.Forms.RichTextBox>(control, "_details");
+            check(details.Text.Contains("Also in  Hydraulics_TM"), "EverTM's match's details: also in Hydraulics_TM");
+            list.GetType().GetMethod("Select", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null).Invoke(list, new object[] { studioRow });
+            check(details.Text.Contains("From Studio TM  Hydraulics_TM (" + path + ")") && !details.Text.Contains("In EverTM since"), "the Studio TM's match's details: from Studio TM Hydraulics_TM and where it is");
+            var menu = list.ContextMenuStrip;
+            var opening = typeof(System.Windows.Forms.ToolStripDropDown).GetMethod("OnOpening", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            opening.Invoke(menu, new object[] { new System.ComponentModel.CancelEventArgs() });
+            var items = menu.Items.Cast<System.Windows.Forms.ToolStripItem>().ToList();
+            check(!items.First(i => i.Text == "Edit in EverTM...").Available && !items.First(i => i.Text == "Remove from EverTM").Available && items.Any(i => i.Available && i.Text.StartsWith("From the Studio TM Hydraulics_TM")),
+                  "on a Studio TM's match the menu has no Edit or Remove, and says to use Translation Results");
+            var picture = Environment.GetEnvironmentVariable("SV_PANE_PICTURE_DIR");
+            if (!string.IsNullOrEmpty(picture))
+                using (var bmp = new System.Drawing.Bitmap(form.ClientSize.Width, form.ClientSize.Height))
+                {
+                    control.DrawToBitmap(bmp, new System.Drawing.Rectangle(System.Drawing.Point.Empty, form.ClientSize));
+                    bmp.Save(Path.Combine(picture, "studio-tms.png"));
+                }
         }
     }
 

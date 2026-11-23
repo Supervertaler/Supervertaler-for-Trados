@@ -134,6 +134,32 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   - Changing only the fields marks nothing.
 - Undo puts back exactly what was there before.
 
+## Matches from your Studio TMs too
+
+- **Options > Also show matches from the project's Studio TMs** (off to start with). For translators with many Studio
+  TMs who'd rather work from this pane than from Translation Results.
+- Which TMs: the ones Studio itself looks up in for this document: the project's TM list for its language pair, those
+  with Lookup ticked (EverTM itself not counted). File TMs and GroupShare TMs.
+- How to tell them apart: a Studio TM's match has **its TM's name in blue** at the start of its faint summary line,
+  and its **score in an outlined box** (EverTM's are filled). Its details say "From Studio TM" with the TM's file or
+  server address.
+- The scores are Studio's own, with the project's penalty for that TM, so they match Translation Results. One
+  difference: a "100%" whose source isn't exactly your segment's text (Studio does that when only numbers differ) is
+  shown as 99%, as everywhere in Supervertaler.
+- As in Translation Results, when a Studio TM has a 100% match it offers that one alone, without its fuzzy matches.
+- **The same translation in EverTM and a Studio TM shows once, as EverTM's**, with "also in Hydraulics_TM" on its
+  summary line and in its details. On equal scores EverTM's match comes first. "Most matches shown" counts both.
+- EverTM's matches appear straight away; the Studio TMs' are added a moment later ("searching Studio TMs…" in the
+  status line). Then the status line says how many Studio TMs were searched, how many more matches they gave, and how
+  long they took.
+- Inserting a Studio TM's match works the same way (formatting included); the segment is labelled with that TM's name
+  ("TM, 87%, Hydraulics_TM").
+- **Edit in EverTM**, **Remove from EverTM** and older translations are for EverTM's matches only. On a Studio TM's
+  match, the right-click menu says to edit or delete it in Studio's Translation Results.
+- A TM that can't be opened, or takes more than 5 seconds, is left out of that segment and the status line names it
+  ("left out: Hydraulics_TM (took over 5 s)"). One that fails or is slow twice is skipped until you open another
+  document.
+
 ## The status line
 
 - Normally: how many translation units EverTM holds, how many matches, and how long the lookup took.
@@ -142,7 +168,9 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - "EverTM is not in this project's TMs with Update ticked: segments you confirm won't be learned". The pane reads
   EverTM in any project, but EverTM only learns your confirmed segments when it is in the project's TM list with
   Update ticked. (Read from the saved project, so it updates after Studio saves the project settings.)
-- After inserting: "Match 87% inserted", or "… inserted without formatting".
+- After inserting: "Match 87% inserted", or "… inserted without formatting"; for a Studio TM's match, "Match 87%
+  from Hydraulics_TM inserted".
+- With Studio TM matches on: "searching Studio TMs…", then "3 Studio TMs: 2 more matches · 40 ms", and any TM left out.
 
 ## Inserting a match
 
@@ -188,5 +216,4 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 
 ## Later
 
-- Removing a wrong translation from EverTM, with Undo and a "Removed translations" list.
 - Filters (by client, subject, source) and the Language variants setting.

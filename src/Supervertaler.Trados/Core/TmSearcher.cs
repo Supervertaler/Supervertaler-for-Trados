@@ -122,6 +122,9 @@ namespace Supervertaler.Trados.Core
             public int Total;
             /// <summary>How many of them are searched.</summary>
             public int Searched;
+            /// <summary>Each memory's penalty in the project's list (the Penalty column), by the entry in <see cref="Tms"/>;
+            /// missing means none. A memory listed twice takes the lower.</summary>
+            public Dictionary<string, int> Penalties = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -194,7 +197,16 @@ namespace Supervertaler.Trados.Core
                 if (searched.Add(key)) result.Searched++;
 
                 if (everTm) result.EverTm = true;
-                else foreach (var tm in files) if (added.Add(tm)) result.Tms.Add(tm);
+                else
+                {
+                    int.TryParse(entry.Attribute("Penalty")?.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int penalty);
+                    penalty = Math.Max(0, Math.Min(100, penalty));
+                    foreach (var tm in files)
+                    {
+                        if (added.Add(tm)) result.Tms.Add(tm);
+                        if (!result.Penalties.TryGetValue(tm, out int had) || penalty < had) result.Penalties[tm] = penalty;
+                    }
+                }
             }
 
             result.Tms = result.Tms

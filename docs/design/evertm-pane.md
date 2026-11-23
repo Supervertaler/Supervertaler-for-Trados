@@ -604,6 +604,28 @@ filtered-out"). About 2 sessions on top of metadata phase 2 itself.
 - that Analyze and Pre-translate still use EverTM through the project's TM settings, so EverTM stays in the
   project's TM list with Lookup and Update ticked.
 
+## Studio TM matches in the pane (step 5, built 23 Nov 2026)
+
+Michael, 23 Nov 2026: an option to show matches from the project's Studio TMs too, clearly marked, for translators with
+many Studio TMs who prefer this pane. His answers: the same translation once, as EverTM's, "also in <TM>"; EverTM first
+on equal scores; the project's penalties applied. Built in `SuperVault/StudioTmMatches.cs`:
+
+- Which TMs: `TmSearcher.FindLookupTms` (Enabled and Lookup ticked, EverTM apart), now also returning each TM's
+  `Penalty` from the cascade entry.
+- Studio's `SearchSegment` per TM, NormalSearch, Studio's default formatting and multiple-translation penalties, the
+  project's provider penalty (applied by hand if the TM doesn't). NormalSearch returns a 100% alone, as Translation
+  Results does.
+- Each unit is put in EverTM's shape by `VaultLookup.Search(null, document, …, extra: [unit])`, so differences, tag
+  placement, numbers and inserting are the pane's own code; the score is set back to Studio's (99 when Studio's 100
+  isn't the segment's own text). No Plugin Core change.
+- A worker of its own (newest segment wins); TMs searched in parallel, 5 s in all; a TM still running from an earlier
+  segment is not searched again; two failures or time-outs skip it for the document. The opened TMs live in one
+  `Session` per document, used only on that worker (a lock guards the open-TM table against a search still finishing).
+- The last answer is kept for its segment, so the 4-second second look and a removal's new lookup don't search the
+  Studio TMs again.
+- Scale: tested with one scratch .sdltm (a search about 120–220 ms cold); designed for up to ~10 TMs and multi-GB
+  .sdltm files. With 50 TMs each segment waits longer for them, but EverTM's matches never do.
+
 ## Decisions (Michael, 9 Nov)
 
 Michael: "I agree with all your suggestions, and number 5: yes, it should need a licence."

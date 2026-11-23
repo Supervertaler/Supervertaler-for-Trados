@@ -348,6 +348,15 @@ namespace Supervertaler.Trados.Settings
             set => _everTmPaneStacked = value;
         }
 
+        [DataMember(Name = "everTmPaneStudioTms", EmitDefaultValue = false)]
+        private bool? _everTmPaneStudioTms;
+        /// <summary>EverTM Matches also shows matches from the project's Studio TMs (Options). Off by default (Michael, 23 Nov 2026).</summary>
+        public bool EverTmPaneStudioTms
+        {
+            get => _everTmPaneStudioTms ?? false;
+            set => _everTmPaneStudioTms = value;
+        }
+
         /// <summary>
         /// The items the user switched off in EverTM Matches' details area (Options > Details shown), by their label
         /// ("Document", "In EverTM since"). Empty or missing: everything is shown (Michael, 22 Nov 2026: "the user
