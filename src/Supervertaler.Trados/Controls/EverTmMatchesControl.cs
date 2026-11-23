@@ -38,6 +38,10 @@ namespace Supervertaler.Trados.Controls
     {
         readonly Label _status;
         readonly LinkLabel _options;
+        /// <summary>"Undo" after a removal: until the next removal or until the pane closes.</summary>
+        readonly LinkLabel _undo;
+        string _removedNote;      // "Removed from EverTM: ..." until a result for another segment arrives
+        string _removedSegment;
         readonly ContextMenuStrip _optionsMenu = new ContextMenuStrip();
         readonly SplitContainer _split;
         readonly EverTmMatchList _list;
@@ -62,6 +66,12 @@ namespace Supervertaler.Trados.Controls
         /// <summary>The minimum % or the number of matches changed: the segment is looked up again.</summary>
         public event EventHandler OptionsChanged;
 
+        /// <summary>"Remove from EverTM" on a match or an older translation (right-click, or Delete).</summary>
+        public event Action<VaultMatch> RemoveRequested;
+
+        /// <summary>"Undo" after a removal.</summary>
+        public event EventHandler UndoRequested;
+
         /// <summary>A page (0 is the first) of this match's older translations is wanted: the view part looks them up in
         /// the background and hands them to <see cref="ShowOlder"/>.</summary>
         public event Action<VaultMatch, EverTmPaneResult, int> OlderWanted;
@@ -75,7 +85,10 @@ namespace Supervertaler.Trados.Controls
             _status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Color.FromArgb(70, 70, 70) };
             _options = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 4, 0, 0), LinkColor = Color.FromArgb(30, 100, 180), Text = "Options ▾" };
             _options.LinkClicked += (s, e) => { BuildOptionsMenu(); _optionsMenu.Show(_options, new Point(0, _options.Height)); };
+            _undo = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 4, 10, 0), LinkColor = Color.FromArgb(30, 100, 180), Text = "Undo", Visible = false };
+            _undo.LinkClicked += (s, e) => UndoRequested?.Invoke(this, EventArgs.Empty);
             top.Controls.Add(_status);
+            top.Controls.Add(_undo);
             top.Controls.Add(_options);
 
             _list = new EverTmMatchList { Dock = DockStyle.Fill };
@@ -83,6 +96,7 @@ namespace Supervertaler.Trados.Controls
             _list.SelectionChanged += (s, e) => MatchSelected();
             _list.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
             _list.OlderClicked += m => ToggleOlder(m);
+            _list.RemoveRequested += m => RemoveRequested?.Invoke(m);
             _list.ShowOlderNote = !OlderHidden;
 
             _details = new RichTextBox
@@ -94,6 +108,7 @@ namespace Supervertaler.Trados.Controls
             _older = new EverTmMatchList(others: true) { Dock = DockStyle.Fill };
             _older.SelectionChanged += (s, e) => { _detailsOf = _older.Selected; ShowDetails(); };
             _older.InsertRequested += m => { if (_result != null) InsertRequested?.Invoke(m, _result); };
+            _older.RemoveRequested += m => RemoveRequested?.Invoke(m);
             var olderTop = new Panel { Dock = DockStyle.Top, Height = Font.Height + 6, BackColor = Color.FromArgb(246, 246, 246), Padding = new Padding(6, 0, 6, 0) };
             _olderTitle = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Color.FromArgb(70, 70, 70) };
             _olderMore = new LinkLabel { Dock = DockStyle.Right, AutoSize = true, TextAlign = ContentAlignment.MiddleRight, Padding = new Padding(0, 3, 0, 0), LinkColor = Color.FromArgb(30, 100, 180), Visible = false };
@@ -189,6 +204,7 @@ namespace Supervertaler.Trados.Controls
         {
             _result = r;
             _note = null;
+            if (_removedNote != null && r?.SegmentId != _removedSegment) _removedNote = null;   // said on the segment it was removed on
             Redraw();
         }
 
@@ -223,6 +239,21 @@ namespace Supervertaler.Trados.Controls
 
         public EverTmPaneResult Result => _list.Stale ? null : _result;
 
+        /// <summary>The last result shown, also while the next segment's is on its way (for the languages of a removal).</summary>
+        public EverTmPaneResult LastResult => _result;
+
+        /// <summary>
+        /// After a removal: says what was removed, and that only EverTM was changed, and offers Undo (until the next
+        /// removal or until the pane closes). <paramref name="undo"/> false: after Undo, the message only.
+        /// </summary>
+        public void ShowRemoved(string message, bool undo)
+        {
+            _removedNote = message;
+            _removedSegment = _result?.SegmentId;
+            _undo.Visible = undo;
+            ShowStatus(StatusText());
+        }
+
         // ---- drawing ----
 
         void Redraw()
@@ -252,6 +283,7 @@ namespace Supervertaler.Trados.Controls
                 if (r.Building != null) text = "EverTM is being rebuilt (" + r.Building + "); matches from the index before it · " + text;
             }
             if (r.ProjectNote != null) text += " · " + r.ProjectNote;
+            if (_removedNote != null) text = _removedNote + " · " + text;
             if (_note != null) text = _note + " · " + text;
             return text;
         }
@@ -521,6 +553,9 @@ namespace Supervertaler.Trados.Controls
         /// <summary>"2 older" on a row was clicked, or the menu's "Show older translations" chosen.</summary>
         public event Action<VaultMatch> OlderClicked;
 
+        /// <summary>"Remove from EverTM" chosen, or Delete pressed, on the selected row.</summary>
+        public event Action<VaultMatch> RemoveRequested;
+
         /// <summary>Whether rows say "2 older" (Options > Details shown > Older translations).</summary>
         public bool ShowOlderNote
         {
@@ -551,12 +586,15 @@ namespace Supervertaler.Trados.Controls
             var insert = new ToolStripMenuItem(others ? "Insert this translation" : "Insert this match", null, (s, e) => RequestInsert());
             var copy = new ToolStripMenuItem("Copy the target text", null, (s, e) => CopyTarget());
             var older = new ToolStripMenuItem("Show older translations", null, (s, e) => { if (Selected != null) OlderClicked?.Invoke(Selected); });
+            var remove = new ToolStripMenuItem("Remove from EverTM", null, (s, e) => { if (Selected != null) RemoveRequested?.Invoke(Selected); }) { ShortcutKeyDisplayString = "Del" };
             _menu.Items.Add(insert);
             _menu.Items.Add(copy);
             if (!others) _menu.Items.Add(older);
+            _menu.Items.Add(new ToolStripSeparator());
+            _menu.Items.Add(remove);
             _menu.Opening += (s, e) =>
             {
-                insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null;
+                insert.Enabled = !_stale && Selected != null; copy.Enabled = Selected != null; remove.Enabled = Selected != null;
                 older.Visible = _showOlderNote && (Selected?.Candidate?.Older ?? 0) > 0;
             };
             ContextMenuStrip = _menu;
@@ -1009,7 +1047,7 @@ namespace Supervertaler.Trados.Controls
         {
             switch (keyData & Keys.KeyCode)
             {
-                case Keys.Up: case Keys.Down: case Keys.Home: case Keys.End: case Keys.PageUp: case Keys.PageDown: case Keys.Enter: return true;
+                case Keys.Up: case Keys.Down: case Keys.Home: case Keys.End: case Keys.PageUp: case Keys.PageDown: case Keys.Enter: case Keys.Delete: return true;
             }
             return base.IsInputKey(keyData);
         }
@@ -1027,6 +1065,7 @@ namespace Supervertaler.Trados.Controls
                 case Keys.PageUp: Select(Math.Max(0, _selected - 5)); e.Handled = true; break;
                 case Keys.PageDown: Select(Math.Min(_rows.Count - 1, _selected + 5)); e.Handled = true; break;
                 case Keys.Enter: RequestInsert(); e.Handled = true; e.SuppressKeyPress = true; break;
+                case Keys.Delete: if (Selected != null) RemoveRequested?.Invoke(Selected); e.Handled = true; e.SuppressKeyPress = true; break;
                 default:
                     if (!Others && (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D9 || e.KeyCode >= Keys.NumPad1 && e.KeyCode <= Keys.NumPad9))
                     {

@@ -99,6 +99,23 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
 - They're looked up only when you click, in the background, so moving through segments is never slowed.
   A segment you confirmed in the last minute isn't listed yet.
 
+## Removing a wrong translation
+
+- A typo you once confirmed, or a bad translation from an agency TM: right-click the match (or an older translation)
+  and choose **Remove from EverTM**, or select it and press **Delete**. There's no "are you sure?": the status line
+  says what was removed and offers **Undo** until you remove something else.
+- What goes: every copy of that sentence with that translation, whatever its formatting or language variant, in both
+  directions (it's no longer offered for English > Dutch either).
+- The next translation takes its place, usually within a second.
+- **Only EverTM changes.** Your Studio TMs, TMX files and the document are never touched, and a translation already
+  in the target stays there. If it's also in a project TM, fix it there with Studio's own tools.
+- It stays removed: importing a TMX file or Studio TM that has it skips it ("skipped: you removed it from EverTM"),
+  and so does Studio's batch task **Update Main Translation Memories**.
+- **Confirming it yourself in the editor brings it back** — that's a deliberate choice, so EverTM respects it.
+- To bring one back later: EverTM window (Project Settings > Translation Memory > EverTM > Settings) >
+  **Removed translations...** > select it > **Restore**. It comes back exactly as it was, with its client, project
+  and dates.
+
 ## The status line
 
 - Normally: how many translation units EverTM holds, how many matches, and how long the lookup took.

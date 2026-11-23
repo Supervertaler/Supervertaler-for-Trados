@@ -71,6 +71,7 @@ namespace Supervertaler.Trados.SuperVault
         readonly Button _rebuild = new Button { Text = "Rebuild index", AutoSize = true };
         readonly Button _export = new Button { Text = "Export TMX...", AutoSize = true };
         readonly Button _stop = new Button { Text = "Stop", AutoSize = true };
+        readonly Button _removed = new Button { Text = "Removed translations...", AutoSize = true };
         readonly Timer _timer = new Timer { Interval = 1000 };
         long _storeUnits = -1;
         bool _outOfDate;
@@ -98,7 +99,7 @@ namespace Supervertaler.Trados.SuperVault
                        "in en-US projects.\n\n" +
                        "Fill it by importing your TMX files and Studio TMs. If you tick its Update box in the project's TM settings, every " +
                        "segment you confirm is added too.";
-            _imports.Controls.AddRange(new Control[] { _importTmx, _importTm, _importWorkbench, _rebuild, _export, _stop });
+            _imports.Controls.AddRange(new Control[] { _importTmx, _importTm, _importWorkbench, _rebuild, _export, _removed, _stop });
             var ok = new Button { Text = adding ? "Add" : "Close", DialogResult = DialogResult.OK, AutoSize = true };
             _buttons.Controls.Add(ok);
             if (adding) _buttons.Controls.Add(new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true });
@@ -119,6 +120,7 @@ namespace Supervertaler.Trados.SuperVault
             _rebuild.Click += (s, e) => Start(_library.StartBuild());
             _export.Click += (s, e) => ChooseAndExport();
             _stop.Click += (s, e) => _library.CancelBuild();
+            _removed.Click += (s, e) => { using (var d = new RemovedTranslationsDialog(_library)) d.ShowDialog(this); };
             _timer.Tick += (s, e) => Refresh2();
             Shown += (s, e) => { Refresh2(); _timer.Start(); };
             FormClosed += (s, e) => _timer.Dispose();
@@ -167,6 +169,7 @@ namespace Supervertaler.Trados.SuperVault
                     {
                         var r = importer(store, f, p, c);
                         total.Read += r.Read; total.Added += r.Added; total.Duplicates += r.Duplicates; total.Skipped += r.Skipped;
+                        total.Enriched += r.Enriched; total.Removed += r.Removed;
                     }
                     return total;
                 }));

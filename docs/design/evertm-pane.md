@@ -624,6 +624,10 @@ Decided later on 9 Nov (the two removal questions; Michael: "Agree with both sug
 7. **A deliberate confirmation in the editor brings a removed translation back; the batch task "Update Main
    Translation Memories" does not.** If Studio can't tell the two apart, both bring it back. Which of the two applies
    is checked in Studio's code as the first step of building removal (risk 9), and recorded here.
+   **Checked 23 Nov 2026 (Studio 2024): they can be told apart.** The editor's confirm builds its ImportSettings in
+   `InteractiveTmUpdateImportSettingsBuilder` with `IsDocumentImport = request.DocumentUpdate`, false for a confirm;
+   the batch task's `AbstractUpdateTmContentProcessor.Initialize` sets `IsDocumentImport = true`. So EverTM's provider
+   passes `FromBatch = settings.IsDocumentImport`, and only an editor confirmation brings a removed translation back.
 8. **The "Removed translations" list with Restore stays**, in the EverTM window, as well as the immediate Undo in the
    pane.
 

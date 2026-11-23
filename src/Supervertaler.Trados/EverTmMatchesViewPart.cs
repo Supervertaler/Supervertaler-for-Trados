@@ -85,6 +85,10 @@ namespace Supervertaler.Trados
         /// </summary>
         System.Windows.Forms.Timer _again;
         string _noteFor;         // the document whose "EverTM learns here" note has been asked for
+        /// <summary>The last removal, for Undo (until the next removal or until the pane closes); and the library whose
+        /// RemovalsApplied this pane listens to.</summary>
+        VaultRemovalKey _lastRemoval;
+        VaultLibrary _removalLibrary;
         string _projectNote;     // that note
 
         protected override IUIControl GetContentControl()
@@ -106,6 +110,8 @@ namespace Supervertaler.Trados
             _control.InsertRequested += (m, r) => Insert(m, r, fromPane: true);
             _control.OptionsChanged += (s, e) => LookUpActive();
             _control.OlderWanted += (m, r, page) => _olderWorker?.Submit(new OlderRequest { Match = m, Result = r, Page = page });
+            _control.RemoveRequested += m => Remove(m);
+            _control.UndoRequested += (s, e) => Undo();
             _control.VisibleChanged += (s, e) => { if (_control.Visible && _owed) LookUpActive(); };
             _control.Disposed += (s, e) => Shutdown();
             TranslationResultsGuard.Watch(this, _control);
@@ -134,6 +140,7 @@ namespace Supervertaler.Trados
         {
             try { _worker?.Stop(); } catch { }
             try { _olderWorker?.Stop(); } catch { }
+            try { if (_removalLibrary != null) _removalLibrary.RemovalsApplied -= OnRemovalsApplied; } catch { }
             try { _again?.Stop(); _again?.Dispose(); } catch { }
             try { LicenseManager.Instance.LicenseStateChanged -= OnLicenceChanged; } catch { }
             try { if (_editor != null) _editor.ActiveDocumentChanged -= OnActiveDocumentChanged; } catch { }
@@ -345,6 +352,78 @@ namespace Supervertaler.Trados
             for (int i = 0; i < a.Count; i++)
                 if (a[i].Score != b[i].Score || a[i].Candidate?.Id != b[i].Candidate?.Id || a[i].Candidate?.TargetRaw != b[i].Candidate?.TargetRaw) return false;
             return true;
+        }
+
+        // ---- removing a wrong translation ----
+
+        /// <summary>
+        /// "Remove from EverTM" (right-click, or Delete): every stored copy of this source with this translation, in
+        /// every formatting and variant, both directions (VaultLibrary.Remove). Only EverTM: never a Studio TM, a file or
+        /// the target. No "are you sure?": Undo instead (Michael's design, 9 Nov 2026). It is hidden here at once and
+        /// applied in the background; once applied, the segment is looked up again, so the next translation (if any)
+        /// takes its place. UI thread; Remove itself never waits or throws.
+        /// </summary>
+        void Remove(VaultMatch m)
+        {
+            var c = _control;
+            var r = c?.LastResult;
+            if (m?.Candidate == null || r == null || string.IsNullOrEmpty(r.TargetCulture)) return;
+            try
+            {
+                var library = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
+                ListenForRemovals(library);
+                var key = library.Remove(m.Candidate, r.SourceLang, VaultMarkup.BaseLanguage(r.TargetCulture), Environment.UserName);
+                if (key == null) { c.ShowNote("Nothing to remove"); return; }
+                _lastRemoval = key;
+                c.ShowRemoved("Removed from EverTM only (your Studio TMs are unchanged): \u201C" + Short(EverTmEditorSegment.PlainTarget(m)) + "\u201D", undo: true);
+                LookUpActive();
+            }
+            catch (Exception ex)
+            {
+                try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: remove failed: " + ex); } catch { }
+                c.ShowNote("Not removed: " + ex.Message);
+            }
+        }
+
+        void Undo()
+        {
+            var key = _lastRemoval;
+            if (key == null) return;
+            _lastRemoval = null;
+            try
+            {
+                var library = VaultLibrary.For(VaultLibrary.DefaultRootInUse);
+                ListenForRemovals(library);
+                library.Restore(key, Environment.UserName);
+                _control.ShowRemoved("Removal undone: it will be offered again in a moment", undo: false);
+            }
+            catch (Exception ex)
+            {
+                try { DiagnosticLog.WriteAlways("EverTM", "EverTM Matches: undo failed: " + ex); } catch { }
+                _control.ShowNote("Not undone: " + ex.Message);
+            }
+        }
+
+        void ListenForRemovals(VaultLibrary library)
+        {
+            if (ReferenceEquals(library, _removalLibrary)) return;
+            if (_removalLibrary != null) _removalLibrary.RemovalsApplied -= OnRemovalsApplied;
+            _removalLibrary = library;
+            library.RemovalsApplied += OnRemovalsApplied;
+        }
+
+        /// <summary>On EverTM's learning thread: a removal or restore is in the store and the index; look again.</summary>
+        void OnRemovalsApplied()
+        {
+            var c = _control;
+            if (c == null || c.IsDisposed || !c.IsHandleCreated) return;
+            try { c.BeginInvoke((Action)(() => { if (!c.IsDisposed) LookUpActive(); })); } catch { }
+        }
+
+        static string Short(string text)
+        {
+            text = text ?? "";
+            return text.Length <= 60 ? text : text.Substring(0, 57).TrimEnd() + "\u2026";
         }
 
         // ---- inserting ----

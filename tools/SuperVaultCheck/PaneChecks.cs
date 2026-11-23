@@ -39,6 +39,8 @@ static class PaneChecks
         JustConfirmed(root, check);
         Console.WriteLine("EverTM Matches: older translations");
         OlderTranslations(scratch, check);
+        Console.WriteLine("EverTM Matches: removing a wrong translation");
+        Removing(scratch, check);
     }
 
     // ---- the worker ----
@@ -532,6 +534,91 @@ static class PaneChecks
             check(asked.Count == 1 && !(bool)matchList.GetType().GetProperty("ShowOlderNote").GetValue(matchList),
                   "\"Older translations\" switched off in Options > Details shown: no \"2 older\" note, and never looked up");
             Supervertaler.Trados.Settings.SettingsService.Update(x => x.EverTmPaneHiddenDetails = null);
+        }
+    }
+
+    // ---- removing a wrong translation ----
+
+    /// <summary>
+    /// Step 3: Delete (or the menu) on a match asks to remove it; the library hides it at once and applies it in the
+    /// background, then says so, and the next translation takes its place; the status line says only EverTM changed
+    /// and offers Undo; the EverTM window lists it and restores it. Drives the real control and dialog, hidden.
+    /// </summary>
+    static void Removing(string scratch, Action<bool, string> check)
+    {
+        var dir = Path.Combine(scratch, "removing");
+        Directory.CreateDirectory(dir);
+        var tmx = Path.Combine(dir, "typo.tmx");
+        File.WriteAllText(tmx, "<?xml version=\"1.0\" encoding=\"utf-8\"?><tmx version=\"1.4\"><header srclang=\"nl-BE\" segtype=\"sentence\" datatype=\"plaintext\" o-tmf=\"t\" adminlang=\"en\" creationtool=\"t\" creationtoolversion=\"1\"/><body>" +
+            "<tu creationdate=\"20200101T000000Z\"><tuv xml:lang=\"nl-BE\"><seg>De pomp wordt gestart.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>The pump is started.</seg></tuv></tu>" +
+            "<tu creationdate=\"20250101T000000Z\"><prop type=\"x-Client\">ACME</prop><tuv xml:lang=\"nl-BE\"><seg>De pomp wordt gestart.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>The pmup is started.</seg></tuv></tu>" +
+            "</body></tmx>");
+        var lib = VaultLibrary.For(Path.Combine(dir, "evertm"));
+        lib.Import((store, p, c) => VaultTmx.Import(store, tmx, p, c), null, CancellationToken.None);
+        var request = Request("De pomp wordt gestart.");
+        var first = EverTmMatchesLookup.Run(lib, request);
+        check(first.Matches.Count == 1 && EverTmEditorSegment.PlainTarget(first.Matches[0]) == "The pmup is started.", "the typo is the newest, so it is the match");
+
+        bool applied = false;
+        lib.RemovalsApplied += () => applied = true;
+        var result = new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = first.Matches, Units = first.Units, SegmentId = "7", SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB" };
+        using (var form = new System.Windows.Forms.Form { Width = 700, Height = 480, ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        using (var control = new Supervertaler.Trados.Controls.EverTmMatchesControl { Dock = System.Windows.Forms.DockStyle.Fill })
+        {
+            form.Controls.Add(control);
+            form.Show();
+            control.ShowResult(result);
+            VaultMatch asked = null;
+            control.RemoveRequested += m => asked = m;
+            var list = Field<System.Windows.Forms.Control>(control, "_list");
+            list.GetType().GetMethod("OnKeyDown", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(list, new object[] { new System.Windows.Forms.KeyEventArgs(System.Windows.Forms.Keys.Delete) });
+            check(ReferenceEquals(asked, first.Matches[0]), "Delete on the selected match asks to remove it");
+            var menu = list.ContextMenuStrip;
+            check(menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Any(i => i.Text == "Remove from EverTM"), "and so does the right-click menu's \"Remove from EverTM\"");
+
+            // What the view part does (EverTmMatchesViewPart.Remove), here in line.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var key = lib.Remove(asked.Candidate, "nl", "en", "tester");
+            check(key != null && sw.ElapsedMilliseconds < 200, "Remove returns at once, never waiting for the store (" + sw.ElapsedMilliseconds + " ms)");
+            control.ShowRemoved("Removed from EverTM only (your Studio TMs are unchanged): \u201CThe pmup is started.\u201D", undo: true);
+            var status = Field<System.Windows.Forms.Label>(control, "_status");
+            var undo = Field<System.Windows.Forms.LinkLabel>(control, "_undo");
+            check(status.Text.StartsWith("Removed from EverTM only") && undo.Visible, "the status line says only EverTM changed, and offers Undo: " + status.Text);
+            var hidden = EverTmMatchesLookup.Run(lib, request);
+            check(hidden.Matches.All(m => EverTmEditorSegment.PlainTarget(m) != "The pmup is started."), "looked up again at once: the typo is no longer offered");
+            control.ShowResult(new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = hidden.Matches, Units = hidden.Units, SegmentId = "7", SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB" });
+            check(status.Text.StartsWith("Removed from EverTM only"), "the message stays while on that segment");
+
+            var wait = System.Diagnostics.Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 15000 && (!applied || lib.RemovalsWaiting() > 0)) Thread.Sleep(50);
+
+            var after = EverTmMatchesLookup.Run(lib, request);
+            check(applied && after.Matches.Count == 1 && EverTmEditorSegment.PlainTarget(after.Matches[0]) == "The pump is started.",
+                  $"applied in the background ({wait.ElapsedMilliseconds} ms), the library says so, and the older translation takes its place: " + string.Join(" | ", after.Matches.Select(EverTmEditorSegment.PlainTarget)));
+            check(lib.StoreCount() == 1, "the typo's unit is gone from EverTM's store");
+            control.ShowResult(new Supervertaler.Trados.Controls.EverTmPaneResult { Matches = after.Matches, Units = after.Units, SegmentId = "8", SourceLang = "nl", SourceCulture = "nl-BE", TargetCulture = "en-GB" });
+            check(!status.Text.StartsWith("Removed from EverTM") && undo.Visible, "on the next segment the message goes; Undo stays until the next removal");
+        }
+
+        // The EverTM window's list, and Restore.
+        using (var dialog = new Supervertaler.Trados.SuperVault.RemovedTranslationsDialog(lib) { ShowInTaskbar = false, StartPosition = System.Windows.Forms.FormStartPosition.Manual, Left = -3000 })
+        {
+            dialog.Show();
+            System.Windows.Forms.Application.DoEvents();
+            var rows = dialog.List.Items.Cast<System.Windows.Forms.ListViewItem>().ToList();
+            check(rows.Count == 1 && rows[0].Text.Contains("The pmup is started.") && rows[0].SubItems[1].Text == "1" && rows[0].SubItems[2].Text.Contains("tester"),
+                  "EverTM > Removed translations lists it, with its units and who removed it: " + (rows.Count > 0 ? rows[0].Text + " | " + rows[0].SubItems[2].Text : "nothing"));
+            applied = false;
+            dialog.RestoreForTests();
+            check(dialog.List.Items.Count == 0, "Restore takes it off the list");
+            var wait = System.Diagnostics.Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 15000 && (!applied || lib.RemovalsWaiting() > 0)) Thread.Sleep(50);
+
+            var back = EverTmMatchesLookup.Run(lib, request);
+            check(back.Matches.Count == 1 && EverTmEditorSegment.PlainTarget(back.Matches[0]) == "The pmup is started." && back.Matches[0].Candidate.Fields.Any(f => f.Value == "ACME"),
+                  "and it is back, its client with it, as the newest: " + string.Join(" | ", back.Matches.Select(EverTmEditorSegment.PlainTarget)));
+            dialog.Close();
         }
     }
 
