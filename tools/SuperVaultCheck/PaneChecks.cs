@@ -759,9 +759,10 @@ static class PaneChecks
             new TranslationUnit(Seg(NlBe, "Klik op ", OpenTag("pt1", 1), "Opslaan", CloseTag("pt1", 1), " om de gegevens te bewaren."),
                                 Seg(EnGb, "Click ", OpenTag("pt1", 1), "Save", CloseTag("pt1", 1), " to keep the data.")),
             new TranslationUnit(Seg(NlBe, "De pomp wordt gestart."), Seg(EnGb, "The pump is started.")),
+            new TranslationUnit(Seg(NlBe, "0234515460."), Seg(EnGb, "0234515460.")),
         };
         var added = file.LanguageDirection.AddTranslationUnitsMasked(units, new ImportSettings(), units.Select(_ => true).ToArray());
-        check(added.All(x => x.Action == Sdl.LanguagePlatform.TranslationMemory.Action.Add), "a scratch Studio TM with 3 units");
+        check(added.All(x => x.Action == Sdl.LanguagePlatform.TranslationMemory.Action.Add), "a scratch Studio TM with 4 units");
         file = null;
 
         // The editor's segments, as the pane copies them: "Klik op [b]Opslaan[/b] om de wijzigingen te bewaren." (in both
@@ -818,6 +819,23 @@ static class PaneChecks
         var studioScores = direct.SearchSegment(settings, editor2.Segment).Results.Select(r => r.ScoringResult.Match).OrderByDescending(x => x).ToList();
         var ourScores = answer.Hits.Select(h => h.Match.Score).OrderByDescending(x => x).ToList();
         check(studioScores.SequenceEqual(ourScores), "the scores are Studio's own: " + string.Join(", ", ourScores) + " / Studio: " + string.Join(", ", studioScores));
+
+        // A segment with no words: only its own text, not every other number Studio scores 99-100%.
+        var numberSeg = factory.CreateSegment(factory.CreateSegmentPairProperties());
+        numberSeg.Add(factory.CreateText(pf.CreateTextProperties("2.")));
+        var numberEditor = EverTmEditorSegment.From(numberSeg, NlBe);
+        var number = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { tm }, numberEditor));
+        var threeSeg = factory.CreateSegment(factory.CreateSegmentPairProperties());
+        threeSeg.Add(factory.CreateText(pf.CreateTextProperties("3.")));
+        var three = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { tm }, EverTmEditorSegment.From(threeSeg, NlBe)));
+        var directThree = direct.SearchSegment(settings, EverTmEditorSegment.From(threeSeg, NlBe).Segment).Results.Count;
+        check(number.Hits.Count == 0, "\"2.\": not \"0234515460.\", which Studio scores 99-100%: " + string.Join(" | ", number.Hits.Select(h => h.Match.Score + "% " + VaultLookup.PlainOf(h.Match.Source))));
+        var sameSeg = factory.CreateSegment(factory.CreateSegmentPairProperties());
+        sameSeg.Add(factory.CreateText(pf.CreateTextProperties("0234515460.")));
+        var same0 = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { tm }, EverTmEditorSegment.From(sameSeg, NlBe)));
+        check(same0.Hits.Count == 1 && same0.Hits[0].Match.Score == 100, "\"0234515460.\" itself: still offered, 100%");
+        check(three.Hits.Count == 0, $"\"3.\": none of the other numbers (Studio's own search offers {directThree})");
+        check(StudioTmMatches.HasWords(editor2.Pieces) && !StudioTmMatches.HasWords(numberEditor.Pieces), "a segment with a letter has words; \"2.\" has none");
 
         // The project's penalty for the TM.
         var penalised = StudioTmMatches.Search(new StudioTmMatches.Session(), Ask(new List<StudioTmMatches.Tm> { new StudioTmMatches.Tm { Entry = path, Name = "Hydraulics_TM.sdltm", Penalty = 5 } }, editor2));

@@ -253,6 +253,7 @@ namespace Supervertaler.Trados.SuperVault
             var results = ld.SearchSegment(settings, segment);
             var hits = new List<Hit>();
             if (results?.Results == null) return hits;
+            bool wordless = !HasWords(request.Document);
             foreach (var r in results.Results)
             {
                 var unit = r?.MemoryTranslationUnit;
@@ -260,7 +261,11 @@ namespace Supervertaler.Trados.SuperVault
                 if (tm.Penalty > 0 && r.ScoringResult.FindPenalty(PenaltyType.ProviderPenalty) == null)
                     r.ScoringResult.ApplyPenalty(new Penalty(PenaltyType.ProviderPenalty, tm.Penalty));
                 var m = Shape(unit, r.ScoringResult.Match, tm, request);
-                if (m != null && m.Score >= min) hits.Add(new Hit { Match = m, Tm = tm });
+                if (m == null || m.Score < min) continue;
+                // A segment with no words ("2.", "4.4", "(iii)"): Studio scores any other number 99-100% ("0234515460."
+                // for "2."), which is noise. Only your segment's own text is kept (Michael, 23 Nov 2026).
+                if (wordless && !m.Candidate.Exact) continue;
+                hits.Add(new Hit { Match = m, Tm = tm });
             }
             return hits;
         }
@@ -288,6 +293,16 @@ namespace Supervertaler.Trados.SuperVault
             m.Score = Math.Max(0, Math.Min(100, score));
             if (m.Score >= 100 && !candidate.Exact) m.Score = 99;   // 100 only for your segment's own text
             return m;
+        }
+
+        /// <summary>Whether the segment has a word: a letter anywhere in its text.</summary>
+        public static bool HasWords(IEnumerable<VaultPiece> document)
+        {
+            if (document == null) return false;
+            foreach (var p in document)
+                if (!p.IsTag && p.Text != null)
+                    foreach (var ch in p.Text) if (char.IsLetter(ch)) return true;
+            return false;
         }
 
         /// <summary>A TM's language direction for the document's pair; null when it has none.</summary>

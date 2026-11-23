@@ -167,6 +167,8 @@ Design: `evertm-pane.md`. Parts not built yet are marked *(later)*.
   difference: a "100%" whose source isn't exactly your segment's text (Studio does that when only numbers differ) is
   shown as 99%, as everywhere in Supervertaler.
 - As in Translation Results, when a Studio TM has a 100% match it offers that one alone, without its fuzzy matches.
+- On a segment with no words ("2.", "4.4", "(iii)"), a Studio TM's matches are shown only when they are exactly your
+  segment's text. Studio scores any other number 99-100% ("0234515460." for "2."), which is noise there.
 - **The same translation in EverTM and a Studio TM shows once, as EverTM's** (green or orange score, no stripe), with
   "also in Hydraulics_TM.sdltm" in plain blue on its summary line ("also in 2 Studio TMs" when several), and all of
   them under "Found in" in its details. On equal scores EverTM's match comes first. "Most matches shown" counts both.
