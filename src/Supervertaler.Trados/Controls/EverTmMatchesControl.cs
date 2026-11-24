@@ -1156,7 +1156,7 @@ namespace Supervertaler.Trados.Controls
                 using (var p = new Pen(Line)) g.DrawLine(p, 0, top + row.Height - 1, right, top + row.Height - 1);
 
                 if (row.Badge != null)
-                    using (var b = new SolidBrush(_stale ? Color.Silver : StudioBlue)) g.FillRectangle(b, 0, top, 4, row.Height - 1);
+                    using (var b = new SolidBrush(_stale ? Color.Silver : StudioBlue)) g.FillRectangle(b, 0, top, 2, row.Height - 1);   // thin: Michael 24 Nov, "Make the Studio TM line thinner"
                 if (!Others) PaintNumber(g, i, row.Match.Score, top, studio: row.Badge != null);
 
                 var divider = row.Divider;
