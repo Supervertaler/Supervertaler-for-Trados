@@ -43,6 +43,8 @@ namespace Supervertaler.Trados.BatchTasks
     {
         internal const string TaskId = "Supervertaler_RemoveMtMarks";
         internal const string TaskName = "Supervertaler: Remove MT marks";
+        /// <summary>The report's name: Studio turns it into a file name, so no colon (or other character Windows refuses).</summary>
+        internal const string ReportName = "Supervertaler - Remove MT marks";
         internal const string TaskDescription =
             "Removes the machine translation mark (AT, or AI for an AI engine, and the faded mark on segments edited afterwards) from the "
             + "selected files, so the segments read as your own work. It cannot be undone. Before you run it, "
@@ -90,11 +92,22 @@ namespace Supervertaler.Trados.BatchTasks
             var summary = Summary(files);
             DiagnosticLog.Log("RemoveMtMarks", summary + " (" + files.Count + " file(s) looked at)");
             var report = ReportXml(files);
+            // Studio makes a file name of the report's name, so it must be a valid one: TaskName's colon made
+            // CreateReport throw "The given path's format is not supported", which failed the whole task and
+            // Studio then discarded the cleaned files (Michael's live test, 24 Nov 2026). And a report that
+            // still can't be written must never cost the user the cleaning itself: log it and carry on.
+            try
+            {
 #if STUDIO19
-            CreateReport(TaskName, summary, report, TaskId);
+                CreateReport(ReportName, summary, report, TaskId);
 #else
-            CreateReport(TaskName, summary, report);
+                CreateReport(ReportName, summary, report);
 #endif
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Log("RemoveMtMarks", "Report not created (the files are cleaned): " + ex.GetType().Name + ": " + ex.Message);
+            }
         }
 
         private void Add(FileResult result)

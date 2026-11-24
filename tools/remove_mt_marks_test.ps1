@@ -352,6 +352,8 @@ Check (($ext.extensionAttribute.properties.property | Where-Object name -eq 'Gen
 $attr = $taskT.GetCustomAttributes($false) | Where-Object { $_.GetType().Name -eq 'AutomaticTaskAttribute' }
 Check ($attr -ne $null -and [int]$attr.GeneratedFileType -eq 3) "the class carries the attribute too"
 Check ($ds -like '*cannot be undone*' -and $ds -like '*declare machine translation*') "the description warns that it is final and about declaring MT"
+$rn = $taskT.GetField('ReportName', $ST).GetValue($null)
+Check ($rn -and $rn.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -lt 0) "the report's name is a valid file name (Studio makes a file of it; a colon failed the task, 24 Nov)"
 $built = Join-Path (Split-Path $Dll) 'Supervertaler.Trados.plugin.xml'
 if (Test-Path $built) {
     $bx = [IO.File]::ReadAllText($built)
