@@ -27,7 +27,7 @@ namespace Supervertaler.Trados.Core.MtMarks
     }
 
     /// <summary>
-    /// The rule behind the "Supervertaler: Remove MT marks" batch task, on one
+    /// The rule behind the "Supervertaler - Remove MT marks" batch task, on one
     /// segment's <see cref="ITranslationOrigin"/>. The same edits as
     /// Supervertaler for memoQ's TradosMtMarks makes to .sdlxliff text, which
     /// Trados accepted with no AT on any row (23 Nov 2026):

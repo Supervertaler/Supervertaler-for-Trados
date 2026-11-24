@@ -15,7 +15,7 @@ using Supervertaler.Trados.Core.MtMarks;
 namespace Supervertaler.Trados.BatchTasks
 {
     /// <summary>
-    /// "Supervertaler: Remove MT marks", a Trados batch task: takes the
+    /// "Supervertaler - Remove MT marks", a Trados batch task: takes the
     /// machine-translation origin off the segments of the chosen files, so
     /// Trados no longer shows AT (or a faded AT) on them. The rule is
     /// <see cref="MtOriginRule"/>; this only hands Studio a processor for each
@@ -42,9 +42,12 @@ namespace Supervertaler.Trados.BatchTasks
     public sealed class RemoveMtMarksTask : AbstractFileContentProcessingAutomaticTask
     {
         internal const string TaskId = "Supervertaler_RemoveMtMarks";
-        internal const string TaskName = "Supervertaler: Remove MT marks";
-        /// <summary>The report's name: Studio turns it into a file name, so no colon (or other character Windows refuses).</summary>
-        internal const string ReportName = "Supervertaler - Remove MT marks";
+        /// <summary>No colon (or any other character Windows refuses in a file name): Studio names the
+        /// report file after the task, not the report (Project.GetNextReportFilePath(taskTemplate.Name),
+        /// Studio 17-19), so "Supervertaler: ..." made CreateReport throw "The given path's format is not
+        /// supported", whatever the report was called (live tests, 24 Nov 2026).</summary>
+        internal const string TaskName = "Supervertaler - Remove MT marks";
+        internal const string ReportName = TaskName;
         internal const string TaskDescription =
             "Removes the machine translation mark (AT, or AI for an AI engine, and the faded mark on segments edited afterwards) from the "
             + "selected files, so the segments read as your own work. It cannot be undone. Before you run it, "
@@ -70,9 +73,14 @@ namespace Supervertaler.Trados.BatchTasks
                 new BilingualContentHandlerAdapter(new RemoveMtMarksProcessor(result.Count)));
         }
 
-        /// <summary>Studio calls this once a file has been processed and written.
-        /// A file that failed part-way never gets here, and the report says it
-        /// was not finished rather than counting it as cleaned.</summary>
+        /// <summary>Studio calls this once a file has been processed into a temporary copy.
+        /// <b>The return value decides whether Studio keeps it</b>: true replaces the project file
+        /// with the processed copy and saves it as a new version, false (the base class's default)
+        /// throws the copy away (TaskFileExecuter.Complete, Studio 17-19). Every file that gets here
+        /// had MT marks to remove (<see cref="ShouldProcessFile"/>), so the answer is always true;
+        /// returning the base's false is why the second live test (24 Nov 2026) cleaned 64 segments
+        /// and left every file unchanged. A file that failed part-way never gets here, and the report
+        /// says it was not finished rather than counting it as cleaned.</summary>
         public override bool OnFileComplete(ProjectFile projectFile, IMultiFileConverter multiFileConverter)
         {
             var path = projectFile?.LocalFilePath;
@@ -80,7 +88,7 @@ namespace Supervertaler.Trados.BatchTasks
                 foreach (var f in _files)
                     if (!f.NothingToRemove && string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase))
                         f.Finished = true;
-            return base.OnFileComplete(projectFile, multiFileConverter);
+            return true;
         }
 
         public override void TaskComplete()
@@ -92,10 +100,8 @@ namespace Supervertaler.Trados.BatchTasks
             var summary = Summary(files);
             DiagnosticLog.Log("RemoveMtMarks", summary + " (" + files.Count + " file(s) looked at)");
             var report = ReportXml(files);
-            // Studio makes a file name of the report's name, so it must be a valid one: TaskName's colon made
-            // CreateReport throw "The given path's format is not supported", which failed the whole task and
-            // Studio then discarded the cleaned files (Michael's live test, 24 Nov 2026). And a report that
-            // still can't be written must never cost the user the cleaning itself: log it and carry on.
+            // Studio makes a file name of the task's name (see TaskName). A report that still can't be
+            // written must never fail the task, which costs the user the cleaning: log it and carry on.
             try
             {
 #if STUDIO19

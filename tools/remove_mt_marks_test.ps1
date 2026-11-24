@@ -1,4 +1,4 @@
-# Remove MT marks (batch task "Supervertaler: Remove MT marks", 18.20.210).
+# Remove MT marks (batch task "Supervertaler - Remove MT marks", 18.20.210).
 #
 # Runs the BUILT plugin's own rule, scan, processor and report outside Studio.
 # Every .sdlxliff case goes through Studio's OWN file-type pipeline (its
@@ -353,7 +353,12 @@ $attr = $taskT.GetCustomAttributes($false) | Where-Object { $_.GetType().Name -e
 Check ($attr -ne $null -and [int]$attr.GeneratedFileType -eq 3) "the class carries the attribute too"
 Check ($ds -like '*cannot be undone*' -and $ds -like '*declare machine translation*') "the description warns that it is final and about declaring MT"
 $rn = $taskT.GetField('ReportName', $ST).GetValue($null)
-Check ($rn -and $rn.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -lt 0) "the report's name is a valid file name (Studio makes a file of it; a colon failed the task, 24 Nov)"
+Check ($nm.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -lt 0 -and $rn.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -lt 0) "the task's and the report's names are valid file names (Studio names the report file after the task; a colon failed the task, 24 Nov)"
+# Studio keeps the processed copy of a file only when OnFileComplete returns true; the base class
+# returns false, and the second live test (24 Nov) cleaned 64 segments and saved none of them.
+$task = [Activator]::CreateInstance($taskT, $true)
+$keep = $taskT.GetMethod('OnFileComplete').Invoke($task, @($null, $null))
+Check ($keep -eq $true) "OnFileComplete tells Studio to keep the cleaned file (true)"
 $built = Join-Path (Split-Path $Dll) 'Supervertaler.Trados.plugin.xml'
 if (Test-Path $built) {
     $bx = [IO.File]::ReadAllText($built)
