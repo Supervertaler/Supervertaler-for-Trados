@@ -44,7 +44,7 @@ namespace Supervertaler.Trados.BatchTasks
         internal const string TaskId = "Supervertaler_RemoveMtMarks";
         internal const string TaskName = "Supervertaler: Remove MT marks";
         internal const string TaskDescription =
-            "Removes the machine translation mark (AT, and the faded AT on segments edited after MT) from the "
+            "Removes the machine translation mark (AT, or AI for an AI engine, and the faded mark on segments edited afterwards) from the "
             + "selected files, so the segments read as your own work. It cannot be undone. Before you run it, "
             + "check that your client does not require you to declare machine translation.";
 
