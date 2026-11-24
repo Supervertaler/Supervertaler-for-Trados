@@ -115,6 +115,14 @@
       <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.Settings.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Sdl.ProjectAutomation.AutomaticTasks">
+      <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.AutomaticTasks.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sdl.FileTypeSupport.Framework.Core.Utilities">
+      <HintPath>$(TradosStudioPath)\Sdl.FileTypeSupport.Framework.Core.Utilities.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Sdl.ProjectAutomation.FileBased">
       <HintPath>$(TradosStudioPath)\Sdl.ProjectAutomation.FileBased.dll</HintPath>
       <Private>false</Private>
