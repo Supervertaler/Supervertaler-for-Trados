@@ -1436,6 +1436,8 @@ namespace Supervertaler.Trados
                 if (bankWarning != null) warnings.Add(bankWarning);
                 warnings.AddRange(UnsegmentedTextMonitor.BridgeWarnings());   // text outside segments
                 if (warnings.Count > 0) snapshot.Warnings = warnings;
+
+                FillActivePrompts(snapshot);   // AiAssistantViewPart.ActivePrompt.cs
             }
             catch (Exception ex)
             {

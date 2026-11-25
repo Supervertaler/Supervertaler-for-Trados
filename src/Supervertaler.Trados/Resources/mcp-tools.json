@@ -659,7 +659,7 @@
     {
       "name": "get_active_project",
       "access": "read",
-      "description": "Get the Trados Studio project currently open in the editor: project name, source and target language, the document/file being edited, and progress statistics (segment counts per confirmation status, word counts). Call this first to orient yourself. The response may carry a 'warnings' array for setup problems that silently degrade quality \u2013 currently, no termbase being read-enabled, and source text that Trados left outside any segment (call check_unsegmented_text for the full list). Relay any warning to the user rather than working around it silently.",
+      "description": "Get the Trados Studio project currently open in the editor: project name, source and target language, the document/file being edited, and progress statistics (segment counts per confirmation status, word counts). Call this first to orient yourself. It also names the active prompts: 'activeTranslatePrompt' and 'activeProofreadPrompt' are the relativePaths the next Batch Translate and Proofread runs send (get_active_prompt has the details). The response may carry a 'warnings' array for setup problems that silently degrade quality \u2013 currently, no termbase being read-enabled, and source text that Trados left outside any segment (call check_unsegmented_text for the full list). Relay any warning to the user rather than working around it silently.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -1351,7 +1351,7 @@
     {
       "name": "save_prompt",
       "access": "write",
-      "description": "Create a new prompt, or update an existing one, in Supervertaler for Trados's prompt library (its own; memoQ keeps a separate one). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten \u2013 save your version under a new name. Ideal for saving an improved prompt you refined together with the user. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
+      "description": "Create a new prompt, or update an existing one, in Supervertaler for Trados's prompt library (its own; memoQ keeps a separate one). To UPDATE, pass the existing prompt's 'path' (relativePath from list_prompts) plus the new 'content'. To CREATE, pass a 'name' and 'content' (and optionally 'category' as the folder, e.g. \"Translate\" or \"QuickLauncher/Default\" to make it a right-click menu item). Prompts support placeholders like {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, {{SOURCE_SEGMENT}}. Built-in default prompts cannot be overwritten \u2013 save your version under a new name. Ideal for saving an improved prompt you refined together with the user. Saving does NOT make the prompt active: the next run keeps sending the prompt that was active before, until set_active_prompt is called (once the user agrees) or the user picks it under Batch Operations > Prompt. A prompt saved this way is recorded as drafted by the chat (frontmatter drafted_by: \"chat\") and, when new, marked for the connected product unless 'app' says otherwise; the reply states what was recorded, so tell the user.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1391,6 +1391,47 @@
       },
       "method": "POST",
       "path": "/v1/save-prompt",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "get_active_prompt",
+      "access": "read",
+      "description": "Get which prompts are active for the Trados project open in the editor: the translation prompt the next Batch Translate run sends, and the proofreading prompt a Proofread run sends. Call this when the user asks which prompt is in use, and before improving or replacing one. Returns 'translate' and 'proofread', each with 'path' (the stored choice, a relativePath as list_prompts gives it; \"\" when none was chosen, \"*built-in*\" when no library prompt is used on purpose), 'name', 'exists' (whether that prompt - for an empty path, the shipped default - is in the library), 'effectivePath' (the library prompt a run actually uses) and 'source' (\"project\" = this project's own choice), plus a 'project' block (name, studioVersion). The trap: an empty 'path' does NOT mean no prompt – the shipped default prompt runs; read 'effectivePath' and 'note' for what actually runs, and report that. Returns available:false when no document is open.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "method": "GET",
+      "path": "/v1/active-prompt",
+      "paramMap": {},
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "set_active_prompt",
+      "access": "write",
+      "description": "Make a library prompt the active translation (or proofreading) prompt for the Trados project open in the editor – the same as the user picking it under Batch Operations > Prompt: the panel's list, the project's settings and the next run all change together. Call it when the user asks to use a prompt, or after save_prompt once the user agrees to switch to the new one. Pass 'path' (a relativePath from list_prompts, exactly) and optionally 'kind' (\"translate\", the default, or \"proofread\"). Refused with nothing changed: no document open; an unknown path (the reply lists 'nearMatches' – ask the user before using one of them); a prompt marked for memoQ only; a QuickLauncher prompt; a prompt of the other kind (prompts in the Proofread folder are proofreading prompts, all others translation prompts); Supervertaler's Settings window open in Studio. Returns 'previous' and 'active' (shaped as in get_active_prompt), the project, and a 'note' that says how to undo. The trap: this changes what the NEXT Batch Translate or Proofread run in this project sends to the AI, so always tell the user which prompt is now active and name the one it replaced.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "description": "The prompt's relativePath from list_prompts (e.g. \"Translate/Acme patents v2.md\"). Required.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "\"translate\" (default) for the Batch Translate prompt, or \"proofread\" for the Proofread prompt.",
+            "type": "string",
+            "default": null
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "method": "POST",
+      "path": "/v1/set-active-prompt",
       "paramMap": {},
       "fixedQuery": {},
       "fixedBody": {}
