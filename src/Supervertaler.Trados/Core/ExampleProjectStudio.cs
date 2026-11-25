@@ -42,6 +42,9 @@ namespace Supervertaler.Trados.Core
             public List<string> Warnings = new List<string>();
             public bool TmAdded;
             public bool TermbaseAdded;
+            public bool MemoryBankAdded;
+            /// <summary>Whether the project ended up open in the Editor.</summary>
+            public bool Opened;
         }
 
         public const string DocumentFileName = "AquaLine AL-50 guide.docx";
@@ -92,10 +95,12 @@ namespace Supervertaler.Trados.Core
                         result.Warnings.Add("The example translation memory could not be added (" + ProjectCreator.Sentence(w, false) +
                                             "), so FuzzyFixer has no matches to repair in this project.");
 
-                // 3. Marker, termbase, settings.
+                // 3. Marker, termbase, memory bank, settings.
+                var bankName = ExampleProject.MemoryBankName(folder.Name);
                 ExampleProject.WriteMarker(plan.ProjectFolder, new ExampleMarker
                 {
-                    Source = d.Source, Target = d.Target, DataVersion = data.Version, Termbase = folder.Name
+                    Source = d.Source, Target = d.Target, DataVersion = data.Version, Termbase = folder.Name,
+                    MemoryBank = string.IsNullOrEmpty(bankName) ? null : bankName
                 });
 
                 var terms = ExampleProject.TermPairs(data, d);
@@ -108,6 +113,13 @@ namespace Supervertaler.Trados.Core
                                              "), so TermLens shows no terms in this project.");
                 }
 
+                // Every language: the bank is in English and true for all of them.
+                progress?.Invoke("making the memory bank");
+                var bankWhy = AddMemoryBank(result.ProjectFile, folder.Name, UserDataPath.MemoryBanksRoot);
+                if (bankWhy == null) result.MemoryBankAdded = true;
+                else result.Warnings.Add("The example memory bank could not be added (" + ProjectCreator.Sentence(bankWhy, false) +
+                                         "), so the AI gets no client brief in this project.");
+
                 if (!d.Prepared)
                     result.Warnings.Add("There is no example translation memory or termbase for " +
                                         ExampleProject.EnglishName(d.IntoEnglish ? d.Source : d.Target) +
@@ -115,9 +127,10 @@ namespace Supervertaler.Trados.Core
 
                 // 4. Open it in the Editor.
                 var opened = ProjectOpenerStudio.Run(result.ProjectFile, true, new List<string>(), d.Target, progress);
+                result.Opened = opened.Ok;
                 if (!opened.Ok)
-                    result.Warnings.Add("The project was made but could not be opened: " + opened.Error +
-                                        " Open it from the Projects view.");
+                    result.Warnings.Add("Studio did not open it in the Editor (" + ProjectCreator.Sentence(opened.Error, false) +
+                                        "). Open it yourself: double-click \"" + folder.Name + "\" in the Projects view.");
                 result.Ok = true;
                 return result;
             }
@@ -254,6 +267,58 @@ namespace Supervertaler.Trados.Core
             }
         }
 
+        // ─── The memory bank ────────────────────────────────────────
+
+        /// <summary>
+        /// Makes the example's memory bank under <paramref name="banksRoot"/> and
+        /// records it as this project's bank. A bank of that name that is already
+        /// there is used as it is, never overwritten: it may hold the translator's
+        /// edits. Returns null, or why it failed; a half-made bank is deleted.
+        /// </summary>
+        internal static string AddMemoryBank(string projectFile, string projectName, string banksRoot)
+        {
+            var name = ExampleProject.MemoryBankName(projectName);
+            if (string.IsNullOrEmpty(name)) return "the project name gives no usable bank name";
+            if (string.IsNullOrEmpty(banksRoot)) return "the memory banks folder is not known";
+            var dir = Path.Combine(banksRoot, name);
+            bool made = false;
+            try
+            {
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                    made = true;
+                    foreach (var f in ExampleProject.MemoryBankFiles(projectName))
+                        File.WriteAllText(Path.Combine(dir, f.Key), f.Value, new System.Text.UTF8Encoding(false));
+                }
+                var ps = ProjectSettings.Load(projectFile) ?? new ProjectSettings();
+                ps.ProjectPath = projectFile;
+                if (string.IsNullOrEmpty(ps.ProjectName)) ps.ProjectName = projectName;
+                ps.MemoryBankName = name;
+                ProjectSettings.SaveFile(projectFile, ps);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                if (made) { try { Directory.Delete(dir, true); } catch { } }
+                return ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// Deletes the example's bank folder <paramref name="name"/> under
+        /// <paramref name="banksRoot"/>. Only a plain bank name is accepted (it is
+        /// read from the marker file, which anyone can edit), never the shared bank.
+        /// </summary>
+        internal static void RemoveMemoryBank(string banksRoot, string name)
+        {
+            if (string.IsNullOrEmpty(banksRoot) || string.IsNullOrEmpty(name)) return;
+            if (UserDataPath.SanitizeBankName(name) != name) return;
+            if (!name.StartsWith(UserDataPath.SanitizeBankName(ExampleProject.NamePrefix), StringComparison.Ordinal)) return;
+            var dir = Path.Combine(banksRoot, name);
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+
         /// <summary>Deletes every termbase called exactly <paramref name="name"/>.</summary>
         internal static void RemoveTermbase(string db, string name)
         {
@@ -351,6 +416,7 @@ namespace Supervertaler.Trados.Core
                        "). Close anything that uses it and try again.";
             }
             try { RemoveTermbase(DatabasePath(create: false), marker?.Termbase ?? existing.ExistingName); } catch { }
+            try { RemoveMemoryBank(UserDataPath.MemoryBanksRoot, marker?.MemoryBank); } catch { }
             return null;
         }
     }

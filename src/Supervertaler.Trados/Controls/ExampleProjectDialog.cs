@@ -55,7 +55,7 @@ namespace Supervertaler.Trados.Controls
             var intro = new Label
             {
                 Text = "A small project to try Supervertaler on: an invented installation guide for a water heater, " +
-                       "about 70 segments, with a translation memory and a termbase where your language is prepared. " +
+                       "about 70 segments, with a memory bank, and a translation memory and a termbase where your language is prepared. " +
                        "It is made in Studio's Projects folder and opened in the Editor.",
                 AutoSize = true,
                 MaximumSize = new Size(UiScale.Pixels(460), 0),
@@ -68,15 +68,18 @@ namespace Supervertaler.Trados.Controls
             grid.Controls.Add(new Label { Text = "Your language:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
             grid.Controls.Add(_cmbLanguage, 1, 1);
 
-            _rbFromEnglish = new RadioButton { Text = "I translate from English into this language", AutoSize = true, Checked = true };
-            _rbIntoEnglish = new RadioButton { Text = "I translate from this language into English", AutoSize = true };
-            var radios = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, Margin = new Padding(0, UiScale.Pixels(4), 0, 0) };
+            // The two ways round, spelt out with the chosen language's name
+            // ("English → Dutch"); see UpdateDirectionLabels.
+            _rbFromEnglish = new RadioButton { AutoSize = true, Checked = true, Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(16), 0) };
+            _rbIntoEnglish = new RadioButton { AutoSize = true, Margin = new Padding(0, UiScale.Pixels(3), 0, 0) };
+            var radios = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false, Margin = new Padding(0, UiScale.Pixels(4), 0, 0) };
             radios.Controls.Add(_rbFromEnglish);
             radios.Controls.Add(_rbIntoEnglish);
+            grid.Controls.Add(new Label { Text = "Direction:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
             grid.Controls.Add(radios, 1, 2);
 
             _cmbEnglish = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = UiScale.Pixels(300) };
-            grid.Controls.Add(new Label { Text = "English:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+            grid.Controls.Add(new Label { Text = "English variant:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
             grid.Controls.Add(_cmbEnglish, 1, 3);
 
             _lblInfo = new Label { AutoSize = true, MaximumSize = new Size(UiScale.Pixels(460), 0), ForeColor = Color.FromArgb(80, 80, 80), Margin = new Padding(0, UiScale.Pixels(10), 0, 0) };
@@ -150,6 +153,9 @@ namespace Supervertaler.Trados.Controls
         {
             _lblError.Visible = false;
             var item = _cmbLanguage.SelectedItem as Item;
+            var lang = item?.Code != null ? ExampleProject.EnglishName(item.Code) : "your language";
+            _rbFromEnglish.Text = "English → " + lang;
+            _rbIntoEnglish.Text = lang + " → English";
             if (item?.Code == null)
             {
                 _lblInfo.Text = "Choose the language you translate into or from.";

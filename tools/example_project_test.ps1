@@ -18,6 +18,8 @@
 #   F  the termbase: made in a new database, fifteen terms, this project only
 #      (another termbase off for TermLens and AI), replaced on a second run,
 #      removed again when filling it fails
+#   G  the memory bank: name, three files that are not skeletons, made and
+#      recorded for the project, an existing bank kept, only example banks removed
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\example_project_test.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\example_project_test.ps1 -Dll <Supervertaler.Trados.dll>
@@ -372,6 +374,42 @@ $bad.Add((New-Object 'System.Collections.Generic.KeyValuePair[string,string]' @(
 $why = (S 'AddTermbase').Invoke($null, [object[]]@([string]$fakeProj, 'Supervertaler example (broken)', $d1, $bad.PSObject.BaseObject))
 Check ($null -ne $why -and @(TermbasesNamed 'Supervertaler example (broken)').Count -eq 0) "an empty term: refused, and no termbase made ($why)"
 Check (@(TermbasesNamed 'Acme client terms').Count -eq 1) 'the user''s own termbase is untouched'
+
+# == G  the memory bank =========================================================
+Write-Host "-- G  the memory bank"
+$UDP = $plugin.GetType('Supervertaler.Trados.Settings.UserDataPath', $true)
+$banks = [string]$UDP::MemoryBanksRoot
+Check ($banks.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) "the banks folder is under the test root: $banks"
+Check ($EP::MemoryBankName('Supervertaler example (Dutch to English)') -eq 'supervertaler-example-dutch-to-english') 'bank name: supervertaler-example-dutch-to-english'
+Check ($EP::MemoryBankName('Supervertaler example (English to German) (2)') -eq 'supervertaler-example-english-to-german-2') 'bank name for a "(2)" project'
+$files = @($EP::MemoryBankFiles($tbName))
+Check ($files.Count -eq 3 -and (($files | % { $_.Key }) -join ',') -eq 'brief.md,terminology.md,style.md') 'three files: brief, terminology, style'
+$skel = $plugin.GetType('Supervertaler.Core.MemoryBanks', $true)
+$sameAsSkeleton = @($files | Where-Object { $_.Value -eq $skel::SkeletonBody($_.Key, 'supervertaler-example-english-to-german') })
+Check ($sameAsSkeleton.Count -eq 0) 'none of them is an empty skeleton (the reader would leave it out)'
+$why = (S 'AddMemoryBank').Invoke($null, [object[]]@([string]$fakeProj, $tbName, $banks))
+$bankDir = Join-Path $banks 'supervertaler-example-english-to-german'
+Check ($null -eq $why -and (Test-Path -LiteralPath (Join-Path $bankDir 'style.md'))) "bank made$(if ($why) { ': ' + $why })"
+Check ($PS::Load($fakeProj).MemoryBankName -eq 'supervertaler-example-english-to-german') 'the project uses it'
+Check ($PS::Load($fakeProj).ProjectTermbaseId -eq $tb2[0].Id) 'the project keeps its termbase'
+Set-Content -LiteralPath (Join-Path $bankDir 'style.md') -Value 'my own rule'
+$why = (S 'AddMemoryBank').Invoke($null, [object[]]@([string]$fakeProj, $tbName, $banks))
+Check ($null -eq $why -and (Get-Content -LiteralPath (Join-Path $bankDir 'style.md') -Raw).Trim() -eq 'my own rule') 'a bank that is there already is used as it is, never overwritten'
+$why = (S 'AddMemoryBank').Invoke($null, [object[]]@([string]$fakeProj, '()', $banks))
+Check ($null -ne $why) "a name with nothing usable in it: refused ($why)"
+Set-Content -LiteralPath (Join-Path $Root 'blocker') -Value 'x'
+$why = (S 'AddMemoryBank').Invoke($null, [object[]]@([string]$fakeProj, 'Supervertaler example (x)', [string](Join-Path $Root 'blocker')))
+Check ($null -ne $why -and -not (Test-Path -LiteralPath (Join-Path $Root 'blocker\supervertaler-example-x'))) "banks folder unusable: refused, nothing left behind ($why)"
+# Removal: only an example bank, never another one or a path.
+New-Item -ItemType Directory -Force -Path (Join-Path $banks 'acme') | Out-Null
+(S 'RemoveMemoryBank').Invoke($null, [object[]]@($banks, 'acme'))
+(S 'RemoveMemoryBank').Invoke($null, [object[]]@($banks, '..\acme'))
+(S 'RemoveMemoryBank').Invoke($null, [object[]]@($banks, '_shared'))
+Check (Test-Path -LiteralPath (Join-Path $banks 'acme')) 'a bank that is not an example bank is never removed'
+(S 'RemoveMemoryBank').Invoke($null, [object[]]@($banks, 'supervertaler-example-english-to-german'))
+Check (-not (Test-Path -LiteralPath $bankDir)) 'Start afresh removes the example bank'
+$ok = $true; try { (S 'RemoveMemoryBank').Invoke($null, [object[]]@($banks, $null)) } catch { $ok = $false }
+Check $ok 'a marker without a bank (older example): nothing removed, no error'
 
 if ($script:fail -gt 0) { Write-Host "$($script:fail) check(s) failed"; exit 1 }
 exit 0

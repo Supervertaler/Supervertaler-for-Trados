@@ -61,6 +61,7 @@ namespace Supervertaler.Trados
             BridgeLog.Write($"[example-project] job {job.Id} started: {action} {d.Source} to {d.Target}");
             Action<string> progress = p => { lock (job.Sync) job.Progress = p; };
             string error = null, projectFile = null;
+            bool notOpened = false;
             var warnings = new List<string>();
             try
             {
@@ -87,7 +88,7 @@ namespace Supervertaler.Trados
                     if (error == null)
                     {
                         var r = ExampleProjectStudio.Run(data, d, plan, projectsFolder, RegisteredNames(), progress);
-                        if (r.Ok) { projectFile = r.ProjectFile; warnings.AddRange(r.Warnings); }
+                        if (r.Ok) { projectFile = r.ProjectFile; warnings.AddRange(r.Warnings); notOpened = !r.Opened; }
                         else error = r.Error;
                     }
                 }
@@ -102,6 +103,14 @@ namespace Supervertaler.Trados
                 job.FinishedUtc = DateTime.UtcNow;
                 job.ProjectFile = projectFile;
                 job.Messages.AddRange(warnings);
+                // The first line of the closing message (ExampleProjectRunner): it
+                // must not say "open in the Editor" when Studio did not open it.
+                if (error == null)
+                    job.Note = action == ExampleAction.OpenExisting
+                        ? "The example project is open in the Editor."
+                        : notOpened
+                            ? "The example project is ready, but Studio did not open it in the Editor."
+                            : "The example project is ready and open in the Editor.";
                 if (error == null) job.Status = "done";
                 else { job.Status = "failed"; job.Error = error; }
             }

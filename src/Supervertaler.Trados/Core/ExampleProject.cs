@@ -86,6 +86,8 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "target")] public string Target { get; set; }
         [DataMember(Name = "dataVersion")] public int DataVersion { get; set; }
         [DataMember(Name = "termbase")] public string Termbase { get; set; }
+        /// <summary>The memory bank's folder name; null in projects made before it existed.</summary>
+        [DataMember(Name = "memoryBank", EmitDefaultValue = false)] public string MemoryBank { get; set; }
     }
 
     /// <summary>
@@ -276,6 +278,71 @@ namespace Supervertaler.Trados.Core
 
         public static string ProjectName(ExampleDirection d) =>
             NamePrefix + " (" + EnglishName(d.Source) + " to " + EnglishName(d.Target) + ")";
+
+        // ─── The memory bank ────────────────────────────────────────
+
+        /// <summary>
+        /// The example's memory bank: named like the project, as the banks are
+        /// (SanitizeBankName, so "Supervertaler example (Dutch to English)" gives
+        /// "supervertaler-example-dutch-to-english"), which is also the name
+        /// Supervertaler matches a project's bank by. Empty if nothing usable remains.
+        /// </summary>
+        public static string MemoryBankName(string projectName) =>
+            Settings.UserDataPath.SanitizeBankName(projectName ?? "");
+
+        /// <summary>
+        /// The bank's three files (name, contents). Written in English and true for
+        /// every language: a brief, two client terms the termbase does not hold,
+        /// and style rules the document actually tests (units, the ON/OFF button,
+        /// the E1-E3 codes, safety notices). Short on purpose: the bank goes with
+        /// every AI request in the project.
+        /// </summary>
+        public static List<KeyValuePair<string, string>> MemoryBankFiles(string projectName)
+        {
+            const string nl = "\r\n";
+            var brief =
+                "# " + projectName + nl + nl +
+                "Made by \"Open example project\" in Supervertaler for Trados. It shows what a" + nl +
+                "memory bank does: Supervertaler sends these files with every AI request in" + nl +
+                "this project (Translate, Batch Translate, Proofread, QuickLauncher), so the AI" + nl +
+                "follows them without being told each time. Change something here and translate" + nl +
+                "a segment again to see the difference. \"Start afresh\" puts the files back." + nl + nl +
+                "## Client" + nl + nl +
+                "Acme (an invented company) makes water heaters. This job is the installation" + nl +
+                "and operating guide for the AquaLine AL-50, read by installers and home owners." + nl + nl +
+                "## Standing instructions" + nl + nl +
+                "- Keep the brand \"Acme\" and the product name \"AquaLine AL-50\" exactly as they are." + nl +
+                "- Translate safety instructions and warnings in full. Never shorten or soften them." + nl +
+                "- Address the reader directly, in the polite form where the language has one." + nl + nl +
+                "## Files" + nl + nl +
+                "- [terminology.md](terminology.md) - term decisions" + nl +
+                "- [style.md](style.md) - how things are written" + nl;
+            var terminology =
+                "# Terminology - " + projectName + nl + nl +
+                "The termbase holds the technical terms; this table holds the client's own" + nl +
+                "decisions." + nl + nl +
+                "| Source | Target | Scope | Note |" + nl +
+                "|---|---|---|---|" + nl +
+                "| Acme | Acme | client | Company name: never translated |" + nl +
+                "| AquaLine AL-50 | AquaLine AL-50 | client | Product name: never translated; \"AL-50\" on its own as well |" + nl;
+            var style =
+                "# Style - " + projectName + nl + nl +
+                "## 1. Instructions" + nl + nl +
+                "Steps are direct instructions to the reader (\"Switch the appliance on\")," + nl +
+                "not descriptions (\"The appliance is switched on\")." + nl + nl +
+                "## 2. Numbers and units" + nl + nl +
+                "A space between number and unit (5.5 kW, 6 mm, 6 bar). Use the decimal" + nl +
+                "separator of the target language." + nl + nl +
+                "## 3. What the appliance shows" + nl + nl +
+                "Button labels and display codes stay as they are printed on the appliance:" + nl +
+                "ON/OFF, E1, E2, E3." + nl;
+            return new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("brief.md", brief),
+                new KeyValuePair<string, string>("terminology.md", terminology),
+                new KeyValuePair<string, string>("style.md", style),
+            };
+        }
 
         public sealed class FolderPlan
         {

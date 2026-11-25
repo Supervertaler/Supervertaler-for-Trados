@@ -80,14 +80,14 @@ namespace Supervertaler.Trados.Controls
             }
             var lines = new List<string>
             {
-                action == AiAssistantViewPart.ExampleAction.OpenExisting
-                    ? "The example project is open in the Editor."
-                    : "The example project is ready and open in the Editor.",
+                // The job says whether Studio actually opened it.
+                status.Note ?? "The example project is ready.",
                 "",
                 "Things to try (right-click in the Editor for Supervertaler's commands):",
                 "•  Translate active segment (Alt+T), or Batch Translate the whole document",
                 "•  FuzzyFixer (Ctrl+Alt+F) on a segment with a fuzzy match, such as \"Press + to raise the temperature …\"",
                 "•  Proofread, and QuickLauncher (Alt+Q)",
+                "•  The project's memory bank (SuperMemory) gives the AI a short client brief and style rules: change them and translate again",
             };
             if (status.Messages != null && status.Messages.Count > 0)
             {
@@ -126,7 +126,8 @@ namespace Supervertaler.Trados.Controls
                 var text = new Label
                 {
                     Text = "You already have the example project for " + language + " (\"" + name + "\").\n\n" +
-                           "Open it as it is, with your changes, or start afresh? Starting afresh deletes it and makes a new one.",
+                           "Open it as it is, with your changes, or start afresh? Starting afresh deletes it, " +
+                           "with its termbase and memory bank, and makes a new one.",
                     AutoSize = true, MaximumSize = new Size(UiScale.Pixels(420), 0)
                 };
                 var open = new Button { Text = "Open it", AutoSize = true };
