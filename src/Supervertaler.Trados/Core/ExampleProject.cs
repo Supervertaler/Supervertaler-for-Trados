@@ -485,6 +485,48 @@ namespace Supervertaler.Trados.Core
             return list;
         }
 
+        /// <summary>
+        /// A comment for each document text with a planted TM match, by its id:
+        /// written into the Word document as a Word comment, which Studio shows
+        /// as a comment on the segment, so the user can see where the matches
+        /// are. Empty when the language is not prepared (no TM).
+        /// </summary>
+        public static Dictionary<string, string> TmComments(ExampleData data, ExampleDirection d)
+        {
+            var map = new Dictionary<string, string>();
+            if (!d.Prepared) return map;
+            foreach (var t in data.Tm)
+                if (t.For != null && !map.ContainsKey(t.For)) map[t.For] = TmComment(t.Band);
+            return map;
+        }
+
+        public static string TmComment(string band)
+        {
+            switch (band)
+            {
+                case "100": return "Example translation memory: an exact (100%) match.";
+                case "numbers": return "Example translation memory: a match that differs only in its numbers.";
+                case "fuzzy": return "Example translation memory: a fuzzy match. Try FuzzyFixer (Ctrl+Alt+F) to repair it.";
+                case "low": return "Example translation memory: a weak match, below 70%. FuzzyFixer leaves matches this weak alone.";
+                default: return "Example translation memory: this sentence has a match.";
+            }
+        }
+
+        private static readonly Regex SentenceEnd = new Regex(@"[.!?](?=\s+\S)|[。！？]", RegexOptions.Compiled);
+
+        /// <summary>
+        /// How many characters of <paramref name="plain"/> its first sentence
+        /// takes, end mark included; all of it when there is one sentence. A
+        /// comment covers only that much, because Studio splits the paragraph
+        /// into segments there and the planted match is for the first one.
+        /// </summary>
+        public static int FirstSentenceLength(string plain)
+        {
+            if (string.IsNullOrEmpty(plain)) return 0;
+            var m = SentenceEnd.Match(plain);
+            return m.Success ? m.Index + m.Length : plain.Length;
+        }
+
         /// <summary>The termbase's entries (source term, target term). Empty when not prepared.</summary>
         public static List<KeyValuePair<string, string>> TermPairs(ExampleData data, ExampleDirection d)
         {
@@ -547,63 +589,118 @@ namespace Supervertaler.Trados.Core
                 AddStyles(main);
                 AddNumbering(main);
                 var body = main.Document.Body;
+                var comments = TmComments(data, d);
 
                 foreach (var b in data.Document)
                 {
                     switch (b.Type)
                     {
-                        case "title": body.Append(Para(main, BlockText(data, d, b), "Title")); break;
-                        case "subtitle": body.Append(Para(main, BlockText(data, d, b), "Subtitle")); break;
-                        case "heading": body.Append(Para(main, BlockText(data, d, b), "Heading1")); break;
-                        case "para": body.Append(Para(main, BlockText(data, d, b), null)); break;
+                        case "title": body.Append(Para(main, BlockText(data, d, b), "Title", CommentFor(comments, b))); break;
+                        case "subtitle": body.Append(Para(main, BlockText(data, d, b), "Subtitle", CommentFor(comments, b))); break;
+                        case "heading": body.Append(Para(main, BlockText(data, d, b), "Heading1", CommentFor(comments, b))); break;
+                        case "para": body.Append(Para(main, BlockText(data, d, b), null, CommentFor(comments, b))); break;
                         case "bullets":
                         case "steps":
                             int numId = b.Type == "bullets" ? 1 : NewStepsInstance(main);
                             foreach (var i in b.Items ?? new List<ExampleBlock>())
                             {
-                                var p = Para(main, BlockText(data, d, i), "ListParagraph");
+                                var p = Para(main, BlockText(data, d, i), "ListParagraph", CommentFor(comments, i));
                                 p.ParagraphProperties.Append(new NumberingProperties(
                                     new NumberingLevelReference { Val = 0 }, new NumberingId { Val = numId }));
                                 body.Append(p);
                             }
                             break;
-                        case "table": body.Append(BuildTable(main, data, d, b)); body.Append(new Paragraph()); break;
+                        case "table": body.Append(BuildTable(main, data, d, b, comments)); body.Append(new Paragraph()); break;
                     }
                 }
                 body.Append(new SectionProperties(
                     new PageSize { Width = 11906U, Height = 16838U },
                     new PageMargin { Top = 1440, Bottom = 1440, Left = 1440U, Right = 1440U }));
                 main.Document.Save();
+                main.WordprocessingCommentsPart?.Comments?.Save();
             }
         }
 
         private static string BlockText(ExampleData data, ExampleDirection d, ExampleBlock b) => SourceText(data, d, b.Id, b.Text);
 
-        private static Paragraph Para(MainDocumentPart main, string text, string style)
+        private static string CommentFor(Dictionary<string, string> comments, ExampleBlock b) =>
+            b.Id != null && comments.TryGetValue(b.Id, out var c) ? c : null;
+
+        /// <summary>
+        /// One paragraph. With <paramref name="comment"/>, a Word comment covers
+        /// its first sentence (a run that crosses the sentence end is split in
+        /// two), so Studio puts the comment on that segment.
+        /// </summary>
+        private static Paragraph Para(MainDocumentPart main, string text, string style, string comment = null)
         {
             var p = new Paragraph(new ParagraphProperties());
             if (style != null) p.ParagraphProperties.Append(new ParagraphStyleId { Val = style });
-            foreach (var r in ParseInline(text))
+            var runs = ParseInline(text);
+            if (comment == null)
             {
-                var rp = new RunProperties();
-                if (r.Bold) rp.Append(new Bold());
-                if (r.Italic) rp.Append(new Italic());
-                var run = new DocumentFormat.OpenXml.Wordprocessing.Run();
-                if (rp.HasChildren) run.Append(rp);
-                run.Append(new Text(r.Text) { Space = SpaceProcessingModeValues.Preserve });
-                if (r.Link != null)
-                {
-                    var rel = main.AddHyperlinkRelationship(new Uri(r.Link, UriKind.Absolute), true);
-                    run.RunProperties = run.RunProperties ?? new RunProperties();
-                    run.RunProperties.Append(new RunStyle { Val = "Hyperlink" });
-                    p.Append(new Hyperlink(run) { Id = rel.Id });
-                }
-                else p.Append(run);
+                foreach (var r in runs) AppendRun(main, p, r);
+                return p;
             }
+
+            var id = AddComment(main, comment);
+            p.Append(new CommentRangeStart { Id = id });
+            int end = FirstSentenceLength(string.Concat(runs.Select(r => r.Text))), pos = 0;
+            bool closed = false;
+            foreach (var r in runs)
+            {
+                if (!closed && pos < end && end < pos + r.Text.Length)
+                {
+                    int cut = end - pos;
+                    AppendRun(main, p, new Run { Text = r.Text.Substring(0, cut), Bold = r.Bold, Italic = r.Italic, Link = r.Link });
+                    CloseComment(p, id); closed = true;
+                    AppendRun(main, p, new Run { Text = r.Text.Substring(cut), Bold = r.Bold, Italic = r.Italic, Link = r.Link });
+                }
+                else AppendRun(main, p, r);
+                pos += r.Text.Length;
+                if (!closed && pos >= end) { CloseComment(p, id); closed = true; }
+            }
+            if (!closed) CloseComment(p, id);
             return p;
         }
 
-        private static Table BuildTable(MainDocumentPart main, ExampleData data, ExampleDirection d, ExampleBlock b)
+        private static void CloseComment(Paragraph p, string id)
+        {
+            p.Append(new CommentRangeEnd { Id = id });
+            p.Append(new DocumentFormat.OpenXml.Wordprocessing.Run(new CommentReference { Id = id }));
+        }
+
+        /// <summary>Adds a comment to the document's comments part (made on first use); returns its id.</summary>
+        private static string AddComment(MainDocumentPart main, string text)
+        {
+            var part = main.WordprocessingCommentsPart ?? main.AddNewPart<WordprocessingCommentsPart>();
+            if (part.Comments == null) part.Comments = new Comments();
+            var id = part.Comments.ChildElements.Count.ToString(CultureInfo.InvariantCulture);
+            part.Comments.Append(new Comment(new Paragraph(new DocumentFormat.OpenXml.Wordprocessing.Run(
+                new Text(text) { Space = SpaceProcessingModeValues.Preserve })))
+            { Id = id, Author = "Supervertaler", Initials = "SV" });
+            return id;
+        }
+
+        private static void AppendRun(MainDocumentPart main, Paragraph p, Run r)
+        {
+            var rp = new RunProperties();
+            if (r.Bold) rp.Append(new Bold());
+            if (r.Italic) rp.Append(new Italic());
+            var run = new DocumentFormat.OpenXml.Wordprocessing.Run();
+            if (rp.HasChildren) run.Append(rp);
+            run.Append(new Text(r.Text) { Space = SpaceProcessingModeValues.Preserve });
+            if (r.Link != null)
+            {
+                var rel = main.AddHyperlinkRelationship(new Uri(r.Link, UriKind.Absolute), true);
+                run.RunProperties = run.RunProperties ?? new RunProperties();
+                run.RunProperties.Append(new RunStyle { Val = "Hyperlink" });
+                p.Append(new Hyperlink(run) { Id = rel.Id });
+            }
+            else p.Append(run);
+        }
+
+        private static Table BuildTable(MainDocumentPart main, ExampleData data, ExampleDirection d, ExampleBlock b,
+            Dictionary<string, string> comments)
         {
             var t = new Table(new TableProperties(
                 new TableStyle { Val = "TableGrid" },
@@ -619,7 +716,7 @@ namespace Supervertaler.Trados.Core
                 if (first && b.Header) tr.Append(new TableRowProperties(new TableHeader()));
                 foreach (var cell in row)
                 {
-                    var p = Para(main, BlockText(data, d, cell), null);
+                    var p = Para(main, BlockText(data, d, cell), null, CommentFor(comments, cell));
                     if (first && b.Header)
                         foreach (var r in p.Descendants<DocumentFormat.OpenXml.Wordprocessing.Run>())
                         {

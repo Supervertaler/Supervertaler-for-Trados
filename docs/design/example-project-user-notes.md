@@ -19,6 +19,9 @@ repository). Not yet in Help.
 - For a **prepared language**: a translation memory with ten entries (three exact matches, one that differs only in
   its numbers, five fuzzy matches between about 70 and 95%, and one weak match below 70%) and a Supervertaler termbase
   with fifteen terms. The translation memory is inside the project folder (`TM\Supervertaler example.sdltm`).
+- Each sentence with a planted match has a Studio comment saying which kind of match it is (exact, numbers only,
+  fuzzy with a FuzzyFixer tip, weak). The comments are Word comments in the example document, so they also appear in
+  the translated document Studio saves.
 - The termbase is called like the project ("Supervertaler example (English to German)"). It is switched on in the
   example project only (TermLens and the AI), and switched off in all your other projects. Your own termbases are
   switched off in the example project.

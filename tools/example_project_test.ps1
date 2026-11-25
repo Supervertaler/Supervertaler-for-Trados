@@ -20,6 +20,8 @@
 #      removed again when filling it fails
 #   G  the memory bank: name, three files that are not skeletons, made and
 #      recorded for the project, an existing bank kept, only example banks removed
+#   H  comments: one Word comment per planted match, on its sentence, in every
+#      prepared language and both directions; none without a TM
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\example_project_test.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\example_project_test.ps1 -Dll <Supervertaler.Trados.dll>
@@ -423,6 +425,75 @@ Check (Test-Path -LiteralPath (Join-Path $banks 'acme')) 'a bank that is not an 
 Check (-not (Test-Path -LiteralPath $bankDir)) 'Start afresh removes the example bank'
 $ok = $true; try { (S 'RemoveMemoryBank').Invoke($null, [object[]]@($banks, $null)) } catch { $ok = $false }
 Check $ok 'a marker without a bank (older example): nothing removed, no error'
+
+# == H  comments on the planted matches =========================================
+Write-Host "-- H  comments on the planted matches"
+# Every prepared language, both directions: one Word comment per TM entry, on
+# the right sentence (the first of a two-sentence paragraph only), saying which
+# kind of match it is. No comments without a TM.
+function CommentedTexts($path) {
+    $wd = [DocumentFormat.OpenXml.Packaging.WordprocessingDocument]::Open($path, $false)
+    try {
+        $texts = @{}
+        $cp = $wd.MainDocumentPart.WordprocessingCommentsPart
+        if ($null -eq $cp) { return $texts }
+        foreach ($c in $cp.Comments.Elements()) { $texts[$c.Id.Value] = @{ Comment = $c.InnerText } }
+        foreach ($st in @($wd.MainDocumentPart.Document.Body.Descendants() | Where-Object { $_ -is [DocumentFormat.OpenXml.Wordprocessing.CommentRangeStart] })) {
+            $inside = ''; $after = ''; $in = $true
+            $n = $st.NextSibling()
+            while ($null -ne $n) {
+                if ($n -is [DocumentFormat.OpenXml.Wordprocessing.CommentRangeEnd]) { $in = $false }
+                elseif ($in) { $inside += $n.InnerText } else { $after += $n.InnerText }
+                $n = $n.NextSibling()
+            }
+            $texts[$st.Id.Value].Inside = $inside
+            $texts[$st.Id.Value].After = $after
+        }
+        return $texts
+    } finally { $wd.Dispose() }
+}
+$bandOf = @{}; foreach ($t in $data.Tm) { $bandOf[$t.For] = $t.Band }
+$twoSentence = @('d7', 'e4')
+$bad = New-Object System.Collections.Generic.List[string]
+$pairs = 0
+foreach ($k in $complete) {
+    foreach ($into in @($false, $true)) {
+        $dir = New-Object Supervertaler.Trados.Core.ExampleDirection
+        $dir.DataKey = $k; $dir.IntoEnglish = $into
+        $dir.Source = $(if ($into) { $k } else { 'en-US' }); $dir.Target = $(if ($into) { 'en-US' } else { $k })
+        $path = Join-Path $Root ("c-$k-$into.docx")
+        $EP::WriteDocx($path, $data, $dir)
+        $byText = @{}
+        foreach ($id in $bandOf.Keys) {
+            $b = @($data.Document | % { $_; if ($_.Items) { $_.Items }; if ($_.Rows) { $_.Rows | % { $_ } } } | Where-Object { $_.Id -eq $id })[0]
+            $byText[$id] = $EP::PlainText($EP::SourceText($data, $dir, $id, $b.Text))
+        }
+        $found = CommentedTexts $path
+        if ($found.Count -ne $bandOf.Count) { $bad.Add("$k/$($into): $($found.Count) comments"); continue }
+        foreach ($c in $found.Values) {
+            $full = $c.Inside + $c.After
+            $id = @($byText.Keys | Where-Object { $byText[$_] -eq $full })[0]
+            if ($null -eq $id) { $bad.Add("$k/$($into): comment on an unexpected paragraph: $full"); continue }
+            if ($c.Comment -ne $EP::TmComment($bandOf[$id])) { $bad.Add("$k/$($into)/$($id): wrong comment") }
+            if ($twoSentence -contains $id) {
+                if ($c.After.Trim().Length -eq 0 -or $c.Inside.Trim().Length -lt 10) { $bad.Add("$k/$($into)/$($id): not split at the first sentence: [$($c.Inside)]") }
+            } elseif ($c.After.Length -ne 0) { $bad.Add("$k/$($into)/$($id): only part covered: [$($c.Inside)]") }
+            $pairs++
+        }
+    }
+}
+Check ($bad.Count -eq 0) "$pairs comments in $($complete.Count) languages x 2 directions, each on its sentence$(if ($bad.Count) { ': ' + ($bad[0..([Math]::Min(4, $bad.Count - 1))] -join '; ') })"
+$wd = [DocumentFormat.OpenXml.Packaging.WordprocessingDocument]::Open((Join-Path $Root ("c-$($complete[0])-False.docx")), $false)
+try {
+    $errors = @((New-Object DocumentFormat.OpenXml.Validation.OpenXmlValidator).Validate($wd))
+    Check ($errors.Count -eq 0) "with comments: valid Office Open XML$(if ($errors.Count) { ': ' + $errors[0].Description })"
+} finally { $wd.Dispose() }
+$plain = New-Object Supervertaler.Trados.Core.ExampleDirection
+$plain.Source = 'en-US'; $plain.Target = 'is-IS'
+$path = Join-Path $Root 'c-none.docx'
+$EP::WriteDocx($path, $data, $plain)
+Check ((CommentedTexts $path).Count -eq 0) 'a language without a TM: no comments'
+Check ($EP::FirstSentenceLength('One. Two.') -eq 4 -and $EP::FirstSentenceLength('It is 0.6 MPa.') -eq 14 -and $EP::FirstSentenceLength('一。二。') -eq 2 -and $EP::FirstSentenceLength('') -eq 0) 'first sentence: ends at . ! ? before a space, or at a CJK full stop; not inside 0.6'
 
 if ($script:fail -gt 0) { Write-Host "$($script:fail) check(s) failed"; exit 1 }
 exit 0
