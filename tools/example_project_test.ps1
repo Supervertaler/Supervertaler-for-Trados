@@ -1,4 +1,4 @@
-# "Open example project" (first-run plan, step 1): the parts that run without Studio.
+﻿# "Open example project" (first-run plan, step 1): the parts that run without Studio.
 #
 # Runs the BUILT plugin's own code with Studio's own TM engine. No Studio is
 # started, no project is made, no AI request is sent. Writes only under -Root
@@ -176,6 +176,19 @@ $d6 = $EP::Direction($fake, 'en-GB', $false, 'en-US', [ref]$err)
 Check ($null -eq $d6 -and $err -like '*other language*') 'English on both sides refused'
 $d7 = $EP::Direction($fake, 'xx-YY', $false, 'en-US', [ref]$err)
 Check ($null -eq $d7) 'an unknown language refused'
+# The dialog asks for a source and a target language (FromPair).
+$p1 = $EP::FromPair($fake, 'en-GB', 'de-AT', [ref]$err)
+Check ($p1 -and $p1.Source -eq 'en-GB' -and $p1.Target -eq 'de-AT' -and -not $p1.IntoEnglish) 'pair: English (UK) to German (Austria)'
+$p2 = $EP::FromPair($fake, 'de-DE', 'en-US', [ref]$err)
+Check ($p2 -and $p2.Source -eq 'de-DE' -and $p2.Target -eq 'en-US' -and $p2.IntoEnglish) 'pair: German to English (US)'
+$p3 = $EP::FromPair($fake, 'de-DE', 'nl-NL', [ref]$err)
+Check ($null -eq $p3 -and $err -like '*has to be English*') 'pair: neither side English refused'
+$p4 = $EP::FromPair($fake, 'en-US', 'en-GB', [ref]$err)
+Check ($null -eq $p4 -and $err -like '*other than English*') 'pair: English on both sides refused'
+$p5 = $EP::FromPair($fake, 'fr-FR', 'en-US', [ref]$err)
+Check ($null -eq $p5 -and $err -like '*not yet available in French*') 'pair: into English from a language that is not prepared refused'
+$p6 = $EP::FromPair($fake, $null, 'de-DE', [ref]$err)
+Check ($null -eq $p6 -and $err -like '*source and a target*') 'pair: a side left empty refused'
 $g = $EP::Guess('en-US', 'de-DE', 'en-GB'); Check ($g.Item1 -eq 'de-DE' -and -not $g.Item2) 'guess: the open project''s target'
 $g = $EP::Guess('nl-NL', 'en-GB', 'en-GB'); Check ($g.Item1 -eq 'nl-NL' -and $g.Item2) 'guess: the open project''s source, into English'
 $g = $EP::Guess($null, $null, 'pl-PL'); Check ($g.Item1 -eq 'pl-PL' -and -not $g.Item2) 'guess: Windows'' language'

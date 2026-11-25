@@ -11,12 +11,11 @@ repository). Not yet in Help.
 - The document is an invented installation guide for a water heater ("Acme AquaLine AL-50"): about 70 segments,
   with a bulleted list, two numbered lists, two tables, bold and italic text, a hyperlink, numbers with units, and a
   few sentences that are almost the same.
-- You choose **your language**, the **direction** (shown with your language's name, e.g. "English → Dutch" or
-  "Dutch → English"; the second only for the prepared languages, see below) and the **English variant** (United
-  States, United Kingdom, …).
-
-## What is in the project
-
+- You choose a **source language** and a **target language**, as for any project. One of them has to be English,
+  because the example document is written in English; the dialog says so if neither is. The lists show languages
+  ("Dutch", "English"); tick **Show language variants** to choose a variant ("Dutch (Belgium)", "English (United
+  Kingdom)"). English comes first, then the prepared languages, then all others. Into English is only possible for a
+  prepared language.
 - For a **prepared language**: a translation memory with ten entries (three exact matches, one that differs only in
   its numbers, five fuzzy matches between about 70 and 95%, and one weak match below 70%) and a Supervertaler termbase
   with fifteen terms. The translation memory is inside the project folder (`TM\Supervertaler example.sdltm`).

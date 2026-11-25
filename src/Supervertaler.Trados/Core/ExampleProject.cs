@@ -220,6 +220,25 @@ namespace Supervertaler.Trados.Core
                 : new ExampleDirection { Source = en, Target = other, DataKey = key, IntoEnglish = false };
         }
 
+        /// <summary>
+        /// The dialog's question as a translator asks it: a source and a target
+        /// language. One of them has to be English, because the example document
+        /// is written in English; the rest is <see cref="Direction"/>.
+        /// </summary>
+        public static ExampleDirection FromPair(ExampleData data, string source, string target, out string error)
+        {
+            error = null;
+            bool IsEn(string c) => c != null && c.StartsWith("en", StringComparison.OrdinalIgnoreCase) && (c.Length == 2 || c[2] == '-');
+            if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target))
+            { error = "Choose a source and a target language."; return null; }
+            bool se = IsEn(source), te = IsEn(target);
+            if (se && te) { error = "Choose a language other than English on one side."; return null; }
+            if (!se && !te) { error = "One of the two languages has to be English: the example document is written in English."; return null; }
+            return se
+                ? Direction(data, target, false, source, out error)
+                : Direction(data, source, true, target, out error);
+        }
+
         /// <summary>A real, specific Windows culture's name (de-AT), or null.</summary>
         public static string Canonical(string code)
         {

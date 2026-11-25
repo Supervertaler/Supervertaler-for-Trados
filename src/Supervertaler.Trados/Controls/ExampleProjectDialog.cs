@@ -9,27 +9,33 @@ using Supervertaler.Trados.Core;
 namespace Supervertaler.Trados.Controls
 {
     /// <summary>
-    /// "Open example project": which language, and which way. Every Windows
-    /// language is offered; the prepared ones (with a translation memory and a
-    /// termbase) are listed first. "Into English" is only possible for a
-    /// prepared language, because it needs the translated document.
+    /// "Open example project": a source and a target language, as a translator
+    /// thinks of a job. One of them has to be English (the example is written in
+    /// English); <see cref="ExampleProject.FromPair"/> says so before anything is
+    /// made. Both lists show languages ("Dutch"); "Show language variants" lists
+    /// every Windows variant instead ("Dutch (Belgium)"). English comes first,
+    /// then the prepared languages (with a translation memory and a termbase),
+    /// then the rest.
     /// </summary>
     internal sealed class ExampleProjectDialog : Form
     {
         private sealed class Item
         {
-            public string Code;
+            public string Code;     // a specific culture (nl-NL); null for the separator
             public string Text;
             public override string ToString() => Text;
         }
 
         private readonly ExampleData _data;
-        private readonly ComboBox _cmbLanguage;
-        private readonly ComboBox _cmbEnglish;
-        private readonly RadioButton _rbFromEnglish;
-        private readonly RadioButton _rbIntoEnglish;
+        private readonly ComboBox _cmbSource;
+        private readonly ComboBox _cmbTarget;
+        private readonly CheckBox _chkVariants;
         private readonly Label _lblInfo;
-        private readonly Label _lblError;
+        private readonly Button _ok;
+        private readonly HashSet<string> _prepared;
+        // Group name ("Dutch", "Portuguese (Brazil)") -> the variant its plain
+        // entry stands for; worked out once (about 800 cultures), see DefaultFor.
+        private readonly Dictionary<string, string> _defaults;
 
         public ExampleDirection Direction { get; private set; }
 
@@ -48,6 +54,14 @@ namespace Supervertaler.Trados.Controls
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             Padding = new Padding(UiScale.Pixels(12));
 
+            // Which variants have the example's TM and termbase. About 800 cultures,
+            // each a dictionary lookup: once, not on every list change.
+            var specific = AllSpecific().ToList();
+            _prepared = new HashSet<string>(
+                specific.Where(c => Prepared(c.Name)).Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+            _defaults = specific.GroupBy(c => GroupName(c.Name))
+                .ToDictionary(g => g.Key, g => PickDefault(g.Key, g.Select(c => c.Name).ToList()));
+
             var grid = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -55,8 +69,7 @@ namespace Supervertaler.Trados.Controls
             var intro = new Label
             {
                 Text = "A small project to try Supervertaler on: an invented installation guide for a water heater, " +
-                       "about 70 segments, with a memory bank, and a translation memory and a termbase where your language is prepared. " +
-                       "It is made in Studio's Projects folder and opened in the Editor.",
+                       "about 70 segments. It is made in Studio's Projects folder and opened in the Editor.",
                 AutoSize = true,
                 MaximumSize = new Size(UiScale.Pixels(460), 0),
                 Margin = new Padding(0, 0, 0, UiScale.Pixels(10))
@@ -64,50 +77,59 @@ namespace Supervertaler.Trados.Controls
             grid.Controls.Add(intro, 0, 0);
             grid.SetColumnSpan(intro, 2);
 
-            _cmbLanguage = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = UiScale.Pixels(300), MaxDropDownItems = 20 };
-            grid.Controls.Add(new Label { Text = "Your language:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-            grid.Controls.Add(_cmbLanguage, 1, 1);
+            _cmbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = UiScale.Pixels(300), MaxDropDownItems = 20 };
+            _cmbTarget = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = UiScale.Pixels(300), MaxDropDownItems = 20 };
+            grid.Controls.Add(new Label { Text = "Source language:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+            grid.Controls.Add(_cmbSource, 1, 1);
+            grid.Controls.Add(new Label { Text = "Target language:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+            grid.Controls.Add(_cmbTarget, 1, 2);
 
-            // The two ways round, spelt out with the chosen language's name
-            // ("English → Dutch"); see UpdateDirectionLabels.
-            _rbFromEnglish = new RadioButton { AutoSize = true, Checked = true, Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(16), 0) };
-            _rbIntoEnglish = new RadioButton { AutoSize = true, Margin = new Padding(0, UiScale.Pixels(3), 0, 0) };
-            var radios = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, WrapContents = false, Margin = new Padding(0, UiScale.Pixels(4), 0, 0) };
-            radios.Controls.Add(_rbFromEnglish);
-            radios.Controls.Add(_rbIntoEnglish);
-            grid.Controls.Add(new Label { Text = "Direction:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-            grid.Controls.Add(radios, 1, 2);
+            _chkVariants = new CheckBox { Text = "Show language variants", AutoSize = true, Margin = new Padding(0, UiScale.Pixels(4), 0, 0) };
+            grid.Controls.Add(_chkVariants, 1, 3);
 
-            _cmbEnglish = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = UiScale.Pixels(300) };
-            grid.Controls.Add(new Label { Text = "English variant:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
-            grid.Controls.Add(_cmbEnglish, 1, 3);
-
-            _lblInfo = new Label { AutoSize = true, MaximumSize = new Size(UiScale.Pixels(460), 0), ForeColor = Color.FromArgb(80, 80, 80), Margin = new Padding(0, UiScale.Pixels(10), 0, 0) };
+            _lblInfo = new Label { AutoSize = true, MaximumSize = new Size(UiScale.Pixels(460), 0), Margin = new Padding(0, UiScale.Pixels(10), 0, 0) };
             grid.Controls.Add(_lblInfo, 0, 4);
             grid.SetColumnSpan(_lblInfo, 2);
-            _lblError = new Label { AutoSize = true, MaximumSize = new Size(UiScale.Pixels(460), 0), ForeColor = Color.FromArgb(180, 60, 0), Visible = false };
-            grid.Controls.Add(_lblError, 0, 5);
-            grid.SetColumnSpan(_lblError, 2);
 
-            var ok = new Button { Text = "Make the project", AutoSize = true, DialogResult = DialogResult.None };
+            _ok = new Button { Text = "Make the project", AutoSize = true, DialogResult = DialogResult.None };
             var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-            ok.Click += OnOk;
+            _ok.Click += OnOk;
             var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(12), 0, 0) };
             buttons.Controls.Add(cancel);
-            buttons.Controls.Add(ok);
-            grid.Controls.Add(buttons, 0, 6);
+            buttons.Controls.Add(_ok);
+            grid.Controls.Add(buttons, 0, 5);
             grid.SetColumnSpan(buttons, 2);
-            AcceptButton = ok;
+            AcceptButton = _ok;
             CancelButton = cancel;
             Controls.Add(grid);
 
-            FillLanguages(guessLanguage);
-            FillEnglish(guessEnglish);
-            if (guessIntoEnglish) _rbIntoEnglish.Checked = true;
-            _cmbLanguage.SelectedIndexChanged += (s, e) => UpdateInfo();
-            _rbFromEnglish.CheckedChanged += (s, e) => UpdateInfo();
+            // The first guess, as a pair.
+            var english = ExampleProject.Canonical(guessEnglish) ?? "en-US";
+            var other = ExampleProject.Canonical(guessLanguage);
+            var src = guessIntoEnglish && other != null ? other : english;
+            var tgt = guessIntoEnglish ? english : other;
+            // Open with variants shown when the guess is a variant the plain list
+            // would not show as itself (Dutch (Belgium), English (UK) …).
+            _chkVariants.Checked = (src != null && DefaultFor(src) != src) || (tgt != null && DefaultFor(tgt) != tgt);
+            Fill(_cmbSource, src);
+            Fill(_cmbTarget, tgt);
+
+            _cmbSource.SelectedIndexChanged += (s, e) => UpdateInfo();
+            _cmbTarget.SelectedIndexChanged += (s, e) => UpdateInfo();
+            _chkVariants.CheckedChanged += (s, e) =>
+            {
+                var a = (_cmbSource.SelectedItem as Item)?.Code;
+                var b = (_cmbTarget.SelectedItem as Item)?.Code;
+                Fill(_cmbSource, a);
+                Fill(_cmbTarget, b);
+                UpdateInfo();
+            };
             UpdateInfo();
         }
+
+        private static IEnumerable<CultureInfo> AllSpecific() =>
+            CultureInfo.GetCultures(CultureTypes.SpecificCultures)
+                .Where(c => (c.CultureTypes & CultureTypes.UserCustomCulture) == 0 && !string.IsNullOrEmpty(c.Name));
 
         private bool Prepared(string code)
         {
@@ -115,74 +137,95 @@ namespace Supervertaler.Trados.Controls
             return key != null && ExampleProject.Missing(_data, key).Count == 0;
         }
 
-        /// <summary>Every specific Windows culture except English, prepared ones first. About 800 entries.</summary>
-        private void FillLanguages(string guess)
-        {
-            var all = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
-                .Where(c => c.TwoLetterISOLanguageName != "en" && (c.CultureTypes & CultureTypes.UserCustomCulture) == 0)
-                .Select(c => new Item { Code = c.Name, Text = c.EnglishName })
-                .OrderBy(i => i.Text, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-            var isPrepared = all.ToDictionary(i => i.Code, i => Prepared(i.Code));
-            var prepared = all.Where(i => isPrepared[i.Code]).ToList();
-            var rest = all.Where(i => !isPrepared[i.Code]).ToList();
-            _cmbLanguage.BeginUpdate();
-            foreach (var i in prepared) _cmbLanguage.Items.Add(i);
-            if (prepared.Count > 0) _cmbLanguage.Items.Add(new Item { Code = null, Text = "──────────────" });
-            foreach (var i in rest) _cmbLanguage.Items.Add(i);
-            _cmbLanguage.EndUpdate();
+        private static bool IsEnglish(string code) =>
+            code != null && code.StartsWith("en", StringComparison.OrdinalIgnoreCase) && (code.Length == 2 || code[2] == '-');
 
-            var pick = _cmbLanguage.Items.Cast<Item>().FirstOrDefault(i => i.Code != null && string.Equals(i.Code, guess, StringComparison.OrdinalIgnoreCase));
-            if (pick != null) _cmbLanguage.SelectedItem = pick;
+        /// <summary>
+        /// The variant a plain language entry stands for: English is en-US;
+        /// otherwise Windows' own default for the language (Dutch: nl-NL), within
+        /// the same <see cref="ExampleProject.EnglishName"/> group, so Portuguese
+        /// (Brazil) and Chinese (Traditional) keep their own entries.
+        /// </summary>
+        private string DefaultFor(string code)
+        {
+            if (code == null) return null;
+            return _defaults.TryGetValue(GroupName(code), out var d) ? d : code;
         }
 
-        private void FillEnglish(string guess)
+        private static string GroupName(string code) => IsEnglish(code) ? "English" : ExampleProject.EnglishName(code);
+
+        private static string PickDefault(string group, List<string> members)
         {
-            var en = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
-                .Where(c => c.TwoLetterISOLanguageName == "en" && (c.CultureTypes & CultureTypes.UserCustomCulture) == 0)
-                .Select(c => new Item { Code = c.Name, Text = c.EnglishName })
-                .OrderBy(i => i.Code == "en-US" ? 0 : i.Code == "en-GB" ? 1 : 2).ThenBy(i => i.Text)
-                .ToList();
-            foreach (var i in en) _cmbEnglish.Items.Add(i);
-            var pick = en.FirstOrDefault(i => string.Equals(i.Code, guess, StringComparison.OrdinalIgnoreCase))
-                       ?? en.FirstOrDefault(i => i.Code == "en-US") ?? en.FirstOrDefault();
-            _cmbEnglish.SelectedItem = pick;
+            if (group == "English") return "en-US";
+            string preferred = null;
+            try { preferred = CultureInfo.CreateSpecificCulture(members[0].Split('-')[0]).Name; } catch { }
+            if (preferred != null && members.Contains(preferred, StringComparer.OrdinalIgnoreCase)) return preferred;
+            return members.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).First();
+        }
+
+        /// <summary>The list: English first, the prepared languages, a line, the rest.
+        /// Selects <paramref name="select"/>, or the entry that stands for it.</summary>
+        private void Fill(ComboBox box, string select)
+        {
+            List<Item> all;
+            if (_chkVariants.Checked)
+            {
+                all = AllSpecific().Select(c => new Item { Code = c.Name, Text = c.EnglishName }).ToList();
+            }
+            else
+            {
+                all = _defaults.Select(kv => new Item { Code = kv.Value, Text = kv.Key }).ToList();
+            }
+            int Rank(Item i) => IsEnglish(i.Code) ? 0 : _prepared.Contains(i.Code) ? 1 : 2;
+            all = all.OrderBy(Rank)
+                     .ThenBy(i => IsEnglish(i.Code) ? (i.Code == "en-US" ? 0 : i.Code == "en-GB" ? 1 : 2) : 0)
+                     .ThenBy(i => i.Text, StringComparer.CurrentCultureIgnoreCase)
+                     .ToList();
+
+            box.BeginUpdate();
+            box.Items.Clear();
+            int lastRank = -1;
+            foreach (var i in all)
+            {
+                var r = Rank(i);
+                if (lastRank >= 0 && r != lastRank) box.Items.Add(new Item { Code = null, Text = "──────────────" });
+                box.Items.Add(i);
+                lastRank = r;
+            }
+            box.EndUpdate();
+
+            var want = _chkVariants.Checked ? select : DefaultFor(select);
+            var pick = box.Items.Cast<Item>().FirstOrDefault(i => i.Code != null && string.Equals(i.Code, want, StringComparison.OrdinalIgnoreCase));
+            box.SelectedItem = pick;
         }
 
         private void UpdateInfo()
         {
-            _lblError.Visible = false;
-            var item = _cmbLanguage.SelectedItem as Item;
-            var lang = item?.Code != null ? ExampleProject.EnglishName(item.Code) : "your language";
-            _rbFromEnglish.Text = "English → " + lang;
-            _rbIntoEnglish.Text = lang + " → English";
-            if (item?.Code == null)
+            var src = (_cmbSource.SelectedItem as Item)?.Code;
+            var tgt = (_cmbTarget.SelectedItem as Item)?.Code;
+            var d = ExampleProject.FromPair(_data, src, tgt, out var error);
+            _ok.Enabled = d != null;
+            if (d == null)
             {
-                _lblInfo.Text = "Choose the language you translate into or from.";
-                _rbIntoEnglish.Enabled = true;
+                _lblInfo.ForeColor = Color.FromArgb(180, 60, 0);
+                _lblInfo.Text = error;
                 return;
             }
-            bool prepared = Prepared(item.Code);
-            _rbIntoEnglish.Enabled = prepared;
-            if (!prepared && _rbIntoEnglish.Checked) _rbFromEnglish.Checked = true;
-            var name = ExampleProject.EnglishName(item.Code);
-            _lblInfo.Text = prepared
-                ? "Includes a translation memory with a few fuzzy matches (for FuzzyFixer) and a termbase (for TermLens and the AI)."
-                : "There is no example translation memory or termbase for " + name + " yet, so the project has the document only. " +
-                  "Translate, Proofread, QuickLauncher and Batch Translate all work; FuzzyFixer and TermLens have nothing to show.";
+            _lblInfo.ForeColor = Color.FromArgb(80, 80, 80);
+            var other = d.IntoEnglish ? d.Source : d.Target;
+            _lblInfo.Text = d.Prepared
+                ? "Includes a translation memory with a few fuzzy matches (for FuzzyFixer), a termbase (for TermLens and the AI) " +
+                  "and a memory bank with a short client brief (for the AI)."
+                : "There is no example translation memory or termbase for " + ExampleProject.EnglishName(other) + " yet, so the project has " +
+                  "the document and a memory bank. Translate, Proofread, QuickLauncher and Batch Translate all work; FuzzyFixer and TermLens have nothing to show.";
         }
 
         private void OnOk(object sender, EventArgs e)
         {
-            var item = _cmbLanguage.SelectedItem as Item;
-            var english = (_cmbEnglish.SelectedItem as Item)?.Code;
-            var d = ExampleProject.Direction(_data, item?.Code, _rbIntoEnglish.Checked, english, out var error);
-            if (d == null)
-            {
-                _lblError.Text = error;
-                _lblError.Visible = true;
-                return;
-            }
+            var src = (_cmbSource.SelectedItem as Item)?.Code;
+            var tgt = (_cmbTarget.SelectedItem as Item)?.Code;
+            var d = ExampleProject.FromPair(_data, src, tgt, out var error);
+            if (d == null) { UpdateInfo(); return; }
             Direction = d;
             DialogResult = DialogResult.OK;
             Close();
