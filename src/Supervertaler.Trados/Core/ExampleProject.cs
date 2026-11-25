@@ -321,7 +321,7 @@ namespace Supervertaler.Trados.Core
             const string nl = "\r\n";
             var brief =
                 "# " + projectName + nl + nl +
-                "Made by \"Open example project\" in Supervertaler for Trados. It shows what a" + nl +
+                "Created by \"Open example project\" in Supervertaler for Trados. It shows what a" + nl +
                 "memory bank does: Supervertaler sends these files with every AI request in" + nl +
                 "this project (Translate, Batch Translate, Proofread, QuickLauncher), so the AI" + nl +
                 "follows them without being told each time. Change something here and translate" + nl +

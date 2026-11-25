@@ -95,7 +95,7 @@ namespace Supervertaler.Trados
             }
             catch (Exception ex)
             {
-                error = "The example project could not be made: " + ex.Message;
+                error = "The example project could not be created: " + ex.Message;
             }
             sw.Stop();
             lock (job.Sync)

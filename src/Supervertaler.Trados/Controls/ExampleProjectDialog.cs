@@ -69,7 +69,7 @@ namespace Supervertaler.Trados.Controls
             var intro = new Label
             {
                 Text = "A small project to try Supervertaler on: an invented installation guide for a water heater, " +
-                       "about 70 segments. It is made in Studio's Projects folder and opened in the Editor.",
+                       "about 70 segments. It is created in Studio's Projects folder and opened in the Editor.",
                 AutoSize = true,
                 MaximumSize = new Size(UiScale.Pixels(460), 0),
                 Margin = new Padding(0, 0, 0, UiScale.Pixels(10))
@@ -91,7 +91,7 @@ namespace Supervertaler.Trados.Controls
             grid.Controls.Add(_lblInfo, 0, 4);
             grid.SetColumnSpan(_lblInfo, 2);
 
-            _ok = new Button { Text = "Make the project", AutoSize = true, DialogResult = DialogResult.None };
+            _ok = new Button { Text = "Create project", AutoSize = true, DialogResult = DialogResult.None };
             var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
             _ok.Click += OnOk;
             var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, UiScale.Pixels(12), 0, 0) };

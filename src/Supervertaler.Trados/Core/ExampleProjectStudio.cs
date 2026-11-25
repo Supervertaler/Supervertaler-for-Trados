@@ -68,7 +68,7 @@ namespace Supervertaler.Trados.Core
                     null, projectsFolder, projectsFolder, registeredNames);
                 if (plan.Errors.Count > 0)
                 {
-                    result.Error = "The example project could not be made: " + string.Join(" ", plan.Errors);
+                    result.Error = "The example project could not be created: " + string.Join(" ", plan.Errors);
                     return result;
                 }
 
@@ -77,7 +77,7 @@ namespace Supervertaler.Trados.Core
                 if (units.Count > 0)
                     addTm = project =>
                     {
-                        progress?.Invoke("making the translation memory");
+                        progress?.Invoke("creating the translation memory");
                         var w = AddTm(project, plan.ProjectFolder, d, units);
                         if (w == null) result.TmAdded = true;
                         return w;
@@ -106,7 +106,7 @@ namespace Supervertaler.Trados.Core
                 var terms = ExampleProject.TermPairs(data, d);
                 if (terms.Count > 0)
                 {
-                    progress?.Invoke("making the termbase");
+                    progress?.Invoke("creating the termbase");
                     var why = AddTermbase(result.ProjectFile, folder.Name, d, terms);
                     if (why == null) result.TermbaseAdded = true;
                     else result.Warnings.Add("The example termbase could not be added (" + ProjectCreator.Sentence(why, false) +
@@ -114,7 +114,7 @@ namespace Supervertaler.Trados.Core
                 }
 
                 // Every language: the bank is in English and true for all of them.
-                progress?.Invoke("making the memory bank");
+                progress?.Invoke("creating the memory bank");
                 var bankWhy = AddMemoryBank(result.ProjectFile, folder.Name, UserDataPath.MemoryBanksRoot);
                 if (bankWhy == null) result.MemoryBankAdded = true;
                 else result.Warnings.Add("The example memory bank could not be added (" + ProjectCreator.Sentence(bankWhy, false) +
@@ -136,7 +136,7 @@ namespace Supervertaler.Trados.Core
             }
             catch (Exception ex)
             {
-                result.Error = "The example project could not be made: " + ProjectCreator.Sentence(ex.Message, true);
+                result.Error = "The example project could not be created: " + ProjectCreator.Sentence(ex.Message, true);
                 return result;
             }
             finally

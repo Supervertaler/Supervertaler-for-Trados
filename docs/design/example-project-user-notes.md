@@ -5,7 +5,7 @@ repository). Not yet in Help.
 
 ## What it is
 
-- **Settings > AI Settings > Open example project…** makes a small Trados project to try Supervertaler on, and
+- **Settings > AI Settings > Open example project…** creates a small Trados project to try Supervertaler on, and
   opens it in the Editor. Pressing it saves the settings first (so a key you just pasted in is used) and closes
   the Settings window.
 - The document is an invented installation guide for a water heater ("Acme AquaLine AL-50"): about 70 segments,

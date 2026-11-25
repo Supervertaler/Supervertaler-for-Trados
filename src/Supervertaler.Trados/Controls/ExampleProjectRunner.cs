@@ -28,7 +28,7 @@ namespace Supervertaler.Trados.Controls
             var projectsFolder = AiAssistantViewPart.StudioProjectsFolder();
             if (projectsFolder == null)
             {
-                Say(owner, "Studio's Projects folder could not be found, so the example project cannot be made.", MessageBoxIcon.Warning);
+                Say(owner, "Studio's Projects folder could not be found, so the example project cannot be created.", MessageBoxIcon.Warning);
                 return;
             }
 
@@ -75,7 +75,7 @@ namespace Supervertaler.Trados.Controls
             // 4. What happened.
             if (status == null || status.Status != "done")
             {
-                Say(owner, status?.Error ?? "The example project could not be made.", MessageBoxIcon.Warning);
+                Say(owner, status?.Error ?? "The example project could not be created.", MessageBoxIcon.Warning);
                 return;
             }
             var lines = new List<string>
@@ -165,7 +165,7 @@ namespace Supervertaler.Trados.Controls
                 {
                     Text = "You already have the example project for " + language + " (\"" + name + "\").\n\n" +
                            "Open it as it is, with your changes, or start afresh? Starting afresh deletes it, " +
-                           "with its termbase and memory bank, and makes a new one.",
+                           "with its termbase and memory bank, and creates a new one.",
                     AutoSize = true, MaximumSize = new Size(UiScale.Pixels(420), 0)
                 };
                 var open = new Button { Text = "Open it", AutoSize = true };
@@ -211,7 +211,7 @@ namespace Supervertaler.Trados.Controls
                 StartPosition = FormStartPosition.CenterParent;
                 Font = new Font("Segoe UI", 9f);
                 ClientSize = new Size(UiScale.Pixels(420), UiScale.Pixels(90));
-                _label = new Label { Dock = DockStyle.Top, Height = UiScale.Pixels(40), Text = "Making the example project: starting" };
+                _label = new Label { Dock = DockStyle.Top, Height = UiScale.Pixels(40), Text = "Creating the example project: starting" };
                 var bar = new ProgressBar { Dock = DockStyle.Top, Style = ProgressBarStyle.Marquee, Height = UiScale.Pixels(18) };
                 Padding = new Padding(UiScale.Pixels(12));
                 Controls.Add(bar);
@@ -232,7 +232,7 @@ namespace Supervertaler.Trados.Controls
                     Close();
                     return;
                 }
-                _label.Text = "Making the example project: " + (st.Progress ?? "working");
+                _label.Text = "Creating the example project: " + (st.Progress ?? "working");
             }
 
             protected override void Dispose(bool disposing)
