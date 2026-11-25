@@ -7,7 +7,8 @@
 #   B  which prompts set_active_prompt accepts (ActivePrompt.Validate): unknown path refused
 #      with near matches and no fallback; memoQ-only refused; QuickLauncher refused; the
 #      wrong mode refused both ways; a translate prompt outside the Translate folder accepted
-#      (the Prompt Manager's rule); "trados", "both" and no app accepted; 'kind' parsing
+#      (the Prompt Manager's rule); "trados", "both" and no app accepted; 'kind' parsing; what
+#      save_prompt's reply suggests next, by the same rules
 #   C  the stale-write risk the handoff names, reproduced: a write to the project's file
 #      alone is undone by the save every project switch makes (SaveCurrentProjectSettings
 #      -> ExtractProjectSettings), and the setter's write (BatchPromptChoice.Remember into
@@ -186,6 +187,16 @@ public static class ActivePromptTest {
         Check(Kind(null, out pr) && !pr, "B14 kind omitted = translate");
         Check(Kind("Proofread", out pr) && pr, "B15 kind 'Proofread' = proofread");
         Check(!Kind("review", out pr), "B16 any other kind refused, not guessed");
+        // What save_prompt's reply tells the chat to do next, by the same rules.
+        Func<string, string> hint = rel => (string)AP.GetMethod("AfterSaveHint").Invoke(null, new object[] { lib.First(x => x.RelativePath == rel) });
+        var h = hint(@"Translate\memoQ only [memoQ].md");
+        Check(h.Contains("memoQ only") && !h.Contains("set_active_prompt"), "B17 save_prompt on a memoQ-only prompt does not suggest set_active_prompt");
+        h = hint(@"QuickLauncher\Explain.md");
+        Check(h.Contains("QuickLauncher") && !h.Contains("set_active_prompt"), "B18 save_prompt on a QuickLauncher prompt does not suggest set_active_prompt");
+        h = hint(@"Proofread\PROJ-001 review.md");
+        Check(h.Contains("set_active_prompt") && h.Contains("kind \"proofread\""), "B19 save_prompt on a proofreading prompt suggests kind proofread");
+        h = hint(@"Translate\Acme patents.md");
+        Check(h.Contains("set_active_prompt") && !h.Contains("kind"), "B20 save_prompt on a translation prompt suggests set_active_prompt");
     }
 
     const string ProjectPath = @"C:\Projects\PROJ-001\PROJ-001.sdlproj";

@@ -157,6 +157,31 @@ namespace Supervertaler.Trados.Core
             return p;
         }
 
+        /// <summary>
+        /// The sentence save_prompt's reply ends with: how the prompt just saved can
+        /// be used, by the same rules as <see cref="Validate"/>, so the chat is never
+        /// told to call set_active_prompt for a prompt it would refuse.
+        /// </summary>
+        public static string AfterSaveHint(PromptTemplate p)
+        {
+            if (p == null) return "";
+            if (string.Equals((p.App ?? "").Trim(), "memoq", StringComparison.OrdinalIgnoreCase))
+                return "It is marked for memoQ only, so Supervertaler for Trados cannot run it and it cannot be "
+                     + "made the active prompt here.";
+            if (p.IsQuickLauncher)
+                return "It is a QuickLauncher prompt: it appears in the editor's right-click menu and is never "
+                     + "the active prompt.";
+            if (IsProofreadCategory(p))
+                return "Saving does NOT make it the active proofreading prompt: the next Proofread run still uses "
+                     + "the prompt that was active before. To use this one, call set_active_prompt with path \""
+                     + p.RelativePath + "\" and kind \"proofread\" (after telling the user), or the user picks it "
+                     + "under Batch Operations > Prompt in Proofread mode.";
+            return "Saving does NOT make it the active prompt: the next Batch Translate run still uses the "
+                 + "prompt that was active before. To use this one, call set_active_prompt with path \""
+                 + p.RelativePath + "\" (after telling the user), or the user picks it under "
+                 + "Batch Operations > Prompt.";
+        }
+
         /// <summary>Whether a prompt belongs to the Proofread mode, by the same rule
         /// as the Prompt Manager and the Batch list.</summary>
         public static bool IsProofreadCategory(PromptTemplate p) =>

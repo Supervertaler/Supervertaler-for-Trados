@@ -4151,6 +4151,9 @@ namespace Supervertaler.Trados.Core
                 }
 
                 var appWord = string.IsNullOrWhiteSpace(target.App) ? "both" : target.App;
+                // Read back as the library loads it, so the QuickLauncher flag (set
+                // from the folder at load time) is what set_active_prompt will see.
+                var saved = PromptPaths.Find(new PromptLibrary(), target.RelativePath) ?? target;
                 WriteJson(context, 200, new BridgeSavePromptResponse
                 {
                     Ok = true,
@@ -4166,10 +4169,7 @@ namespace Supervertaler.Trados.Core
                     // changed only by set_active_prompt or by the user in the panel.
                     Note = (created ? "Saved to the Trados prompt library as \"" : "Updated \"") + target.Name + "\" ("
                          + target.RelativePath + "). Recorded as drafted by the chat. "
-                         + "Saving does NOT make it the active prompt: the next Batch Translate run still uses the "
-                         + "prompt that was active before. To use this one, call set_active_prompt with path \""
-                         + target.RelativePath + "\" (after telling the user), or the user picks it under "
-                         + "Batch Operations > Prompt."
+                         + ActivePrompt.AfterSaveHint(saved)
                 });
             }
             catch (Exception ex)
