@@ -17,6 +17,7 @@
 - **During the trial, with the anonymous usage statistics on, the trial check-in also says how many AI requests have been made.** It sends a number (up to 100) and the day of the first request, and checks in once more after the first request of a Studio session. This shows whether new users get as far as using the AI. Nothing else is sent: no text, project, file or model. With the usage statistics switched off, or with a licence, nothing about it is sent.
 
 ### Fixed
+- **AI assistants (MCP): opening a project's files in the Editor failed in Studio 2024 and 2026.** `open_project` with files stopped with "Object reference not set to an instance of an object" (opening the project alone worked). Fixed: the files open in the Editor again. Studio 2022 was not affected.
 - **The TermLens refresh button's tooltip no longer mentions F5, and the Help no longer lists F5 as a TermLens shortcut.** F5 never refreshed TermLens: the command existed in Supervertaler but was never registered with Trados Studio, so pressing F5 did whatever Studio itself does with it. The command has been removed; use the **↻** button in the TermLens panel to reload your Supervertaler termbases from disk.
 
 ## [18.20.209 / 19.20.209] – 2026-11-21

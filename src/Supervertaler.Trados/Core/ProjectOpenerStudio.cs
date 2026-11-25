@@ -105,7 +105,9 @@ namespace Supervertaler.Trados.Core
                     var files = pick.Files.Select(f => (ProjectFile)f.Tag).ToList();
                     OnUi(() =>
                     {
-                        var editor = StudioEditor.Controller;
+                        // Not StudioEditor.Controller: Open needs the Editor view (see ControllerWithView).
+                        var editor = StudioEditor.ControllerWithView
+                            ?? throw new InvalidOperationException("Studio's Editor is not available.");
                         if (files.Count == 1) editor.Open(files[0], EditingMode.Translation);
                         else editor.Open(files, EditingMode.Translation);
                         return true;
@@ -121,6 +123,7 @@ namespace Supervertaler.Trados.Core
             {
                 var inner = (ex as AggregateException)?.InnerException ?? ex;
                 result.Error = "Opening the project failed: " + inner.Message;
+                try { DiagnosticLog.WriteAlways("OpenProject", "failed for " + projectQuery + ": " + ex); } catch { }
                 return result;
             }
         }
