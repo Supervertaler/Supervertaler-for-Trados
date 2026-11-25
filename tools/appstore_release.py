@@ -197,6 +197,8 @@ def collect_sections(entries):
 
 
 CHANGELOG_PAGE = "https://supervertaler.com/changelog/trados/"
+UPDATE_HELP = ("https://docs.supervertaler.com/trados/troubleshooting/"
+               "#the-installer-finishes-but-the-plugin-never-appears")
 # Headlines listed per section before the rest is counted. One release rarely
 # reaches it; notes that cover several releases (a skipped App Store upload) do,
 # and the tab must stay a short read then too.
@@ -254,6 +256,11 @@ def short_changelog(added, changed, fixed, highlights, newest, since):
         lines.append(f"Full changelog: {CHANGELOG_PAGE}?since={since}")
     else:
         lines.append(f"Full changelog: {CHANGELOG_PAGE}#v{newest}")
+    # Every release is an update, and an update from the App Store inside
+    # Studio can leave the old copy behind, so Studio loads neither (two users
+    # in two days after 209, 23-24 Nov 2026; both fixed by the clean-up there).
+    lines.append("")
+    lines.append(f"Supervertaler missing after the update? See {UPDATE_HELP}")
     return "\n".join(lines)
 
 
