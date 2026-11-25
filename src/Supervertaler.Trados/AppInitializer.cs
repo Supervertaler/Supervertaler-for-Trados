@@ -68,6 +68,11 @@ namespace Supervertaler.Trados
             if (HandlePendingUpdate())
                 return;
 
+            // A copy of this Studio still running without a window holds the plugin
+            // folders, so the next update can't finish (two users, 23-24 Nov 2026).
+            // Checked once, a little after startup, and only said, never acted on.
+            ScheduleHiddenStudioCheck();
+
             // The first start with its own prompt library carries over a pre-release
             // prompt_library\Trados if there is one, then copies the prompts meant
             // for Trados from the shared folder (once; see ProductPromptLibrary).
@@ -281,6 +286,52 @@ namespace Supervertaler.Trados
         /// message box is centred on its owner, so an owner parked off-screen
         /// would take the message off-screen with it.
         /// </summary>
+        // Held so the one-shot timer isn't collected before it fires; released when it has.
+        private static System.Threading.Timer _hiddenStudioTimer;
+
+        /// <summary>
+        /// Once per Studio session, <see cref="HiddenStudioCheck.DelaySeconds"/> after
+        /// startup: if another copy of this Studio runs without a window, log it and tell
+        /// the user (see <see cref="HiddenStudioCheck"/>). Never throws, never ends a
+        /// process: closing it is the user's decision.
+        /// </summary>
+        private static void ScheduleHiddenStudioCheck()
+        {
+            try
+            {
+                if (_hiddenStudioTimer != null) return;
+                _hiddenStudioTimer = new System.Threading.Timer(_ =>
+                {
+                    try
+                    {
+                        int ownId;
+                        using (var self = System.Diagnostics.Process.GetCurrentProcess()) ownId = self.Id;
+                        var hidden = HiddenStudioCheck.FindHidden(
+                            ownId, HiddenStudioCheck.OwnPath(), HiddenStudioCheck.Snapshot());
+                        var text = HiddenStudioCheck.Message(hidden);
+                        if (text == null) return;
+                        DiagnosticLog.WriteAlways("Startup", "Studio running in the background without a window: process "
+                            + string.Join(", ", hidden.ConvertAll(p => p.Id.ToString())) + ". User told.");
+                        // Only through the UI thread: a message box from a timer thread could open behind Studio.
+                        if (!UiThread.IsAvailable) return;
+                        UiThread.Invoke(() => MessageAtStartup(text,
+                            "Supervertaler - Trados Studio running in the background", MessageBoxIcon.Warning));
+                    }
+                    catch (Exception ex)
+                    {
+                        try { DiagnosticLog.WriteAlways("Startup", "Background-Studio check failed: " + ex.Message); } catch { }
+                    }
+                    finally
+                    {
+                        var t = _hiddenStudioTimer;
+                        _hiddenStudioTimer = null;
+                        try { t?.Dispose(); } catch { }
+                    }
+                }, null, HiddenStudioCheck.DelaySeconds * 1000, System.Threading.Timeout.Infinite);
+            }
+            catch { }
+        }
+
         private static void MessageAtStartup(string text, string caption, MessageBoxIcon icon)
         {
             using (var owner = new Form
