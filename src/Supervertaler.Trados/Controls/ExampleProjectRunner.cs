@@ -96,7 +96,45 @@ namespace Supervertaler.Trados.Controls
             }
             var keyNote = NoKeyNote();
             if (keyNote != null) { lines.Add(""); lines.Add(keyNote); }
-            Say(owner, string.Join(Environment.NewLine, lines), MessageBoxIcon.Information);
+            lines.Add("");
+            lines.Add("The guide lists which sentences have translation memory matches, and more to try. " +
+                      "It opens in your browser, so you can keep it beside Studio.");
+            ShowDone(owner, string.Join(Environment.NewLine, lines));
+        }
+
+        /// <summary>
+        /// The closing message, with "Open the guide": the Help page "Try the
+        /// example project". A message box is gone once it is closed, and the
+        /// panels are wherever each user's layout puts them (or closed), so the
+        /// lasting copy of the tips is the Help page, in its own browser window.
+        /// </summary>
+        private static void ShowDone(IWin32Window owner, string text)
+        {
+            using (var f = new Form
+            {
+                Text = Caption, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
+                ShowInTaskbar = false, StartPosition = FormStartPosition.CenterParent, AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink, Font = new Font("Segoe UI", 9f), Padding = new Padding(UiScale.Pixels(12))
+            })
+            {
+                var label = new Label { Text = text, AutoSize = true, MaximumSize = new Size(UiScale.Pixels(480), 0) };
+                var guide = new Button { Text = "Open the guide", AutoSize = true };
+                var ok = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK };
+                guide.Click += (s, e) =>
+                {
+                    try { HelpSystem.OpenHelp(HelpSystem.Topics.ExampleProject); } catch { }
+                    f.Close();
+                };
+                var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true, Margin = new Padding(0, UiScale.Pixels(12), 0, 0) };
+                buttons.Controls.AddRange(new Control[] { guide, ok });
+                var stack = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
+                stack.Controls.Add(label);
+                stack.Controls.Add(buttons);
+                f.Controls.Add(stack);
+                f.AcceptButton = guide;
+                f.CancelButton = ok;
+                f.ShowDialog(owner);
+            }
         }
 
         /// <summary>A line about the API key when the chosen AI provider has none, else null.</summary>
