@@ -30,6 +30,14 @@ namespace Supervertaler.Trados.Core
         /// lightweight <see cref="LoadAllTerms"/> path used by live TermLens matching.
         /// </summary>
         ImportedTermbase LoadForImport();
+
+        /// <summary>
+        /// One page of entries in entry-number order, read from the termbase in
+        /// pages (never loaded whole), for the list_terms MCP tool. Never throws:
+        /// a failure comes back in <see cref="TermListPage.Error"/>.
+        /// </summary>
+        TermListPage ListConcepts(string sourceIndexName, string targetIndexName,
+            int offset, int limit, string contains);
     }
 
     /// <summary>

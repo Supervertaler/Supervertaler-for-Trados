@@ -3810,11 +3810,60 @@ namespace Supervertaler.Trados
                 // On a job pairing a small curated client termbase with a large
                 // general-domain one, this is the difference between signal and
                 // hundreds of findings of noise.
-                HashSet<string> tbFilter = null;
-                if (q.Termbases != null && q.Termbases.Count > 0)
-                    tbFilter = new HashSet<string>(
-                        q.Termbases.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()),
-                        StringComparer.OrdinalIgnoreCase);
+                //
+                // Every name is resolved first, by the one rule all termbase tools
+                // share (TermbaseCatalog): an unknown name is an error, not a filter
+                // that matches nothing. It used to be compared as a string against
+                // each entry's termbase name, and a Trados termbase's name as
+                // list_resources gave it (its file name) never equalled the name on
+                // its entries - so the check silently looked at nothing and reported
+                // a clean document.
+                HashSet<long> tbFilter = null;
+                string filterNote = null;
+                var wantedTbs = (q.Termbases ?? new List<string>())
+                    .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).ToList();
+                if (wantedTbs.Count > 0)
+                {
+                    var catalog = TermbaseCatalog.Build(
+                        ResolveSupervertalerDbPath(), TermLensEditorViewPart.GetMultiTermConfigs());
+                    tbFilter = new HashSet<long>();
+                    var errors = new List<string>();
+                    var notRead = new List<string>();
+                    var checkedNames = new List<string>();
+                    var disabledSv = new HashSet<long>(SettingsService.Current?.DisabledTermbaseIds ?? new List<long>());
+                    var loadedTrados = new HashSet<long>((TermLensEditorViewPart.GetMultiTermInfos()
+                            ?? new List<Models.MultiTermTermbaseInfo>())
+                        .Where(i => i != null && i.LoadMode != Models.MultiTermLoadMode.Failed)
+                        .Select(i => i.SyntheticId));
+                    foreach (var w in wantedTbs)
+                    {
+                        var tb = TermbaseCatalog.Resolve(catalog, w, out var err);
+                        if (tb == null) { errors.Add(err); continue; }
+                        tbFilter.Add(tb.Id);
+                        checkedNames.Add(tb.ToString());
+                        if (tb.IsTrados ? !loadedTrados.Contains(tb.Id) : disabledSv.Contains(tb.Id))
+                            notRead.Add(tb.ToString());
+                    }
+                    if (errors.Count > 0)
+                        return new BridgeQaResponse
+                        {
+                            Available = false,
+                            Check = "terminology",
+                            Note = "termbases: " + string.Join(" ", errors.Distinct())
+                        };
+                    if (notRead.Count == tbFilter.Count)
+                        return new BridgeQaResponse
+                        {
+                            Available = false,
+                            Check = "terminology",
+                            Note = "nothing to check: " + string.Join(", ", notRead) + (notRead.Count == 1 ? " is" : " are") +
+                                   " not being read (Read unticked in Supervertaler's Termbases settings, switched off " +
+                                   "there, or its file could not be opened). Ask the user to switch it on, or use list_terms to read it."
+                        };
+                    filterNote = "Restricted to: " + string.Join(", ", checkedNames.Except(notRead)) + ".";
+                    if (notRead.Count > 0)
+                        filterNote += " Not checked, because not being read: " + string.Join(", ", notRead) + ".";
+                }
 
                 foreach (var s in translated)
                 {
@@ -3866,9 +3915,7 @@ namespace Supervertaler.Trados
                         // to one termbase could hide that termbase's own findings,
                         // and report a clean result while doing it.
                         var applicable = cand.Item3
-                            .Where(en => tbFilter == null
-                                         || tbFilter.Contains(en.TermbaseName ?? "")
-                                         || tbFilter.Contains(en.TermbaseId.ToString()))
+                            .Where(en => tbFilter == null || tbFilter.Contains(en.TermbaseId))
                             .ToList();
                         if (applicable.Count == 0) continue;   // span stays available
 
@@ -3963,9 +4010,7 @@ namespace Supervertaler.Trados
                 if (mismatched != null && mismatched.Count > 0)
                 {
                     var reportable = mismatched
-                        .Where(m => tbFilter == null
-                                    || tbFilter.Contains(m.TermbaseName ?? "")
-                                    || tbFilter.Contains(m.TermbaseId.ToString()))
+                        .Where(m => tbFilter == null || tbFilter.Contains(m.TermbaseId))
                         .Select(m => new BridgeQaDirectionMismatch
                         {
                             Termbase = m.TermbaseName,
@@ -4010,6 +4055,9 @@ namespace Supervertaler.Trados
                         "and only the pairs themselves tell you which is which, so do not report them all as " +
                         "broken.";
                 }
+
+                if (filterNote != null)
+                    response.Note = filterNote + " " + (response.Note ?? "");
             }
 
             response.Returned = q.Type == "terminology"
@@ -4299,7 +4347,8 @@ namespace Supervertaler.Trados
                                     IsProjectTermbase = tb.Id == settings.ProjectTermbaseId,
                                     ReadEnabled = !disabled.Contains(tb.Id),
                                     WriteEnabled = write.Contains(tb.Id),
-                                    Kind = "supervertaler"
+                                    Kind = "supervertaler",
+                                    Id = tb.Id
                                 });
                             }
                         }
@@ -4312,25 +4361,42 @@ namespace Supervertaler.Trados
             }
 
             // Trados project termbases (.ttb for Studio 2026, MultiTerm .sdltb
-            // for 2024), as detected and loaded by TermLens for the open
-            // document. Read-only for the AI (add_term can't write them).
+            // for 2024), every one attached to the open document's project -
+            // including any switched off in Supervertaler's settings, which used to
+            // be left out, so a termbase the user could see in Trados was missing
+            // here with no reason given. Named by the project's own name for it,
+            // the name lookup_term and check_terminology show on its entries (this
+            // used to give the file name instead, which no other tool accepted).
+            // Read-only for the AI (add_term can't write them).
             try
             {
+                var loaded = new Dictionary<long, Models.MultiTermTermbaseInfo>();
                 foreach (var info in TermLensEditorViewPart.GetMultiTermInfos()
                          ?? new List<Models.MultiTermTermbaseInfo>())
+                    if (info != null) loaded[info.SyntheticId] = info;
+
+                foreach (var config in TermLensEditorViewPart.GetMultiTermConfigs()
+                         ?? new List<Models.MultiTermTermbaseConfig>())
                 {
-                    var ext = "";
-                    try { ext = Path.GetExtension(info.FilePath ?? "").ToLowerInvariant(); } catch { }
+                    if (config == null) continue;
+                    loaded.TryGetValue(config.SyntheticId, out var info);
+                    bool off = info == null && TermLensEditorViewPart.IsMultiTermDisabled(config.SyntheticId);
+                    bool failed = info != null && info.LoadMode == Models.MultiTermLoadMode.Failed;
                     response.Termbases.Add(new BridgeTermbaseResource
                     {
-                        Name = info.Name,
-                        Languages = $"{info.SourceIndexName} → {info.TargetIndexName}",
-                        Terms = info.TermCount,
+                        Name = config.TermbaseName,
+                        Languages = $"{config.SourceIndexName} → {config.TargetIndexName}",
+                        Terms = info?.TermCount ?? 0,
                         IsProjectTermbase = true,
-                        ReadEnabled = info.IsEnabled
-                            && info.LoadMode != Models.MultiTermLoadMode.Failed,
+                        ReadEnabled = info != null && info.IsEnabled && !failed,
                         WriteEnabled = false,
-                        Kind = ext == ".ttb" ? "trados-ttb" : "multiterm"
+                        Kind = Core.TermbaseCatalog.KindOfFile(config.FilePath),
+                        Id = config.SyntheticId,
+                        File = config.FilePath,
+                        Status = off ? "switched off in Supervertaler's Termbases settings"
+                               : failed ? "the file could not be opened directly"
+                               : info == null ? "not loaded yet"
+                               : null
                     });
                 }
             }
@@ -5122,17 +5188,21 @@ namespace Supervertaler.Trados
                 }
                 else
                 {
-                    chosen = available.FirstOrDefault(t =>
-                                 string.Equals(t.Name, wanted, StringComparison.OrdinalIgnoreCase))
-                             ?? available.FirstOrDefault(t =>
-                                 string.Equals(t.FilePath, wanted, StringComparison.OrdinalIgnoreCase));
-                    if (chosen == null)
+                    // The rule every termbase tool shares: id, the project's name for
+                    // it (as list_resources and lookup_term give it), file name or path.
+                    var tradosRefs = TermbaseCatalog.Build(null, TermLensEditorViewPart.GetMultiTermConfigs());
+                    var picked = TermbaseCatalog.Resolve(tradosRefs, wanted, out var pickError);
+                    if (picked == null)
                         return new BridgeImportTermbaseResponse
                         {
                             Ok = false,
-                            Error = $"no Trados termbase called '{wanted}' in this project. Available: " +
-                                    string.Join(", ", available.Select(t => t.Name))
+                            Error = "in this project's Trados termbases, " + pickError
                         };
+                    chosen = available.FirstOrDefault(t => t.SyntheticId == picked.Id)
+                             ?? new Models.MultiTermTermbaseInfo
+                             {
+                                 SyntheticId = picked.Id, FilePath = picked.FilePath, Name = picked.Name
+                             };
                 }
 
                 // ── 2. Read it ─────────────────────────────────────────────

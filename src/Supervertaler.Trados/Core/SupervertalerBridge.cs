@@ -188,6 +188,16 @@ namespace Supervertaler.Trados.Core
         /// Absent when the entry has none, so such a hit reads as it always did.</summary>
         [DataMember(Name = "sourceAbbreviation", Order = 13, EmitDefaultValue = false)] public string SourceAbbreviation { get; set; }
         [DataMember(Name = "targetAbbreviation", Order = 14, EmitDefaultValue = false)] public string TargetAbbreviation { get; set; }
+        /// <summary>The entry's own id inside its termbase: the row id in a
+        /// Supervertaler termbase, the concept id (Trados's entry number) in a
+        /// .ttb / .sdltb - the id list_terms reports. Two hits with the same terms
+        /// and different ids are a duplicated entry. Absent when unknown.</summary>
+        [DataMember(Name = "entryId", Order = 15, EmitDefaultValue = false)] public long? EntryId { get; set; }
+        /// <summary>The termbase's id, as list_resources reports it and every
+        /// termbase tool accepts.</summary>
+        [DataMember(Name = "termbaseId", Order = 16, EmitDefaultValue = false)] public long? TermbaseId { get; set; }
+        /// <summary>"supervertaler", "trados-ttb" or "multiterm", as list_resources.</summary>
+        [DataMember(Name = "termbaseKind", Order = 17, EmitDefaultValue = false)] public string TermbaseKind { get; set; }
     }
 
     [DataContract]
@@ -884,6 +894,16 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "writeEnabled", Order = 5)] public bool WriteEnabled { get; set; }
         /// <summary>"supervertaler", "trados-ttb" (Studio 2026), or "multiterm" (.sdltb).</summary>
         [DataMember(Name = "kind", Order = 6, EmitDefaultValue = false)] public string Kind { get; set; }
+        /// <summary>The id every termbase tool accepts in place of the name: the
+        /// database id of a Supervertaler termbase, a stable negative id for a
+        /// Trados one. The only safe choice when two termbases share a name.</summary>
+        [DataMember(Name = "id", Order = 7)] public long Id { get; set; }
+        /// <summary>Trados termbases: the termbase file. Its file name is accepted
+        /// as well as the name.</summary>
+        [DataMember(Name = "file", Order = 8, EmitDefaultValue = false)] public string File { get; set; }
+        /// <summary>Trados termbases only: why it is not being read, when it is not
+        /// (switched off in Supervertaler's settings, or the file could not be opened).</summary>
+        [DataMember(Name = "status", Order = 9, EmitDefaultValue = false)] public string Status { get; set; }
     }
 
     [DataContract]
@@ -2345,6 +2365,12 @@ namespace Supervertaler.Trados.Core
                 return;
             }
 
+            if (method == "GET" && path == "/v1/termbase-entries")
+            {
+                HandleTermList(context);
+                return;
+            }
+
             if (method == "POST" && path == "/v1/update-segments")
             {
                 HandleUpdateSegments(context);
@@ -3033,6 +3059,48 @@ namespace Supervertaler.Trados.Core
             WriteJson(context, 200, response);
         }
 
+        /// <summary>
+        /// GET /v1/termbase-entries (MCP list_terms): one page of one termbase's
+        /// entries. Runs on the bridge thread like term-lookup: it only reads the
+        /// database / termbase file and TermLens's list of detected project
+        /// termbases, never the Editor. Read-only for every kind of termbase.
+        /// </summary>
+        private void HandleTermList(HttpListenerContext context)
+        {
+            var qs = QueryUtf8(context.Request);
+            int? offset = null, limit = null;
+            string bad = !TryParseOptionalInt(qs["offset"], out offset) ? "offset"
+                       : !TryParseOptionalInt(qs["limit"], out limit) ? "limit" : null;
+            if (bad != null)
+            {
+                WriteJson(context, 400, new BridgeTermListResponse { Ok = false, Error = $"'{bad}' must be a whole number" });
+                return;
+            }
+
+            BridgeTermListResponse response;
+            try
+            {
+                var dbPath = ResolveDbPathSafe();
+                var all = TermbaseCatalog.Build(dbPath, TermLensEditorViewPart.GetMultiTermConfigs());
+                response = TermbaseListing.BuildResponse(all, dbPath, qs["termbase"], offset, limit, qs["contains"]);
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] termbase-entries threw: {ex.Message}");
+                response = new BridgeTermListResponse { Ok = false, Error = "listing the termbase failed: " + ex.Message };
+            }
+            WriteJson(context, 200, response);
+        }
+
+        private static bool TryParseOptionalInt(string raw, out int? value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(raw)) return true;
+            if (int.TryParse(raw.Trim(), System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var v)) { value = v; return true; }
+            return false;
+        }
+
         private void HandleTermLookup(HttpListenerContext context)
         {
             var term = QueryUtf8(context.Request)["q"];
@@ -3180,7 +3248,10 @@ namespace Supervertaler.Trados.Core
                             IsProjectTermbase = entry.TermbaseId == projectTbId,
                             DirectionMismatch = reversed,
                             SourceAbbreviation = BlankToNull(entry.SourceAbbreviation),
-                            TargetAbbreviation = BlankToNull(entry.TargetAbbreviation)
+                            TargetAbbreviation = BlankToNull(entry.TargetAbbreviation),
+                            EntryId = entry.Id,
+                            TermbaseId = entry.TermbaseId,
+                            TermbaseKind = TermbaseCatalog.KindSupervertaler
                         });
                     }
                     if (excludedInactive > 0)
@@ -3199,6 +3270,15 @@ namespace Supervertaler.Trados.Core
                             "works exactly as it should and only the labels need correcting. Do not assume the " +
                             "first case: both occur, and on a real termbase the harmless one was a real share of " +
                             "the flags.").Trim();
+                    // Kind per Trados termbase, from the same detection list_resources uses.
+                    var studioKinds = new Dictionary<long, string>();
+                    try
+                    {
+                        foreach (var c in TermLensEditorViewPart.GetMultiTermConfigs())
+                            if (c != null) studioKinds[c.SyntheticId] = TermbaseCatalog.KindOfFile(c.FilePath);
+                    }
+                    catch { /* kind is informational */ }
+
                     foreach (var entry in studioHits)
                     {
                         var notes = entry.Notes;
@@ -3211,7 +3291,11 @@ namespace Supervertaler.Trados.Core
                         {
                             Source = entry.SourceTerm ?? "",
                             Target = entry.TargetTerm ?? "",
-                            TermbaseName = (entry.TermbaseName ?? "Trados termbase") + " [Trados project termbase]",
+                            // The project's own name for the termbase - the name
+                            // list_resources reports and every termbase tool accepts.
+                            // (Up to 18.20.209 it carried a " [Trados project termbase]"
+                            // suffix, which matched nothing anywhere else.)
+                            TermbaseName = entry.TermbaseName ?? "Trados termbase",
                             Definition = entry.Definition,
                             Domain = entry.Domain,
                             Notes = notes,
@@ -3219,7 +3303,10 @@ namespace Supervertaler.Trados.Core
                             MatchedField = ComputeMatchedField(q, entry.SourceTerm, entry.TargetTerm),
                             SourceLang = entry.SourceLang,
                             TargetLang = entry.TargetLang,
-                            IsProjectTermbase = true
+                            IsProjectTermbase = true,
+                            EntryId = entry.ConceptId,
+                            TermbaseId = entry.TermbaseId,
+                            TermbaseKind = studioKinds.TryGetValue(entry.TermbaseId, out var kind) ? kind : null
                         });
                     }
 
@@ -4545,7 +4632,7 @@ namespace Supervertaler.Trados.Core
             "If Studio has only just started, wait about 20 seconds and try again; otherwise open a document " +
             "in the Editor (open_project can do that) and ask again. Tools that work without the Editor - " +
             "list_projects, get_project, list_project_templates, list_tms, create_project, open_project, " +
-            "get_task_status, the prompt and SuperMemory tools, lookup_term, help - work now.";
+            "get_task_status, the prompt and SuperMemory tools, lookup_term, list_terms (Supervertaler termbases), help - work now.";
 
         /// <summary>Endpoints that never touch the Editor or the AI Assistant pane:
         /// disk reads, the prompt library, SuperMemory banks on disk, the term
@@ -4556,7 +4643,7 @@ namespace Supervertaler.Trados.Core
             SessionReportPath, "/v1/tools", "/v1/help",
             "/v1/projects", "/v1/project-info", "/v1/tms", "/v1/project-templates",
             "/v1/prompts", "/v1/prompt", "/v1/save-prompt",
-            "/v1/term-lookup",
+            "/v1/term-lookup", "/v1/termbase-entries",
             "/v1/supermemory-banks", "/v1/supermemory-search",
             "/v1/supermemory-file", "/v1/supermemory-write", "/v1/supermemory-section", "/v1/supermemory-term-row",
             "/v1/create-project", "/v1/open-project", "/v1/task-status",

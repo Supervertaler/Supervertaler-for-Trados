@@ -147,6 +147,113 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// One page of a termbase's entries in id order (= the order they were
+        /// added), with their synonyms, for the list_terms MCP tool. Paged in SQL,
+        /// so a 100,000-entry termbase costs one page per call. <paramref name="contains"/>
+        /// keeps entries whose source or target term, a synonym or an abbreviation
+        /// contains it, ignoring case. Columns a database predates are left empty.
+        /// </summary>
+        public TermListPage ListTerms(long termbaseId, int offset, int limit, string contains)
+        {
+            var page = new TermListPage();
+            if (_connection == null) { page.Error = LastError ?? "the database is not open"; return page; }
+
+            try
+            {
+                bool hasSynonyms = HasColumn(_connection, "termbase_synonyms", "term_id");
+                string Col(string name) => HasColumn(_connection, "termbase_terms", name) ? "t." + name : "NULL";
+
+                var where = "WHERE CAST(t.termbase_id AS INTEGER) = @tb";
+                bool filter = !string.IsNullOrWhiteSpace(contains);
+                if (filter)
+                {
+                    _connection.CreateFunction("sv_contains",
+                        (string text, string needle) => TermbaseListing.Contains(text, needle), isDeterministic: true);
+                    where += " AND (sv_contains(t.source_term, @q) OR sv_contains(t.target_term, @q)";
+                    if (_hasAbbreviationColumns)
+                        where += " OR sv_contains(t.source_abbreviation, @q) OR sv_contains(t.target_abbreviation, @q)";
+                    if (hasSynonyms)
+                        where += " OR t.id IN (SELECT term_id FROM termbase_synonyms WHERE sv_contains(synonym_text, @q))";
+                    where += ")";
+                }
+
+                using (var cmd = new SqliteCommand("SELECT COUNT(*) FROM termbase_terms t " + where, _connection))
+                {
+                    cmd.Parameters.AddWithValue("@tb", termbaseId);
+                    if (filter) cmd.Parameters.AddWithValue("@q", contains.Trim());
+                    page.Total = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                var sql = "SELECT t.id, t.source_term, t.target_term, " +
+                          $"{Col("definition")}, {Col("domain")}, {Col("notes")}, {Col("forbidden")}, " +
+                          $"{Col("is_nontranslatable")}, {Col("created_date")}, {Col("modified_date")}, " +
+                          $"{Col("source_abbreviation")}, {Col("target_abbreviation")} " +
+                          "FROM termbase_terms t " + where + " ORDER BY t.id LIMIT @limit OFFSET @offset";
+                var byId = new Dictionary<long, BridgeTermListEntry>();
+                using (var cmd = new SqliteCommand(sql, _connection))
+                {
+                    cmd.Parameters.AddWithValue("@tb", termbaseId);
+                    if (filter) cmd.Parameters.AddWithValue("@q", contains.Trim());
+                    cmd.Parameters.AddWithValue("@limit", limit);
+                    cmd.Parameters.AddWithValue("@offset", offset);
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                        {
+                            string S(int i) => r.IsDBNull(i) ? null : BlankToNull(Convert.ToString(r.GetValue(i), System.Globalization.CultureInfo.InvariantCulture));
+                            var e = new BridgeTermListEntry
+                            {
+                                Id = r.GetInt64(0),
+                                Definition = S(3),
+                                Domain = S(4),
+                                Notes = S(5),
+                                Forbidden = !r.IsDBNull(6) && GetBool(r, 6),
+                                NonTranslatable = !r.IsDBNull(7) && GetBool(r, 7),
+                                Created = TermbaseListing.IsoTimestamp(r.IsDBNull(8) ? null : r.GetValue(8)),
+                                Modified = TermbaseListing.IsoTimestamp(r.IsDBNull(9) ? null : r.GetValue(9)),
+                                SourceAbbreviation = S(10),
+                                TargetAbbreviation = S(11),
+                            };
+                            var src = S(1); if (src != null) e.Source.Add(src);
+                            var tgt = S(2); if (tgt != null) e.Target.Add(tgt);
+                            page.Entries.Add(e);
+                            byId[e.Id] = e;
+                        }
+                    }
+                }
+
+                // Synonyms for this page only: ids from the page above, so inlining is safe.
+                if (hasSynonyms && byId.Count > 0)
+                {
+                    var hasForbidden = HasColumn(_connection, "termbase_synonyms", "forbidden");
+                    using (var cmd = new SqliteCommand(
+                        "SELECT term_id, synonym_text, language FROM termbase_synonyms WHERE term_id IN (" +
+                        string.Join(",", byId.Keys) + ")" + (hasForbidden ? " AND COALESCE(forbidden, 0) = 0" : "") +
+                        " ORDER BY term_id, display_order, id", _connection))
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                        {
+                            if (r.IsDBNull(1) || !byId.TryGetValue(r.GetInt64(0), out var e)) continue;
+                            var text = r.GetString(1).Trim();
+                            if (text.Length == 0) continue;
+                            var list = string.Equals(r.IsDBNull(2) ? "" : r.GetString(2), "source",
+                                StringComparison.OrdinalIgnoreCase) ? e.Source : e.Target;
+                            if (!list.Contains(text)) list.Add(text);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                page.Error = "could not read the termbase: " + ex.Message;
+            }
+            return page;
+        }
+
+        private static string BlankToNull(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+        /// <summary>
         /// Every termbase's DECLARED direction, keyed by id. This is the
         /// canonical direction each entry inherits – see the rationale in
         /// <see cref="LoadAllTerms"/> for why the per-entry lang columns are

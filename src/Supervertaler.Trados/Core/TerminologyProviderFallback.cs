@@ -192,6 +192,8 @@ namespace Supervertaler.Trados.Core
                             TermbaseId = _syntheticId,
                             TermbaseName = _termbaseName,
                             Definition = definition,
+                            // The provider's search hit id is the entry's own number.
+                            ConceptId = sr.Id,
                             IsMultiTerm = true,
                             Ranking = 50
                         };

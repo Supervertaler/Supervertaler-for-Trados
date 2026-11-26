@@ -319,7 +319,7 @@
         "type": "object",
         "properties": {
           "termbases": {
-            "description": "Restrict the check to these termbases, by name or numeric id (see list_resources). Omit = all read-enabled termbases. Strongly recommended on projects that pair a curated client termbase with a large general-domain one.",
+            "description": "Restrict the check to these termbases, by name or id exactly as list_resources gives them. An unknown or ambiguous name is an error (listing what is available), never a silently empty check; the reply's note names the termbases actually checked. Omit = all read-enabled termbases. Strongly recommended on projects that pair a curated client termbase with a large general-domain one.",
             "type": "array",
             "items": {
               "type": "string"
@@ -859,7 +859,7 @@
     {
       "name": "list_resources",
       "access": "read",
-      "description": "List the translation resources available: the Trados TMs attached to the open project (file-based and GroupShare server TMs), and ALL termbases - Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before searching, and to answer 'what TMs/termbases am I using?'. Each termbase reports readEnabled and writeEnabled (the per-project Read/Write ticks) and isProjectTermbase (the Trados 'Project' flag \u2013 true for a job-specific termbase, false for a shared background one). Check isProjectTermbase before add_term/update_term/delete_term calls to see which Write-enabled termbase(s) a 'project' vs 'background' scope would resolve to, and to catch a stale project termbase left Write-enabled from a previous job.",
+      "description": "List the translation resources available: the Trados TMs attached to the open project (file-based and GroupShare server TMs), and ALL termbases - Supervertaler ones (kind: supervertaler, writable if flagged) and the Trados project's own (kind: trados-ttb or multiterm, always read-only). Useful for orientation before searching, and to answer 'what TMs/termbases am I using?'. Each termbase has an id and a name, which every termbase tool (lookup_term, list_terms, check_terminology, add_term) reports and accepts in the same form; pass the id when two termbases share a name. Trados termbases also give their file, and a status when they are not being read (switched off in Supervertaler's settings, or the file could not be opened). Each termbase reports readEnabled and writeEnabled (the per-project Read/Write ticks) and isProjectTermbase (the Trados 'Project' flag \u2013 true for a job-specific termbase, false for a shared background one). Check isProjectTermbase before add_term/update_term/delete_term calls to see which Write-enabled termbase(s) a 'project' vs 'background' scope would resolve to, and to catch a stale project termbase left Write-enabled from a previous job.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -1028,7 +1028,7 @@
     {
       "name": "lookup_term",
       "access": "read",
-      "description": "Look up a term in the user's termbases: exact match first (against source AND target terms), then substring fallback. Each hit's source/target are returned EXACTLY as stored, in that termbase's own declared direction - never reoriented - with matchedField saying which column ('source'/'target'/'both') the query text was found in, and the entry's stored sourceLang/targetLang. ABBREVIATIONS: a query equal to one of an entry's abbreviations also counts as an exact match – 'VI' finds 'vaste inrichting', 'PE' finds 'permanent establishment' – and matchedField is then 'sourceAbbreviation', 'targetAbbreviation' or 'bothAbbreviations'. That match is whole-abbreviation only (case-insensitive, never a substring, so 'PE' does not match inside a word). Every hit whose entry has abbreviations carries sourceAbbreviation/targetAbbreviation, on the same stored sides as source/target ('|' between spellings); a hit without them has no such keys and reads as before. That makes this tool safe for verifying what add_term wrote (it shares the same match normalisation as add_term's duplicate check, so the two never disagree). Each hit also reports isProjectTermbase - true for a job-specific termbase (the Trados 'Project' flag), false for a shared background one; weight project hits above background hits when they conflict, mirroring TermLens's pink-vs-blue chips. Searches EVERY Supervertaler termbase in the database - hits from termbases whose Read tick is OFF are flagged \"inactive\": true (mention that to the user when it matters, e.g. a hit only exists in an inactive termbase). Pass activeOnly=true to search only the active (Read-enabled) termbases - useful when the user has many termbases and wants results limited to what's in use. Also searches the Trados project's own termbases (.ttb/.sdltb) when a document is open (those are always active ones). A hit flagged \"directionMismatch\": true has stored languages that contradict its termbase's declared direction. READ THE PAIR before saying anything about it, because two very different things produce that flag. If the TEXT is the wrong way round (source column holding the termbase's TARGET language) the entry is indexed under the wrong language: it matches no source segment, check_terminology can never report it however badly the document violates it, and it is still in the termbase, still shows here, and still reads as enforced - tell the user, and repair it by re-adding the pair the right way round for that termbase. If only the language labels are wrong and the two terms are correctly oriented, the entry works exactly as it should and only the label needs fixing. Both occur in real termbases, so never report a flagged hit as broken without looking at the terms. Nothing else about the hit looks wrong (its text and its lang tags agree with each other), which is why the flag is the only signal there is.",
+      "description": "Look up a term in the user's termbases: exact match first (against source AND target terms), then substring fallback. Each hit's source/target are returned EXACTLY as stored, in that termbase's own declared direction - never reoriented - with matchedField saying which column ('source'/'target'/'both') the query text was found in, and the entry's stored sourceLang/targetLang. ABBREVIATIONS: a query equal to one of an entry's abbreviations also counts as an exact match – 'VI' finds 'vaste inrichting', 'PE' finds 'permanent establishment' – and matchedField is then 'sourceAbbreviation', 'targetAbbreviation' or 'bothAbbreviations'. That match is whole-abbreviation only (case-insensitive, never a substring, so 'PE' does not match inside a word). Every hit whose entry has abbreviations carries sourceAbbreviation/targetAbbreviation, on the same stored sides as source/target ('|' between spellings); a hit without them has no such keys and reads as before. That makes this tool safe for verifying what add_term wrote (it shares the same match normalisation as add_term's duplicate check, so the two never disagree). Each hit also reports isProjectTermbase - true for a job-specific termbase (the Trados 'Project' flag), false for a shared background one; weight project hits above background hits when they conflict, mirroring TermLens's pink-vs-blue chips. Searches EVERY Supervertaler termbase in the database - hits from termbases whose Read tick is OFF are flagged \"inactive\": true (mention that to the user when it matters, e.g. a hit only exists in an inactive termbase). Pass activeOnly=true to search only the active (Read-enabled) termbases - useful when the user has many termbases and wants results limited to what's in use. Also searches the Trados project's own termbases (.ttb/.sdltb) when a document is open (those are always active ones). Every hit carries entryId (the entry's own id: the Trados entry number / concept id, or the Supervertaler row id - two hits with the same terms and different entryIds are a duplicated entry, worth pointing out), termbaseId and termbaseKind; termbaseName is the same name list_resources gives, and either name or id can be passed to check_terminology, list_terms and add_term. To read a whole termbase rather than look up one term, use list_terms. A hit flagged \"directionMismatch\": true has stored languages that contradict its termbase's declared direction. READ THE PAIR before saying anything about it, because two very different things produce that flag. If the TEXT is the wrong way round (source column holding the termbase's TARGET language) the entry is indexed under the wrong language: it matches no source segment, check_terminology can never report it however badly the document violates it, and it is still in the termbase, still shows here, and still reads as enforced - tell the user, and repair it by re-adding the pair the right way round for that termbase. If only the language labels are wrong and the two terms are correctly oriented, the entry works exactly as it should and only the label needs fixing. Both occur in real termbases, so never report a flagged hit as broken without looking at the terms. Nothing else about the hit looks wrong (its text and its lang tags agree with each other), which is why the flag is the only signal there is.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1050,6 +1050,52 @@
       "paramMap": {
         "term": "q"
       },
+      "fixedQuery": {},
+      "fixedBody": {}
+    },
+    {
+      "name": "list_terms",
+      "access": "read",
+      "description": "List the entries of ONE termbase, a page at a time - the whole termbase, not one term. Use it before post-editing or reviewing against a client termbase: lookup_term only finds a term you already thought of, and check_terminology only matches source forms exactly as stored, so entries whose form in the text is inflected, split, or uses another preposition or article are missed unless you have read the list. Covers Supervertaler termbases AND the Trados project's own termbases (.ttb and MultiTerm .sdltb), read-only. 'termbase' takes the name or the id exactly as list_resources gives them (an unknown or ambiguous name is an error that lists the available termbases). Each entry has its id (the Trados entry number / concept id, or the Supervertaler row id - the same number lookup_term reports as entryId), every source and target term (synonyms included, the first being the main one), definition/domain/notes and any other fields, and createdBy/created and modifiedBy/modified where the termbase records them. Entries come in entry-id order; recently created or modified entries (look at the dates) often record the client's current preferences, so weigh them when entries conflict. Paging: 'total' is the number of entries (matching 'contains', if given), 'truncated' says more follow, and 'nextOffset' is where the next page starts - keep calling until truncated is false to read it all. A page past the end returns no entries and says so.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "termbase": {
+            "description": "The termbase, by name or id as list_resources gives them. A Trados termbase's file name is accepted too.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Entries per page (default 100, at most 500).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          },
+          "offset": {
+            "description": "Entries to skip (default 0). Use the previous page's nextOffset.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          },
+          "contains": {
+            "description": "Only entries with a source or target term (or synonym) containing this text, ignoring case.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "termbase"
+        ]
+      },
+      "method": "GET",
+      "path": "/v1/termbase-entries",
+      "paramMap": {},
       "fixedQuery": {},
       "fixedBody": {}
     },
