@@ -282,7 +282,11 @@ static string RefuseAmbiguousWrite(string toolName, BridgeSelection sel)
     return JsonSerializer.Serialize(new
     {
         ok = false,
-        error = $"Refusing to run '{toolName}': {sel.Candidates.Count} Trados Studio instances are running "
+        error = BridgeClient.IsWorkbench
+              ? $"Refusing to run '{toolName}': {sel.Candidates.Count} Supervertaler Workbenches are running and "
+                + "nothing says which one is meant. Ask the user which project they mean, then run this tool "
+                + "again with part of that project's name as 'instance'. Closing the other Workbench works too."
+              : $"Refusing to run '{toolName}': {sel.Candidates.Count} Trados Studio instances are running "
               + "and nothing says which one to write to. Writing to the wrong one would edit the wrong "
               + "project's document. Ask the user which project they mean, then call "
               + "select_trados_instance with \"2022\", \"2024\", \"2026\", or part of the project name – and run "
