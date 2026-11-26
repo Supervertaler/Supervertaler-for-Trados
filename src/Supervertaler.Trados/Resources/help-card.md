@@ -28,6 +28,7 @@ You talk to me in plain language – there are no commands to memorise. Here's t
 - "Insert this translation into the active segment"
 - "Add <source> = <target> to my termbase"
 - "Add a comment on this segment"
+- "Merge segments 3 and 4" / "Split segment 12 before 'Then'" – when two short sentences read better as one in the target language, I'll suggest a merge
 
 **Batch tasks** – these run in the background; I'll tell you when they finish
 - "Analyse files" – word counts & TM leverage

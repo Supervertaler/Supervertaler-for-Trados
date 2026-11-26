@@ -263,6 +263,7 @@ internal static class Check
         }
 
         HostChecks(root);
+        GuidanceChecks(root);
     }
 
     // ── 9: which application, when the client drops SUPERVERTALER_HOST ────
@@ -346,5 +347,59 @@ internal static class Check
             Environment.SetEnvironmentVariable("SUPERVERTALER_BRIDGE_FILE", null);
         }
         Ok(BridgeClient.UnreachableMessage("x").Contains("Trados Studio"), "9 and with no host it is Trados's, as before");
+    }
+
+    /// <summary>
+    /// The instructions the server sends at connect (ServerGuidance): the
+    /// segment-boundary guidance, with the right way to merge for each host. The
+    /// last check starts the real server exe and reads its MCP initialize answer.
+    /// </summary>
+    static void GuidanceChecks(string root)
+    {
+        var trados = ServerGuidance.For("trados");
+        var memoq = ServerGuidance.For("memoq");
+        var workbench = ServerGuidance.For("workbench");
+        Ok(trados.Contains("merge_segments") && trados.Contains("split_segment"),
+            "10 Trados guidance names merge_segments and split_segment");
+        Ok(memoq.Contains("Ctrl+J") && !memoq.Contains("merge_segments"),
+            "10 memoQ guidance asks the user to join rows with Ctrl+J and names no tool memoQ lacks");
+        Ok(!workbench.Contains("merge_segments") && !workbench.Contains("Ctrl+J"),
+            "10 Workbench guidance names neither");
+        foreach (var (name, text) in new[] { ("trados", trados), ("memoq", memoq), ("workbench", workbench) })
+            Ok(text.Contains("propose it and let the user decide") && text.Contains("paragraphs")
+               && text.Contains("leave the other empty") && !text.Contains("Dutch") && !text.Contains("pension"),
+                $"10 {name}: general (no language pair or subject), asks first, never across paragraphs, never an empty stand-in");
+        Ok(ServerGuidance.For("something-else") == trados, "10 an unknown host gets the Trados text (the server's default host)");
+
+        // The real exe, over stdio, the way a client meets it.
+        var exe = Path.Combine(AppContext.BaseDirectory, "SupervertalerMcpServer.exe");
+        if (!File.Exists(exe)) { Ok(false, "10 the server exe is next to this check: " + exe); return; }
+        foreach (var host in new[] { "trados", "memoq" })
+        {
+            var psi = new ProcessStartInfo(exe, "--host " + host)
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            };
+            // No real bridge or data folder: a handshake path that does not exist.
+            psi.Environment["SUPERVERTALER_BRIDGE_FILE"] = Path.Combine(root, "no-such-bridge.json");
+            using var p = Process.Start(psi)!;
+            Children.Add(p);
+            _ = p.StandardError.ReadToEndAsync();
+            p.StandardInput.WriteLine("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"check\",\"version\":\"1\"}}}");
+            p.StandardInput.Flush();
+            var line = p.StandardOutput.ReadLineAsync();
+            string? instructions = null;
+            if (line.Wait(TimeSpan.FromSeconds(30)) && line.Result != null)
+            {
+                using var doc = JsonDocument.Parse(line.Result);
+                if (doc.RootElement.TryGetProperty("result", out var result)
+                    && result.TryGetProperty("instructions", out var ins))
+                    instructions = ins.GetString();
+            }
+            Ok(instructions == ServerGuidance.For(host),
+                $"10 the real server sends the {host} guidance as its MCP instructions at initialize");
+            try { p.Kill(); } catch { }
+        }
     }
 }
