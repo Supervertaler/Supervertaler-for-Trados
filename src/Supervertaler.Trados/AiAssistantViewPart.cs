@@ -8363,12 +8363,27 @@ namespace Supervertaler.Trados
                     };
 
                     _promptLibrary.SavePrompt(template);
+
+                    // An AutoPrompt prompt is made for this project, so its next
+                    // Batch Translate should use it: it becomes the translate
+                    // prompt at once, as picking it in the Prompt list does.
+                    // Proofread's prompt is left alone, and so is the choice when a
+                    // chat message is saved by hand (that may be anything).
+                    string stored = null;
+                    if (extracted != null) stored = StoreBatchPromptChoice(false, template.RelativePath);
                     PopulateBatchPromptDropdown();
 
                     // Confirmation in chat
-                    var confirmMsg = ChatPrompt.Notice(
-                        $"Prompt saved as **\"{name}\"** in the Translate category. " +
-                        "You can select it from the Prompt dropdown on the Batch Operations tab.");
+                    var proofreadShown = _control.Value.BatchTranslateControl.CurrentMode == BatchMode.Proofread;
+                    var confirmMsg = ChatPrompt.Notice(extracted == null
+                        ? $"Prompt saved as **\"{name}\"** in the Translate category. " +
+                          "You can select it from the Prompt dropdown on the Batch Operations tab."
+                        : stored == null
+                        ? $"Prompt saved as **\"{name}\"** in the Translate category, and Batch Translate now uses it " +
+                          "(Batch Operations tab, **Prompt**). To go back, pick another prompt there." +
+                          (proofreadShown ? " Switch the tab to **Translate** to see it: Proofread keeps its own prompt." : "")
+                        : $"Prompt saved as **\"{name}\"** in the Translate category, but it could not be made the " +
+                          "active prompt (" + stored + "). Pick it from the **Prompt** list on the Batch Operations tab.");
                     _chatHistory.Add(confirmMsg);
                     _control.Value.AddMessage(confirmMsg);
                     SaveChatHistory();
@@ -8526,6 +8541,27 @@ namespace Supervertaler.Trados
         private void OnBatchPromptPicked(object sender, string path)
         {
             var proofread = _control.Value.BatchTranslateControl.CurrentMode == BatchMode.Proofread;
+            var error = StoreBatchPromptChoice(proofread, path);
+            if (error != null)
+            {
+                AddErrorMessage("The prompt you picked is used, but could not be saved as the active prompt: " + error);
+                return;
+            }
+
+            // The tick moves to the pick - after this event has finished, as the
+            // list is in the middle of its own selection change right now.
+            try { _control.Value.BeginInvoke(new Action(PopulateBatchPromptDropdown)); }
+            catch { }
+        }
+
+        /// <summary>
+        /// Stores <paramref name="path"/> as the mode's active prompt, globally and
+        /// for the open project: what picking it in the Batch Operations list does,
+        /// and what "Save as Prompt" after AutoPrompt does for the translate mode.
+        /// Returns null, or why it could not be stored (also logged).
+        /// </summary>
+        private static string StoreBatchPromptChoice(bool proofread, string path)
+        {
             try
             {
                 SettingsService.Update(s =>
@@ -8545,18 +8581,13 @@ namespace Supervertaler.Trados
                         Settings.ProjectSettings.Save(projectPath, ps);
                     }
                 }
+                return null;
             }
             catch (Exception ex)
             {
-                try { Core.DiagnosticLog.Log("BatchPrompt", "could not store the picked prompt: " + ex.Message); } catch { }
-                AddErrorMessage("The prompt you picked is used, but could not be saved as the active prompt: " + ex.Message);
-                return;
+                try { Core.DiagnosticLog.Log("BatchPrompt", "could not store the prompt choice: " + ex.Message); } catch { }
+                return ex.Message;
             }
-
-            // The tick moves to the pick - after this event has finished, as the
-            // list is in the middle of its own selection change right now.
-            try { _control.Value.BeginInvoke(new Action(PopulateBatchPromptDropdown)); }
-            catch { }
         }
 
         /// <summary>
