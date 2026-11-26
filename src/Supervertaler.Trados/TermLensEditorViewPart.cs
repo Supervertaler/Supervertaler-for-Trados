@@ -1094,6 +1094,15 @@ namespace Supervertaler.Trados
             return _currentInstance?._multiTermInfos ?? new List<MultiTermTermbaseInfo>();
         }
 
+        /// <summary>The Supervertaler-settings switch for one Trados termbase:
+        /// true when it is ticked off there, so TermLens, lookup_term and
+        /// check_terminology do not load it.</summary>
+        public static bool IsMultiTermDisabled(long syntheticId)
+        {
+            try { return SettingsService.Current?.DisabledMultiTermIds?.Contains(syntheticId) == true; }
+            catch { return false; }
+        }
+
         /// <summary>
         /// Like <see cref="GetMultiTermInfos"/>, but resilient for the Settings dialog:
         /// if the live editor view part hasn't loaded MultiTerm info (e.g. the Settings
@@ -1189,7 +1198,11 @@ namespace Supervertaler.Trados
         }
 
         /// <summary>
-        /// Returns detected MultiTerm configs for the settings dialog.
+        /// Returns detected MultiTerm configs: every .ttb / .sdltb attached to the
+        /// open document's project, including any switched off in Supervertaler's
+        /// Termbases settings (which <see cref="GetMultiTermInfos"/> leaves out).
+        /// Used by the settings dialog and by the MCP termbase tools, which name
+        /// termbases from it (see TermbaseCatalog). Empty until a document is open.
         /// </summary>
         public static List<MultiTermTermbaseConfig> GetMultiTermConfigs()
         {

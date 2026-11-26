@@ -258,6 +258,7 @@ namespace Supervertaler.Trados.Core
                         TermbaseId = termbaseId,
                         TermbaseName = termbaseName,
                         Definition = definition,
+                        ConceptId = conceptId,
                         IsMultiTerm = true,
                         Ranking = 50 // Default ranking for MultiTerm entries
                     };
@@ -289,13 +290,13 @@ namespace Supervertaler.Trados.Core
             int termCount = 0;
             try
             {
-                if (TableExists($"I_{sourceIndexName}"))
+                // ENTRIES, not source terms: an entry with two source terms
+                // (a synonym) counted twice, so list_resources said 273 where
+                // list_terms, which counts entries, said 272. A Supervertaler
+                // termbase's count is rows, i.e. entries, too.
+                using (var cmd = new OleDbCommand("SELECT COUNT(*) FROM mtConcepts", _connection))
                 {
-                    using (var cmd = new OleDbCommand(
-                        $"SELECT COUNT(*) FROM [I_{sourceIndexName}]", _connection))
-                    {
-                        termCount = (int)cmd.ExecuteScalar();
-                    }
+                    termCount = Convert.ToInt32(cmd.ExecuteScalar());
                 }
             }
             catch { /* ignore count errors */ }
@@ -462,6 +463,92 @@ namespace Supervertaler.Trados.Core
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// One page of the termbase's entries, in entry-number order, for list_terms.
+        /// Jet has no OFFSET, so the matching entry numbers are streamed (integers
+        /// only - cheap even for 100,000 entries, and it gives the total) and only
+        /// the page's own concept XML is fetched. <paramref name="contains"/> keeps
+        /// entries with a source or target term containing it (Jet's LIKE, which
+        /// ignores case). Read-only: the connection is opened Mode=Read.
+        /// </summary>
+        public TermListPage ListConcepts(string sourceIndexName, string targetIndexName,
+            int offset, int limit, string contains)
+        {
+            var page = new TermListPage();
+            if (_connection == null) { page.Error = LastError ?? "the termbase is not open"; return page; }
+
+            try
+            {
+                var indexes = GetLanguageIndexes();
+                (string Name, string Locale)? Find(string want) =>
+                    indexes.Where(i => string.Equals(i.Name, want, StringComparison.OrdinalIgnoreCase)
+                                       || string.Equals(i.Locale, want, StringComparison.OrdinalIgnoreCase))
+                           .Select(i => ((string Name, string Locale)?)i).FirstOrDefault();
+                var src = Find(sourceIndexName);
+                var tgt = Find(targetIndexName);
+                if (src == null || tgt == null)
+                {
+                    page.Error = $"the termbase has no index for '{(src == null ? sourceIndexName : targetIndexName)}'. " +
+                                 "Its languages: " + string.Join(", ", indexes.Select(i => i.Name));
+                    return page;
+                }
+
+                bool filter = !string.IsNullOrWhiteSpace(contains);
+                var sql = "SELECT conceptid FROM mtConcepts";
+                if (filter)
+                    sql += $" WHERE conceptid IN (SELECT conceptid FROM [I_{src.Value.Name}] WHERE origterm LIKE ?)" +
+                           $" OR conceptid IN (SELECT conceptid FROM [I_{tgt.Value.Name}] WHERE origterm LIKE ?)";
+                sql += " ORDER BY conceptid";
+
+                var pageIds = new List<int>();
+                using (var cmd = new OleDbCommand(sql, _connection))
+                {
+                    if (filter)
+                    {
+                        var pattern = TermbaseListing.JetContainsPattern(contains.Trim());
+                        cmd.Parameters.AddWithValue("?", pattern);
+                        cmd.Parameters.AddWithValue("?", pattern);
+                    }
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        int n = 0;
+                        while (reader.Read())
+                        {
+                            if (n >= offset && pageIds.Count < limit)
+                                pageIds.Add(Convert.ToInt32(reader.GetValue(0)));
+                            n++;
+                        }
+                        page.Total = n;
+                    }
+                }
+                if (pageIds.Count == 0) return page;
+
+                // Integers from the database itself, so inlining them is safe.
+                var texts = new Dictionary<int, string>();
+                using (var cmd = new OleDbCommand(
+                    "SELECT conceptid, [text] FROM mtConcepts WHERE conceptid IN (" +
+                    string.Join(",", pageIds) + ")", _connection))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                        texts[Convert.ToInt32(reader.GetValue(0))] = reader.IsDBNull(1) ? null : reader.GetString(1);
+                }
+
+                var srcTokens = new[] { src.Value.Name, src.Value.Locale };
+                var tgtTokens = new[] { tgt.Value.Name, tgt.Value.Locale };
+                foreach (var id in pageIds)
+                {
+                    texts.TryGetValue(id, out var xml);
+                    page.Entries.Add(TermbaseListing.FromConceptXml(id, xml, srcTokens, tgtTokens));
+                }
+            }
+            catch (Exception ex)
+            {
+                page.Error = "could not read the termbase: " + ex.Message;
+            }
+            return page;
         }
 
         private bool TableExists(string tableName)

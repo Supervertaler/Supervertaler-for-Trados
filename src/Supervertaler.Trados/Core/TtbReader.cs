@@ -58,7 +58,12 @@ namespace Supervertaler.Trados.Core
                 {
                     DataSource = _filePath,
                     Mode = SqliteOpenMode.ReadOnly,
-                    Cache = SqliteCacheMode.Shared
+                    Cache = SqliteCacheMode.Shared,
+                    // Pooling off: a pooled connection keeps the .ttb OPEN after
+                    // Dispose, for as long as Studio runs - a client's termbase held
+                    // by us long after the read (TermLens loads, list_terms pages).
+                    // Same lesson as the .sdltb's OLE DB pooling (#36).
+                    Pooling = false
                 }.ToString();
 
                 _connection = new SqliteConnection(connStr);
@@ -168,6 +173,7 @@ namespace Supervertaler.Trados.Core
                         TargetSynonyms = targetSynonyms,
                         TermbaseId = termbaseId,
                         TermbaseName = termbaseName,
+                        ConceptId = conceptId,
                         IsMultiTerm = true, // existing flag, treated as "read-only termbase term"
                         Ranking = 50
                     };
@@ -197,17 +203,16 @@ namespace Supervertaler.Trados.Core
             int termCount = 0;
             try
             {
-                var srcIndexId = ResolveIndexId(sourceIndexName);
-                if (srcIndexId != null)
+                // ENTRIES, not source terms: an entry with two source terms
+                // (a synonym) counted twice, so list_resources said 273 where
+                // list_terms, which counts entries, said 272. A Supervertaler
+                // termbase's count is rows, i.e. entries, too.
+                using (var cmd = _connection.CreateCommand())
                 {
-                    using (var cmd = _connection.CreateCommand())
-                    {
-                        cmd.CommandText = "SELECT COUNT(*) FROM mtTerms WHERE IndexId = $idx";
-                        cmd.Parameters.AddWithValue("$idx", srcIndexId.Value);
-                        var n = cmd.ExecuteScalar();
-                        if (n != null && n != DBNull.Value)
-                            termCount = Convert.ToInt32(n);
-                    }
+                    cmd.CommandText = "SELECT COUNT(*) FROM mtConcepts";
+                    var n = cmd.ExecuteScalar();
+                    if (n != null && n != DBNull.Value)
+                        termCount = Convert.ToInt32(n);
                 }
             }
             catch { /* ignore count errors */ }
@@ -333,6 +338,99 @@ namespace Supervertaler.Trados.Core
                 }
             }
             catch { /* concept-level fields are optional */ }
+        }
+
+        /// <summary>
+        /// One page of the termbase's entries, in entry-number order, for list_terms.
+        /// Paged in SQL (LIMIT/OFFSET over mtConcepts), so the cost is one page
+        /// whatever the termbase's size. <paramref name="contains"/> keeps entries
+        /// with a source or target term containing it, case-insensitively.
+        /// Read-only, like everything else here.
+        /// </summary>
+        public TermListPage ListConcepts(string sourceIndexName, string targetIndexName,
+            int offset, int limit, string contains)
+        {
+            var page = new TermListPage();
+            if (_connection == null) { page.Error = LastError ?? "the termbase is not open"; return page; }
+
+            try
+            {
+                var src = ResolveIndex(sourceIndexName);
+                var tgt = ResolveIndex(targetIndexName);
+                if (src == null || tgt == null)
+                {
+                    page.Error = $"the termbase has no index for '{(src == null ? sourceIndexName : targetIndexName)}'. " +
+                                 "Its languages: " + string.Join(", ", GetLanguageIndexes().Select(i => i.Name));
+                    return page;
+                }
+
+                bool filter = !string.IsNullOrWhiteSpace(contains);
+                var where = "";
+                if (filter)
+                {
+                    _connection.CreateFunction("sv_contains",
+                        (string text, string needle) => TermbaseListing.Contains(text, needle), isDeterministic: true);
+                    where = " WHERE ConceptId IN (SELECT ConceptId FROM mtTerms " +
+                            "WHERE IndexId IN ($src, $tgt) AND sv_contains(TermText, $q))";
+                }
+
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT COUNT(*) FROM mtConcepts" + where;
+                    AddListParams(cmd, src.Value.Id, tgt.Value.Id, contains);
+                    page.Total = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                var srcTokens = new[] { src.Value.Name, src.Value.Locale };
+                var tgtTokens = new[] { tgt.Value.Name, tgt.Value.Locale };
+                using (var cmd = _connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT ConceptId, Text FROM mtConcepts" + where +
+                                      " ORDER BY ConceptId LIMIT $limit OFFSET $offset";
+                    AddListParams(cmd, src.Value.Id, tgt.Value.Id, contains);
+                    cmd.Parameters.AddWithValue("$limit", limit);
+                    cmd.Parameters.AddWithValue("$offset", offset);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                            page.Entries.Add(TermbaseListing.FromConceptXml(
+                                reader.GetInt64(0), reader.IsDBNull(1) ? null : reader.GetString(1),
+                                srcTokens, tgtTokens));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                page.Error = "could not read the termbase: " + ex.Message;
+            }
+            return page;
+        }
+
+        private static void AddListParams(SqliteCommand cmd, int srcId, int tgtId, string contains)
+        {
+            if (string.IsNullOrWhiteSpace(contains)) return;
+            cmd.Parameters.AddWithValue("$src", srcId);
+            cmd.Parameters.AddWithValue("$tgt", tgtId);
+            cmd.Parameters.AddWithValue("$q", contains.Trim());
+        }
+
+        // An index by Name or Locale (any case), with both, for matching the
+        // language groups inside the concept XML.
+        private (int Id, string Name, string Locale)? ResolveIndex(string nameOrLocale)
+        {
+            if (string.IsNullOrWhiteSpace(nameOrLocale)) return null;
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText =
+                    "SELECT Id, Name, Locale FROM mtIndexes " +
+                    "WHERE LOWER(Name) = LOWER($v) OR LOWER(Locale) = LOWER($v) LIMIT 1";
+                cmd.Parameters.AddWithValue("$v", nameOrLocale);
+                using (var r = cmd.ExecuteReader())
+                {
+                    if (!r.Read()) return null;
+                    return (r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1), r.IsDBNull(2) ? "" : r.GetString(2));
+                }
+            }
         }
 
         // Resolve a caller-supplied index identifier (Name or Locale, any case)
