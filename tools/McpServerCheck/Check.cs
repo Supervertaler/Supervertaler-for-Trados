@@ -261,5 +261,90 @@ internal static class Check
         {
             Environment.SetEnvironmentVariable("SUPERVERTALER_HOST", null);
         }
+
+        HostChecks(root);
+    }
+
+    // ── 9: which application, when the client drops SUPERVERTALER_HOST ────
+    // Field report 26 Nov 2026: ChatGPT desktop started the memoQ entry without
+    // its environment, so the exe served Trados. The install folder now decides.
+    static void HostChecks(string root)
+    {
+        const string memoqExe = @"D:\Supervertaler\memoq\mcp\SupervertalerMcpServer.exe";
+        const string tradosExe = @"C:\Users\someone\Supervertaler\trados\mcp\SupervertalerMcpServer.exe";
+        const string claudeExe = @"C:\Users\someone\AppData\Roaming\Claude\Claude Extensions\local.mcpb.supervertaler.supervertaler-memoq\server\SupervertalerMcpServer.exe";
+
+        Ok(HostDetection.Decide(null, null, memoqExe) == ("memoq", "install folder"),
+            "9 no variable, exe in <root>\\memoq\\mcp: memoQ, from the install folder");
+        Ok(HostDetection.FromInstallFolder(memoqExe)?.Root == @"D:\Supervertaler",
+            "9 and the data folder is the one it is installed in");
+        Ok(HostDetection.Decide(null, null, tradosExe).Host == "trados"
+           && HostDetection.Decide(null, null, @"X:\SV\workbench\mcp\SupervertalerMcpServer.exe").Host == "workbench",
+            "9 the same for trados\\mcp and workbench\\mcp");
+        Ok(HostDetection.Decide(null, "memoq", tradosExe) == ("memoq", "SUPERVERTALER_HOST"),
+            "9 a variable that IS passed still wins over the folder");
+        Ok(HostDetection.Decide("trados", "memoq", memoqExe) == ("trados", "--host argument"),
+            "9 --host wins over both");
+        Ok(HostDetection.Decide(null, "  MemoQ ", null).Host == "memoq",
+            "9 the variable is read case- and space-insensitively, as before");
+        Ok(HostDetection.Decide(null, "memoq-typo", memoqExe).Host == "memoq",
+            "9 an unknown value falls through to the folder instead of serving a host that does not exist");
+        Ok(HostDetection.Decide(null, null, claudeExe) == ("trados", "default"),
+            "9 a Claude Desktop extension folder matches nothing: Trados by default, exactly as before");
+        Ok(HostDetection.Decide(null, null, @"C:\mcp\SupervertalerMcpServer.exe").Host == "trados"
+           && HostDetection.FromInstallFolder(@"C:\mcp\SupervertalerMcpServer.exe") == null,
+            "9 an mcp folder at a drive root has no host folder above it: no match");
+        Ok(HostDetection.FromInstallFolder("C:\\a|b\\memoq\\mcp\\x.exe\0") == null
+           && HostDetection.FromInstallFolder("") == null && HostDetection.FromInstallFolder(null) == null,
+            "9 an unparseable, empty or missing path is no match, and does not throw");
+        Ok(HostDetection.Decide(null, null, Environment.ProcessPath).Host == "trados",
+            "9 this check's own exe (a build folder) is not mistaken for an install");
+
+        // The memoQ server with no cached tool list used to offer none at all.
+        var starter = ToolRegistry.MemoQStarterTools();
+        Ok(starter.Select(t => t.Name).SequenceEqual(new[] { "help", "get_project" })
+           && starter.All(t => t.Access == ToolAccess.Read && t.Method == "GET")
+           && starter[0].Path == "/v1/help" && starter[1].Path == "/v1/project",
+            "9 memoQ with no cached tool list: help and get_project are offered, read-only, at the memoQ bridge's paths");
+
+        Environment.SetEnvironmentVariable("SUPERVERTALER_HOST", "memoq");
+        var handshake = Path.Combine(root, "memoq-bridge.json");
+        Environment.SetEnvironmentVariable("SUPERVERTALER_BRIDGE_FILE", handshake);
+        try
+        {
+            var mq = new BridgeClient();
+
+            // memoQ closed: no handshake at all.
+            string? closed = null;
+            try { mq.Resolve(Path.Combine(root, "unused")); } catch (BridgeUnavailableException ex) { closed = ex.Message; }
+            Ok(closed != null && closed.Contains("memoQ") && !closed.Contains("Trados"),
+                "9 memoQ not running: the message is about memoQ and does not mention Trados");
+
+            // memoQ "open" (a live process) but nothing answers on its port: the
+            // case that used to say "inside Trados Studio".
+            var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            probe.Start();
+            var deadPort = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+            var standIn = StartStandIn();
+            File.WriteAllText(handshake, JsonSerializer.Serialize(new
+            {
+                version = 1, port = deadPort, token = "t", pid = standIn.Id,
+                startedAt = DateTime.UtcNow.ToString("o"), studioVersion = "memoQ",
+            }));
+            string? unreachable = null;
+            try { mq.GetAsync("/v1/project").GetAwaiter().GetResult(); }
+            catch (BridgeUnavailableException ex) { unreachable = ex.Message; }
+            Ok(unreachable != null && unreachable.Contains("memoQ") && !unreachable.Contains("Trados"),
+                "9 memoQ open but its port dead: the message says restart memoQ, not \"Trados Studio\"" +
+                (unreachable == null ? " (nothing thrown)" : ""));
+            Close(standIn);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SUPERVERTALER_HOST", null);
+            Environment.SetEnvironmentVariable("SUPERVERTALER_BRIDGE_FILE", null);
+        }
+        Ok(BridgeClient.UnreachableMessage("x").Contains("Trados Studio"), "9 and with no host it is Trados's, as before");
     }
 }

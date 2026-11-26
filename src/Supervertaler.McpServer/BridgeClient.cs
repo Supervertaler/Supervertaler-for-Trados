@@ -121,9 +121,18 @@ public sealed class BridgeClient
     /// writes its handshake to &lt;root&gt;\memoq\runtime\bridge.json; the memoQ
     /// .mcpb sets this variable and nothing else, so one exe serves both plugins
     /// without a hard-coded path in the manifest.
+    ///
+    /// <para>The variable is no longer the only source: see <see cref="HostDetection"/>
+    /// for why, and for the order in which --host, the variable and the install
+    /// folder are consulted.</para>
     /// </summary>
-    public static string Host =>
-        (Environment.GetEnvironmentVariable("SUPERVERTALER_HOST") ?? "trados").Trim().ToLowerInvariant();
+    public static string Host => HostSource.Host;
+
+    /// <summary>The host, and what decided it.</summary>
+    public static (string Host, string Source) HostSource => HostDetection.Decide(
+        HostDetection.HostArgument,
+        Environment.GetEnvironmentVariable("SUPERVERTALER_HOST"),
+        Environment.ProcessPath);
 
     public static bool IsMemoQ => Host == "memoq";
 
@@ -199,10 +208,7 @@ public sealed class BridgeClient
         }
         catch (HttpRequestException ex)
         {
-            throw new BridgeUnavailableException(IsWorkbench
-                ? $"Could not reach Supervertaler Workbench ({ex.Message}). Is Workbench still running?"
-                : "Could not reach the Supervertaler bridge inside Trados Studio " +
-                  $"({ex.Message}). Is Trados Studio running with the Supervertaler plugin enabled?");
+            throw new BridgeUnavailableException(UnreachableMessage(ex.Message));
         }
 
         var text = await resp.Content.ReadAsStringAsync(ct);
@@ -466,38 +472,71 @@ public sealed class BridgeClient
         }
     }
 
+    /// <summary>
+    /// What to say when a handshake names a live process but nothing answers on
+    /// its port. Worded for the host this exe serves: the Trados wording used to
+    /// reach memoQ users too, and sent them looking for a Studio they never had.
+    /// </summary>
+    internal static string UnreachableMessage(string detail)
+    {
+        if (IsWorkbench)
+            return $"Could not reach Supervertaler Workbench ({detail}). Is Workbench still running?";
+        if (IsMemoQ)
+            return $"Could not reach Supervertaler inside memoQ ({detail}). memoQ looks open, but the plugin's " +
+                   "connection is not answering. Restart memoQ, open the project and click into a segment.";
+        return "Could not reach the Supervertaler bridge inside Trados Studio " +
+               $"({detail}). Is Trados Studio running with the Supervertaler plugin enabled?";
+    }
+
     internal static string ResolveRuntimeDir() =>
         Path.Combine(ResolveSharedRoot(), IsWorkbench ? "workbench" : "trados", "runtime");
 
-    /// <summary>The shared Supervertaler data folder — config.json's user_data_path, else ~\Supervertaler.</summary>
-    private static string ResolveSharedRoot()
-    {
-        // Default root matches the plugin's UserDataPath.DefaultRoot (~\Supervertaler);
-        // %APPDATA%\Supervertaler\config.json may point elsewhere via "user_data_path".
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var root = Path.Combine(home, "Supervertaler");
+    private static string ResolveSharedRoot() => SharedRootSource.Root;
 
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var configPath = Path.Combine(appData, "Supervertaler", "config.json");
-        if (File.Exists(configPath))
+    /// <summary>
+    /// The shared Supervertaler data folder, and what decided it:
+    ///   1. config.json's user_data_path (%APPDATA%\Supervertaler\config.json), the
+    ///      same setting the plugins read;
+    ///   2. else the folder this exe is installed in, when it is &lt;root&gt;\&lt;host&gt;\mcp\;
+    ///   3. else ~\Supervertaler, the plugins' default.
+    ///
+    /// <para>Step 2 is for a launcher that runs this exe with another profile's
+    /// folders (suspected for ChatGPT's Windows sandbox): it then finds neither
+    /// the user's config.json nor their home folder, but the install folder is
+    /// still the data folder, because ChatGptMcpSetup put the exe there. It
+    /// comes after config.json, not before, so that a data folder moved after
+    /// setup is still followed.</para>
+    /// </summary>
+    internal static (string Root, string Source) SharedRootSource
+    {
+        get
         {
-            try
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var configPath = Path.Combine(appData, "Supervertaler", "config.json");
+            if (File.Exists(configPath))
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
-                if (doc.RootElement.TryGetProperty("user_data_path", out var loc)
-                    && loc.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(loc.GetString()))
+                try
                 {
-                    root = loc.GetString()!;
+                    using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+                    if (doc.RootElement.TryGetProperty("user_data_path", out var loc)
+                        && loc.ValueKind == JsonValueKind.String
+                        && !string.IsNullOrWhiteSpace(loc.GetString()))
+                    {
+                        return (loc.GetString()!, configPath);
+                    }
+                }
+                catch
+                {
+                    // Unreadable config – fall through to the next source.
                 }
             }
-            catch
-            {
-                // Unreadable config – stay on the default root.
-            }
-        }
 
-        return root;
+            if (HostDetection.FromInstallFolder(Environment.ProcessPath) is { } installed)
+                return (installed.Root, "install folder");
+
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return (Path.Combine(home, "Supervertaler"), "default (home folder)");
+        }
     }
 
     /// <summary>

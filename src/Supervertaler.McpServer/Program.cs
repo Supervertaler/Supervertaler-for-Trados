@@ -28,14 +28,33 @@ var bridge = new BridgeClient();
 
 // --instance <selector> pins this server to one Studio, for a client whose config
 // format has no env block. ChatGptMcpSetup writes `args`, so it can set this.
+// --host <trados|memoq|workbench> says which application this server is for, for
+// a client that does not pass the environment variable through (see HostDetection).
 for (var i = 0; i < args.Length - 1; i++)
 {
-    if (args[i] is "--instance" or "-i")
-    {
+    if (args[i] is "--instance" or "-i" && bridge.CommandLineSelector == null)
         bridge.CommandLineSelector = args[i + 1];
-        break;
-    }
+    else if (args[i] == "--host" && HostDetection.HostArgument == null)
+        HostDetection.HostArgument = args[i + 1];
 }
+
+// One line on stderr saying what this server decided and why. Chat clients
+// keep a server's stderr in their own logs (ChatGPT desktop: logs_2.sqlite in
+// %USERPROFILE%\.codex), so when a chat cannot see the project, that log says
+// whether the server was told the wrong application, looked in the wrong data
+// folder, or ran as another Windows user - the three things that could not be
+// told apart from the outside on 26 Nov 2026. No secrets: paths and names only.
+try
+{
+    var (hostName, hostFrom) = BridgeClient.HostSource;
+    var (dataRoot, rootFrom) = BridgeClient.SharedRootSource;
+    var envHost = Environment.GetEnvironmentVariable("SUPERVERTALER_HOST");
+    Console.Error.WriteLine(
+        $"Supervertaler MCP server: host={hostName} (from {hostFrom}); data folder={dataRoot} (from {rootFrom}); " +
+        $"SUPERVERTALER_HOST={(envHost == null ? "<not set>" : "\"" + envHost + "\"")}; " +
+        $"user={Environment.UserName}; exe={Environment.ProcessPath}");
+}
+catch { /* a diagnostic must never stop the server starting */ }
 
 // Lazily loaded, refreshed on each tools/list so a plugin update (new tools)
 // is picked up on the next Claude Desktop connection – no reinstall.

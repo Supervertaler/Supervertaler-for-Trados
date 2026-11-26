@@ -131,9 +131,16 @@ public static class ToolRegistry
         // 3. Bundled fallback (embedded at build time).
         // The bundled fallback is the Trados registry. Advertising it for a
         // memoQ host would offer fifty tools of which a third do not exist
-        // there; better to offer none until the memoQ bridge has been seen once.
-        // The same goes for Workbench, whose list is shorter still.
-        if (BridgeClient.IsMemoQ || BridgeClient.IsWorkbench) return new List<ToolDef>();
+        // there. But offering NONE left the chat with no memoQ tools at all,
+        // and nothing to tell the user why: a client that ignores
+        // tools/list_changed stays that way for the whole session. So memoQ
+        // gets the two tools that are always there and need no capture -
+        // help and get_project - which, with memoQ closed, return the message
+        // saying how to start it, and with memoQ open, work. The poller below
+        // replaces them with the full list as soon as the bridge answers.
+        if (BridgeClient.IsMemoQ) return MemoQStarterTools();
+        // Workbench: shorter list still, no field report yet; left as it was.
+        if (BridgeClient.IsWorkbench) return new List<ToolDef>();
 
         try
         {
@@ -150,6 +157,33 @@ public static class ToolRegistry
         catch { }
 
         return new List<ToolDef>();
+    }
+
+    /// <summary>
+    /// The memoQ registry's help and get_project, as the memoQ bridge serves them
+    /// (MemoQBridge's /v1/tools). Copied rather than embedded: the memoQ registry
+    /// lives in the other repository, and these two are its oldest and most
+    /// stable entries. A drift in their wording is harmless - the live list
+    /// replaces these the moment memoQ answers.
+    /// </summary>
+    internal static List<ToolDef> MemoQStarterTools()
+    {
+        var noArgs = JsonSerializer.Deserialize<JsonElement>("{\"type\":\"object\",\"properties\":{}}");
+        var none = new Dictionary<string, string>();
+        var noNodes = new Dictionary<string, JsonNode?>();
+        return new List<ToolDef>
+        {
+            new("help",
+                "Show the user a curated menu of what they can ask this memoQ assistant to do. ALWAYS call this " +
+                "when the user asks what they can do or asks for help, then present the returned card verbatim. " +
+                "If memoQ is not reachable, the answer says how to connect it.",
+                noArgs, "GET", "/v1/help", none, noNodes, noNodes, ToolAccess.Read, Array.Empty<string>()),
+            new("get_project",
+                "What the plugin knows about the open memoQ project: language pair, documents, segment counts and " +
+                "staged translations. Call this first for any question about the user's memoQ project. If memoQ " +
+                "is not reachable, the answer says what to do; once it is, the full set of memoQ tools appears.",
+                noArgs, "GET", "/v1/project", none, noNodes, noNodes, ToolAccess.Read, Array.Empty<string>()),
+        };
     }
 
     private static void TrySaveCache(string json)
