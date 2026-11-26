@@ -52,6 +52,8 @@ namespace Supervertaler.Trados
 
                 var editor = StudioSegmentCommands.Open(_activeDocument, out var openError);
                 if (editor == null) return Refuse(openError);
+                var notShown = StudioSegmentCommands.CheckShown(_activeDocument, StudioEditor.Controller?.ActiveDocument);
+                if (notShown != null) return Refuse(notShown);
 
                 var paragraphId = candidates[0].ParagraphId;
                 var before = SegmentIdsInParagraph(paragraphId);
@@ -121,6 +123,8 @@ namespace Supervertaler.Trados
 
                 var editor = StudioSegmentCommands.Open(_activeDocument, out var openError);
                 if (editor == null) return Refuse(openError);
+                var notShown = StudioSegmentCommands.CheckShown(_activeDocument, StudioEditor.Controller?.ActiveDocument);
+                if (notShown != null) return Refuse(notShown);
 
                 var runs = StudioSegmentCommands.SourceRuns(editor, pu.Properties.ParagraphUnitId, segId, out var textNodes);
                 if (runs == null) return Refuse($"segment {req.Id} is not in Studio's editor");

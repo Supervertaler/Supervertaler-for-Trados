@@ -181,6 +181,8 @@ public partial class FakeDocument
     public List<ISegmentPair> Pairs = new List<ISegmentPair>();
     public Dictionary<string, IParagraphUnit> PuOf = new Dictionary<string, IParagraphUnit>();
     public int Touched;
+    // What Studio's document class holds: its editor view (one per open document).
+    internal object _sideBySideView;
     IParagraphUnit FakeGetParentParagraphUnit(ISegmentPair pair) { return PuOf[pair.Properties.Id.Id]; }
     IEnumerable<ISegmentPair> FakeSegmentPairs { get { return Pairs; } }
 }
@@ -411,6 +413,20 @@ public static class MergeSplitTest
         // there is no running Studio, so they cannot be had - refused, unchanged.
         Refused(M, "{\"ids\":[\"p1:1\",\"p1:2\"]}", "does not have the part", "B " + stage + ": a valid merge is refused when Studio's editor parts are not there, and nothing changes");
         Refused(S, "{\"id\":\"p1:1\",\"splitBefore\":\"Then you\"}", "does not have the part", "B " + stage + ": a valid split likewise");
+        // Two documents open in tabs (live test 26 Nov): Studio merges in the one on
+        // screen, so the ids' document must be that one.
+        var cmds = P.GetType("Supervertaler.Trados.Core.StudioSegmentCommands", true);
+        var shownCheck = cmds.GetMethod("CheckShown", Any);
+        Func<object, object, string> shown = (a, b) => (string)shownCheck.Invoke(null, new[] { a, b });
+        var typh = Doc(); typh._sideBySideView = new object();
+        var acme = Doc(); acme._sideBySideView = new object();
+        var acmeAgain = Doc(); acmeAgain._sideBySideView = acme._sideBySideView;
+        Check(shown(acme, acme) == null, "B two documents open: the ids' document is the one on screen: allowed");
+        Check(Has(shown(acme, typh), "Click that document's tab"), "B two documents open: the ids' document is NOT on screen: refused, says to click its tab");
+        Check(shown(acme, acmeAgain) == null, "B two API objects for the same open document (same editor view): the same document");
+        Check(Has(shown(acme, null), "no active document"), "B no document active in the editor: refused");
+        Check(Has(shown(Doc(), Doc()), "Click that document's tab"), "B documents without a view to compare: different objects are refused, not guessed equal");
+
         var noDoc = Part(Doc()); Set(noDoc, "_activeDocument", null);
         Check(Has(Call(noDoc, M, "{\"ids\":[\"p1:1\",\"p1:2\"]}"), "no document is open"), "B merge with no document open: refused");
         Check(Has(Call(noDoc, S, "{\"id\":\"p1:1\",\"splitBefore\":\"x\"}"), "no document is open"), "B split with no document open: refused");

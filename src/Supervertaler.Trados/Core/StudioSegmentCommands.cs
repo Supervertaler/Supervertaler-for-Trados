@@ -242,6 +242,26 @@ namespace Supervertaler.Trados.Core
             return e;
         }
 
+        /// <summary>
+        /// Null when <paramref name="document"/> (the one the segment ids belong to)
+        /// is the document Studio's editor is showing, otherwise why not. Studio's
+        /// Merge and Split act on the ACTIVE editor view, whatever document the
+        /// tool resolved, so with two documents open in tabs they must be the same.
+        /// Compared by their editor view, which is one object per open document,
+        /// so two API wrappers of one document still count as the same.
+        /// </summary>
+        internal static string CheckShown(object document, object shown)
+        {
+            if (shown == null)
+                return "Studio's editor has no active document. Click the document's tab in the Editor and try again";
+            if (ReferenceEquals(document, shown)) return null;
+            var a = document == null ? null : FindViewField(document.GetType())?.GetValue(document);
+            var b = FindViewField(shown.GetType())?.GetValue(shown);
+            if (a != null && ReferenceEquals(a, b)) return null;
+            return "these segments are in a document that is not the one showing in Studio's editor, and Studio " +
+                   "merges and splits only in the document on screen. Click that document's tab in the Editor and try again";
+        }
+
         internal static string NotFound(string part) =>
             "this Studio version does not have the part of Studio's editor that merge/split uses (" + part +
             "), so nothing was changed. Merge or split in Studio by hand (Ctrl+Alt+S / Alt+Shift+T), and tell " +
