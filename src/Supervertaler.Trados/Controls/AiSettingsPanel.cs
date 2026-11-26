@@ -272,12 +272,12 @@ namespace Supervertaler.Trados.Controls
                 return b;
             }
 
-            // A textbox that fills the row with a trailing AutoSize "Show/Hide" button.
+            // A textbox that fills the row with trailing AutoSize "Show/Hide" and "Copy" buttons.
             TableLayoutPanel KeyRow(TextBox box, Button showBtn)
             {
                 var host = new TableLayoutPanel
                 {
-                    ColumnCount = 2,
+                    ColumnCount = 3,
                     RowCount = 1,
                     AutoSize = true,
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -286,9 +286,16 @@ namespace Supervertaler.Trados.Controls
                 };
                 host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
                 host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
                 box.Margin = new Padding(0, UiScale.Pixels(3), UiScale.Pixels(6), UiScale.Pixels(3));
                 host.Controls.Add(box, 0, 0);
                 host.Controls.Add(showBtn, 1, 0);
+                // Copy (Michael, 24 Nov 2026): the key as it is in the box, without showing it first.
+                // A hidden (password) box refuses Ctrl+C, so this is the only way to copy it while hidden.
+                var copy = TextButton("Copy");
+                copy.Margin = new Padding(UiScale.Pixels(6), UiScale.Pixels(3), 0, UiScale.Pixels(3));
+                copy.Click += (s, e) => CopyKey(box, copy);
+                host.Controls.Add(copy, 2, 0);
                 return host;
             }
 
@@ -622,9 +629,9 @@ namespace Supervertaler.Trados.Controls
                 var engineId = engine;
                 test.Click += async (s, e) => await OnTestEngineClick(engineId, test);
                 var host = KeyRow(box, show);
-                host.ColumnCount = 3;
+                host.ColumnCount = 4;
                 host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-                host.Controls.Add(test, 2, 0);
+                host.Controls.Add(test, 3, 0);
                 Row(root, ref row, Supervertaler.Core.MachineTranslation.DisplayName(engine) + " key:", host);
                 KeyNote(root, ref row, out var spacer, out var note);
                 _mtKeyBoxes[engine] = box;
@@ -1612,6 +1619,30 @@ namespace Supervertaler.Trados.Controls
             try { hint = Supervertaler.Core.ApiKeyStore.CheckShape(GetSelectedProviderKey(), _txtApiKey.Text); } catch { }
             _lblKeyHint.Text = hint ?? "";
             _lblKeyHint.Visible = hint != null;
+        }
+
+        /// <summary>
+        /// Puts the key in <paramref name="box"/> (trimmed) on the clipboard and says so on the button for a moment.
+        /// An empty box copies nothing; a clipboard another program holds says "Try again" rather than failing.
+        /// </summary>
+        private static void CopyKey(TextBox box, Button button)
+        {
+            string key = box.Text.Trim();
+            string said;
+            if (key.Length == 0) said = "Empty";
+            else
+            {
+                try { Clipboard.SetText(key); said = "Copied"; }
+                catch (System.Runtime.InteropServices.ExternalException) { said = "Try again"; }
+            }
+            button.Text = said;
+            var timer = new System.Windows.Forms.Timer { Interval = 1500 };
+            timer.Tick += (s, e) =>
+            {
+                timer.Stop(); timer.Dispose();
+                if (!button.IsDisposed) button.Text = "Copy";
+            };
+            timer.Start();
         }
 
         private void OnShowKeyClick(object sender, EventArgs e)
