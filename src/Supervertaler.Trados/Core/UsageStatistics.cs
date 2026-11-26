@@ -8,6 +8,7 @@ using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using Supervertaler.Core;
 using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Core
@@ -82,8 +83,11 @@ namespace Supervertaler.Trados.Core
                     OsVersion = GetOsVersion(),
                     TradosVersion = GetTradosVersion(),
                     Locale = CultureInfo.CurrentUICulture.Name,
-                    VirtualizationHost = DetectVirtualization(),
-                    ProcessArch = (Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") ?? "unknown").ToLowerInvariant(),
+                    VirtualizationHost = MachineInfo.VirtualizationHost(),
+                    // The computer's processor, not Studio's: under Windows on
+                    // ARM (an Apple Silicon Mac) Studio is emulated and would
+                    // be told x86 or amd64.
+                    ProcessArch = MachineInfo.NativeArchitecture(),
                     DisplayScale = GetDisplayScale(),
                     TextScale = GetTextScale(),
                     UiScalePercent = FormatScalePercent(SettingsService.Current.UiScaleFactor)
@@ -163,53 +167,6 @@ namespace Supervertaler.Trados.Core
             catch { }
 
             return "unknown";
-        }
-
-        /// <summary>
-        /// Detects if the Windows instance is running inside a VM, and which hypervisor.
-        /// Returns "parallels", "vmware", "virtualbox", "hyper-v", or "none".
-        /// Parallels detection indicates the user is running on a Mac.
-        /// </summary>
-        private static string DetectVirtualization()
-        {
-            try
-            {
-                // Check SMBIOS system manufacturer / product name via registry
-                // These are populated by the hypervisor's virtual BIOS
-                using (var key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\BIOS"))
-                {
-                    if (key != null)
-                    {
-                        var manufacturer = (key.GetValue("SystemManufacturer") as string ?? "").ToLowerInvariant();
-                        var product = (key.GetValue("SystemProductName") as string ?? "").ToLowerInvariant();
-                        var combined = manufacturer + " " + product;
-
-                        if (combined.Contains("parallels"))
-                            return "parallels";  // Running on macOS via Parallels
-                        if (combined.Contains("vmware"))
-                            return "vmware";
-                        if (combined.Contains("virtualbox"))
-                            return "virtualbox";
-                        if (combined.Contains("microsoft") && combined.Contains("virtual"))
-                            return "hyper-v";
-                        if (combined.Contains("qemu"))
-                            return "qemu";
-                    }
-                }
-
-                // Secondary check: Parallels Tools service
-                try
-                {
-                    using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Parallels\Parallels Tools"))
-                    {
-                        if (key != null) return "parallels";
-                    }
-                }
-                catch { }
-            }
-            catch { }
-
-            return "none";
         }
 
         /// <summary>
