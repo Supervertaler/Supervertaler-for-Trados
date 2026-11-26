@@ -43,7 +43,8 @@ namespace Supervertaler.Trados.Core
         /// may be showing a message. Normal steps take well under a second.</summary>
         private static readonly TimeSpan UiPatience = TimeSpan.FromSeconds(4);
 
-        internal static Result Run(ProjectPlan plan, Action<string> progress, Action<string> message)
+        internal static Result Run(ProjectPlan plan, Action<string> progress, Action<string> message,
+            Func<FileBasedProject, string> beforeSave = null)
         {
             var result = new Result();
             FileBasedProject project = null;
@@ -141,6 +142,17 @@ namespace Supervertaler.Trados.Core
                           string.Join(", ", unconverted) + ". Studio has no file type for them, or could not read them. " +
                           "Leave them out and ask again." + detail
                         : $"Studio could not prepare the files (task status {status})." + detail);
+                }
+
+                // The caller's own additions (the example project's TM). It
+                // returns a warning instead of throwing: what it adds is optional.
+                if (beforeSave != null)
+                {
+                    step = "adding to the project";
+                    string w = null;
+                    try { w = beforeSave(project); }
+                    catch (Exception ex) { w = ex.Message; }
+                    if (!string.IsNullOrEmpty(w)) result.Warnings.Add(w);
                 }
 
                 step = "saving the project";

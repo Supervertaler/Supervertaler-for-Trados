@@ -203,6 +203,7 @@ namespace Supervertaler.Trados.Settings
             {
                 Dock = DockStyle.Fill
             };
+            _aiSettingsPanel.ExampleProjectRequested += OnExampleProjectRequested;
             aiPage.Controls.Add(_aiSettingsPanel);
             _tabControl.TabPages.Add(aiPage);
 
@@ -2384,6 +2385,19 @@ namespace Supervertaler.Trados.Settings
                     "Team folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
+        }
+
+        /// <summary>True when the dialog closed through "Open example project…": the
+        /// settings are saved and the caller makes the project.</summary>
+        public bool OpenExampleProjectAfterClose { get; private set; }
+
+        private void OnExampleProjectRequested(object sender, EventArgs e)
+        {
+            // Through OK, so a key just pasted in is saved before the example uses
+            // it. If OK keeps the dialog open (a problem it shows), nothing is made.
+            OpenExampleProjectAfterClose = true;
+            _btnOK.PerformClick();
+            if (DialogResult != DialogResult.OK) OpenExampleProjectAfterClose = false;
         }
 
         private void OnOKClick(object sender, EventArgs e)

@@ -307,6 +307,10 @@
        the external exe fetches it and registers tools dynamically, so adding
        a tool is a plugin-only change (no extension reinstall). -->
   <ItemGroup>
+    <!-- "Open example project": the document, TM entries and terms, every prepared language. -->
+    <EmbeddedResource Include="Resources\example-project\example-project.json">
+      <LogicalName>ExampleProject.example-project.json</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Resources\mcp-tools.json">
       <LogicalName>McpTools.mcp-tools.json</LogicalName>
     </EmbeddedResource>

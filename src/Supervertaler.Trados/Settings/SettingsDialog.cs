@@ -42,6 +42,15 @@ namespace Supervertaler.Trados.Settings
         /// the file whatever the user does next).</returns>
         public static bool Show(IWin32Window owner, PromptLibrary promptLibrary = null, int defaultTab = 0)
         {
+            bool openExample;
+            bool committed = ShowDialog(owner, promptLibrary, defaultTab, out openExample);
+            // After the dialog has gone: the example asks its own questions.
+            if (openExample) Supervertaler.Trados.Controls.ExampleProjectRunner.Start(owner);
+            return committed;
+        }
+
+        private static bool ShowDialog(IWin32Window owner, PromptLibrary promptLibrary, int defaultTab, out bool openExample)
+        {
             using (var form = new TermLensSettingsForm(promptLibrary, defaultTab))
             {
                 // Live-sync of the active prompt rides on the static
@@ -57,6 +66,7 @@ namespace Supervertaler.Trados.Settings
                 }
 
                 var committed = result == DialogResult.OK || form.SettingsImported;
+                openExample = result == DialogResult.OK && form.OpenExampleProjectAfterClose;
 
                 // Prompt deletions hit disk immediately, even if the user then
                 // presses Cancel, so the library is refreshed either way.
