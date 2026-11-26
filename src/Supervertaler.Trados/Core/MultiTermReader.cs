@@ -290,13 +290,13 @@ namespace Supervertaler.Trados.Core
             int termCount = 0;
             try
             {
-                if (TableExists($"I_{sourceIndexName}"))
+                // ENTRIES, not source terms: an entry with two source terms
+                // (a synonym) counted twice, so list_resources said 273 where
+                // list_terms, which counts entries, said 272. A Supervertaler
+                // termbase's count is rows, i.e. entries, too.
+                using (var cmd = new OleDbCommand("SELECT COUNT(*) FROM mtConcepts", _connection))
                 {
-                    using (var cmd = new OleDbCommand(
-                        $"SELECT COUNT(*) FROM [I_{sourceIndexName}]", _connection))
-                    {
-                        termCount = (int)cmd.ExecuteScalar();
-                    }
+                    termCount = Convert.ToInt32(cmd.ExecuteScalar());
                 }
             }
             catch { /* ignore count errors */ }

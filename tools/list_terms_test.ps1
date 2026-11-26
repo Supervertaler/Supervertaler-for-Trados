@@ -199,10 +199,10 @@ public static class ListTermsTest {
             // 1: synonyms, fields, a German term to ignore, a later term-level change by bob
             AddConcept(cn, 1, "<cG><c>1</c><dG><d type=\"Definition\">Building up pension rights</d></dG><dG><d type=\"Subject\">Pensions</d></dG>"
                 + Tr("origination", "alice", "2026-09-11T08:00:00") + Tr("modification", "alice", "2026-09-11T08:00:00")
-                + Lg("NL", "Dutch", Tg("pensioen opbouwen", Tr("modification", "alice", "2026-09-12T10:00:00")))
+                + Lg("NL", "Dutch", Tg("pensioen opbouwen", Tr("modification", "alice", "2026-09-12T10:00:00")) + Tg("opbouw van pensioen", null))
                 + Lg("EN", "English", Tg("accrue pension", "<dG><d type=\"Status\">preferred</d></dG>" + Tr("modification", "bob", "2026-11-20T16:30:00")) + Tg("build up pension", null))
                 + Lg("DE", "German", Tg("Rente aufbauen", null)) + "</cG>",
-                1, "pensioen opbouwen", 2, "accrue pension", 2, "build up pension", 3, "Rente aufbauen");
+                1, "pensioen opbouwen", 1, "opbouw van pensioen", 2, "accrue pension", 2, "build up pension", 3, "Rente aufbauen");
             // 2 and 3: the same entry twice
             AddConcept(cn, 2, Plain(2, "dekkingsgraad", "coverage ratio"), 1, "dekkingsgraad", 2, "coverage ratio");
             AddConcept(cn, 3, Plain(3, "dekkingsgraad", "coverage ratio"), 1, "dekkingsgraad", 2, "coverage ratio");
@@ -285,7 +285,7 @@ public static class ListTermsTest {
         Check(r.Ok && r.Total == n && r.Returned == 10 && r.Truncated && r.NextOffset == 10, "total " + n + ", first page of 10");
         Check(r.Termbase.Kind == "trados-ttb" && r.Termbase.File == ttb && r.Termbase.Id == -4242, "kind, file and id");
         var c1 = r.Entries[0];
-        Check(c1.Id == 1 && c1.Source.SequenceEqual(new[] { "pensioen opbouwen" }) && c1.Target.SequenceEqual(new[] { "accrue pension", "build up pension" }),
+        Check(c1.Id == 1 && c1.Source.SequenceEqual(new[] { "pensioen opbouwen", "opbouw van pensioen" }) && c1.Target.SequenceEqual(new[] { "accrue pension", "build up pension" }),
               "terms per language with synonyms; the German term is left out");
         Check(c1.Definition == "Building up pension rights" && c1.Domain == "Pensions" && c1.Fields != null && c1.Fields.Contains("Status (English): preferred"),
               "definition, domain, and other fields labelled by language");
@@ -315,6 +315,34 @@ public static class ListTermsTest {
             var hits = index["dekkingsgraad"];
             Check(hits.Count == 2 && hits.Select(h => h.ConceptId).OrderBy(x => x).SequenceEqual(new long?[] { 2, 3 }), "TermLens entries carry their ConceptId (lookup_term's entryId)");
         }
+
+        using (var reader = new TtbReader(ttb)) {
+            reader.Open();
+            var info = reader.GetTermbaseInfo("Dutch", "English", -4242);
+            var listed = List(all, db, "-4242", 0, 1, null);
+            Check(info.TermCount == n && info.TermCount == listed.Total,
+                  "list_resources' count is entries, the same as list_terms' total (" + info.TermCount + " / " + listed.Total + "), though entry 1 has two Dutch terms");
+        }
+
+        Console.WriteLine("A2 a short not-found error among many termbases");
+        var many = Refs();
+        for (int i = 1; i <= 120; i++) many.Add(Ref(i, "Client " + i.ToString("000") + " Glossary", "supervertaler", null, "nl", "en"));
+        var proj = Ref(-4242, "Termbase Acme Pensions", "trados-ttb", ttb, "Dutch", "English"); RefT.GetField("IsProject").SetValue(proj, true);
+        many.Add(proj);
+        var svProj = Ref(500, "Acme Pensions general", "supervertaler", null, "nl", "en"); RefT.GetField("IsProject").SetValue(svProj, true);
+        many.Add(svProj);
+        many.Add(Ref(501, "Medical devices", "supervertaler", null, "nl", "en"));
+        ResolveTb(many, "Acme Pension", out err);
+        Check(err.Contains("Closest: Termbase Acme Pensions (id -4242)") || err.Contains("Closest: Acme Pensions general (id 500), Termbase Acme Pensions (id -4242)"),
+              "an unknown name gives the closest names first (" + err + ")");
+        Check(!err.Contains("Client 050") && !err.Contains("Medical devices") && err.Contains("list_resources lists all 123"),
+              "...leaves unrelated termbases out, and points to list_resources for all 123");
+        Check(err.Length < 400, "...and stays short (" + err.Length + " characters, not a list of 123)");
+        ResolveTb(many, "Clinet 007 Glosary", out err);
+        Check(err.Contains("Closest: Client 007 Glossary (id 7)"), "a typo finds its termbase first (" + err + ")");
+        ResolveTb(many, "zzzz", out err);
+        Check(!err.Contains("Closest") && err.Contains("This job's: Termbase Acme Pensions (id -4242), Acme Pensions general (id 500)") && err.Contains("lists all 123"),
+              "nothing alike: no padded suggestions, just this job's termbases and the pointer (" + err + ")");
 
         Console.WriteLine("D  failure modes");
         r = List(all, db, "-77", null, null, null);
@@ -386,6 +414,12 @@ public static class ListTermsTest {
             var sdHash = Hash(sd);
             var sdRef = Ref(-10, "Sample", "multiterm", sd, "English", "German");
             r = List(Refs(sdRef), db, "Sample", 0, 5, null);
+            using (var mr = new MultiTermReader(sd)) {
+                if (mr.Open()) {
+                    var mi = mr.GetTermbaseInfo("English", "German", -10);
+                    Check(mi.TermCount == r.Total, ".sdltb: list_resources' count equals list_terms' total (" + mi.TermCount + " / " + r.Total + ")");
+                }
+            }
             Check(r.Ok && r.Total > 5 && r.Returned == 5 && r.Truncated, ".sdltb: " + (r.Ok ? r.Total + " entries, first page of 5" : r.Error));
             if (r.Ok) {
                 Check(r.Entries.All(x => x.Id > 0) && r.Entries.Any(x => x.Source.Count > 0 && x.Target.Count > 0), ".sdltb: entries with ids, English and German terms");

@@ -203,17 +203,16 @@ namespace Supervertaler.Trados.Core
             int termCount = 0;
             try
             {
-                var srcIndexId = ResolveIndexId(sourceIndexName);
-                if (srcIndexId != null)
+                // ENTRIES, not source terms: an entry with two source terms
+                // (a synonym) counted twice, so list_resources said 273 where
+                // list_terms, which counts entries, said 272. A Supervertaler
+                // termbase's count is rows, i.e. entries, too.
+                using (var cmd = _connection.CreateCommand())
                 {
-                    using (var cmd = _connection.CreateCommand())
-                    {
-                        cmd.CommandText = "SELECT COUNT(*) FROM mtTerms WHERE IndexId = $idx";
-                        cmd.Parameters.AddWithValue("$idx", srcIndexId.Value);
-                        var n = cmd.ExecuteScalar();
-                        if (n != null && n != DBNull.Value)
-                            termCount = Convert.ToInt32(n);
-                    }
+                    cmd.CommandText = "SELECT COUNT(*) FROM mtConcepts";
+                    var n = cmd.ExecuteScalar();
+                    if (n != null && n != DBNull.Value)
+                        termCount = Convert.ToInt32(n);
                 }
             }
             catch { /* ignore count errors */ }

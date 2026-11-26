@@ -25,6 +25,9 @@ namespace Supervertaler.Trados.Core
         /// <summary>Supervertaler: language codes. Trados: the project's index names.</summary>
         public string SourceLang;
         public string TargetLang;
+        /// <summary>This job's termbase: a Trados project termbase, or the
+        /// Supervertaler termbase ticked Project. Named in a not-found error.</summary>
+        public bool IsProject;
 
         public bool IsTrados => Kind != TermbaseCatalog.KindSupervertaler;
 
@@ -59,7 +62,8 @@ namespace Supervertaler.Trados.Core
         /// <paramref name="dbPath"/>, if any) then the project's Trados ones (from
         /// <paramref name="projectTermbases"/>, which TermLens detects for the open
         /// document). Never throws; a database that cannot be read just adds none.</summary>
-        public static List<TermbaseRef> Build(string dbPath, IEnumerable<MultiTermTermbaseConfig> projectTermbases)
+        public static List<TermbaseRef> Build(string dbPath, IEnumerable<MultiTermTermbaseConfig> projectTermbases,
+            long projectTermbaseId = -1)
         {
             var all = new List<TermbaseRef>();
             if (!string.IsNullOrEmpty(dbPath))
@@ -73,7 +77,8 @@ namespace Supervertaler.Trados.Core
                                 all.Add(new TermbaseRef
                                 {
                                     Id = tb.Id, Name = tb.Name, Kind = KindSupervertaler,
-                                    SourceLang = tb.SourceLang, TargetLang = tb.TargetLang
+                                    SourceLang = tb.SourceLang, TargetLang = tb.TargetLang,
+                                    IsProject = tb.Id == projectTermbaseId
                                 });
                     }
                 }
@@ -85,7 +90,8 @@ namespace Supervertaler.Trados.Core
                 all.Add(new TermbaseRef
                 {
                     Id = c.SyntheticId, Name = c.TermbaseName, Kind = KindOfFile(c.FilePath),
-                    FilePath = c.FilePath, SourceLang = c.SourceIndexName, TargetLang = c.TargetIndexName
+                    FilePath = c.FilePath, SourceLang = c.SourceIndexName, TargetLang = c.TargetIndexName,
+                    IsProject = true
                 });
             }
             return all;
@@ -141,16 +147,91 @@ namespace Supervertaler.Trados.Core
                 }
             }
 
-            error = $"no termbase called '{w}'. " + Available(all);
+            error = $"no termbase called '{w}'. " + Available(all, w);
             return null;
         }
 
-        /// <summary>"Available: A (id 1), B (id -42)", or why there are none.</summary>
-        public static string Available(IReadOnlyList<TermbaseRef> all)
-            => all == null || all.Count == 0
-                ? "No termbases are available (none in Supervertaler, and no Trados project termbase is loaded - " +
-                  "those appear once a document is open in the Editor)."
-                : "Available: " + string.Join(", ", all) + ".";
+        /// <summary>A short list of all termbases: every one.</summary>
+        public const int ListAllUpTo = 10;
+        public const int MaxSuggestions = 5;
+
+        /// <summary>
+        /// What a not-found error names. Up to <see cref="ListAllUpTo"/> termbases:
+        /// all of them. More (a real setup has well over a hundred): only the
+        /// names closest to <paramref name="wanted"/>, this job's termbases, and a
+        /// pointer to list_resources - a reply listing 120 termbases buries the
+        /// answer and costs the assistant's context for nothing.
+        /// </summary>
+        public static string Available(IReadOnlyList<TermbaseRef> all, string wanted = null)
+        {
+            if (all == null || all.Count == 0)
+                return "No termbases are available (none in Supervertaler, and no Trados project termbase is loaded - " +
+                       "those appear once a document is open in the Editor).";
+            if (all.Count <= ListAllUpTo)
+                return "Available: " + string.Join(", ", all) + ".";
+
+            var parts = new List<string>();
+            var closest = Closest(all, wanted, MaxSuggestions);
+            if (closest.Count > 0) parts.Add("Closest: " + string.Join(", ", closest) + ".");
+            var project = all.Where(t => t.IsProject && !closest.Contains(t)).ToList();
+            if (project.Count > 0) parts.Add("This job's: " + string.Join(", ", project) + ".");
+            parts.Add($"list_resources lists all {all.Count}.");
+            return string.Join(" ", parts);
+        }
+
+        /// <summary>
+        /// The termbases whose names are most like <paramref name="wanted"/>,
+        /// best first: one name inside the other, words in common, or few
+        /// edits apart (a typo, a missing date). Names that are nothing alike
+        /// are left out rather than padded in.
+        /// </summary>
+        internal static List<TermbaseRef> Closest(IReadOnlyList<TermbaseRef> all, string wanted, int max)
+        {
+            var w = (wanted ?? "").Trim().ToLowerInvariant();
+            if (w.Length == 0 || all == null) return new List<TermbaseRef>();
+            return all
+                .Select(t => new { t, score = Similarity(w, (t.Name ?? "").Trim().ToLowerInvariant()) })
+                .Where(x => x.score >= 0.4)
+                .OrderByDescending(x => x.score).ThenBy(x => x.t.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(max)
+                .Select(x => x.t)
+                .ToList();
+        }
+
+        internal static double Similarity(string a, string b)
+        {
+            if (a.Length == 0 || b.Length == 0) return 0;
+            if (a == b) return 1;
+            double best = 0;
+            if (a.Contains(b) || b.Contains(a))
+                best = 0.6 + 0.4 * Math.Min(a.Length, b.Length) / Math.Max(a.Length, b.Length);
+
+            var wa = Words(a); var wb = Words(b);
+            if (wa.Count > 0 && wb.Count > 0)
+                best = Math.Max(best, (double)wa.Intersect(wb).Count() / Math.Min(wa.Count, wb.Count) * 0.9);
+
+            best = Math.Max(best, 1.0 - (double)Levenshtein(a, b) / Math.Max(a.Length, b.Length));
+            return best;
+        }
+
+        private static HashSet<string> Words(string s)
+            => new HashSet<string>(s.Split(new[] { ' ', '-', '_', '.', ',', '(', ')', '[', ']', '/' },
+                    StringSplitOptions.RemoveEmptyEntries).Where(x => x.Length >= 3 && !x.All(char.IsDigit)));
+
+        private static int Levenshtein(string a, string b)
+        {
+            var prev = new int[b.Length + 1];
+            var cur = new int[b.Length + 1];
+            for (int j = 0; j <= b.Length; j++) prev[j] = j;
+            for (int i = 1; i <= a.Length; i++)
+            {
+                cur[0] = i;
+                for (int j = 1; j <= b.Length; j++)
+                    cur[j] = Math.Min(Math.Min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+                var t = prev; prev = cur; cur = t;
+            }
+            return prev[b.Length];
+        }
 
         private static bool Same(string a, string b)
             => !string.IsNullOrEmpty(a) && string.Equals(a.Trim(), b, StringComparison.OrdinalIgnoreCase);

@@ -3825,7 +3825,8 @@ namespace Supervertaler.Trados
                 if (wantedTbs.Count > 0)
                 {
                     var catalog = TermbaseCatalog.Build(
-                        ResolveSupervertalerDbPath(), TermLensEditorViewPart.GetMultiTermConfigs());
+                        ResolveSupervertalerDbPath(), TermLensEditorViewPart.GetMultiTermConfigs(),
+                        SettingsService.Current?.ProjectTermbaseId ?? -1);
                     tbFilter = new HashSet<long>();
                     var errors = new List<string>();
                     var notRead = new List<string>();

@@ -3081,7 +3081,8 @@ namespace Supervertaler.Trados.Core
             try
             {
                 var dbPath = ResolveDbPathSafe();
-                var all = TermbaseCatalog.Build(dbPath, TermLensEditorViewPart.GetMultiTermConfigs());
+                var all = TermbaseCatalog.Build(dbPath, TermLensEditorViewPart.GetMultiTermConfigs(),
+                    SettingsService.Current?.ProjectTermbaseId ?? -1);
                 response = TermbaseListing.BuildResponse(all, dbPath, qs["termbase"], offset, limit, qs["contains"]);
             }
             catch (Exception ex)
