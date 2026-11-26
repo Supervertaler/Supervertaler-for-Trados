@@ -425,6 +425,71 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "note", Order = 8, EmitDefaultValue = false)] public string Note { get; set; }
     }
 
+    /// <summary>One mode's active prompt (get_active_prompt, set_active_prompt).</summary>
+    [DataContract]
+    public class BridgeActivePromptSlot
+    {
+        /// <summary>The stored choice, as the project's settings file holds it:
+        /// "" when none was made, "*built-in*" for no library prompt on purpose.</summary>
+        [DataMember(Name = "path", Order = 0)] public string Path { get; set; }
+        /// <summary>The prompt's name, or the Batch list's first item when a run
+        /// uses no library prompt.</summary>
+        [DataMember(Name = "name", Order = 1, EmitDefaultValue = false)] public string Name { get; set; }
+        /// <summary>Whether the prompt this choice stands for is in the library: the
+        /// stored prompt, or for an empty choice the shipped default.</summary>
+        [DataMember(Name = "exists", Order = 2)] public bool Exists { get; set; }
+        /// <summary>The library prompt a run in this mode actually uses; absent when none.</summary>
+        [DataMember(Name = "effectivePath", Order = 3, EmitDefaultValue = false)] public string EffectivePath { get; set; }
+        /// <summary>"project" (the project's own choice) or "global" (none recorded for the project).</summary>
+        [DataMember(Name = "source", Order = 4, EmitDefaultValue = false)] public string Source { get; set; }
+        [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    /// <summary>The project a prompt answer is about.</summary>
+    [DataContract]
+    public class BridgePromptProject
+    {
+        [DataMember(Name = "name", Order = 0, EmitDefaultValue = false)] public string Name { get; set; }
+        [DataMember(Name = "studioVersion", Order = 1, EmitDefaultValue = false)] public string StudioVersion { get; set; }
+        /// <summary>The 12-hex key that names the project's settings file in trados\projects.</summary>
+        [DataMember(Name = "settingsKey", Order = 2, EmitDefaultValue = false)] public string SettingsKey { get; set; }
+    }
+
+    /// <summary>GET /v1/active-prompt (MCP get_active_prompt).</summary>
+    [DataContract]
+    public class BridgeActivePromptResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "available", Order = 1)] public bool Available { get; set; }
+        [DataMember(Name = "error", Order = 2, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "project", Order = 3, EmitDefaultValue = false)] public BridgePromptProject Project { get; set; }
+        [DataMember(Name = "translate", Order = 4, EmitDefaultValue = false)] public BridgeActivePromptSlot Translate { get; set; }
+        [DataMember(Name = "proofread", Order = 5, EmitDefaultValue = false)] public BridgeActivePromptSlot Proofread { get; set; }
+        [DataMember(Name = "note", Order = 6, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
+    /// <summary>POST /v1/set-active-prompt body (MCP set_active_prompt).</summary>
+    [DataContract]
+    public class BridgeSetActivePromptRequest
+    {
+        [DataMember(Name = "path")] public string Path { get; set; }
+        [DataMember(Name = "kind")] public string Kind { get; set; }
+    }
+
+    [DataContract]
+    public class BridgeSetActivePromptResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "kind", Order = 2, EmitDefaultValue = false)] public string Kind { get; set; }
+        /// <summary>What was active before, so the caller can name it and undo.</summary>
+        [DataMember(Name = "previous", Order = 3, EmitDefaultValue = false)] public BridgeActivePromptSlot Previous { get; set; }
+        [DataMember(Name = "active", Order = 4, EmitDefaultValue = false)] public BridgeActivePromptSlot Active { get; set; }
+        [DataMember(Name = "nearMatches", Order = 5, EmitDefaultValue = false)] public List<string> NearMatches { get; set; }
+        [DataMember(Name = "project", Order = 6, EmitDefaultValue = false)] public BridgePromptProject Project { get; set; }
+        [DataMember(Name = "note", Order = 7, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
     [DataContract]
     public class BridgeHelpResponse
     {
@@ -491,6 +556,12 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "warnings", Order = 8, EmitDefaultValue = false)]
         public List<string> Warnings { get; set; }
         [DataMember(Name = "note", Order = 9, EmitDefaultValue = false)] public string Note { get; set; }
+        /// <summary>The library prompt the next Batch Translate run sends, by its
+        /// relativePath, or the Batch list's first item when it sends none.
+        /// get_active_prompt has the details.</summary>
+        [DataMember(Name = "activeTranslatePrompt", Order = 10, EmitDefaultValue = false)] public string ActiveTranslatePrompt { get; set; }
+        /// <summary>The same for a Proofread run.</summary>
+        [DataMember(Name = "activeProofreadPrompt", Order = 11, EmitDefaultValue = false)] public string ActiveProofreadPrompt { get; set; }
 
         // In-process only (no [DataMember] – never serialised to the wire): the
         // full path to the open project's .sdlproj, so /v1/statistics can read
@@ -1808,6 +1879,8 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeMarkReviewedRequest, BridgeMarkReviewedResponse> _markReviewed;
         private readonly Func<BridgeCoverageResponse> _getCoverage;
         private readonly Func<BridgeTrackedChangesQuery, BridgeTrackedChangesResponse> _getTrackedChanges;
+        private readonly Func<BridgeActivePromptResponse> _getActivePrompt;
+        private readonly Func<BridgeSetActivePromptRequest, BridgeSetActivePromptResponse> _setActivePrompt;
 
         /// <summary>Max segment updates per /v1/update-segments call – keeps a
         /// single request from freezing the editor thread for minutes on huge
@@ -1920,7 +1993,9 @@ namespace Supervertaler.Trados.Core
             Func<BridgeInstanceInfo> getInstanceInfo = null,
             Func<BridgeCreateProjectRequest, BridgeRunTaskResponse> createProject = null,
             Func<BridgeOpenProjectRequest, BridgeTaskStatusResponse> openProject = null,
-            Func<bool> editorReady = null)
+            Func<bool> editorReady = null,
+            Func<BridgeActivePromptResponse> getActivePrompt = null,
+            Func<BridgeSetActivePromptRequest, BridgeSetActivePromptResponse> setActivePrompt = null)
         {
             _createProject = createProject;
             _openProject = openProject;
@@ -1959,6 +2034,8 @@ namespace Supervertaler.Trados.Core
             _markReviewed = markReviewed;
             _getCoverage = getCoverage;
             _getTrackedChanges = getTrackedChanges;
+            _getActivePrompt = getActivePrompt;
+            _setActivePrompt = setActivePrompt;
         }
 
         public bool IsRunning => _listener != null && _listener.IsListening;
@@ -2509,6 +2586,16 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/save-prompt")
             {
                 HandleSavePrompt(context);
+                return;
+            }
+            if (method == "GET" && path == "/v1/active-prompt")
+            {
+                HandleGetActivePrompt(context);
+                return;
+            }
+            if (method == "POST" && path == "/v1/set-active-prompt")
+            {
+                HandleSetActivePrompt(context);
                 return;
             }
             if (method == "GET" && path == "/v1/help")
@@ -4064,6 +4151,9 @@ namespace Supervertaler.Trados.Core
                 }
 
                 var appWord = string.IsNullOrWhiteSpace(target.App) ? "both" : target.App;
+                // Read back as the library loads it, so the QuickLauncher flag (set
+                // from the folder at load time) is what set_active_prompt will see.
+                var saved = PromptPaths.Find(new PromptLibrary(), target.RelativePath) ?? target;
                 WriteJson(context, 200, new BridgeSavePromptResponse
                 {
                     Ok = true,
@@ -4075,10 +4165,11 @@ namespace Supervertaler.Trados.Core
                     App = appWord,
                     // Since 21 Nov 2026 the library is Trados's own (prompt_library_Trados):
                     // memoQ no longer sees it, so "available to both products" would be untrue.
+                    // Saving never activates: the active prompt is the project's choice,
+                    // changed only by set_active_prompt or by the user in the panel.
                     Note = (created ? "Saved to the Trados prompt library as \"" : "Updated \"") + target.Name + "\" ("
                          + target.RelativePath + "). Recorded as drafted by the chat. "
-                         + "The user selects it in Supervertaler for Trados under Batch Operations > Prompt, "
-                         + "or from the Prompt Library tab."
+                         + ActivePrompt.AfterSaveHint(saved)
                 });
             }
             catch (Exception ex)
@@ -4086,6 +4177,78 @@ namespace Supervertaler.Trados.Core
                 BridgeLog.Write($"[SupervertalerBridge] save prompt failed: {ex.Message}");
                 WriteJson(context, 500, new BridgeSavePromptResponse { Ok = false, Error = "save prompt failed: " + ex.Message });
             }
+        }
+
+        // ── Active prompt (v1: /active-prompt, /set-active-prompt) ─────────
+        //
+        // The prompt a Batch Translate or Proofread run sends is the open
+        // project's choice, held in memory by the plugin (the global AI settings
+        // mirror the open project's) and in the project's settings file. Both
+        // endpoints therefore go through the AI Assistant pane, on the UI thread,
+        // the same way a pick in the Batch Operations list does: writing the file
+        // from here would be overwritten at the next project switch, and the list
+        // would go on showing - and running - the old prompt.
+
+        private void HandleGetActivePrompt(HttpListenerContext context)
+        {
+            if (_getActivePrompt == null)
+            {
+                TryWriteError(context, 501, "active-prompt endpoint not wired");
+                return;
+            }
+
+            BridgeActivePromptResponse response;
+            try
+            {
+                response = _getActivePrompt() ?? new BridgeActivePromptResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] active-prompt threw: {ex.Message}");
+                response = new BridgeActivePromptResponse { Ok = false, Error = "get active prompt failed: " + ex.Message };
+            }
+            WriteJson(context, 200, response);
+        }
+
+        private void HandleSetActivePrompt(HttpListenerContext context)
+        {
+            if (_setActivePrompt == null)
+            {
+                TryWriteError(context, 501, "set-active-prompt endpoint not wired");
+                return;
+            }
+
+            BridgeSetActivePromptRequest req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                {
+                    var body = reader.ReadToEnd();
+                    req = string.IsNullOrWhiteSpace(body) ? null : DeserializeJson<BridgeSetActivePromptRequest>(body);
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeSetActivePromptResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+            if (req == null || string.IsNullOrWhiteSpace(req.Path))
+            {
+                WriteJson(context, 400, new BridgeSetActivePromptResponse { Ok = false, Error = "Pass 'path': a relativePath from list_prompts." });
+                return;
+            }
+
+            BridgeSetActivePromptResponse response;
+            try
+            {
+                response = _setActivePrompt(req) ?? new BridgeSetActivePromptResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] set-active-prompt threw: {ex.Message}");
+                response = new BridgeSetActivePromptResponse { Ok = false, Error = "set active prompt failed: " + ex.Message };
+            }
+            WriteJson(context, 200, response);
         }
 
         /// <summary>
@@ -4806,21 +4969,31 @@ namespace Supervertaler.Trados.Core
                 // that started last. Observed before it was fixed: a handshake
                 // 18 seconds "newer" than its own bridge.
                 StartedAt = _startedAtUtc ?? DateTime.UtcNow.ToString("o"),
-                // 17.x targets Studio 2022, 18.x Studio 2024, 19.x Studio 2026 – the
-                // same mapping the update check uses to keep the generations apart.
-                // A generation missing here reports null, and the MCP server can
-                // then not select that Studio by version.
-                StudioVersion = asmVersion == null ? null
-                    : asmVersion.Major == 17 ? "2022"
-                    : asmVersion.Major == 18 ? "2024"
-                    : asmVersion.Major == 19 ? "2026"
-                    : null,
+                StudioVersion = StudioVersionOf(asmVersion),
                 PluginVersion = asmVersion?.ToString(),
                 ProjectName = projectName,
                 ActiveFile = activeFile,
                 ProcessName = SafeProcessName(proc)
             };
         }
+
+        /// <summary>
+        /// The Studio this build is for, from the plugin's own major version:
+        /// 17.x targets Studio 2022, 18.x Studio 2024, 19.x Studio 2026 – the same
+        /// mapping the update check uses to keep the generations apart. Null for a
+        /// generation missing here; the MCP server can then not select that Studio
+        /// by version.
+        /// </summary>
+        internal static string StudioVersionOf(Version asmVersion) =>
+            asmVersion == null ? null
+            : asmVersion.Major == 17 ? "2022"
+            : asmVersion.Major == 18 ? "2024"
+            : asmVersion.Major == 19 ? "2026"
+            : null;
+
+        /// <summary>This Studio, by the label the MCP server's instance tools use.</summary>
+        internal static string ThisStudioVersion =>
+            StudioVersionOf(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
 
         private static string SafeProcessName(Process p)
         {

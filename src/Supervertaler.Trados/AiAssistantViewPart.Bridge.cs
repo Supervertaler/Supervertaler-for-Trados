@@ -182,7 +182,9 @@ namespace Supervertaler.Trados
             getInstanceInfo: () => _currentInstance?.BuildBridgeInstanceInfo(),
             createProject: BridgeCreateProject,
             openProject: BridgeOpenProject,
-            editorReady: () => PaneReady);
+            editorReady: () => PaneReady,
+            getActivePrompt: () => Pane.BridgeGetActivePrompt(),
+            setActivePrompt: r => Pane.BridgeSetActivePrompt(r));
 
         // ─── open_project ──────────────────────────────────────────────────────
 

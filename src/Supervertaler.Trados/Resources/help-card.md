@@ -51,5 +51,7 @@ You talk to me in plain language – there are no commands to memorise. Here's t
 - "List my prompts"
 - "Show me my Default Translation Prompt"
 - "Improve this prompt and save it as a new one"
+- "Which prompt is active for this project?"
+- "Use my new prompt for this project" – I tell you which prompt it replaces
 
 Tip: batch tasks and pre-translate run against the **last saved** state, so save in Studio first.
