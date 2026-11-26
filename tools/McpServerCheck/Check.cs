@@ -222,5 +222,44 @@ internal static class Check
         sw.Stop();
         Ok(IsOk(r) && bridge.Resolve(dir).Live.Count == 1 && sw.ElapsedMilliseconds < 10000,
             "7 2,000 handshakes left behind by closed Studios and one running: \"2026\" chosen in " + sw.ElapsedMilliseconds + " ms (limit 10,000)");
+
+        // ── 8: Supervertaler Workbench as the host ────────────────────────
+        // Workbench writes the same handshakes, to workbench\runtime, without a
+        // Studio version. Two running at once are told apart by project name.
+        Ok(BridgeClient.ResolveRuntimeDir().EndsWith(Path.Combine("trados", "runtime")),
+            "8 with no host set the runtime folder is still Trados's");
+        Environment.SetEnvironmentVariable("SUPERVERTALER_HOST", "workbench");
+        try
+        {
+            Ok(BridgeClient.ResolveRuntimeDir().EndsWith(Path.Combine("workbench", "runtime")),
+                "8 host \"workbench\": handshakes are looked for in workbench\\runtime");
+            Ok(!LocalTools.Definitions().Any(), "8 the two Trados-named instance tools are not offered");
+
+            var wbDir = Path.Combine(Path.GetTempPath(), "sv-mcp-check-wb-" + Guid.NewGuid().ToString("N"));
+            var wb = new BridgeClient();
+            string? none = null;
+            try { wb.Resolve(wbDir); } catch (BridgeUnavailableException ex) { none = ex.Message; }
+            Ok(none != null && none.Contains("Workbench") && !none.Contains("Trados"),
+                "8 no Workbench running: the message says so, and does not mention Trados");
+
+            var wb1 = StartStandIn();
+            var wb2 = StartStandIn();
+            Handshake(wbDir, wb1.Id, null!, "Acme PROJ-001", 5101);
+            Handshake(wbDir, wb2.Id, null!, "Acme PROJ-002", 5102);
+            var both = wb.Resolve(wbDir);
+            Ok(both.IsAmbiguous && both.Chosen.Label.StartsWith("Supervertaler Workbench (project"),
+                "8 two Workbenches running: ambiguous, and each is called Supervertaler Workbench with its project");
+            Ok(both.Live.Count(i => BridgeClient.Matches(i, "PROJ-002")) == 1,
+                "8 part of a project name picks out one of them");
+
+            Close(wb2);
+            Ok(wb.Resolve(wbDir).Live.Count == 1, "8 one closed (handshake left behind): only the other is found");
+            Close(wb1);
+            try { Directory.Delete(wbDir, true); } catch { }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SUPERVERTALER_HOST", null);
+        }
     }
 }

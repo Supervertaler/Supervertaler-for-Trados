@@ -30,6 +30,11 @@ public static class LocalTools
         // only ever answer "the one memoQ", and their wording is Trados's.
         if (BridgeClient.IsMemoQ) yield break;
 
+        // Workbench can run more than once, but these two are named and worded
+        // for Trados. A Workbench call says which window it means with its own
+        // `instance` (part of the project name), which every tool accepts.
+        if (BridgeClient.IsWorkbench) yield break;
+
         yield return (ListInstances,
             "List the Trados Studio instances currently running with the Supervertaler bridge, "
             + "with the Studio version and open project of each, and say which one your tool calls "

@@ -257,8 +257,12 @@ static CallToolResult WarnedResult(string warning, string text) => new()
 // and a warning issued forty turns ago has been compacted away. Kept to two
 // lines because every byte returned is re-sent on every later turn — the exact
 // cost session_report exists to measure.
-static string AmbiguousReadWarning(BridgeSelection sel) =>
-    $"⚠ Multiple Trados instances are live. This result is from {sel.Chosen.Label}. "
+static string AmbiguousReadWarning(BridgeSelection sel) => BridgeClient.IsWorkbench
+    ? $"⚠ More than one Supervertaler Workbench is running. This result is from {sel.Chosen.Label}. "
+      + string.Join("; ", sel.Others.Select(o => o.Label)) + " also running.\n"
+      + "Tell the user which project this describes. To read another one, pass part of its project name "
+      + "as 'instance' on the call."
+    : $"⚠ Multiple Trados instances are live. This result is from {sel.Chosen.Label}. "
     + string.Join("; ", sel.Others.Select(o => o.Label)) + " also running.\n"
     + "Tell the user which instance this describes. Editing is refused until one is chosen – "
     + "ask which project they mean, then call select_trados_instance.";
@@ -310,8 +314,11 @@ static JsonElement WithInstanceParam(JsonElement schema)
         props["instance"] = new JsonObject
         {
             ["type"] = "string",
-            ["description"] =
-                "Which Trados Studio this call is for: \"2022\", \"2024\", \"2026\", or part of the project name. "
+            ["description"] = BridgeClient.IsWorkbench
+                ? "Which running Supervertaler Workbench this call is for, when more than one is open: part of "
+                  + "its project name. The call is refused if no running Workbench matches. Optional: omit when "
+                  + "only one Workbench is running."
+                : "Which Trados Studio this call is for: \"2022\", \"2024\", \"2026\", or part of the project name. "
                 + "It is checked against the Studio the call would actually go to, and the call is refused "
                 + "if they differ. The choice made with select_trados_instance is shared by every chat on "
                 + "this machine, so a chat that always passes its own Studio here can never write into "
@@ -350,7 +357,11 @@ static string RefuseNoSuchInstance(string toolName, string wanted, BridgeSelecti
     return JsonSerializer.Serialize(new
     {
         ok = false,
-        error = $"Refusing to run '{toolName}': this call says it is for \"{wanted}\", but no running Trados "
+        error = BridgeClient.IsWorkbench
+              ? $"Refusing to run '{toolName}': this call says it is for \"{wanted}\", but no running "
+                + "Supervertaler Workbench has a project whose name contains that. 'running' lists the ones "
+                + "there are; pass part of one of those project names as the instance."
+              : $"Refusing to run '{toolName}': this call says it is for \"{wanted}\", but no running Trados "
               + "Studio matches that. Nothing was written. Check which Studios are open (list_trados_instances) "
               + "and that the one meant is running with its project open; \"2022\", \"2024\", \"2026\" or part of the "
               + "project name all work as the instance.",

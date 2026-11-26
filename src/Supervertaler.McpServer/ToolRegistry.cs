@@ -132,7 +132,8 @@ public static class ToolRegistry
         // The bundled fallback is the Trados registry. Advertising it for a
         // memoQ host would offer fifty tools of which a third do not exist
         // there; better to offer none until the memoQ bridge has been seen once.
-        if (BridgeClient.IsMemoQ) return new List<ToolDef>();
+        // The same goes for Workbench, whose list is shorter still.
+        if (BridgeClient.IsMemoQ || BridgeClient.IsWorkbench) return new List<ToolDef>();
 
         try
         {

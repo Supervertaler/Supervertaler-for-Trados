@@ -33,7 +33,8 @@ public sealed record BridgeInstance(
     {
         get
         {
-            var studio = StudioVersion is { Length: > 0 } v ? $"Studio {v}" : "Trados Studio";
+            var studio = BridgeClient.IsWorkbench ? "Supervertaler Workbench"
+                : StudioVersion is { Length: > 0 } v ? $"Studio {v}" : "Trados Studio";
             var project = ProjectName is { Length: > 0 } p ? $" (project \"{p}\", PID {Pid})" : $" (no project open, PID {Pid})";
             return studio + project;
         }
@@ -126,6 +127,18 @@ public sealed class BridgeClient
 
     public static bool IsMemoQ => Host == "memoq";
 
+    /// <summary>
+    /// Supervertaler Workbench, the stand-alone application. Its bridge speaks
+    /// the same protocol and writes one handshake per running Workbench to
+    /// &lt;root&gt;\workbench\runtime\instances\, so discovery, liveness and the
+    /// handling of several running at once are the Trados code unchanged; only
+    /// the folder and the wording differ.
+    /// </summary>
+    public static bool IsWorkbench => Host == "workbench";
+
+    /// <summary>What the host application is called in messages to the user.</summary>
+    public static string HostAppName => IsWorkbench ? "Supervertaler Workbench" : IsMemoQ ? "memoQ" : "Trados Studio";
+
     /// <summary>Set when a custom handshake path is passed via SUPERVERTALER_BRIDGE_FILE.
     /// Pins this exe to exactly one handshake, which is also the manual way to aim two
     /// chat clients at two Studios before the selector work in #72 stage 2 lands.
@@ -186,9 +199,10 @@ public sealed class BridgeClient
         }
         catch (HttpRequestException ex)
         {
-            throw new BridgeUnavailableException(
-                "Could not reach the Supervertaler bridge inside Trados Studio " +
-                $"({ex.Message}). Is Trados Studio running with the Supervertaler plugin enabled?");
+            throw new BridgeUnavailableException(IsWorkbench
+                ? $"Could not reach Supervertaler Workbench ({ex.Message}). Is Workbench still running?"
+                : "Could not reach the Supervertaler bridge inside Trados Studio " +
+                  $"({ex.Message}). Is Trados Studio running with the Supervertaler plugin enabled?");
         }
 
         var text = await resp.Content.ReadAsStringAsync(ct);
@@ -298,7 +312,9 @@ public sealed class BridgeClient
     {
         var live = DiscoverLiveInstances(runtimeDir);
         if (live.Count == 0)
-            throw new BridgeUnavailableException(NoInstanceMessage(IsMemoQ, !IsMemoQ && IsTradosStudioRunning()));
+            throw new BridgeUnavailableException(IsWorkbench
+                ? WorkbenchNotRunningMessage
+                : NoInstanceMessage(IsMemoQ, !IsMemoQ && IsTradosStudioRunning()));
         return live;
     }
 
@@ -329,9 +345,11 @@ public sealed class BridgeClient
             if (candidates.Count == 0)
             {
                 throw new BridgeUnavailableException(
-                    $"No running Trados Studio matches the selected instance \"{selector}\". "
+                    $"No running {HostAppName} matches the selected instance \"{selector}\". "
                     + "Running now: " + string.Join("; ", live.Select(i => i.Label)) + ". "
-                    + "Either open that project, or choose one of these with select_trados_instance.");
+                    + (IsWorkbench
+                        ? "Either open that project, or pass part of one of these project names as 'instance'."
+                        : "Either open that project, or choose one of these with select_trados_instance."));
             }
         }
 
@@ -351,6 +369,11 @@ public sealed class BridgeClient
     /// is almost always still starting; there is no separate "bridge enabled"
     /// setting - the only gate is a Supervertaler licence or trial.
     /// </summary>
+    internal const string WorkbenchNotRunningMessage =
+        "Supervertaler Workbench is not running (no Supervertaler bridge found). Start Supervertaler Workbench " +
+        "and open a project. If it is running, it may be a version from before this connection existed: " +
+        "update Workbench.";
+
     internal static string NoInstanceMessage(bool isMemoQ, bool studioRunning)
     {
         if (isMemoQ)
@@ -443,7 +466,8 @@ public sealed class BridgeClient
         }
     }
 
-    internal static string ResolveRuntimeDir() => Path.Combine(ResolveSharedRoot(), "trados", "runtime");
+    internal static string ResolveRuntimeDir() =>
+        Path.Combine(ResolveSharedRoot(), IsWorkbench ? "workbench" : "trados", "runtime");
 
     /// <summary>The shared Supervertaler data folder — config.json's user_data_path, else ~\Supervertaler.</summary>
     private static string ResolveSharedRoot()
