@@ -435,7 +435,7 @@ namespace Supervertaler.Trados.Core
         /// <summary>The prompt's name, or the Batch list's first item when a run
         /// uses no library prompt.</summary>
         [DataMember(Name = "name", Order = 1, EmitDefaultValue = false)] public string Name { get; set; }
-        /// <summary>Whether the prompt this choice stands for is in the library: the
+        /// <summary>Whether the prompt this choice stands for is in the library: the
         /// stored prompt, or for an empty choice the shipped default.</summary>
         [DataMember(Name = "exists", Order = 2)] public bool Exists { get; set; }
         /// <summary>The library prompt a run in this mode actually uses; absent when none.</summary>
