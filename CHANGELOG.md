@@ -19,6 +19,7 @@
 
 ### Fixed
 - **ChatGPT desktop can reach memoQ again.** ChatGPT sometimes starts the Supervertaler MCP server without the setting that tells it to talk to memoQ. The server then behaved as the Trados one: it offered Trados's tools and answered "Trados Studio is not running" while memoQ was open. It now also recognises memoQ (or Trados, or Workbench) from the folder it is installed in, which is where **Set up ChatGPT desktop** puts it. A memoQ server that has never seen memoQ running now offers two tools, *help* and *get_project*, instead of none, so the chat can tell you how to connect. Its messages now name memoQ rather than Trados Studio. The server also writes one line when it starts, recording which program it is serving and which data folder it is using, into the AI app's own log. To update ChatGPT's copy, press **Set up ChatGPT desktop** again.
+- **Saving AI Settings with Gemini and no model picked now chooses Gemini 3.8 Flash.** It used to fall back to Gemini 3.1 Flash-Lite, which is no longer on the model list.
 - **The TermLens refresh button's tooltip no longer mentions F5, and the Help no longer lists F5 as a TermLens shortcut.** F5 never refreshed TermLens: the command existed in Supervertaler but was never registered with Trados Studio, so pressing F5 did whatever Studio itself does with it. The command has been removed; use the **↻** button in the TermLens panel to reload your Supervertaler termbases from disk.
 
 ## [18.20.209 / 19.20.209] – 2026-11-21
