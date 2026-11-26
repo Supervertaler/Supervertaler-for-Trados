@@ -212,6 +212,9 @@ builder.Services.Configure<McpServerOptions>(o =>
     o.Capabilities ??= new ServerCapabilities();
     o.Capabilities.Tools ??= new ToolsCapability();
     o.Capabilities.Tools.ListChanged = true;
+    // Translation craft every client passes to its model at connect (see ServerGuidance).
+    try { o.ServerInstructions = ServerGuidance.For(BridgeClient.HostSource.Host); }
+    catch { /* guidance must never stop the server starting */ }
 });
 
 var host = builder.Build();

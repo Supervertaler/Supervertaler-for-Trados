@@ -1119,6 +1119,38 @@ namespace Supervertaler.Trados.Core
         [DataMember(Name = "number", EmitDefaultValue = false)] public string Number { get; set; }
     }
 
+    /// <summary>POST /v1/merge-segments (MCP merge_segments).</summary>
+    [DataContract]
+    public class BridgeMergeSegmentsRequest
+    {
+        /// <summary>Full ids "puId:segId" of neighbouring segments in one paragraph, two or more.</summary>
+        [DataMember(Name = "ids")] public List<string> Ids { get; set; }
+    }
+
+    /// <summary>POST /v1/split-segment (MCP split_segment).</summary>
+    [DataContract]
+    public class BridgeSplitSegmentRequest
+    {
+        [DataMember(Name = "id")] public string Id { get; set; }
+        /// <summary>The source text the second segment starts with; must occur once.</summary>
+        [DataMember(Name = "splitBefore")] public string SplitBefore { get; set; }
+        /// <summary>Split even when that cuts a tag pair in two.</summary>
+        [DataMember(Name = "allowInsideTags")] public bool? AllowInsideTags { get; set; }
+    }
+
+    /// <summary>Answer to merge-segments / split-segment: the segment ids that now
+    /// stand where the old ones were.</summary>
+    [DataContract]
+    public class BridgeSegmentStructureResponse
+    {
+        [DataMember(Name = "ok", Order = 0)] public bool Ok { get; set; }
+        [DataMember(Name = "error", Order = 1, EmitDefaultValue = false)] public string Error { get; set; }
+        [DataMember(Name = "ids", Order = 2, EmitDefaultValue = false)] public List<string> Ids { get; set; }
+        [DataMember(Name = "source", Order = 3, EmitDefaultValue = false)] public string Source { get; set; }
+        [DataMember(Name = "target", Order = 4, EmitDefaultValue = false)] public string Target { get; set; }
+        [DataMember(Name = "note", Order = 5, EmitDefaultValue = false)] public string Note { get; set; }
+    }
+
     [DataContract]
     public class BridgeCommentInfo
     {
@@ -1787,6 +1819,8 @@ namespace Supervertaler.Trados.Core
         private readonly Func<BridgeTmCompareQuery, BridgeTmCompareResponse> _compareTm;
         private readonly Func<BridgeResourcesResponse> _listResources;
         private readonly Func<BridgeGoToRequest, BridgeResultResponse> _goToSegment;
+        private readonly Func<BridgeMergeSegmentsRequest, BridgeSegmentStructureResponse> _mergeSegments;
+        private readonly Func<BridgeSplitSegmentRequest, BridgeSegmentStructureResponse> _splitSegment;
         private readonly Func<string, BridgeCommentsResponse> _getComments;
         private readonly Func<BridgeAddCommentRequest, BridgeResultResponse> _addComment;
         private readonly Func<BridgeUpdateCommentRequest, BridgeResultResponse> _updateComment;
@@ -1898,6 +1932,8 @@ namespace Supervertaler.Trados.Core
             Func<BridgeTmCompareQuery, BridgeTmCompareResponse> compareTm = null,
             Func<BridgeResourcesResponse> listResources = null,
             Func<BridgeGoToRequest, BridgeResultResponse> goToSegment = null,
+            Func<BridgeMergeSegmentsRequest, BridgeSegmentStructureResponse> mergeSegments = null,
+            Func<BridgeSplitSegmentRequest, BridgeSegmentStructureResponse> splitSegment = null,
             Func<string, BridgeCommentsResponse> getComments = null,
             Func<BridgeAddCommentRequest, BridgeResultResponse> addComment = null,
             Func<BridgeUpdateCommentRequest, BridgeResultResponse> updateComment = null,
@@ -1941,6 +1977,8 @@ namespace Supervertaler.Trados.Core
             _compareTm = compareTm;
             _listResources = listResources;
             _goToSegment = goToSegment;
+            _mergeSegments = mergeSegments;
+            _splitSegment = splitSegment;
             _getComments = getComments;
             _addComment = addComment;
             _updateComment = updateComment;
@@ -2432,6 +2470,18 @@ namespace Supervertaler.Trados.Core
             if (method == "POST" && path == "/v1/go-to-segment")
             {
                 HandleDelegatePost<BridgeGoToRequest>(context, _goToSegment, "go-to-segment");
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/merge-segments")
+            {
+                HandleSegmentStructurePost(context, _mergeSegments, "merge-segments");
+                return;
+            }
+
+            if (method == "POST" && path == "/v1/split-segment")
+            {
+                HandleSegmentStructurePost(context, _splitSegment, "split-segment");
                 return;
             }
 
@@ -4383,6 +4433,42 @@ namespace Supervertaler.Trados.Core
 
         /// <summary>Shared plumbing for small POST endpoints: read body,
         /// deserialize to T, invoke the delegate, write its BridgeResultResponse.</summary>
+        /// <summary>merge-segments / split-segment: like <see cref="HandleDelegatePost{T}"/>,
+        /// but the answer carries the new segment ids.</summary>
+        private void HandleSegmentStructurePost<T>(HttpListenerContext context,
+            Func<T, BridgeSegmentStructureResponse> handler, string name) where T : class
+        {
+            if (handler == null)
+            {
+                TryWriteError(context, 501, name + " endpoint not wired");
+                return;
+            }
+
+            T req;
+            try
+            {
+                using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                    req = DeserializeJson<T>(reader.ReadToEnd());
+            }
+            catch (Exception ex)
+            {
+                WriteJson(context, 400, new BridgeSegmentStructureResponse { Ok = false, Error = "malformed body: " + ex.Message });
+                return;
+            }
+
+            BridgeSegmentStructureResponse response;
+            try
+            {
+                response = handler(req) ?? new BridgeSegmentStructureResponse { Ok = false, Error = "internal error" };
+            }
+            catch (Exception ex)
+            {
+                BridgeLog.Write($"[SupervertalerBridge] {name} threw: {ex.Message}");
+                response = new BridgeSegmentStructureResponse { Ok = false, Error = name + " failed: " + ex.Message };
+            }
+            WriteJson(context, 200, response);
+        }
+
         private void HandleDelegatePost<T>(HttpListenerContext context,
             Func<T, BridgeResultResponse> handler, string name) where T : class
         {

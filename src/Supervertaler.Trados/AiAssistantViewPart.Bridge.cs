@@ -159,6 +159,8 @@ namespace Supervertaler.Trados
             compareTm: q => Pane.BridgeCompareTm(q),
             listResources: () => Pane.BridgeListResources(),
             goToSegment: r => Pane.BridgeGoToSegment(r),
+            mergeSegments: r => Pane.BridgeMergeSegments(r),
+            splitSegment: r => Pane.BridgeSplitSegment(r),
             getComments: id => Pane.BridgeGetComments(id),
             addComment: r => Pane.BridgeAddComment(r),
             updateComment: r => Pane.BridgeUpdateComment(r),
