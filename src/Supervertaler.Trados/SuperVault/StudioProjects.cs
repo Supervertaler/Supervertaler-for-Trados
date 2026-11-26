@@ -13,24 +13,67 @@ namespace Supervertaler.Trados.SuperVault
     ///
     /// Cached per folder for the life of the process: one read per project, however many segments are confirmed. The
     /// .sdlproj is streamed and reading stops as soon as both values are found, so a large project file costs little.
+    ///
+    /// The batch task "Update Main Translation Memories" gives no path (see SuperVaultProvider.DocumentPath), only
+    /// "&lt;target language&gt;\&lt;name&gt;.sdlxliff". That is looked up in the running Studio's projects.xml: the project
+    /// whose folder holds that file, the most recently changed one if several do. One read of projects.xml and one
+    /// file check per listed project, once per document (cached like a folder).
     /// </summary>
     internal static class StudioProjects
     {
         const int MaxCached = 500;   // folders; a day's work touches a handful
         static readonly Dictionary<string, (string, string)> Cache = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
 
-        public static (string Project, string Client) Describe(string documentPath)
+        public static (string Project, string Client) Describe(string documentPath) => Describe(documentPath, null);
+
+        /// <summary><paramref name="projectsXml"/> null: the running Studio's. Given only by the checks.</summary>
+        internal static (string Project, string Client) Describe(string documentPath, string projectsXml)
         {
-            var dir = Path.GetDirectoryName(documentPath);
-            if (string.IsNullOrEmpty(dir)) return (null, null);
-            lock (Cache) if (Cache.TryGetValue(dir, out var known)) return known;
-            var found = Read(dir);
+            if (string.IsNullOrEmpty(documentPath)) return (null, null);
+            bool inProject = Path.IsPathRooted(documentPath);
+            if (!inProject && projectsXml == null) projectsXml = RunningProjectsXml();
+            var key = inProject ? Path.GetDirectoryName(documentPath) : "?" + projectsXml + "|" + documentPath;
+            if (string.IsNullOrEmpty(key)) return (null, null);
+            lock (Cache) if (Cache.TryGetValue(key, out var known)) return known;
+            var found = inProject ? Read(key) : FindInProjects(documentPath, projectsXml);
             lock (Cache)
             {
                 if (Cache.Count >= MaxCached) Cache.Clear();
-                Cache[dir] = found;
+                Cache[key] = found;
             }
             return found;
+        }
+
+        static string RunningProjectsXml()
+        {
+            var docs = Supervertaler.Trados.Core.ProjectCreator.RunningStudioDocumentsFolder();
+            return docs == null ? null : Path.Combine(docs, "Projects", "projects.xml");
+        }
+
+        /// <summary>The project in <paramref name="projectsXml"/> whose folder holds <paramref name="relative"/>.</summary>
+        static (string, string) FindInProjects(string relative, string projectsXml)
+        {
+            string best = null;
+            var bestTime = DateTime.MinValue;
+            foreach (var p in Supervertaler.Trados.Core.ProjectOpener.ReadProjectList(projectsXml))
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(p.ProjectFile);
+                    if (string.IsNullOrEmpty(dir)) continue;
+                    var file = Path.Combine(dir, relative);
+                    if (!File.Exists(file)) continue;
+                    var changed = File.GetLastWriteTimeUtc(file);
+                    if (best == null || changed > bestTime) { best = p.ProjectFile; bestTime = changed; }
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is NotSupportedException) { }
+            }
+            if (best == null)
+            {
+                try { Supervertaler.Trados.Core.DiagnosticLog.WriteAlways("EverTM", "No project in Studio's Projects list has " + relative + ": its units are stored without a project or client."); } catch { }
+                return (null, null);
+            }
+            return ReadProject(best);
         }
 
         static (string, string) Read(string dir)

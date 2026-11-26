@@ -38,6 +38,7 @@ static class MetadataChecks
         MatchesCarryFieldsAndDates(root);
         NewestAndVariantThroughCascade(root);
         ConfirmedSegmentsAreTagged(root);
+        BatchUpdateFindsTheProject(root);
         UnknownUsersAreLeftOut(root);
     }
 
@@ -213,5 +214,82 @@ static class MetadataChecks
         Check(Field(hit, "Subject") == "Patents", "Subject: the project's field value on update");
         Check(Field(hit, "Document") == "manual.docx", "Document: the original file's name");
         Check(hit?.MemoryTranslationUnit.SystemFields.ChangeUser == "translator", "changed by the Studio user who confirmed it");
+    }
+
+    /// <summary>
+    /// The batch task "Update Main Translation Memories" hands units over without the bilingual file's path (only the
+    /// original file's, on the client's computer), so the project is found in Studio's project list: the project whose
+    /// folder holds "&lt;target language&gt;\&lt;name&gt;.sdlxliff", the most recently changed if several do. Found
+    /// 26 Nov 2026: such units had a Document but no Project or Client.
+    /// </summary>
+    static void BatchUpdateFindsTheProject(string root)
+    {
+        const System.Reflection.BindingFlags Any = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+        var describe = typeof(SuperVaultProvider).Assembly.GetType("Supervertaler.Trados.SuperVault.StudioProjects")
+            .GetMethod("Describe", Any, null, new[] { typeof(string), typeof(string) }, null);
+        var lookup = typeof(SuperVaultLanguageDirection).GetMethod("ProjectLookupPath", Any);
+        (string, string) Describe(string path, string xml) => ((string, string))describe.Invoke(null, new object[] { path, xml });
+
+        // Two projects with the same document: an older job, and the current one (€ and brackets in its name).
+        var jobs = Path.Combine(_scratch, "jobs");
+        string MakeProject(string folder, string name, string customer, DateTime saved)
+        {
+            var dir = Path.Combine(jobs, folder, "Studio");
+            Directory.CreateDirectory(Path.Combine(dir, "en-GB"));
+            var sdlproj = Path.Combine(dir, name + ".sdlproj");
+            File.WriteAllText(sdlproj, "<?xml version=\"1.0\" encoding=\"utf-8\"?><Project Guid=\"x\"><GeneralProjectInfo Name=\"" + name +
+                "\" Status=\"Started\"/><Customer Guid=\"y\" Name=\"" + customer + "\" Email=\"\"/></Project>", System.Text.Encoding.UTF8);
+            var doc = Path.Combine(dir, "en-GB", "spec.xliff.sdlxliff");
+            File.WriteAllText(doc, "<xliff/>");
+            File.SetLastWriteTimeUtc(doc, saved);
+            return sdlproj;
+        }
+        var older = MakeProject("0001", "ACME_Globex (PROJ-001)", "Acme", DateTime.UtcNow.AddDays(-30));
+        var current = MakeProject("0002 (€)", "ACME_Globex (PROJ-002 - €153.27)", "Acme", DateTime.UtcNow.AddMinutes(-5));
+        var xml = Path.Combine(_scratch, "projects.xml");
+        string Item(string sdlproj, string name) => "<ProjectListItem Guid=\"g\" ProjectFilePath=\"" + sdlproj + "\"><ProjectInfo Name=\"" + name + "\"/></ProjectListItem>";
+        File.WriteAllText(xml, "<?xml version=\"1.0\" encoding=\"utf-8\"?><ProjectServer><Projects>" +
+            Item(Path.Combine(jobs, "gone", "Gone.sdlproj"), "Gone") + Item(older, "ACME_Globex (PROJ-001)") + Item(current, "ACME_Globex (PROJ-002 - €153.27)") +
+            "</Projects></ProjectServer>", System.Text.Encoding.UTF8);
+
+        // What the provider hands over.
+        var batchTu = new TranslationUnit(Seg(NlNl, "Het filter is verstopt."), Seg(EnGb, "The filter is clogged."));
+        batchTu.FileProperties = new FileProperties { FileConversionProperties = new PersistentFileConversionProperties { OriginalFilePath = @"X:\client\en-GB\spec.xliff" } };
+        var key = (string)lookup.Invoke(null, new object[] { batchTu, "en-GB" });
+        Check(key == Path.Combine("en-GB", "spec.xliff.sdlxliff"), @"batch: no bilingual path, so <language>\<original name>.sdlxliff: " + key);
+        var editorTu = new TranslationUnit(Seg(NlNl, "x"), Seg(EnGb, "y"));
+        editorTu.DocumentProperties = new DocumentProperties { LastOpenedAsPath = @"D:\Jobs\P\en-GB\a.docx.sdlxliff" };
+        editorTu.FileProperties = batchTu.FileProperties;
+        Check((string)lookup.Invoke(null, new object[] { editorTu, "en-GB" }) == @"D:\Jobs\P\en-GB\a.docx.sdlxliff", "editor: the bilingual file's own path still wins");
+        Check(lookup.Invoke(null, new object[] { new TranslationUnit(Seg(NlNl, "x"), Seg(EnGb, "y")), "en-GB" }) == null, "no paths at all: none (stored without a project, as before)");
+
+        // The lookup.
+        var found = Describe(key, xml);
+        Check(found.Item1 == "ACME_Globex (PROJ-002 - €153.27)" && found.Item2 == "Acme",
+            "the project holding the file, the most recently changed of two; € and brackets kept: " + found.Item1 + " / " + found.Item2);
+        Check(Describe(Path.Combine("en-GB", "other.docx.sdlxliff"), xml).Item1 == null, "a document in no listed project: none, no error (a missing project folder is skipped)");
+        Check(Describe(Path.Combine("en-GB", "spec.xliff.sdlxliff"), Path.Combine(_scratch, "missing.xml")).Item1 == null, "no projects.xml: none, no error");
+        Check(Describe(Path.Combine("nl-NL", "spec.xliff.sdlxliff"), xml).Item1 == null, "another target language's folder: not this project's file");
+
+        // Through Studio's own call, as the batch task makes it, with the list above in place of Studio's.
+        var real = VaultLibrary.ProjectOf;
+        VaultLibrary.ProjectOf = path => Describe(path, xml);
+        try
+        {
+            var vault = new SuperVaultProvider(root).GetLanguageDirection(new LanguagePair(NlNl, EnGb));
+            vault.AddOrUpdateTranslationUnitsMasked(new[] { batchTu }, new[] { 0 }, new ImportSettings { IsDocumentImport = true }, new[] { true });
+            SearchResult hit = null;
+            var wait = Stopwatch.StartNew();
+            while (wait.Elapsed.TotalSeconds < 20)
+            {
+                hit = Search(vault, "Het filter is verstopt.", NlNl, EnGb).Results.FirstOrDefault();
+                if (Field(hit, "Project") != "") break;
+                Thread.Sleep(200);
+            }
+            Check(Field(hit, "Project") == "ACME_Globex (PROJ-002 - €153.27)", "batch update: Project stored: " + Field(hit, "Project"));
+            Check(Field(hit, "Client") == "Acme" && Field(hit, "End client") == "Globex", "batch update: Client and End client stored: " + Field(hit, "Client") + " / " + Field(hit, "End client"));
+            Check(Field(hit, "Document") == "spec.xliff", "batch update: Document as before");
+        }
+        finally { VaultLibrary.ProjectOf = real; }
     }
 }
