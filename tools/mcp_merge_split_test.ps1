@@ -469,6 +469,20 @@ public static class MergeSplitTest
         Check(holders.Count > 0 && holders.All(f => viewType != null && f.FieldType.IsAssignableFrom(viewType)),
             "C Studio's document class has the " + Get(null, cmds, "ViewFieldName") + " field, of the side-by-side view's type");
 
+        // Split's own position check, which the tool asks instead of Enabled (Enabled
+        // also needs the source grid to have keyboard focus, never true during an
+        // MCP call: live test 26 Nov).
+        var editorAsm = AppDomain.CurrentDomain.GetAssemblies().First(a => a.GetName().Name == "Sdl.TranslationStudio.Editor");
+        var splitType = editorAsm.GetType("Sdl.TranslationStudio.Editor.TranslationEditor.Actions.SplitSegmentsAction", false);
+        var splitCheck = splitType == null ? null : (MethodInfo)cmds.GetMethod("FindSplitCheck", Any).Invoke(null, new object[] { splitType });
+        Check(splitCheck != null && splitCheck.DeclaringType == splitType,
+            "C Split's own position check (IsEnabledWithSelection) is found on SplitSegmentsAction" + (splitCheck == null ? "" : " (" + splitCheck + ")"));
+        var rangeBase = editorAsm.GetType("Sdl.TranslationStudio.Editor.AbstractActiveRangeAction", false);
+        Check(rangeBase != null && rangeBase.GetField("_isTargetFocused", Any) != null,
+            "C Studio's Split availability still depends on grid focus (_isTargetFocused), which is why the tool does not use Enabled");
+        Check(cmds.GetMethod("FindSplitCheck", Any).Invoke(null, new object[] { typeof(object) }) == null,
+            "C a type without the check: none found, so split refuses as a missing part");
+
         // The command ids are string literals in the commands' constructors.
         var bytes = File.ReadAllBytes(Path.Combine(studioDir, "Sdl.TranslationStudio.Editor.dll"));
         foreach (var id in new[] { "MergeSegmentsAction", "SplitSegmentsAction" })

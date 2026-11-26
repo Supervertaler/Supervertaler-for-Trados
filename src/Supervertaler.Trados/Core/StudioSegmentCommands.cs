@@ -439,12 +439,47 @@ namespace Supervertaler.Trados.Core
             var moved = p.MoveTo.Invoke(selection, new[] { position, (object)false });
             if (moved is bool ok && !ok) return "Studio did not accept the cursor position for the split";
 
-            if (!(bool)p.ActionEnabled.GetValue(action))
+            // Not IAction.Enabled: Studio only counts Split as available while its
+            // source grid has keyboard focus (AbstractActiveRangeAction checks
+            // _isTargetFocused), and during an MCP call the AI app is in front, so
+            // Enabled is always false (live test 26 Nov: refused where Studio's own
+            // right-click Split was enabled). The rule that matters is the position
+            // check, which Studio runs on the selection: asked directly.
+            var check = FindSplitCheck(action.GetType());
+            if (check == null) return NotFound("SplitSegmentsAction.IsEnabledWithSelection");
+            if (SourceEditingOn(e))
+                return "Studio's Edit Source is switched on, and Studio does not split segments then. Switch it off and try again";
+            if (!(bool)check.Invoke(action, new[] { selection }))
                 return "Studio does not allow a split there (its Split Segment command is unavailable at that point: " +
-                       "for example the segment or that text is locked, or the segment has QA marks)";
+                       "for example the segment or that text is locked, the point is in a tracked change, or the segment has QA marks)";
             p.ActionExecute.Invoke(action, null);
             RedrawGrids(e);
             return null;
+        }
+
+        /// <summary>The split command's own position check,
+        /// <c>IsEnabledWithSelection(IContentSelection)</c>, found up the action's
+        /// type hierarchy (it is protected), or null.</summary>
+        internal static MethodInfo FindSplitCheck(Type actionType)
+        {
+            for (var t = actionType; t != null; t = t.BaseType)
+            {
+                var m = t.GetMethod("IsEnabledWithSelection",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (m != null && m.ReturnType == typeof(bool) && m.GetParameters().Length == 1) return m;
+            }
+            return null;
+        }
+
+        /// <summary>Edit Source on: Studio's own split is off then (checked as Studio
+        /// does, on the side-by-side editor). Unknown counts as off.</summary>
+        private static bool SourceEditingOn(Editor e)
+        {
+            try
+            {
+                return e.Grids?.GetType().GetProperty("SourceEditingEnabled", Inst)?.GetValue(e.Grids) is bool on && on;
+            }
+            catch { return false; }
         }
 
         /// <summary>
