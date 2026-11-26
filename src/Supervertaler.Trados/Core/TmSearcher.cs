@@ -122,6 +122,9 @@ namespace Supervertaler.Trados.Core
             public int Total;
             /// <summary>How many of them are searched.</summary>
             public int Searched;
+            /// <summary>Each memory's penalty in the project's list (the Penalty column), by the entry in <see cref="Tms"/>;
+            /// missing means none. A memory listed twice takes the lower.</summary>
+            public Dictionary<string, int> Penalties = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -194,13 +197,64 @@ namespace Supervertaler.Trados.Core
                 if (searched.Add(key)) result.Searched++;
 
                 if (everTm) result.EverTm = true;
-                else foreach (var tm in files) if (added.Add(tm)) result.Tms.Add(tm);
+                else
+                {
+                    int.TryParse(entry.Attribute("Penalty")?.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int penalty);
+                    penalty = Math.Max(0, Math.Min(100, penalty));
+                    foreach (var tm in files)
+                    {
+                        if (added.Add(tm)) result.Tms.Add(tm);
+                        if (!result.Penalties.TryGetValue(tm, out int had) || penalty < had) result.Penalties[tm] = penalty;
+                    }
+                }
             }
 
             result.Tms = result.Tms
                 .OrderBy(p => ServerTmClient.IsServerTmUri(p) ? p : Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
                 .ToList();
             return result;
+        }
+
+        /// <summary>
+        /// Whether segments confirmed in this language pair are learned by EverTM: it is in the pair's TM list, enabled,
+        /// with Update ticked (<c>PerformUpdate</c>). Read from the saved project file, so a change not yet saved in
+        /// Project Settings shows only once Studio has saved it. Null when the project file can't be found or read.
+        /// For EverTM Matches' status line; reads the file, so not on Studio's UI thread.
+        /// </summary>
+        public static bool? EverTmLearns(string anyProjectFilePath, string sourceCulture, string targetCulture)
+        {
+            try
+            {
+                var projPath = FindProjectFile(anyProjectFilePath);
+                if (projPath == null) return null;
+                var cascade = EffectiveCascade(XDocument.Load(projPath), sourceCulture, targetCulture);
+                if (cascade == null) return false;
+                foreach (var entry in cascade.Elements().Where(e => e.Name.LocalName == "CascadeEntryItem"))
+                {
+                    var main = entry.Elements().FirstOrDefault(e => e.Name.LocalName == "MainTranslationProviderItem");
+                    if (IsEverTmUri(main?.Attribute("Uri")?.Value) && !IsFalse(main.Attribute("Enabled")) && !IsFalse(entry.Attribute("PerformUpdate")))
+                        return true;
+                }
+                return false;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Whether Studio looks EverTM up for this language pair: it is in the pair's TM list, Enabled, with Lookup ticked
+        /// (<c>PerformNormalSearch</c>). EverTM Matches follows the same ticks (Michael, 23 Nov 2026: "It should follow
+        /// the ticks, like Studio does"). Read from the saved project file. Null when the project file can't be found or
+        /// read, so a document outside a project, or a file that can't be read, never hides EverTM.
+        /// </summary>
+        public static bool? EverTmLooksUp(string anyProjectFilePath, string sourceCulture, string targetCulture)
+        {
+            try
+            {
+                var projPath = FindProjectFile(anyProjectFilePath);
+                if (projPath == null) return null;
+                return FindLookupTms(XDocument.Load(projPath), Path.GetDirectoryName(projPath), sourceCulture, targetCulture).EverTm;
+            }
+            catch { return null; }
         }
 
         /// <summary>
@@ -259,7 +313,9 @@ namespace Supervertaler.Trados.Core
             return path != null && File.Exists(path) ? path : null;
         }
 
-        /// <summary>The .sdlproj in the folder of <paramref name="anyProjectFilePath"/> or above it, or null.</summary>
+        /// <summary>The project file (.sdlproj) of a document in it: in its folder or above. Null when there is none.</summary>
+        public static string ProjectFileOf(string anyProjectFilePath) => FindProjectFile(anyProjectFilePath);
+
         static string FindProjectFile(string anyProjectFilePath)
         {
             if (string.IsNullOrEmpty(anyProjectFilePath)) return null;

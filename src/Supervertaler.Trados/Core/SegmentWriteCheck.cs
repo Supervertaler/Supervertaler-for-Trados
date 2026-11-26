@@ -70,9 +70,13 @@ namespace Supervertaler.Trados.Core
         /// does not read back that way, or cannot be read, the exception goes on
         /// to the caller as before.
         /// </remarks>
+        /// <param name="label">Labels the segment after an edit that changed its text, in place of the "edited by hand"
+        /// label (<see cref="SegmentOrigin.MarkEdited"/>). Only EverTM Matches passes one: an inserted TM match is
+        /// labelled as one (<see cref="SegmentOrigin.MarkTmMatch"/>).</param>
         public static TrackedWrite ProcessChecked(IStudioDocument doc, ISegmentPair pair, string undoName,
             Action<ISegmentPair, CancelEventArgs> edit, bool comments = false, bool wordLevel = false,
-            Action<Exception> faultAfterWrite = null, bool overTextOnly = false)
+            Action<Exception> faultAfterWrite = null, bool overTextOnly = false,
+            Action<IStudioDocument, ISegmentPair> label = null)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
             long sincePrevious = MsSincePreviousWrite();
@@ -164,7 +168,11 @@ namespace Supervertaler.Trados.Core
                 throw new SegmentWriteDeclinedException(Reason(doc, live, shapeBefore, shapeAfter, tracked));
             // Landed, or cannot be read back (which is not held against it). A
             // comment edit leaves the text as it was, and the label with it.
-            if (textAfter != textBefore) SegmentOrigin.MarkEdited(doc, pair, levelBefore);
+            if (textAfter != textBefore)
+            {
+                if (label != null) label(doc, pair);
+                else SegmentOrigin.MarkEdited(doc, pair, levelBefore);
+            }
             return record;
         }
 

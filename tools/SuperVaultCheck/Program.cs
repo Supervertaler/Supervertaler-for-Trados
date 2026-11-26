@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -18,9 +18,13 @@ using Supervertaler.Trados.SuperVault;
 /// <summary>See SuperVaultCheck.csproj. Exit code 0 = every check passed.</summary>
 static class Program
 {
+    // A build against Studio 2022 (-p:TradosStudioVersion=17 -p:TradosStudioPath=...Studio17) is x86 too: it finds
+    // its Studio by the folder it was built into.
     static string StudioDir => Environment.Is64BitProcess
         ? @"C:\Program Files\Trados\Trados Studio\Studio19"
-        : @"C:\Program Files (x86)\Trados\Trados Studio\Studio18";
+        : AppDomain.CurrentDomain.BaseDirectory.IndexOf(@"\Studio17\", StringComparison.OrdinalIgnoreCase) >= 0
+            ? @"C:\Program Files (x86)\Trados\Trados Studio\Studio17"
+            : @"C:\Program Files (x86)\Trados\Trados Studio\Studio18";
 
     static int Main(string[] args)
     {
@@ -52,6 +56,19 @@ static class Program
             finally
             {
                 // Its own scratch folder goes, also when a check failed or threw (the TMs it made are closed by then).
+                SqliteConnection.ClearAllPools();
+                try { Directory.Delete(scratch, true); } catch { Console.WriteLine("(scratch left at " + scratch + ")"); }
+            }
+        }
+        if (args.Length > 1 && args[0] == "pane-picture")
+            return PaneChecks.Picture(args[1]);
+        if (args.Length > 0 && args[0] == "pane")
+        {
+            var scratch = Path.Combine(Path.GetTempPath(), "sv-pane-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+            Directory.CreateDirectory(scratch);
+            try { return Checks.RunOne(c => PaneChecks.Run(scratch, c)); }
+            finally
+            {
                 SqliteConnection.ClearAllPools();
                 try { Directory.Delete(scratch, true); } catch { Console.WriteLine("(scratch left at " + scratch + ")"); }
             }
@@ -175,6 +192,7 @@ static class Checks
             MetadataChecks.Run(_scratch, Check);
             TmMatchChecks.Run(_scratch, Check);
             StampChecks.Run(_scratch, Check);
+            PaneChecks.Run(_scratch, Check);
             if (args.Length > 0) Scale(args[0], args.Length > 1 ? args[1] : @"D:\Supervertaler\resources\supervertaler.db");
         }
         catch (Exception ex) { _failed++; Console.WriteLine("  FAIL  unexpected: " + ex); }

@@ -40,9 +40,11 @@
     <Compile Include="ScoreCompare.cs" />
     <Compile Include="StudioLikeScore.cs" />
     <Compile Include="StampChecks.cs" />
+    <Compile Include="PaneChecks.cs" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
     <ProjectReference Include="..\..\src\Supervertaler.Trados\Supervertaler.Trados.csproj" AdditionalProperties="TradosStudioVersion=$(TradosStudioVersion)" />
+    <Reference Include="Sdl.Desktop.IntegrationApi"><HintPath>$(TradosStudioPath)\Sdl.Desktop.IntegrationApi.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.Core.Globalization"><HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.Core.Globalization.Async"><HintPath>$(TradosStudioPath)\Sdl.Core.Globalization.Async.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sdl.LanguagePlatform.Core"><HintPath>$(TradosStudioPath)\Sdl.LanguagePlatform.Core.dll</HintPath><Private>false</Private></Reference>

@@ -264,6 +264,10 @@ namespace Supervertaler.Trados.SuperVault
                         Target = SuperVaultImport.Codes(tu.TargetSegment),
                         Origin = "studio",
                         Omit = omit,
+                        // The batch task "Update Main Translation Memories" sets IsDocumentImport; confirming in the editor
+                        // doesn't (Studio 2024's InteractiveTmUpdateImportSettingsBuilder and AbstractUpdateTmContentProcessor,
+                        // read 23 Nov 2026). Only a confirmation in the editor brings back a translation removed from EverTM.
+                        FromBatch = settings?.IsDocumentImport == true,
                         // Who and where (only in-memory reads here, on Studio's UI thread; the project's name and
                         // customer are read from its .sdlproj on EverTM's learning thread, from DocumentPath).
                         User = User(tu),

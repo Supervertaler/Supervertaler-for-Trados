@@ -59,6 +59,7 @@ namespace Supervertaler.Trados
         {
             _instance = this;
             EnsureControl();
+            Core.TranslationResultsGuard.Watch(this, _control);
             EnsureTermLensLoaded();
             // Populate immediately: the pane is usually shown while a document
             // is already open, so waiting for the next segment change would

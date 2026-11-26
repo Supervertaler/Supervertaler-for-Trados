@@ -317,6 +317,61 @@ namespace Supervertaler.Trados.Settings
         [DataMember(Name = "termPickerPaneColumnWidths")]
         public List<int> TermPickerPaneColumnWidths { get; set; }
 
+        // ─── EverTM Matches pane (Michael, 22 Nov 2026: "the low matches are completely useless") ───
+        // Chosen in the pane's Options menu. Nullable behind the property: the serializer skips initialisers, so a
+        // settings file from before has none and gets the default.
+
+        [DataMember(Name = "everTmPaneMinScore", EmitDefaultValue = false)]
+        private int? _everTmPaneMinScore;
+        /// <summary>The lowest match % EverTM Matches shows. Default 70, Studio's own usual minimum.</summary>
+        public int EverTmPaneMinScore
+        {
+            get => Math.Max(30, Math.Min(100, _everTmPaneMinScore ?? 70));
+            set => _everTmPaneMinScore = value;
+        }
+
+        [DataMember(Name = "everTmPaneMaxMatches", EmitDefaultValue = false)]
+        private int? _everTmPaneMaxMatches;
+        /// <summary>The most matches EverTM Matches shows. Default 10.</summary>
+        public int EverTmPaneMaxMatches
+        {
+            get => Math.Max(1, Math.Min(20, _everTmPaneMaxMatches ?? 10));
+            set => _everTmPaneMaxMatches = value;
+        }
+
+        [DataMember(Name = "everTmPaneStacked", EmitDefaultValue = false)]
+        private bool? _everTmPaneStacked;
+        /// <summary>Source above target in each EverTM match; false (the default) is side by side, as in Translation Results.</summary>
+        public bool EverTmPaneStacked
+        {
+            get => _everTmPaneStacked ?? false;
+            set => _everTmPaneStacked = value;
+        }
+
+        [DataMember(Name = "everTmPaneStudioTms", EmitDefaultValue = false)]
+        private bool? _everTmPaneStudioTms;
+        /// <summary>EverTM Matches also shows matches from the project's Studio TMs (Options). Off by default (Michael, 23 Nov 2026).</summary>
+        public bool EverTmPaneStudioTms
+        {
+            get => _everTmPaneStudioTms ?? false;
+            set => _everTmPaneStudioTms = value;
+        }
+
+        /// <summary>
+        /// The items the user switched off in EverTM Matches' details area (Options > Details shown), by their label
+        /// ("Document", "In EverTM since"). Empty or missing: everything is shown (Michael, 22 Nov 2026: "the user
+        /// should be able to show them all").
+        /// </summary>
+        [DataMember(Name = "everTmPaneHiddenDetails", EmitDefaultValue = false)]
+        public List<string> EverTmPaneHiddenDetails { get; set; }
+
+        /// <summary>
+        /// Keep Studio's Translation Results from covering Supervertaler's panes (TermLens, EverTM Matches, TermPicker)
+        /// on every segment: <see cref="Core.TranslationResultsGuard"/>. Off unless switched on (EverTM Matches > Options).
+        /// </summary>
+        [DataMember(Name = "keepTranslationResultsBack", EmitDefaultValue = false)]
+        public bool KeepTranslationResultsBack { get; set; }
+
         // ─── Voice commands ──────────────────────────────────────────
         /// <summary>
         /// Remembered position of the floating voice status strip (the

@@ -74,11 +74,17 @@ def supervoice():
     return im
 
 
+def evertm():
+    """EverTM's octopus mascot (Michael, 22 Nov 2026), not a drawn glyph: evertm-octopus.png is the
+    Translator mascot from the EverTM artwork with its NL/EN chips and arrow cut off, 256 px."""
+    return Image.open(os.path.join(OUT, 'evertm-octopus.png')).convert('RGBA').resize((S, S), Image.LANCZOS)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name, glyph in [('termlens', termlens), ('termpicker', termpicker),
                         ('supersearch', supersearch), ('assistant', assistant),
-                        ('supervoice', supervoice)]:
+                        ('supervoice', supervoice), ('evertm', evertm)]:
         im = glyph().resize((32, 32), Image.LANCZOS)
         im.save(os.path.join(OUT, name + '.png'))
         im.save(os.path.join(OUT, name + '.ico'), sizes=[(16, 16), (24, 24), (32, 32)])
