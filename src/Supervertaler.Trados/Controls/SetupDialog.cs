@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
-using Microsoft.Win32;
+using Supervertaler.Core;
 using Supervertaler.Trados.Settings;
 
 namespace Supervertaler.Trados.Controls
@@ -116,27 +116,7 @@ namespace Supervertaler.Trados.Controls
 
         // ── Parallels / Mac detection ────────────────────────────────
 
-        private static bool IsRunningInParallels()
-        {
-            try
-            {
-                using (var key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\BIOS"))
-                {
-                    if (key != null)
-                    {
-                        var combined = ((key.GetValue("SystemManufacturer") as string ?? "") + " " +
-                                        (key.GetValue("SystemProductName") as string ?? "")).ToLowerInvariant();
-                        if (combined.Contains("parallels")) return true;
-                    }
-                }
-                using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Parallels\Parallels Tools"))
-                {
-                    if (key != null) return true;
-                }
-            }
-            catch { }
-            return false;
-        }
+        private static bool IsRunningInParallels() => MachineInfo.VirtualizationHost() == "parallels";
 
         /// <summary>Returns true if the path points to a Mac-side shared folder (e.g. \\Mac\Home\...).</summary>
         private static bool IsMacSidePath(string path)
