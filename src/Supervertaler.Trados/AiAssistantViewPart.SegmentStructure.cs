@@ -58,9 +58,11 @@ namespace Supervertaler.Trados
                 var paragraphId = candidates[0].ParagraphId;
                 var before = SegmentIdsInParagraph(paragraphId);
 
-                // Puts the editor on the first segment (the user sees the merge) and
-                // leaves any segment being edited, so its edit is kept.
-                _activeDocument.SetActiveSegmentPair(paragraphId, addresses[0].Value.Id, true);
+                // No jump to the segment first (SetActiveSegmentPair), unlike split: the
+                // jump starts Studio's deferred work for the new active row, which then
+                // ran on a segment the merge had removed and left the grid painting a
+                // stale row (live test 26 Nov). Studio's merge makes the first merged
+                // row active itself, as when the user merges by hand.
 
                 refusal = StudioSegmentCommands.Merge(editor, addresses, ids);
                 if (refusal != null) return Refuse(refusal);

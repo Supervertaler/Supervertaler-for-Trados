@@ -454,7 +454,7 @@ public static class MergeSplitTest
             return;
         }
         Check(missing == null, "C every editor part the tools drive is in this Studio" + (missing == null ? "" : ": MISSING " + missing));
-        foreach (var f in new[] { "SelectRowRange", "ClearRowSelections", "MoveTo", "GetSegment", "FindRow", "RowSegmentContainer", "ContainerSegment", "GetAction", "ActionExecute" })
+        foreach (var f in new[] { "SelectRowRange", "ClearRowSelections", "MoveTo", "GetSegment", "FindRow", "RowSegmentContainer", "ContainerSegment", "RebuildRows", "GetAction", "ActionExecute" })
             Check(Get(parts, f) != null, "C   " + f + " found" + (Get(parts, f) == null ? "" : " (" + Get(parts, f) + ")"));
 
         // The view field on the integration API's document class.

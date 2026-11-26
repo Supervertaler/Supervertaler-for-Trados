@@ -53,7 +53,7 @@ namespace Supervertaler.Trados.Core
             public string Missing;
             public PropertyInfo ViewEditor, EditorSource, EditorTarget;
             public PropertyInfo ControlDocument, ControlRows, ControlSelection;
-            public MethodInfo FindRow, GetSegment, SelectRowRange, ClearRowSelections, MoveTo;
+            public MethodInfo FindRow, GetSegment, SelectRowRange, ClearRowSelections, MoveTo, RebuildRows;
             public PropertyInfo RowIsSegment, RowHidden, RowNumber, RowSegmentContainer, ContainerSegment;
             public PropertyInfo ContainerStartNode, TextNodeText;
             public ConstructorInfo PositionCtor;
@@ -115,6 +115,7 @@ namespace Supervertaler.Trados.Core
                 p.SelectRowRange = control.GetMethod("SelectRowRange", Inst, null, new[] { row, row }, null);
                 p.ClearRowSelections = control.GetMethod("ClearAllRowSelections", Inst, null, Type.EmptyTypes, null);
                 p.MoveTo = sel.GetMethod("MoveTo", new[] { pos, typeof(bool) });
+                p.RebuildRows = fec.GetMethod("RebuildRowStructure", Type.EmptyTypes);
                 p.RowIsSegment = row.GetProperty("IsSegment");
                 p.RowHidden = row.GetProperty("Hidden");
                 p.RowNumber = row.GetProperty("RowNumber");
@@ -136,6 +137,7 @@ namespace Supervertaler.Trados.Core
                     (p.SelectRowRange, "AbstractFrameworkEditControl.SelectRowRange(IRowInfo, IRowInfo)"),
                     (p.ClearRowSelections, "AbstractFrameworkEditControl.ClearAllRowSelections()"),
                     (p.MoveTo, "IContentSelection.MoveTo(Position, bool)"),
+                    (p.RebuildRows, "IFrameworkEditControl.RebuildRowStructure()"),
                     (p.RowIsSegment, "IRowInfo.IsSegment"),
                     (p.RowHidden, "IRowInfo.Hidden"),
                     (p.RowNumber, "IRowInfo.RowNumber"),
@@ -201,6 +203,8 @@ namespace Supervertaler.Trados.Core
         {
             public Parts P;
             public object Source, Target;
+            /// <summary>The side-by-side editor control holding both grids.</summary>
+            public object Grids;
         }
 
         /// <summary>Null and an error when the parts are missing or the editor view
@@ -231,6 +235,7 @@ namespace Supervertaler.Trados.Core
             var e = new Editor
             {
                 P = p,
+                Grids = sbs,
                 Source = sbs == null ? null : p.EditorSource.GetValue(sbs),
                 Target = sbs == null ? null : p.EditorTarget.GetValue(sbs),
             };
@@ -363,6 +368,7 @@ namespace Supervertaler.Trados.Core
                     return "Studio does not allow merging these segments (its Merge Segments command is unavailable " +
                            "for them: for example a segment has QA marks, or a document boundary is in between)";
                 p.ActionExecute.Invoke(action, null);
+                RedrawGrids(e);
                 return null;
             }
             finally
@@ -437,7 +443,35 @@ namespace Supervertaler.Trados.Core
                 return "Studio does not allow a split there (its Split Segment command is unavailable at that point: " +
                        "for example the segment or that text is locked, or the segment has QA marks)";
             p.ActionExecute.Invoke(action, null);
+            RedrawGrids(e);
             return null;
+        }
+
+        /// <summary>
+        /// After Studio's command: rebuild both grids' rows from the document and
+        /// repaint, so no row still points at a segment the command removed (live
+        /// test 26 Nov: after a merge the grid painted the removed row and Studio
+        /// showed a NullReferenceException from its status column). Studio's command
+        /// has finished its own work by now; this only makes the grids catch up.
+        /// A failure here is logged, not reported: the merge or split itself is done.
+        /// </summary>
+        private static void RedrawGrids(Editor e)
+        {
+            try
+            {
+                e.P.RebuildRows.Invoke(e.Source, null);
+                e.P.RebuildRows.Invoke(e.Target, null);
+                if (e.Grids is System.Windows.Forms.Control grids)
+                {
+                    grids.Invalidate(true);
+                    grids.Update();
+                }
+            }
+            catch (Exception ex)
+            {
+                try { DiagnosticLog.WriteAlways("SegmentStructure", "redrawing the grids failed: " + Inner(ex).Message); }
+                catch { }
+            }
         }
 
         internal static Exception Inner(Exception ex) =>
