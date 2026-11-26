@@ -54,7 +54,7 @@ namespace Supervertaler.Trados.Core
             public PropertyInfo ViewEditor, EditorSource, EditorTarget;
             public PropertyInfo ControlDocument, ControlRows, ControlSelection;
             public MethodInfo FindRow, GetSegment, SelectRowRange, ClearRowSelections, MoveTo;
-            public PropertyInfo RowIsSegment, RowHidden, RowNumber;
+            public PropertyInfo RowIsSegment, RowHidden, RowNumber, RowSegmentContainer, ContainerSegment;
             public PropertyInfo ContainerStartNode, TextNodeText;
             public ConstructorInfo PositionCtor;
             public PropertyInfo PositionTextOffset;
@@ -118,6 +118,9 @@ namespace Supervertaler.Trados.Core
                 p.RowIsSegment = row.GetProperty("IsSegment");
                 p.RowHidden = row.GetProperty("Hidden");
                 p.RowNumber = row.GetProperty("RowNumber");
+                p.RowSegmentContainer = row.GetProperty("SegmentContainer");
+                var segNode = TypeOf(EditorApi, EditorApi + ".ISegmentContainerNode");
+                p.ContainerSegment = segNode?.GetProperty("Segment");
                 p.ContainerStartNode = p.ContainerType.GetProperty("StartNode");
                 p.TextNodeText = p.TextNodeType.GetProperty("Text");
                 p.PositionCtor = pos.GetConstructor(new[] { content });
@@ -136,6 +139,8 @@ namespace Supervertaler.Trados.Core
                     (p.RowIsSegment, "IRowInfo.IsSegment"),
                     (p.RowHidden, "IRowInfo.Hidden"),
                     (p.RowNumber, "IRowInfo.RowNumber"),
+                    (p.RowSegmentContainer, "IRowInfo.SegmentContainer"),
+                    (p.ContainerSegment, "ISegmentContainerNode.Segment"),
                     (p.ContainerStartNode, "IAbstractContainerNode.StartNode"),
                     (p.TextNodeText, "ITextNode.Text"),
                     (p.PositionCtor, "Position(IAbstractContentNode)"),
@@ -249,12 +254,47 @@ namespace Supervertaler.Trados.Core
             return doc == null ? null : e.P.GetSegment.Invoke(doc, new object[] { pu, seg });
         }
 
-        private static object RowOf(Editor e, object control, object segmentNode)
+        /// <summary>
+        /// The grid row that shows this segment. FindRow at the segment's start
+        /// node can answer the row BEFORE it: the structure row between two
+        /// segments of a paragraph, which Studio keeps hidden (found live on
+        /// 26 Nov 2026: merging 12+13 was refused as "hidden by a display
+        /// filter"). So the answer is checked - the row must be a segment row
+        /// holding this very segment - and the rows around it are searched when
+        /// it is not; the whole grid only as a last resort.
+        /// </summary>
+        private static object RowOf(Editor e, object control, object segmentNode, SegmentId seg, ParagraphUnitId pu)
         {
-            var start = e.P.ContainerStartNode.GetValue(segmentNode);
-            if (start == null) return null;
-            var position = e.P.PositionCtor.Invoke(new[] { start });
-            return e.P.FindRow.Invoke(control, new[] { position });
+            var p = e.P;
+            var rows = p.ControlRows.GetValue(control) as IList;
+            if (rows == null) return null;
+            int start = -1;
+            var startNode = p.ContainerStartNode.GetValue(segmentNode);
+            if (startNode != null)
+            {
+                var position = p.PositionCtor.Invoke(new[] { startNode });
+                var found = p.FindRow.Invoke(control, new[] { position });
+                if (found != null) start = (int)p.RowNumber.GetValue(found);
+            }
+            int index = SegmentStructurePlanner.NearestMatch(rows.Count, start,
+                i => RowHolds(p, rows[i], seg.Id, pu.Id));
+            // So the live test shows whether Studio's guess was off, and by how much.
+            if (index != start)
+            {
+                try { DiagnosticLog.WriteAlways("SegmentStructure", $"FindRow gave row {start} for segment {seg.Id}; it is on row {index}"); }
+                catch { }
+            }
+            return index < 0 ? null : rows[index];
+        }
+
+        private static bool RowHolds(Parts p, object row, string segmentId, string paragraphId)
+        {
+            if (row == null || !(bool)p.RowIsSegment.GetValue(row)) return false;
+            var container = p.RowSegmentContainer.GetValue(row);
+            var segment = container == null ? null : p.ContainerSegment.GetValue(container) as ISegment;
+            return segment != null
+                   && string.Equals(segment.Properties?.Id.Id, segmentId, StringComparison.Ordinal)
+                   && string.Equals(segment.ParentParagraphUnit?.Properties?.ParagraphUnitId.Id, paragraphId, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -272,7 +312,7 @@ namespace Supervertaler.Trados.Core
             for (int i = 0; i < segments.Count; i++)
             {
                 var node = SegmentNode(e, e.Target, segments[i].Key, segments[i].Value);
-                var row = node == null ? null : RowOf(e, e.Target, node);
+                var row = node == null ? null : RowOf(e, e.Target, node, segments[i].Value, segments[i].Key);
                 if (row == null) return $"segment {ids[i]} is not in Studio's editor grid";
                 if ((bool)p.RowHidden.GetValue(row))
                     return $"segment {ids[i]} is hidden by a display filter. Clear the filter in Studio first";

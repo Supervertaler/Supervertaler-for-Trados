@@ -257,6 +257,23 @@ public static class MergeSplitTest
         Check(CheckMerge(Cand("3", "p", tags: new[] { "5", "5" }), Cand("4", "p")) == null,
             "A a tag id twice in ONE segment (a pair's start and end): allowed, as in Studio");
 
+        // The row lookup (live bug, 26 Nov: merging 12+13 refused as "hidden by a
+        // display filter"). Studio's FindRow at a segment's start can answer the
+        // hidden structure row just before it; the row actually holding the
+        // segment must be found from there. Rows here: 0 seg11, 1 structure,
+        // 2 seg12, 3 structure, 4 seg13.
+        var nearest = Planner.GetMethod("NearestMatch", Any);
+        Func<int, int, Func<int, bool>, int> near = (count, start, m) => (int)nearest.Invoke(null, new object[] { count, start, m });
+        Func<int, bool> is12 = i => i == 2, is13 = i => i == 4, none = i => false;
+        Check(near(5, 2, is12) == 2, "A row lookup: the editor's guess is the segment row itself: kept");
+        Check(near(5, 1, is12) == 2, "A row lookup: the guess is the hidden structure row BEFORE segment 12: segment 12's row is found (the live bug)");
+        Check(near(5, 3, is13) == 4, "A row lookup: the same for segment 13");
+        Check(near(5, 3, is12) == 2, "A row lookup: a guess one row too far: the row before is found");
+        Check(near(5, -1, is13) == 4, "A row lookup: no guess at all: the grid is searched");
+        Check(near(5, 99, is13) == 4, "A row lookup: a guess outside the grid: the grid is searched, no exception");
+        Check(near(1000, 0, i => i == 900) == 900, "A row lookup: the segment far from the guess: still found");
+        Check(near(5, 2, none) == -1 && near(0, -1, none) == -1, "A row lookup: no row holds the segment: none, so the merge is refused as not in the grid");
+
         // Michael's case: segment 3's source as two runs (no tags).
         const string michael = "Gaat jouw pensioen over naar het nieuwe pensioen?  Dan krijg je een persoonlijke pensioenpot.";
         var s = Locate("Dan krijg je", false, Run(michael));
@@ -421,7 +438,7 @@ public static class MergeSplitTest
             return;
         }
         Check(missing == null, "C every editor part the tools drive is in this Studio" + (missing == null ? "" : ": MISSING " + missing));
-        foreach (var f in new[] { "SelectRowRange", "ClearRowSelections", "MoveTo", "GetSegment", "FindRow", "GetAction", "ActionExecute" })
+        foreach (var f in new[] { "SelectRowRange", "ClearRowSelections", "MoveTo", "GetSegment", "FindRow", "RowSegmentContainer", "ContainerSegment", "GetAction", "ActionExecute" })
             Check(Get(parts, f) != null, "C   " + f + " found" + (Get(parts, f) == null ? "" : " (" + Get(parts, f) + ")"));
 
         // The view field on the integration API's document class.

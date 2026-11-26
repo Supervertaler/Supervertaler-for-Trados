@@ -180,6 +180,30 @@ namespace Supervertaler.Trados.Core
             return result;
         }
 
+        /// <summary>
+        /// The index of the row that holds a segment: <paramref name="start"/> when
+        /// it matches, else the nearest match within a few rows either side (the
+        /// editor's guess can be the hidden structure row next to the segment), else
+        /// the first match anywhere; -1 when none does. <paramref name="start"/> may
+        /// be -1 (no guess) or out of range.
+        /// </summary>
+        internal static int NearestMatch(int count, int start, Func<int, bool> isMatch)
+        {
+            const int Near = 4;
+            if (start >= 0 && start < count)
+            {
+                if (isMatch(start)) return start;
+                for (int d = 1; d <= Near; d++)
+                {
+                    if (start + d < count && isMatch(start + d)) return start + d;
+                    if (start - d >= 0 && isMatch(start - d)) return start - d;
+                }
+            }
+            for (int i = 0; i < count; i++)
+                if (isMatch(i)) return i;
+            return -1;
+        }
+
         private static void Locate(IList<TextRun> runs, int charIndex, out int run, out int offset)
         {
             int start = 0;
