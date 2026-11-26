@@ -477,6 +477,15 @@ public static class MergeSplitTest
         var splitCheck = splitType == null ? null : (MethodInfo)cmds.GetMethod("FindSplitCheck", Any).Invoke(null, new object[] { splitType });
         Check(splitCheck != null && splitCheck.DeclaringType == splitType,
             "C Split's own position check (IsEnabledWithSelection) is found on SplitSegmentsAction" + (splitCheck == null ? "" : " (" + splitCheck + ")"));
+        // Merge's own availability check, asked instead of the cached Enabled (live
+        // test 26 Nov: Enabled was stale right after the row selection).
+        var mergeType = editorAsm.GetType("Sdl.TranslationStudio.Editor.TranslationEditor.Actions.MergeSegmentsAction", false);
+        var mergeCheck = mergeType == null ? null : (MethodInfo)cmds.GetMethod("FindMergeCheck", Any).Invoke(null, new object[] { mergeType });
+        Check(mergeCheck != null && mergeCheck.DeclaringType == mergeType,
+            "C Merge's own availability check (IsActionEnabled) is found on MergeSegmentsAction itself" + (mergeCheck == null ? "" : " (" + mergeCheck + ")"));
+        var mergeCalls = mergeType == null ? "" : string.Join(",", mergeType.GetMethods(Any).Select(m => m.Name));
+        Check(mergeCalls.Contains("CanMerge") && mergeCalls.Contains("HasSelectedRows"),
+            "C   and it is the one built on CanMerge and the selected rows");
         var rangeBase = editorAsm.GetType("Sdl.TranslationStudio.Editor.AbstractActiveRangeAction", false);
         Check(rangeBase != null && rangeBase.GetField("_isTargetFocused", Any) != null,
             "C Studio's Split availability still depends on grid focus (_isTargetFocused), which is why the tool does not use Enabled");

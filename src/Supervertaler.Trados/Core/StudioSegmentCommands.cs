@@ -364,7 +364,15 @@ namespace Supervertaler.Trados.Core
             {
                 p.ClearRowSelections.Invoke(e.Target, null);
                 p.SelectRowRange.Invoke(e.Target, new[] { rows[order[0]], rows[order[order.Count - 1]] });
-                if (!(bool)p.ActionEnabled.GetValue(action))
+                // Not IAction.Enabled: that is a cached value Studio refreshes when it
+                // hears of a row-selection change, and right after SelectRowRange it
+                // can still be stale (live test 26 Nov, 536d87b: refused where the same
+                // merge had gone through before). The command's own IsActionEnabled()
+                // reads the selection now and runs all of Studio's merge rules
+                // (neighbours, paragraph, locks, QA marks); merge has no focus rule.
+                var check = FindMergeCheck(action.GetType());
+                if (check == null) return NotFound("MergeSegmentsAction.IsActionEnabled");
+                if (!(bool)check.Invoke(action, null))
                     return "Studio does not allow merging these segments (its Merge Segments command is unavailable " +
                            "for them: for example a segment has QA marks, or a document boundary is in between)";
                 p.ActionExecute.Invoke(action, null);
@@ -454,6 +462,20 @@ namespace Supervertaler.Trados.Core
                        "for example the segment or that text is locked, the point is in a tracked change, or the segment has QA marks)";
             p.ActionExecute.Invoke(action, null);
             RedrawGrids(e);
+            return null;
+        }
+
+        /// <summary>The merge command's own availability check, <c>IsActionEnabled()</c>,
+        /// as the command itself overrides it (it is protected), or null.</summary>
+        internal static MethodInfo FindMergeCheck(Type actionType)
+        {
+            for (var t = actionType; t != null; t = t.BaseType)
+            {
+                var m = t.GetMethod("IsActionEnabled",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+                    null, Type.EmptyTypes, null);
+                if (m != null && m.ReturnType == typeof(bool)) return m;
+            }
             return null;
         }
 
