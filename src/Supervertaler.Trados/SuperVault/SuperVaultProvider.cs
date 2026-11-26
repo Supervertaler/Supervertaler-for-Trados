@@ -273,7 +273,7 @@ namespace Supervertaler.Trados.SuperVault
                         User = User(tu),
                         Subject = subject,
                         Document = DocumentName(tu),
-                        DocumentPath = DocumentPath(tu),
+                        DocumentPath = ProjectLookupPath(tu, tu.TargetSegment.Culture?.Name ?? TargetLanguage?.Name),
                     });
                     results[i] = Added;
                 }
@@ -310,6 +310,27 @@ namespace Supervertaler.Trados.SuperVault
         static string DocumentPath(TranslationUnit tu)
         {
             try { var p = tu.DocumentProperties?.LastOpenedAsPath; return string.IsNullOrEmpty(p) ? null : p; }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Where to find the unit's Studio project (<see cref="StudioProjects.Describe(string)"/>): the bilingual file's
+        /// path, as the Editor gives it. The batch task "Update Main Translation Memories" gives none: its converter's
+        /// document properties hold only the languages (Studio 2026's MultiFileConverter, read 26 Nov 2026), and the
+        /// original file's path is where the file was on the client's computer. Then "&lt;target language&gt;\&lt;original
+        /// name&gt;.sdlxliff", where Studio puts the file in a project, for StudioProjects to find in Studio's project list.
+        /// </summary>
+        internal static string ProjectLookupPath(TranslationUnit tu, string targetCulture)
+        {
+            var path = DocumentPath(tu);
+            if (path != null) return path;
+            try
+            {
+                var name = System.IO.Path.GetFileName(tu.FileProperties?.FileConversionProperties?.OriginalFilePath ?? "");
+                if (name.Length == 0 || string.IsNullOrEmpty(targetCulture)) return null;
+                if (!name.EndsWith(".sdlxliff", StringComparison.OrdinalIgnoreCase)) name += ".sdlxliff";
+                return System.IO.Path.Combine(targetCulture, name);
+            }
             catch { return null; }
         }
 
