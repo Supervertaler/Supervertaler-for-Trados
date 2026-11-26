@@ -132,6 +132,24 @@ namespace Supervertaler.Trados.Core
         }
 
         /// <summary>
+        /// The editor controller with Studio's Editor view bound to it, for
+        /// <c>Open</c>; null outside Studio. UI thread.
+        ///
+        /// <para><see cref="Controller"/> skips the view on purpose, which is fine for
+        /// reading documents and events but not for opening files:
+        /// <c>EditorController.Open(ProjectFile...)</c> finds the project through
+        /// <c>GetProjectManagementService()</c>, which reads
+        /// <c>View.ServiceContext</c>, so on the container's object it throws a
+        /// NullReferenceException (REA, Studio 2026 IntegrationApi, 25 Nov 2026:
+        /// every open_project with files and the example project's "open in the
+        /// Editor" failed that way in Studio 2024 and 2026 since 4 Nov; Studio
+        /// 2022 always used GetController). GetController binds the view, as
+        /// opening a document has to anyway.</para>
+        /// </summary>
+        public static EditorController ControllerWithView =>
+            SdlTradosStudio.Application?.GetController<EditorController>();
+
+        /// <summary>
         /// One of this plugin's Editor panes, or null if Studio cannot give it yet.
         /// UI thread only.
         ///
