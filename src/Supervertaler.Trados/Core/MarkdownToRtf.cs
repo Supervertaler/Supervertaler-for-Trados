@@ -104,7 +104,7 @@ namespace Supervertaler.Trados.Core
                 // ─── Headings ───────────────────────────────────────
                 // h4-h6 first: longest prefix wins, or "##### x" would be tested
                 // against "### " and fall through to body text, printing its own
-                // hashes. Real files use these - the elycio style guide numbers
+                // hashes. Real files use these - one client style guide numbers
                 // every section with #####.
                 //
                 // All three render the same: bold at body size. Below h3 the
